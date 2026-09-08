@@ -1,0 +1,176 @@
+================================================================================
+SMARTKITCHEN - EPIC BREAKDOWN & JIRA TASK ASSIGNMENT
+================================================================================
+
+1. EPIC LIST
+--------------------------------------------------------------------------------
+EPIC-01: Gateway & Infra (Monorepo, Docker, CI/CD, API Gateway)
+EPIC-02: Auth Service (Authentication & Authorization)
+EPIC-03: Family Service (Family Groups, Members, Roles)
+EPIC-04: Inventory Service (Food Tracking, Expiration, Barcode/OCR/Voice)
+EPIC-05: Nutrition Service (Health Profile, BMR/TDEE, Allergies)
+EPIC-06: Meal Diary Service (Meal Logging, Daily Stats)
+EPIC-07: Recipe Service (Recipe CRUD, Master Food Database)
+EPIC-08: Menu Service (Auto Menu Generation, Dish Suggestions)
+EPIC-09: Shopping List Service (Shopping List, Demand Forecasting)
+EPIC-10: Payment Service (VNPay / MoMo Checkout Integration)
+EPIC-11: Notification Service (Supermarket Promotions, Push Alerts)
+EPIC-12: Admin Service (System Administration, Weights, Monitoring)
+EPIC-13: Frontend (Mobile App - React Native Expo)
+
+
+2. MEMBER RESPONSIBILITY & DIRECTORY MAPPING
+--------------------------------------------------------------------------------
+Huy (Scrum Master):
+  - Backend / Infra: apps/gateway/, docker-compose.yml, notification-service/, admin-service/
+  - Mobile Directory: apps/mobile/src/screens/notifications/, apps/mobile/src/screens/admin/
+
+Kazan:
+  - Backend: auth-service/, family-service/
+  - Mobile Directory: apps/mobile/src/screens/auth/, apps/mobile/src/screens/family/
+
+Khanh:
+  - Backend: inventory-service/, shopping-list-service/
+  - Mobile Directory: apps/mobile/src/screens/inventory/, apps/mobile/src/screens/shopping-cart/
+
+Hung:
+  - Backend: nutrition-service/, meal-diary-service/
+  - Mobile Directory: apps/mobile/src/screens/nutrition/, apps/mobile/src/screens/meal-diary/
+
+Cuong:
+  - Backend: recipe-service/, menu-service/, payment-service/
+  - Mobile Directory: apps/mobile/src/screens/recipes/, apps/mobile/src/screens/menu/, apps/mobile/src/screens/payment/
+
+
+3. DETAILED JIRA TASKS BY SPRINT
+--------------------------------------------------------------------------------
+
+--- SPRINT 1: Infrastructure, Core Schemas & Base UI Framework ---
+
+Huy:
+[#1] Task: Setup monorepo, Git workflow (branch strategy, PR template) (EPIC-01)
+[#2] Task: Scaffold 11 services + gateway (EPIC-01)
+[#3] Task: Set up Docker Compose, verify all services respond on /health (EPIC-01)
+
+Kazan:
+[#6] Task: Design & implement PostgreSQL schema (Prisma) for Auth Service (EPIC-02)
+[#9] Story: Register an account with email/password (EPIC-02)
+[#10] Story: Log in / log out (JWT session) (EPIC-02)
+[#18] Story: Mobile: Login & Register screens (EPIC-13/EPIC-02)
+
+Khanh:
+[#8] Task: Design & implement PostgreSQL schema (Prisma) for Inventory Service (EPIC-04)
+[#14] Story: Add/edit/delete food items in inventory (manual entry) (EPIC-04)
+[#15] Story: Alert for food items nearing expiration (EPIC-04)
+[#19] Story: Mobile: Inventory screen (EPIC-13/EPIC-04)
+
+Hung:
+[#38] Task: Design & implement PostgreSQL schema (Prisma) for Nutrition Service (EPIC-05)
+[#41] Story: Personal nutrition profile (height, weight, age, activity level) (EPIC-05)
+[#42] Story: Calculate daily calorie needs (BMR/TDEE formula) (EPIC-05)
+[#50] Story: Mobile: Nutrition profile screen (EPIC-13/EPIC-05)
+
+Cuong:
+[#20] Task: Design & implement PostgreSQL schema (Prisma) for Recipe Service (EPIC-07)
+[#25] Story: CRUD for recipes (EPIC-07)
+[#26] Task: Build sample dish/ingredient database (EPIC-07)
+[#35] Story: Mobile: Recipe screen UI base (EPIC-13/EPIC-07)
+
+
+--- SPRINT 2: Gateway Routing, Core Business Logic & Secondary Schemas ---
+
+Huy:
+[#4] Task: Set up CI (GitHub Actions): lint + build for each service on PR (EPIC-01)
+[#5] Task: Configure API Gateway routing for /api/* (EPIC-01)
+[#24] Task: Design & implement PostgreSQL schema (Prisma) for Notification Service (EPIC-11)
+[#40] Task: Design & implement PostgreSQL schema (Prisma) for Admin Service (EPIC-12)
+
+Kazan:
+[#7] Task: Design & implement PostgreSQL schema (Prisma) for Family Service (EPIC-03)
+[#11] Story: Log in with Google OAuth (EPIC-02)
+[#12] Story: Create a family group (EPIC-03)
+[#13] Story: Invite / remove / assign member roles (Owner/Admin/Member) (EPIC-03)
+
+Khanh:
+[#22] Task: Design & implement PostgreSQL schema (Prisma) for Shopping List Service (EPIC-09)
+[#29] Story: Auto-generate shopping list when ingredients are missing (EPIC-09)
+[#30] Story: Forecast-based shopping suggestions from consumption trends (EPIC-09)
+[#36] Story: Mobile: Shopping cart screen (EPIC-13/EPIC-09)
+
+Hung:
+[#39] Task: Design & implement PostgreSQL schema (Prisma) for Meal Diary Service (EPIC-06)
+[#43] Story: Declare health conditions/food allergies (EPIC-05)
+[#44] Story: Log meals (at home / eating out / delivery) (EPIC-06)
+[#51] Story: Mobile: Meal diary screen (EPIC-13/EPIC-06)
+
+Cuong:
+[#21] Task: Design & implement PostgreSQL schema (Prisma) for Menu Service (EPIC-08)
+[#27] Story: Generate menu by day/week/month (EPIC-08)
+[#28] Story: Auto-refresh menu when new food items are added to inventory (EPIC-08)
+
+
+--- SPRINT 3: Advanced Integrations, Payments, Admin & Notification Logic ---
+
+Huy:
+[#34] Story: Promotion notifications from partner supermarkets (EPIC-11)
+[#48] Story: Admin: manage master ingredient database (EPIC-12)
+[#49] Story: Admin: configure weighting for the recommendation engine (EPIC-12)
+[#60] Task: Gateway performance optimization (caching, rate limiting) (EPIC-01)
+[#52] Task: Prepare End-to-end integration testing scenarios (Huy lead) (EPIC-01)
+
+Kazan:
+[#18b] Story: Mobile: Family management screen (EPIC-13/EPIC-03)
+[#11b] Task: Implement JWT refresh tokens & security hardening for Auth Service (EPIC-02)
+
+Khanh:
+[#16] Story: Scan barcode to auto-add food items (ZXing) (EPIC-04)
+[#17] Story: Scan supermarket receipt (OCR - Tesseract.js) to add food items (EPIC-04)
+[#32] Story: "View to shop" flow: save for reference, confirm after purchase (EPIC-09)
+[#33] Story: Auto-update inventory after purchase confirmation (EPIC-04/09)
+[#47] Story: Add food items by voice (App Speech API) (EPIC-04)
+
+Hung:
+[#45] Story: Daily nutrition stats from the meal diary (EPIC-06)
+[#46] Story: Personalized dish suggestions based on health conditions (EPIC-08)
+
+Cuong:
+[#23] Task: Design & implement PostgreSQL schema (Prisma) for Payment Service (EPIC-10)
+[#31] Story: "Buy now" flow: place order + pay via VNPay/MoMo (EPIC-10)
+[#35b] Story: Mobile: Menu screen (EPIC-13/EPIC-08)
+[#37] Story: Mobile: Payment screen (EPIC-13/EPIC-10)
+[#27b] Task: Integrate Payment Service with Order/Menu flow (EPIC-10)
+
+
+--- SPRINT 4: Testing, UI Optimization, Documentation & Production Deployment ---
+
+Huy:
+[#58] Story: Admin: system health monitoring (EPIC-12)
+[#59] Story: Admin: handle account reports/complaints (EPIC-12)
+[#53] Task: Unit tests - Gateway, Infra, Notification & Admin Services (EPIC-01/11/12)
+[#61] Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12)
+[#65] Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12)
+[#70] Task: Deploy to production (Vercel/Railway/Render) (EPIC-01)
+
+Kazan:
+[#54] Task: Unit tests - Auth & Family Services (EPIC-02/03)
+[#61b] Task: Finalize responsive UI - Auth & Family screens (EPIC-02/03)
+[#66] Task: Write documentation - Auth & Family section (EPIC-02/03)
+
+Khanh:
+[#55] Task: Unit tests - Inventory & Shopping List Services (EPIC-04/09)
+[#62] Task: Finalize responsive UI - Inventory & Shopping List screens (EPIC-04/09)
+[#67] Task: Write documentation - Inventory & Shopping List section (EPIC-04/09)
+
+Hung:
+[#56] Task: Unit tests - Nutrition & Meal Diary Services (EPIC-05/06)
+[#63] Task: Finalize responsive UI - Nutrition & Meal Diary screens (EPIC-05/06)
+[#68] Task: Write documentation - Nutrition & Meal Diary section (EPIC-05/06)
+
+Cuong:
+[#57] Task: Unit tests - Recipe, Menu & Payment Services (EPIC-07/08/10)
+[#64] Task: Finalize responsive UI - Recipe, Menu & Payment screens (EPIC-07/08/10)
+[#69] Task: Write documentation - Recipe, Menu & Payment section (EPIC-07/08/10)
+
+Whole Team:
+[#52b] Task: Execute End-to-end integration testing (All join)
+[#71] Task: Buffer for fixing issues found before release (Whole team)
