@@ -1,0 +1,209 @@
+﻿version: "3.9"
+services:
+  auth-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_auth
+    volumes:
+      - auth-service-db_data:/var/lib/postgresql/data
+
+  auth-service:
+    build: ./services/auth-service
+    env_file: ./services/auth-service/.env
+    ports:
+      - "4001:4001"
+    depends_on:
+      - auth-service-db
+  family-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_family
+    volumes:
+      - family-service-db_data:/var/lib/postgresql/data
+
+  family-service:
+    build: ./services/family-service
+    env_file: ./services/family-service/.env
+    ports:
+      - "4002:4002"
+    depends_on:
+      - family-service-db
+  inventory-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_inventory
+    volumes:
+      - inventory-service-db_data:/var/lib/postgresql/data
+
+  inventory-service:
+    build: ./services/inventory-service
+    env_file: ./services/inventory-service/.env
+    ports:
+      - "4003:4003"
+    depends_on:
+      - inventory-service-db
+  nutrition-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_nutrition
+    volumes:
+      - nutrition-service-db_data:/var/lib/postgresql/data
+
+  nutrition-service:
+    build: ./services/nutrition-service
+    env_file: ./services/nutrition-service/.env
+    ports:
+      - "4004:4004"
+    depends_on:
+      - nutrition-service-db
+  meal-diary-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_meal_diary
+    volumes:
+      - meal-diary-service-db_data:/var/lib/postgresql/data
+
+  meal-diary-service:
+    build: ./services/meal-diary-service
+    env_file: ./services/meal-diary-service/.env
+    ports:
+      - "4005:4005"
+    depends_on:
+      - meal-diary-service-db
+  recipe-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_recipe
+    volumes:
+      - recipe-service-db_data:/var/lib/postgresql/data
+
+  recipe-service:
+    build: ./services/recipe-service
+    env_file: ./services/recipe-service/.env
+    ports:
+      - "4006:4006"
+    depends_on:
+      - recipe-service-db
+  menu-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_menu
+    volumes:
+      - menu-service-db_data:/var/lib/postgresql/data
+
+  menu-service:
+    build: ./services/menu-service
+    env_file: ./services/menu-service/.env
+    ports:
+      - "4007:4007"
+    depends_on:
+      - menu-service-db
+  shopping-list-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_shopping_list
+    volumes:
+      - shopping-list-service-db_data:/var/lib/postgresql/data
+
+  shopping-list-service:
+    build: ./services/shopping-list-service
+    env_file: ./services/shopping-list-service/.env
+    ports:
+      - "4008:4008"
+    depends_on:
+      - shopping-list-service-db
+  payment-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_payment
+    volumes:
+      - payment-service-db_data:/var/lib/postgresql/data
+
+  payment-service:
+    build: ./services/payment-service
+    env_file: ./services/payment-service/.env
+    ports:
+      - "4009:4009"
+    depends_on:
+      - payment-service-db
+  notification-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_notification
+    volumes:
+      - notification-service-db_data:/var/lib/postgresql/data
+
+  notification-service:
+    build: ./services/notification-service
+    env_file: ./services/notification-service/.env
+    ports:
+      - "4010:4010"
+    depends_on:
+      - notification-service-db
+  admin-service-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: skt_admin
+    volumes:
+      - admin-service-db_data:/var/lib/postgresql/data
+
+  admin-service:
+    build: ./services/admin-service
+    env_file: ./services/admin-service/.env
+    ports:
+      - "4011:4011"
+    depends_on:
+      - admin-service-db
+  gateway:
+    build: ./apps/gateway
+    env_file: ./apps/gateway/.env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - auth-service
+      - family-service
+      - inventory-service
+      - nutrition-service
+      - meal-diary-service
+      - recipe-service
+      - menu-service
+      - shopping-list-service
+      - payment-service
+      - notification-service
+      - admin-service
+
+volumes:
+  auth-service-db_data:
+  family-service-db_data:
+  inventory-service-db_data:
+  nutrition-service-db_data:
+  meal-diary-service-db_data:
+  recipe-service-db_data:
+  menu-service-db_data:
+  shopping-list-service-db_data:
+  payment-service-db_data:
+  notification-service-db_data:
+  admin-service-db_data:
+

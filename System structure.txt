@@ -1,0 +1,19 @@
+SmartKitchen/
+├── apps/
+│   ├── web/          → Next.js frontend (giao diện)
+│   └── gateway/       → API Gateway (định tuyến request tới từng service)
+├── services/
+│   ├── auth-service/
+│   ├── family-service/
+│   ├── inventory-service/
+│   ├── nutrition-service/
+│   ├── meal-diary-service/
+│   ├── recipe-service/
+│   ├── menu-service/
+│   ├── shopping-list-service/
+│   ├── payment-service/
+│   ├── notification-service/
+│   └── admin-service/
+├── packages/
+│   └── shared/        → types/constants dùng chung giữa các service
+└── docker-compose.yml → chạy tất cả service + database cùng lúc
