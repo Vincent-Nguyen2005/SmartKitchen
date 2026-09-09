@@ -1,0 +1,131 @@
+PROMPT CHO AI CODING AGENT - SMARTKITCHEN SPRINT 1 (EPIC-01) 
+
+System Role: You are a Principal Software Architect and DevOps Engineer.
+Developer Name: Nguyễn Văn Huy (Scrum Master / Lead Infra)
+Project Name: SmartKitchen (Monorepo Microservices)
+
+OBJECTIVE:
+Execute Sprint 1 tasks [#1, #2, #3] under EPIC-01 Infrastructure Setup, including automated functional verification scripts.
+
+TASKS TO IMPLEMENT:
+1. [#1] Setup monorepo workspace using pnpm workspaces + Turborepo, Git workflow (.gitignore, PR template).
+2. [#2] Scaffold 11 microservices + 1 API Gateway in Node.js (Express/TypeScript).
+3. [#3] Configure docker-compose.yml with 11 dedicated PostgreSQL containers and verify health endpoints using wget.
+4. [TEST] Generate an automated health check script (`scripts/test-health.sh` and a Windows-compatible equivalent) and functional testing documentation.
+
+PORT & DATABASE ALLOCATION:
+- apps/gateway                  # Port 4000 (API Gateway)
+- services/auth-service         # Port 4001 | DB: auth_db (Port 5401)
+- services/family-service       # Port 4002 | DB: family_db (Port 5402)
+- services/inventory-service    # Port 4003 | DB: inventory_db (Port 5403)
+- services/nutrition-service    # Port 4004 | DB: nutrition_db (Port 5404)
+- services/meal-diary-service   # Port 4005 | DB: meal_diary_db (Port 5405)
+- services/recipe-service       # Port 4006 | DB: recipe_db (Port 5406)
+- services/menu-service         # Port 4007 | DB: menu_db (Port 5407)
+- services/shopping-list-service# Port 4008 | DB: shopping_list_db (Port 5408)
+- services/payment-service      # Port 4009 | DB: payment_db (Port 5409)
+- services/notification-service # Port 4010 | DB: notification_db (Port 5410)
+- services/admin-service        # Port 4011 | DB: admin_db (Port 5411)
+- apps/mobile                   # React Native Expo app scaffold (no backend port)
+
+MEMBER DIRECTORY SCOPE & OWNERSHIP MAPPING:
+Please generate sub-directories, README.md files, and boilerplate code inside both backend services and `apps/mobile/src/screens/` assigned specifically to each team member. Each generated README.md (both at the service root and at the screen-folder root) MUST state the owner's name and a one-line description of that module's responsibility, so ownership is unambiguous to anyone browsing the repo.
+
+1. Huy (Scrum Master / Lead Infra):
+   - Backend Scope: `apps/gateway/`, `docker-compose.yml`, `services/notification-service/`, `services/admin-service/`
+   - Mobile Screens Scope: `apps/mobile/src/screens/notifications/`, `apps/mobile/src/screens/admin/`
+
+2. Kazan:
+   - Backend Scope: `services/auth-service/`, `services/family-service/`
+   - Mobile Screens Scope: `apps/mobile/src/screens/auth/`, `apps/mobile/src/screens/family/`
+
+3. Khanh:
+   - Backend Scope: `services/inventory-service/`, `services/shopping-list-service/`
+   - Mobile Screens Scope: `apps/mobile/src/screens/inventory/`, `apps/mobile/src/screens/shopping-cart/`
+
+4. Hung:
+   - Backend Scope: `services/nutrition-service/`, `services/meal-diary-service/`
+   - Mobile Screens Scope: `apps/mobile/src/screens/nutrition/`, `apps/mobile/src/screens/meal-diary/`
+
+5. Cuong:
+   - Backend Scope: `services/recipe-service/`, `services/menu-service/`, `services/payment-service/`
+   - Mobile Screens Scope: `apps/mobile/src/screens/recipes/`, `apps/mobile/src/screens/menu/`, `apps/mobile/src/screens/payment/`
+
+Additionally, generate a `.github/CODEOWNERS` file that maps every path above to its owner (using placeholder GitHub usernames `@huy`, `@kazan`, `@khanh`, `@hung`, `@cuong` — the team will replace these with real GitHub handles after scaffolding). This lets GitHub automatically request the correct person's review whenever a pull request touches their folder, enforcing the "no one edits another member's module" rule at the tooling level, not just by convention.
+
+PROJECT STRUCTURE TO GENERATE:
+SmartKitchen/
+├── apps/
+│   ├── mobile/                  # React Native Expo app scaffold
+│   └── gateway/                 # Express API Gateway (Port 4000)
+├── services/
+│   ├── auth-service/            # Port 4001
+│   ├── family-service/          # Port 4002
+│   ├── inventory-service/       # Port 4003
+│   ├── nutrition-service/       # Port 4004
+│   ├── meal-diary-service/      # Port 4005
+│   ├── recipe-service/          # Port 4006
+│   ├── menu-service/            # Port 4007
+│   ├── shopping-list-service/   # Port 4008
+│   ├── payment-service/         # Port 4009
+│   ├── notification-service/    # Port 4010
+│   └── admin-service/           # Port 4011
+├── packages/
+│   └── shared/                  # Shared TypeScript interfaces & constants
+├── scripts/
+│   ├── test-health.sh           # Automated health verification script (bash, for Git Bash/WSL/macOS/Linux)
+│   └── test-health.ps1          # Automated health verification script (PowerShell, for native Windows users)
+├── .github/
+│   ├── PULL_REQUEST_TEMPLATE.md
+│   └── CODEOWNERS               # Maps each folder to its owning team member
+├── docker-compose.yml
+├── pnpm-workspace.yaml
+├── turbo.json
+├── package.json
+├── .gitignore
+└── README.md                    # Team onboarding & test execution guide
+
+TECHNICAL REQUIREMENTS:
+
+1. MONOREPO ARCHITECTURE (pnpm + Turborepo):
+   - Configure `pnpm-workspace.yaml` and `turbo.json`.
+   - Root `package.json` scripts: `dev`, `build`, `lint`, and `test:health`.
+   - Comprehensive `.gitignore` covering node_modules, dist, .env, .expo, prisma generated files.
+   - Standard `.github/PULL_REQUEST_TEMPLATE.md` with Task ID, Description, and Testing checklist.
+
+2. SERVICE SCAFFOLDING (Express + TypeScript):
+   - Scaffold `apps/gateway` (Port 4000) and all 11 services in `services/*`.
+   - Use `node:20-alpine` as the base image for ALL Dockerfiles (do not mix Node versions across services).
+   - Each service/app MUST contain:
+     * Minimal `package.json` and `tsconfig.json`.
+     * Entry point (`src/index.ts`) running Express server.
+     * Route `GET /health` returning JSON: `{ status: "OK", service: "<service-name>", timestamp: ISOString }`.
+     * A `.env.example` file declaring `PORT` and `DATABASE_URL`.
+     * Multi-stage `Dockerfile` based on `node:20-alpine`.
+
+3. DOCKER COMPOSE & STRICT DATABASE-PER-SERVICE:
+   - `docker-compose.yml` MUST orchestrate 11 separate PostgreSQL container instances (one isolated database container per microservice, no shared database).
+   - Configure healthchecks using `wget` (native to alpine images):
+     `test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:<PORT>/health || exit 1"]`
+   - Each service container MUST declare `depends_on` on its corresponding database container with `condition: service_healthy`, so the service only starts after its own database has passed its healthcheck (prevents Prisma connection-refused errors on first boot). Apply the same `depends_on: condition: service_healthy` pattern for `gateway` depending on all 11 services being healthy.
+
+4. FUNCTIONAL TESTING & VERIFICATION SUITE:
+   - Create `scripts/test-health.sh` (executable bash script, for Git Bash / WSL / macOS / Linux users) that:
+     * Loops through ports 4000 to 4011.
+     * Sends a `curl` request to `http://localhost:<PORT>/health`.
+     * Validates that HTTP Status Code is `200` and response body contains `"status":"OK"`.
+     * Displays a colored PASS/FAIL checklist in the terminal with a summary count (e.g., "12/12 Services Operational").
+   - Also create `scripts/test-health.ps1`, a PowerShell equivalent of the same script (using `Invoke-WebRequest` or `Invoke-RestMethod`), producing the same PASS/FAIL checklist and summary count, for team members running native Windows PowerShell/cmd without Git Bash or WSL installed.
+   - Update root `README.md` to include a dedicated **"Functional Verification Steps"** section with commands:
+     1. How to run local type check & build (`pnpm build`).
+     2. How to spin up Docker environment (`docker-compose up -d --build`).
+     3. How to execute automated health test — both variants: `pnpm test:health` / `./scripts/test-health.sh` (Git Bash/WSL/macOS/Linux) AND `./scripts/test-health.ps1` (Windows PowerShell).
+     4. How to test PostgreSQL connectivity for each database container (`docker exec -it ... psql`).
+
+OUTPUT FORMAT REQUIREMENTS:
+Please output:
+1. Shell commands or bash script (`scaffold.sh`) to build the entire monorepo directory tree.
+2. Complete configuration files (`pnpm-workspace.yaml`, `turbo.json`, `package.json`, `docker-compose.yml`, `README.md`, `.github/CODEOWNERS`).
+3. Complete `scripts/test-health.sh` AND `scripts/test-health.ps1` scripts with colored CLI output.
+4. Template code for `src/index.ts`, `.env.example`, and `Dockerfile`.
+5. Per-owner README.md files inside each backend service folder and each `apps/mobile/src/screens/<domain>/` folder, per the Member Directory Scope mapping above.
