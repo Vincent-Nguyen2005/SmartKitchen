@@ -1,209 +1,174 @@
-﻿version: "3.9"
 services:
-  auth-service-db:
+  auth-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_auth
-    volumes:
-      - auth-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: auth_db }
+    ports: ["5401:5432"]
+    volumes: [auth-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"], interval: 5s, timeout: 5s, retries: 10 }
   auth-service:
     build: ./services/auth-service
-    env_file: ./services/auth-service/.env
-    ports:
-      - "4001:4001"
-    depends_on:
-      - auth-service-db
-  family-service-db:
+    environment: { PORT: 4001, DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db }
+    ports: ["4001:4001"]
+    depends_on: { auth-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4001/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  family-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_family
-    volumes:
-      - family-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: family_db }
+    ports: ["5402:5432"]
+    volumes: [family-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d family_db"], interval: 5s, timeout: 5s, retries: 10 }
   family-service:
     build: ./services/family-service
-    env_file: ./services/family-service/.env
-    ports:
-      - "4002:4002"
-    depends_on:
-      - family-service-db
-  inventory-service-db:
+    environment: { PORT: 4002, DATABASE_URL: postgresql://postgres:postgres@family-db:5432/family_db }
+    ports: ["4002:4002"]
+    depends_on: { family-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4002/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  inventory-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_inventory
-    volumes:
-      - inventory-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: inventory_db }
+    ports: ["5403:5432"]
+    volumes: [inventory-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"], interval: 5s, timeout: 5s, retries: 10 }
   inventory-service:
     build: ./services/inventory-service
-    env_file: ./services/inventory-service/.env
-    ports:
-      - "4003:4003"
-    depends_on:
-      - inventory-service-db
-  nutrition-service-db:
+    environment: { PORT: 4003, DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db }
+    ports: ["4003:4003"]
+    depends_on: { inventory-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4003/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  nutrition-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_nutrition
-    volumes:
-      - nutrition-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: nutrition_db }
+    ports: ["5404:5432"]
+    volumes: [nutrition-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d nutrition_db"], interval: 5s, timeout: 5s, retries: 10 }
   nutrition-service:
     build: ./services/nutrition-service
-    env_file: ./services/nutrition-service/.env
-    ports:
-      - "4004:4004"
-    depends_on:
-      - nutrition-service-db
-  meal-diary-service-db:
+    environment: { PORT: 4004, DATABASE_URL: postgresql://postgres:postgres@nutrition-db:5432/nutrition_db }
+    ports: ["4004:4004"]
+    depends_on: { nutrition-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4004/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  meal-diary-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_meal_diary
-    volumes:
-      - meal-diary-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: meal_diary_db }
+    ports: ["5405:5432"]
+    volumes: [meal-diary-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d meal_diary_db"], interval: 5s, timeout: 5s, retries: 10 }
   meal-diary-service:
     build: ./services/meal-diary-service
-    env_file: ./services/meal-diary-service/.env
-    ports:
-      - "4005:4005"
-    depends_on:
-      - meal-diary-service-db
-  recipe-service-db:
+    environment: { PORT: 4005, DATABASE_URL: postgresql://postgres:postgres@meal-diary-db:5432/meal_diary_db }
+    ports: ["4005:4005"]
+    depends_on: { meal-diary-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4005/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  recipe-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_recipe
-    volumes:
-      - recipe-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: recipe_db }
+    ports: ["5406:5432"]
+    volumes: [recipe-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d recipe_db"], interval: 5s, timeout: 5s, retries: 10 }
   recipe-service:
     build: ./services/recipe-service
-    env_file: ./services/recipe-service/.env
-    ports:
-      - "4006:4006"
-    depends_on:
-      - recipe-service-db
-  menu-service-db:
+    environment: { PORT: 4006, DATABASE_URL: postgresql://postgres:postgres@recipe-db:5432/recipe_db }
+    ports: ["4006:4006"]
+    depends_on: { recipe-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4006/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  menu-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_menu
-    volumes:
-      - menu-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: menu_db }
+    ports: ["5407:5432"]
+    volumes: [menu-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d menu_db"], interval: 5s, timeout: 5s, retries: 10 }
   menu-service:
     build: ./services/menu-service
-    env_file: ./services/menu-service/.env
-    ports:
-      - "4007:4007"
-    depends_on:
-      - menu-service-db
-  shopping-list-service-db:
+    environment: { PORT: 4007, DATABASE_URL: postgresql://postgres:postgres@menu-db:5432/menu_db }
+    ports: ["4007:4007"]
+    depends_on: { menu-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  shopping-list-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_shopping_list
-    volumes:
-      - shopping-list-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: shopping_list_db }
+    ports: ["5408:5432"]
+    volumes: [shopping-list-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d shopping_list_db"], interval: 5s, timeout: 5s, retries: 10 }
   shopping-list-service:
     build: ./services/shopping-list-service
-    env_file: ./services/shopping-list-service/.env
-    ports:
-      - "4008:4008"
-    depends_on:
-      - shopping-list-service-db
-  payment-service-db:
+    environment: { PORT: 4008, DATABASE_URL: postgresql://postgres:postgres@shopping-list-db:5432/shopping_list_db }
+    ports: ["4008:4008"]
+    depends_on: { shopping-list-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4008/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  payment-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_payment
-    volumes:
-      - payment-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: payment_db }
+    ports: ["5409:5432"]
+    volumes: [payment-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"], interval: 5s, timeout: 5s, retries: 10 }
   payment-service:
     build: ./services/payment-service
-    env_file: ./services/payment-service/.env
-    ports:
-      - "4009:4009"
-    depends_on:
-      - payment-service-db
-  notification-service-db:
+    environment: { PORT: 4009, DATABASE_URL: postgresql://postgres:postgres@payment-db:5432/payment_db }
+    ports: ["4009:4009"]
+    depends_on: { payment-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4009/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  notification-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_notification
-    volumes:
-      - notification-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: notification_db }
+    ports: ["5410:5432"]
+    volumes: [notification-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"], interval: 5s, timeout: 5s, retries: 10 }
   notification-service:
     build: ./services/notification-service
-    env_file: ./services/notification-service/.env
-    ports:
-      - "4010:4010"
-    depends_on:
-      - notification-service-db
-  admin-service-db:
+    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db }
+    ports: ["4010:4010"]
+    depends_on: { notification-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+  admin-db:
     image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: skt_admin
-    volumes:
-      - admin-service-db_data:/var/lib/postgresql/data
-
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: admin_db }
+    ports: ["5411:5432"]
+    volumes: [admin-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d admin_db"], interval: 5s, timeout: 5s, retries: 10 }
   admin-service:
     build: ./services/admin-service
-    env_file: ./services/admin-service/.env
-    ports:
-      - "4011:4011"
-    depends_on:
-      - admin-service-db
+    environment: { PORT: 4011, DATABASE_URL: postgresql://postgres:postgres@admin-db:5432/admin_db }
+    ports: ["4011:4011"]
+    depends_on: { admin-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4011/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   gateway:
     build: ./apps/gateway
-    env_file: ./apps/gateway/.env
-    ports:
-      - "4000:4000"
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth-service:4001
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4003
+      NUTRITION_SERVICE_URL: http://nutrition-service:4004
+      MEAL_DIARY_SERVICE_URL: http://meal-diary-service:4005
+      RECIPE_SERVICE_URL: http://recipe-service:4006
+      MENU_SERVICE_URL: http://menu-service:4007
+      SHOPPING_LIST_SERVICE_URL: http://shopping-list-service:4008
+      PAYMENT_SERVICE_URL: http://payment-service:4009
+      NOTIFICATION_SERVICE_URL: http://notification-service:4010
+      ADMIN_SERVICE_URL: http://admin-service:4011
+    ports: ["4000:4000"]
     depends_on:
-      - auth-service
-      - family-service
-      - inventory-service
-      - nutrition-service
-      - meal-diary-service
-      - recipe-service
-      - menu-service
-      - shopping-list-service
-      - payment-service
-      - notification-service
-      - admin-service
-
+      auth-service: { condition: service_healthy }
+      family-service: { condition: service_healthy }
+      inventory-service: { condition: service_healthy }
+      nutrition-service: { condition: service_healthy }
+      meal-diary-service: { condition: service_healthy }
+      recipe-service: { condition: service_healthy }
+      menu-service: { condition: service_healthy }
+      shopping-list-service: { condition: service_healthy }
+      payment-service: { condition: service_healthy }
+      notification-service: { condition: service_healthy }
+      admin-service: { condition: service_healthy }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
 volumes:
-  auth-service-db_data:
-  family-service-db_data:
-  inventory-service-db_data:
-  nutrition-service-db_data:
-  meal-diary-service-db_data:
-  recipe-service-db_data:
-  menu-service-db_data:
-  shopping-list-service-db_data:
-  payment-service-db_data:
-  notification-service-db_data:
-  admin-service-db_data:
-
+  auth-db-data:
+  family-db-data:
+  inventory-db-data:
+  nutrition-db-data:
+  meal-diary-db-data:
+  recipe-db-data:
+  menu-db-data:
+  shopping-list-db-data:
+  payment-db-data:
+  notification-db-data:
+  admin-db-data:

@@ -3,7 +3,7 @@
 const router = Router();
 
 router.get("/", (_req, res) => {
-  res.json({ service: "nutrition-service", status: "ok" });
+  res.json({ status: "OK", service: "nutrition-service", timestamp: new Date().toISOString() });
 });
 
 export default router;

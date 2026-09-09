@@ -7,6 +7,9 @@ dotenv.config();
 
 const app = express();
 app.use(cors());
+app.get("/health", (_req, res) => {
+  res.json({ status: "OK", service: "gateway", timestamp: new Date().toISOString() });
+});
 
 // ------------------------------------------------------------
 // Dinh tuyen request tu Frontend toi tung service tuong ung
