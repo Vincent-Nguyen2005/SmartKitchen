@@ -54,6 +54,7 @@ Please generate sub-directories, README.md files, and boilerplate code inside bo
 Additionally, generate a `.github/CODEOWNERS` file that maps every path above to its owner (using placeholder GitHub usernames `@huy`, `@kazan`, `@khanh`, `@hung`, `@cuong` — the team will replace these with real GitHub handles after scaffolding). This lets GitHub automatically request the correct person's review whenever a pull request touches their folder, enforcing the "no one edits another member's module" rule at the tooling level, not just by convention.
 
 PROJECT STRUCTURE TO GENERATE:
+(CRITICAL SAFETY RULE: Check existing files before generating. If any directory, service scaffold, or configuration file already exists in the workspace, DO NOT overwrite or recreate it. Skip existing items and ONLY generate missing files/folders.)
 SmartKitchen/
 ├── apps/
 │   ├── mobile/                  # React Native Expo app scaffold
@@ -121,6 +122,9 @@ TECHNICAL REQUIREMENTS:
      2. How to spin up Docker environment (`docker-compose up -d --build`).
      3. How to execute automated health test — both variants: `pnpm test:health` / `./scripts/test-health.sh` (Git Bash/WSL/macOS/Linux) AND `./scripts/test-health.ps1` (Windows PowerShell).
      4. How to test PostgreSQL connectivity for each database container (`docker exec -it ... psql`).
+5.IDEMPOTENCY & SAFETY:
+- Make all scaffolding commands and file generation actions non-destructive.
+- The generated `scaffold.sh` script must check for directory/file existence (e.g., using `if [ ! -d "path" ]`) before creating to prevent accidental code overwrites.
 
 OUTPUT FORMAT REQUIREMENTS:
 Please output:
