@@ -1,0 +1,9 @@
+{
+    "expo": {
+        "name": "SmartKitchen",
+        "slug": "smartkitchen",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "light"
+    }
+}

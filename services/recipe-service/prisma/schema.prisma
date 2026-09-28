@@ -1,4 +1,4 @@
-﻿generator client {
+generator client {
   provider = "prisma-client-js"
 }
 
@@ -7,9 +7,77 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho recipe-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum RecipeDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+model Recipe {
+  id               String                @id @default(uuid()) @db.Uuid
+  slug             String                @unique
+  title            String
+  description      String
+  prepTimeMinutes  Int                   @default(0)
+  cookTimeMinutes  Int                   @default(0)
+  servings         Int                   @default(1)
+  difficulty       RecipeDifficulty      @default(EASY)
+  coverImageUrl    String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  ingredients      RecipeIngredient[]
+  steps            RecipeStep[]
+  categories       Category[]
+  tags             Tag[]
+
+  @@index([title])
+  @@index([createdAt])
+}
+
+model Ingredient {
+  id               String                @id @default(uuid()) @db.Uuid
+  name             String                @unique
+  recipeIngredients RecipeIngredient[]
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+}
+
+model RecipeIngredient {
+  id           String     @id @default(uuid()) @db.Uuid
+  recipeId     String     @db.Uuid
+  ingredientId String     @db.Uuid
+  quantity     String
+  unit         String?
+  notes        String?
+  recipe       Recipe     @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+  ingredient   Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([recipeId, ingredientId])
+  @@index([ingredientId])
+}
+
+model RecipeStep {
+  id          String   @id @default(uuid()) @db.Uuid
+  recipeId    String   @db.Uuid
+  position    Int
+  instruction String
+  recipe      Recipe   @relation(fields: [recipeId], references: [id], onDelete: Cascade)
+
+  @@unique([recipeId, position])
+}
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  slug      String   @unique
+  recipes   Recipe[]
+  createdAt DateTime @default(now())
+}
+
+model Tag {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique
+  slug      String   @unique
+  recipes   Recipe[]
+  createdAt DateTime @default(now())
+}

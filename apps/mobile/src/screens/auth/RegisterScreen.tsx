@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 type AuthNavigation = { navigate: (screen: "Login") => void };
 type Props = { navigation?: AuthNavigation; onSubmit?: (fullName: string, email: string, password: string) => Promise<void> };
