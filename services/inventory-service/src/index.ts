@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
 import itemsRouter from "./routes/items.route";
+import alertsRouter from "./routes/alerts.route";
 import { errorHandler } from "./middleware/error.middleware";
 
 dotenv.config();
@@ -13,6 +14,7 @@ app.use(express.json());
 
 app.use("/health", healthRouter);
 app.use("/api/inventory/items", itemsRouter);
+app.use("/api/inventory/alerts", alertsRouter);
 
 app.use(errorHandler);
 
