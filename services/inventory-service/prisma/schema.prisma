@@ -1,5 +1,6 @@
-﻿generator client {
+generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -7,9 +8,78 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho inventory-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum Unit {
+  GRAM
+  KILOGRAM
+  MILLILITER
+  LITER
+  PIECE
+  PACK
+  BOTTLE
+  CAN
+  BOX
+}
+
+enum StorageLocation {
+  FRIDGE
+  FREEZER
+  PANTRY
+  COUNTER
+}
+
+enum ItemStatus {
+  FRESH
+  NEAR_EXPIRY
+  EXPIRED
+  CONSUMED
+  DISCARDED
+}
+
+model Category {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique
+  icon      String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  items     FoodItem[]
+}
+
+model FoodItem {
+  id              String          @id @default(uuid()) @db.Uuid
+  familyId        String          @db.Uuid
+  name            String
+  description     String?
+  quantity        Float           @default(0)
+  unit            Unit            @default(PIECE)
+  minQuantity     Float?
+  categoryId      String?         @db.Uuid
+  storageLocation StorageLocation @default(FRIDGE)
+  expiryDate      DateTime?
+  status          ItemStatus      @default(FRESH)
+  imageUrl        String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+
+  category        Category?       @relation(fields: [categoryId], references: [id])
+  logs            InventoryLog[]
+
+  @@index([familyId])
+  @@index([expiryDate])
+  @@index([status])
+}
+
+model InventoryLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  itemId     String   @db.Uuid
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  note       String?
+  createdBy  String?  @db.Uuid
+  createdAt  DateTime @default(now())
+
+  item       FoodItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId])
+}
