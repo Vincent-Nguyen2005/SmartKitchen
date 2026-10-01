@@ -40,6 +40,26 @@ export class AuthService {
     return this.issueTokens(user, requestContext);
   }
 
+  async loginWithGoogle(profile: { email: string; fullName?: string; avatarUrl?: string }): Promise<AuthResult> {
+    const email = profile.email.trim().toLowerCase();
+    const passwordHash = await argon2.hash(randomBytes(48).toString("base64url"));
+    const user = await this.prisma.user.upsert({
+      where: { email },
+      create: {
+        email,
+        passwordHash,
+        fullName: profile.fullName ?? null,
+        avatarUrl: profile.avatarUrl ?? null,
+        isVerified: true,
+      },
+      update: {
+        isVerified: true,
+        ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
+      },
+    });
+    return this.issueTokens(user);
+  }
+
   async logout(refreshToken?: string, accessToken?: string): Promise<void> {
     await this.prisma.$transaction([
       ...(refreshToken ? [this.prisma.refreshToken.deleteMany({ where: { token: refreshToken } })] : []),
