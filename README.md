@@ -67,6 +67,14 @@ pnpm lint
 pnpm build
 ```
 
+Build a Prisma service with `pnpm turbo run build --filter=<service>` to generate its client automatically. If running `pnpm --filter <service> build` directly, run `pnpm --filter <service> prisma:generate` first.
+
+Each Prisma service must set a separate `output` in its generator and import the client from that path, because pnpm shares one `@prisma/client` package between services using the same version.
+
+### Prisma Schema Ownership
+
+When adding Prisma models to a service, the owner must (a) add the `prisma:*` scripts and `prisma`/`@prisma/client` dev dependencies, and (b) fill in `prisma_schema` for that service in the `ci.yml` matrix.
+
 To enable branch protection, require the `CI / ci-success` status check and require at least one CODEOWNER approval in the repository branch protection settings.
 
 ## Gateway Routing

@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "nutrition-service",
   "version": "1.0.0",
   "private": true,
@@ -6,9 +6,7 @@
     "dev": "ts-node-dev --respawn src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "express": "^4.19.2",

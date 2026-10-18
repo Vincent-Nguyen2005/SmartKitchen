@@ -1,7 +1,7 @@
 import argon2 from "argon2";
 import { randomBytes } from "crypto";
 import jwt from "jsonwebtoken";
-import { PrismaClient, Role, User } from "@prisma/client";
+import { PrismaClient, Role, User } from ".prisma/client-auth";
 
 const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;

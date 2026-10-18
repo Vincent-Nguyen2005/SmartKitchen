@@ -20,19 +20,31 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package:
-          - gateway
-          - auth-service
-          - family-service
-          - inventory-service
-          - nutrition-service
-          - meal-diary-service
-          - recipe-service
-          - menu-service
-          - shopping-list-service
-          - payment-service
-          - notification-service
-          - admin-service
+        include:
+          - package: gateway
+            prisma_schema: ''
+          - package: auth-service
+            prisma_schema: services/auth-service/prisma/schema.prisma
+          - package: family-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: inventory-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: nutrition-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: meal-diary-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: recipe-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: menu-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: shopping-list-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: payment-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: notification-service
+            prisma_schema: services/notification-service/prisma/schema.prisma
+          - package: admin-service
+            prisma_schema: services/admin-service/prisma/schema.prisma
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +60,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Generate Prisma client when present
-        run: pnpm --filter "${{ matrix.package }}" run prisma:generate --if-present
+        if: hashFiles(matrix.prisma_schema) != ''
+        run: pnpm --filter "${{ matrix.package }}" run prisma:generate
       - name: Lint
         run: pnpm turbo run lint --filter="${{ matrix.package }}"
       - name: Build
