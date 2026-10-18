@@ -54,3 +54,56 @@ pnpm lint
 ```
 
 Use each service's `.env.example` as the starting point for local, non-Docker development. Ownership and review routing are documented in `.github/CODEOWNERS`.
+
+## CI Pipeline
+
+`.github/workflows/ci.yml` runs on pull requests targeting `main` or `develop` and on pushes to `main`. A matrix checks the gateway and all eleven services independently: frozen pnpm install, Prisma generation when available, lint, and build. The required aggregate check is `CI / ci-success`.
+
+Run the same checks locally with:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm lint
+pnpm build
+```
+
+To enable branch protection, require the `CI / ci-success` status check and require at least one CODEOWNER approval in the repository branch protection settings.
+
+## Gateway Routing
+
+| Gateway prefix | Service |
+| --- | --- |
+| `/api/auth` | auth-service |
+| `/api/families` | family-service |
+| `/api/inventory` | inventory-service |
+| `/api/nutrition` | nutrition-service |
+| `/api/meal-diary` | meal-diary-service |
+| `/api/recipes` | recipe-service |
+| `/api/menus` | menu-service |
+| `/api/shopping-list` | shopping-list-service |
+| `/api/payments` | payment-service |
+| `/api/notifications` | notification-service |
+| `/api/admin` | admin-service |
+
+The gateway strips the `/api/<prefix>` segment before forwarding. Therefore `/api/notifications/health` becomes `/health` at the Notification Service.
+
+After starting Docker, verify routing on Windows with `pnpm test:routing` or `./scripts/test-routing.ps1`, and use `./scripts/test-routing.sh` on Bash-compatible systems.
+
+## Sprint 2 Database Verification
+
+Apply the new schemas with:
+
+```bash
+pnpm --filter notification-service prisma:deploy
+pnpm --filter admin-service prisma:deploy
+```
+
+List the expected tables:
+
+```bash
+docker exec -it smartkitchen-notification-db-1 psql -U postgres -d notification_db -c "\\dt"
+docker exec -it smartkitchen-admin-db-1 psql -U postgres -d admin_db -c "\\dt"
+curl http://localhost:4000/api/notifications/health
+```
+
+Notification tables are `notifications`, `device_tokens`, `notification_preferences`, `partner_supermarkets`, and `promotions`. Admin tables are `master_ingredients`, `recommendation_weights`, `recommendation_weight_history`, `service_health_logs`, `account_reports`, and `audit_logs`.

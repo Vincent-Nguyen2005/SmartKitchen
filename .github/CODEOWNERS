@@ -1,5 +1,6 @@
 # Replace placeholder handles with the team's real GitHub usernames.
 /apps/gateway/ @huy
+/.github/workflows/ @huy
 /apps/mobile/src/screens/notifications/ @huy
 /apps/mobile/src/screens/admin/ @huy
 /services/notification-service/ @huy

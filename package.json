@@ -7,7 +7,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "test:health": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-health.ps1"
+    "test:health": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-health.ps1",
+    "test:routing": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/test-routing.ps1"
   },
   "devDependencies": {
     "turbo": "^2.3.3"

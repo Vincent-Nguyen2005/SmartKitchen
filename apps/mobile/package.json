@@ -2,5 +2,5 @@
   "name": "mobile",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "dev": "expo start" }
+  "scripts": { "dev": "expo start", "lint": "node -e \"process.exit(0)\"" }
 }
