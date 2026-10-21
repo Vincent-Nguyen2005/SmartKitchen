@@ -209,7 +209,6 @@ const styles = StyleSheet.create({
   },
   title: {
     color: "#17271F",
-    fontFamily: "Georgia",
     fontSize: 32,
     marginTop: 14,
   },
@@ -306,7 +305,6 @@ const styles = StyleSheet.create({
   },
   recipeTitle: {
     color: "#17271F",
-    fontFamily: "Georgia",
     fontSize: 19,
     lineHeight: 23,
   },
