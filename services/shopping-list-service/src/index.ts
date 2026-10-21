@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
+import shoppingListRouter from "./routes/shopping-list.route";
 
 dotenv.config();
 
@@ -10,11 +11,9 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/health", healthRouter);
+app.use("/api/shopping-list", shoppingListRouter);
 
-// TODO: mount cac route nghiep vu cua shopping-list-service tai day
-// app.use("/api/shopping-list", mainRouter);
-
-const PORT = process.env.PORT || 4008;
-app.listen(PORT, () => {
-  console.log(`[shopping-list-service] dang chay tai http://localhost:${PORT}`);
+const PORT = Number(process.env.PORT) || 4008;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[shopping-list-service] dang chay tai http://0.0.0.0:${PORT}`);
 });
