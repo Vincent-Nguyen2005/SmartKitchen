@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -7,9 +8,29 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho shopping-list-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+model ShoppingList {
+  id        String         @id @default(uuid()) @db.Uuid
+  familyId  String         @db.Uuid
+  name      String
+  status    String         @default("ACTIVE") // ACTIVE | COMPLETED | ARCHIVED
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  
+  items     ShoppingItem[]
+}
+
+model ShoppingItem {
+  id             String       @id @default(uuid()) @db.Uuid
+  shoppingListId String       @db.Uuid
+  name           String
+  quantity       Float        @default(1)
+  unit           String       @default("PIECE")
+  isPurchased    Boolean      @default(false)
+  note           String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  
+  shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+
+  @@index([shoppingListId])
+}
