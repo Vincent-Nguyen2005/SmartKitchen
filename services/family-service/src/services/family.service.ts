@@ -25,6 +25,7 @@ export class FamilyService {
           data: {
             name,
             code: this.createJoinCode(),
+            codeExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
             ownerId: userId,
             members: { create: { userId, role: FamilyRole.OWNER } },
           },
@@ -56,6 +57,51 @@ export class FamilyService {
       throw new FamilyServiceError("The owner cannot leave before ownership is transferred", 409);
     }
     await this.prisma.familyMember.delete({ where: { id: membership.id } });
+  }
+
+  async regenerateJoinCode(userId: string) {
+    const { family } = await this.requireManager(userId);
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        return await this.prisma.familyGroup.update({
+          where: { id: family.id },
+          data: { code: this.createJoinCode(), codeExpiresAt: new Date(Date.now() + INVITATION_TTL_MS) },
+          select: { id: true, code: true, codeExpiresAt: true },
+        });
+      } catch (error) {
+        if (!this.isUniqueError(error)) throw error;
+        if (attempt === 4) throw new FamilyServiceError("Could not generate a unique family code", 503);
+      }
+    }
+    throw new FamilyServiceError("Could not generate a unique family code", 503);
+  }
+
+  async verifyInvitation(codeOrToken: string) {
+    const value = codeOrToken.trim();
+    if (!value) throw new FamilyServiceError("Invite code or token is required", 400);
+
+    const invitation = await this.prisma.familyInvitation.findUnique({
+      where: { token: value },
+      include: { family: { select: { id: true, name: true } } },
+    });
+    if (invitation) {
+      if (invitation.status !== InvitationStatus.PENDING) throw new FamilyServiceError("Invitation is no longer active", 410);
+      if (invitation.expiresAt <= new Date()) {
+        await this.prisma.familyInvitation.update({ where: { id: invitation.id }, data: { status: InvitationStatus.EXPIRED } });
+        throw new FamilyServiceError("Invitation has expired", 410);
+      }
+      return {
+        type: "invitation" as const,
+        family: invitation.family,
+        role: invitation.role,
+        expiresAt: invitation.expiresAt,
+      };
+    }
+
+    const family = await this.prisma.familyGroup.findUnique({ where: { code: value.toUpperCase() } });
+    if (!family) throw new FamilyServiceError("Invite code or token is invalid", 404);
+    if (family.codeExpiresAt <= new Date()) throw new FamilyServiceError("Family join code has expired", 410);
+    return { type: "join-code" as const, family: { id: family.id, name: family.name }, expiresAt: family.codeExpiresAt };
   }
 
   async invite(userId: string, email: string, requestedRole: FamilyRole = FamilyRole.MEMBER) {
@@ -108,8 +154,9 @@ export class FamilyService {
       familyId = invitation.familyId;
       role = invitation.role;
     } else {
-      const family = await this.prisma.familyGroup.findUnique({ where: { code: value.toUpperCase() }, select: { id: true } });
+      const family = await this.prisma.familyGroup.findUnique({ where: { code: value.toUpperCase() }, select: { id: true, codeExpiresAt: true } });
       if (!family) throw new FamilyServiceError("Invite code or token is invalid", 404);
+      if (family.codeExpiresAt <= new Date()) throw new FamilyServiceError("Family join code has expired", 410);
       familyId = family.id;
     }
 

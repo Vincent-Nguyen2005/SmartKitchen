@@ -13,18 +13,31 @@ type Props = {
   onCreateOrJoin?: () => void;
   onManageMembers?: () => void;
   onLeave?: () => Promise<void>;
+  onRegenerateJoinCode?: () => Promise<void>;
 };
 
 const roleLabel: Record<FamilyRole, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member" };
 
-export default function FamilyOverviewScreen({ family, loading = false, error, onRefresh, onCreateOrJoin, onManageMembers, onLeave }: Props): React.JSX.Element {
+export default function FamilyOverviewScreen({ family, loading = false, error, onRefresh, onCreateOrJoin, onManageMembers, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
   const [leaving, setLeaving] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [actionError, setActionError] = useState("");
   const canManage = family?.currentUserRole === "OWNER" || family?.currentUserRole === "ADMIN";
 
   const leave = async (): Promise<void> => {
     if (!onLeave || family?.currentUserRole === "OWNER") return;
     setLeaving(true);
-    try { await onLeave(); } finally { setLeaving(false); }
+    try { await onLeave(); setActionError(""); }
+    catch { setActionError("Unable to leave this family. Please try again."); }
+    finally { setLeaving(false); }
+  };
+
+  const regenerateCode = async (): Promise<void> => {
+    if (!onRegenerateJoinCode) return;
+    setRegenerating(true);
+    try { await onRegenerateJoinCode(); setActionError(""); }
+    catch { setActionError("Unable to generate a new join code."); }
+    finally { setRegenerating(false); }
   };
 
   return (
@@ -33,6 +46,7 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
         <Text style={styles.eyebrow}>YOUR HOUSEHOLD</Text>
         <Text style={styles.title}>Family</Text>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
+        {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
         {loading ? <ActivityIndicator color="#2F6B5F" size="large" style={styles.loader} /> : family ? (
           <>
             <View style={styles.hero}>
@@ -41,6 +55,9 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
               <Text style={styles.codeLabel}>INVITE CODE</Text>
               <Text selectable style={styles.code}>{family.code}</Text>
               <Text style={styles.codeHint}>Share this code with people you want to invite.</Text>
+              {canManage && !!onRegenerateJoinCode && <Pressable disabled={regenerating} onPress={() => { void regenerateCode(); }} style={styles.regenerateButton}>
+                {regenerating ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.regenerateText}>Generate a new code</Text>}
+              </Pressable>}
             </View>
             <View style={styles.sectionHeading}>
               <Text style={styles.sectionTitle}>Members</Text>
@@ -90,6 +107,8 @@ const styles = StyleSheet.create({
   codeLabel: { color: "#D9E9E2", fontSize: 11, fontWeight: "700", letterSpacing: 1.1, marginTop: 24 },
   code: { color: "#FFFFFF", fontSize: 24, fontWeight: "800", letterSpacing: 3, marginTop: 5 },
   codeHint: { color: "#D9E9E2", fontSize: 13, marginTop: 5 },
+  regenerateButton: { alignSelf: "flex-start", borderColor: "#D9E9E2", borderRadius: 9, borderWidth: 1, marginTop: 14, paddingHorizontal: 12, paddingVertical: 9 },
+  regenerateText: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   sectionHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
   sectionTitle: { color: "#17211F", fontSize: 19, fontWeight: "700" },
   actionLink: { color: "#2F6B5F", fontSize: 14, fontWeight: "700" },

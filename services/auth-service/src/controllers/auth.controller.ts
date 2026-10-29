@@ -6,6 +6,7 @@ const credentialsSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8).max(128),
 });
+const refreshSchema = z.object({ refreshToken: z.string().min(32).optional() });
 
 const registerSchema = credentialsSchema.extend({
   fullName: z.string().trim().min(2).max(100).optional(),
@@ -48,7 +49,7 @@ export class AuthController {
 
     try {
       const result = await this.authService.register(parsed.data.email.toLowerCase(), parsed.data.password, parsed.data.fullName);
-      res.status(201).json(result);
+      this.sendAuthResult(req, res, result, 201);
     } catch (error) {
       if (this.isPrismaUniqueError(error)) {
         res.status(409).json({ error: "Email is already registered" });
@@ -70,7 +71,7 @@ export class AuthController {
         ipAddress: req.ip,
         userAgent: req.get("user-agent"),
       });
-      res.json(result);
+      this.sendAuthResult(req, res, result);
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
         res.status(401).json({ error: "Invalid email or password" });
@@ -134,15 +135,45 @@ export class AuthController {
 
     try {
       const result = await this.authService.loginWithGoogle({ email: tokenInfo.email, fullName: tokenInfo.name, avatarUrl: tokenInfo.picture });
-      res.json(result);
+      this.sendAuthResult(req, res, result);
     } catch {
       res.status(500).json({ error: "Unable to complete Google sign-in" });
     }
   };
 
   logout = async (req: Request, res: Response): Promise<void> => {
-    await this.authService.logout(req.body?.refreshToken, this.getBearerToken(req));
-    res.status(204).send();
+    const refreshToken = req.body?.refreshToken ?? this.getCookie(req, "sk_refresh_token");
+    try {
+      await this.authService.logout(refreshToken, this.getBearerToken(req));
+      this.clearRefreshCookie(res);
+      res.status(204).send();
+    } catch {
+      res.status(500).json({ error: "Unable to log out" });
+    }
+  };
+
+  refresh = async (req: Request, res: Response): Promise<void> => {
+    const parsed = refreshSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid refresh request", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    const refreshToken = parsed.data.refreshToken ?? this.getCookie(req, "sk_refresh_token");
+    if (!refreshToken) {
+      res.status(401).json({ error: "Refresh token required" });
+      return;
+    }
+    try {
+      const result = await this.authService.refresh(refreshToken, { ipAddress: req.ip, userAgent: req.get("user-agent") });
+      this.sendAuthResult(req, res, result);
+    } catch (error) {
+      if (error instanceof Error && error.message === "INVALID_REFRESH_TOKEN") {
+        this.clearRefreshCookie(res);
+        res.status(401).json({ error: "Refresh token is invalid, expired, or already used" });
+        return;
+      }
+      res.status(500).json({ error: "Unable to refresh session" });
+    }
   };
 
   me = async (req: Request, res: Response): Promise<void> => {
@@ -168,6 +199,42 @@ export class AuthController {
   private getBearerToken(req: Request): string | undefined {
     const header = req.get("authorization");
     return header?.startsWith("Bearer ") ? header.slice(7) : undefined;
+  }
+
+  private sendAuthResult(req: Request, res: Response, result: { accessToken: string; refreshToken: string; user: unknown }, status = 200): void {
+    this.setRefreshCookie(res, result.refreshToken);
+    const response: { accessToken: string; user: unknown; refreshToken?: string } = {
+      accessToken: result.accessToken,
+      user: result.user,
+    };
+    if (req.get("x-refresh-token-mode") === "body") response.refreshToken = result.refreshToken;
+    res.status(status).json(response);
+  }
+
+  private setRefreshCookie(res: Response, token: string): void {
+    const secure = process.env.NODE_ENV === "production";
+    res.cookie("sk_refresh_token", token, {
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      path: "/api/auth",
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+  }
+
+  private clearRefreshCookie(res: Response): void {
+    res.clearCookie("sk_refresh_token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/api/auth",
+    });
+  }
+
+  private getCookie(req: Request, name: string): string | undefined {
+    const cookieHeader = req.get("cookie");
+    const match = cookieHeader?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
+    return match ? decodeURIComponent(match.slice(name.length + 1)) : undefined;
   }
 
   private isPrismaUniqueError(error: unknown): boolean {

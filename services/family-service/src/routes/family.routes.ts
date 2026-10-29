@@ -46,6 +46,8 @@ export const createFamilyRouter = (prisma: PrismaClient): Router => {
   router.get("/me", (req, res, next) => { void controller.me(req as AuthenticatedRequest, res).catch(next); });
   router.delete("/me", (req, res, next) => { void controller.leave(req as AuthenticatedRequest, res).catch(next); });
   router.post("/invite", (req, res, next) => { void controller.invite(req as AuthenticatedRequest, res).catch(next); });
+  router.get("/invitations/verify", (req, res, next) => { void controller.verifyInvitation(req as AuthenticatedRequest, res).catch(next); });
+  router.post("/join-code/regenerate", (req, res, next) => { void controller.regenerateJoinCode(req as AuthenticatedRequest, res).catch(next); });
   router.post("/join", (req, res, next) => { void controller.join(req as AuthenticatedRequest, res).catch(next); });
   router.patch("/members/:memberId/role", (req, res, next) => { void controller.updateRole(req as unknown as AuthenticatedRequest, res).catch(next); });
   router.delete("/members/:memberId", (req, res, next) => { void controller.removeMember(req as unknown as AuthenticatedRequest, res).catch(next); });

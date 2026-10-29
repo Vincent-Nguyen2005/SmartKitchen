@@ -2,5 +2,8 @@
   "name": "mobile",
   "version": "1.0.0",
   "private": true,
-  "scripts": { "dev": "expo start" }
+  "scripts": { "dev": "expo start" },
+  "dependencies": {
+    "expo-secure-store": "^14.0.0"
+  }
 }

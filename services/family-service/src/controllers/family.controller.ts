@@ -13,6 +13,8 @@ const inviteSchema = z.object({
 const joinSchema = z.object({ code: z.string().trim().min(6).max(200).optional(), token: z.string().trim().min(16).max(200).optional() })
   .refine(({ code, token }) => Boolean(code || token), { message: "Provide an invite code or invitation token" });
 const roleSchema = z.object({ role: z.nativeEnum(FamilyRole) });
+const verifyInvitationSchema = z.object({ code: z.string().trim().min(6).max(200).optional(), token: z.string().trim().min(16).max(200).optional() })
+  .refine(({ code, token }) => Boolean(code || token), { message: "Provide an invite code or invitation token" });
 
 export class FamilyController {
   constructor(private readonly familyService: FamilyService) {}
@@ -49,6 +51,24 @@ export class FamilyController {
     }
     try {
       res.status(201).json({ invitation: await this.familyService.invite(req.authUser.userId, input.data.email, input.data.role) });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  regenerateJoinCode = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      res.json({ joinCode: await this.familyService.regenerateJoinCode(req.authUser.userId) });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  verifyInvitation = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const input = verifyInvitationSchema.safeParse(req.query);
+    if (!input.success) {
+      res.status(400).json({ error: "Invalid invitation verification request", details: input.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      const codeOrToken = input.data.token ?? input.data.code!;
+      res.json({ invitation: await this.familyService.verifyInvitation(codeOrToken) });
     } catch (error) { this.respondError(res, error); }
   };
 

@@ -24,6 +24,7 @@ model FamilyGroup {
   id          String             @id @default(uuid()) @db.Uuid
   name        String
   code        String             @unique
+  codeExpiresAt DateTime         @default(dbgenerated("CURRENT_TIMESTAMP + interval '7 days'"))
   ownerId     String             @db.Uuid
   createdAt   DateTime           @default(now())
   updatedAt   DateTime           @updatedAt
