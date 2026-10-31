@@ -1,0 +1,5 @@
+export const LIST_STATUS = {
+  ACTIVE: "ACTIVE",
+  COMPLETED: "COMPLETED",
+  ARCHIVED: "ARCHIVED",
+} as const;

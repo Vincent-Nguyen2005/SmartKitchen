@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
 import shoppingListRouter from "./routes/shopping-list.route";
+import { errorHandler } from "./middleware/error.middleware";
 
 dotenv.config();
 
@@ -12,6 +13,7 @@ app.use(express.json());
 
 app.use("/health", healthRouter);
 app.use("/api/shopping-list", shoppingListRouter);
+app.use(errorHandler);
 
 const PORT = Number(process.env.PORT) || 4008;
 app.listen(PORT, "0.0.0.0", () => {
