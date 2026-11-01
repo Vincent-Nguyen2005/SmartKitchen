@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 {
   "name": "@skt/shared",
   "version": "1.0.0",
@@ -6,11 +5,5 @@
   "scripts": {
     "lint": "node -e \"process.exit(0)\""
   },
-=======
-﻿{
-  "name": "@skt/shared",
-  "version": "1.0.0",
-  "private": true,
->>>>>>> origin/main
   "main": "src/index.ts"
 }

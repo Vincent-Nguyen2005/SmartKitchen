@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import { Router } from "express";
-=======
-﻿import { Router } from "express";
->>>>>>> origin/main
 
 const router = Router();
 

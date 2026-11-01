@@ -53,7 +53,6 @@ pnpm dev
 pnpm lint
 ```
 
-<<<<<<< HEAD
 Use each service's `.env.example` as the starting point for local, non-Docker development. Ownership and review routing are documented in `.github/CODEOWNERS`.
 
 ## CI Pipeline
@@ -132,6 +131,3 @@ Port 4011 provides admin-protected ingredient CRUD/import/export and recommendat
 ## E2E Testing
 
 Run the preparation smoke suite with `pnpm test:e2e-smoke` or `./scripts/test-e2e-smoke.ps1`. The scenario matrix and fixtures are in `docs/e2e/`; blocked workflows are printed as `SKIP` and do not fail the smoke run.
-=======
-Use each service's `.env.example` as the starting point for local, non-Docker development. Ownership and review routing are documented in `.github/CODEOWNERS`.
->>>>>>> origin/main
