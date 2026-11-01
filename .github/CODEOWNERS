@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Default owner: infra files not covered below
 * @Vincent-Nguyen2005
 /packages/shared/ @Vincent-Nguyen2005
@@ -36,3 +37,29 @@
 /apps/mobile/src/screens/recipes/ @CUONG_USERNAME
 /apps/mobile/src/screens/menu/ @CUONG_USERNAME
 /apps/mobile/src/screens/payment/ @CUONG_USERNAME
+=======
+# Replace placeholder handles with the team's real GitHub usernames.
+/apps/gateway/ @huy
+/apps/mobile/src/screens/notifications/ @huy
+/apps/mobile/src/screens/admin/ @huy
+/services/notification-service/ @huy
+/services/admin-service/ @huy
+/services/auth-service/ @kazan
+/services/family-service/ @kazan
+/apps/mobile/src/screens/auth/ @kazan
+/apps/mobile/src/screens/family/ @kazan
+/services/inventory-service/ @khanh
+/services/shopping-list-service/ @khanh
+/apps/mobile/src/screens/inventory/ @khanh
+/apps/mobile/src/screens/shopping-cart/ @khanh
+/services/nutrition-service/ @hung
+/services/meal-diary-service/ @hung
+/apps/mobile/src/screens/nutrition/ @hung
+/apps/mobile/src/screens/meal-diary/ @hung
+/services/recipe-service/ @cuong
+/services/menu-service/ @cuong
+/services/payment-service/ @cuong
+/apps/mobile/src/screens/recipes/ @cuong
+/apps/mobile/src/screens/menu/ @cuong
+/apps/mobile/src/screens/payment/ @cuong
+>>>>>>> origin/main

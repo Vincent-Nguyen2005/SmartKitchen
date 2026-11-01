@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 generator client {
+=======
+﻿generator client {
+>>>>>>> origin/main
   provider = "prisma-client-js"
 }
 
