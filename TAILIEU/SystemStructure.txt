@@ -1,0 +1,19 @@
+SmartKitchen/
+├── apps/
+│   ├── mobile/          → React Native (Expo) frontend (Giao diện Mobile App)
+│   └── gateway/         → API Gateway (Định tuyến request)
+├── services/
+│   ├── auth-service/          → EPIC-02
+│   ├── family-service/        → EPIC-03
+│   ├── inventory-service/     → EPIC-04
+│   ├── nutrition-service/     → EPIC-05
+│   ├── meal-diary-service/    → EPIC-06
+│   ├── recipe-service/        → EPIC-07
+│   ├── menu-service/          → EPIC-08
+│   ├── shopping-list-service/ → EPIC-09
+│   ├── payment-service/       → EPIC-10
+│   ├── notification-service/  → EPIC-11
+│   └── admin-service/         → EPIC-12
+├── packages/
+│   └── shared/          → Types/constants dùng chung
+└── docker-compose.yml    → EPIC-01

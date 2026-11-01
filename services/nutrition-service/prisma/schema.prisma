@@ -1,0 +1,34 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHTLY_ACTIVE
+  MODERATELY_ACTIVE
+  ACTIVE
+  VERY_ACTIVE
+}
+
+model NutritionProfile {
+  id            String        @id @default(uuid()) @db.Uuid
+  // Auth owns users in a separate database; uniqueness provides the service-level 1:1 mapping.
+  userId        String        @unique @db.Uuid
+  height        Float
+  weight        Float
+  age           Int
+  gender        Gender
+  activityLevel ActivityLevel
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}

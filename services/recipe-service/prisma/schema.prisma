@@ -1,0 +1,15 @@
+﻿generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TODO: khai bao model rieng cho recipe-service
+// Vi du:
+// model Example {
+//   id        String   @id @default(uuid())
+//   createdAt DateTime @default(now())
+// }
