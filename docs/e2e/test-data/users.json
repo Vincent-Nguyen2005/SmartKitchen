@@ -1,0 +1,4 @@
+[
+  { "id": "e2e-user-001", "email": "e2e@example.test", "role": "USER" },
+  { "id": "e2e-admin-001", "email": "admin@example.test", "role": "ADMIN" }
+]

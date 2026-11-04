@@ -10,7 +10,6 @@ coverage/
 *.log
 *.tsbuildinfo
 prisma/generated/
-prisma/migrations/
 *.local
 .DS_Store
 Thumbs.db

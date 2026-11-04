@@ -1,10 +1,22 @@
 import argon2 from "argon2";
-import { createHash, randomBytes } from "crypto";
+import bcrypt from "bcrypt";
+import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
-import { Prisma, PrismaClient, Role, User } from "@prisma/client";
+import { Prisma, PrismaClient, Role, User } from ".prisma/client-auth";
+import { MailService, MailServiceError } from "./mail.service";
 
 const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const OTP_TTL_MS = 5 * 60 * 1000;
+const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const BCRYPT_ROUNDS = 12;
+
+export class AuthServiceError extends Error {
+  constructor(message: string, readonly code: string) {
+    super(message);
+    this.name = "AuthServiceError";
+  }
+}
 
 export type PublicUser = Pick<User, "id" | "email" | "fullName" | "avatarUrl" | "role" | "isVerified">;
 
@@ -20,22 +32,91 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaClient,
     private readonly jwtSecret = process.env.JWT_SECRET || "development-only-secret",
+    private readonly mailService = new MailService(),
   ) {}
 
-  async register(email: string, password: string, fullName?: string): Promise<AuthResult> {
-    const passwordHash = await argon2.hash(password);
-    const user = await this.prisma.user.create({
-      data: { email, passwordHash, fullName: fullName || null },
+  async register(email: string, password: string, fullName?: string): Promise<{ email: string }> {
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+      select: { email: true, isVerified: true },
     });
+    if (existingUser && !existingUser.isVerified) return { email: existingUser.email };
+    if (existingUser) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
 
-    return this.issueTokens(user);
+    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const otpCode = this.generateOtp();
+    const user = await this.prisma.user.create({
+      data: {
+        email: normalizedEmail,
+        passwordHash,
+        fullName: fullName || null,
+        isVerified: false,
+        otpCode,
+        otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
+      },
+    });
+    await this.sendOtpEmail(user.email, otpCode);
+    return { email: user.email };
+  }
+
+  async verifyOtp(
+    email: string,
+    otpCode: string,
+    requestContext?: { ipAddress?: string; userAgent?: string },
+  ): Promise<AuthResult> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user || user.isVerified || !user.otpCode || !this.otpMatches(user.otpCode, otpCode)) {
+      throw new AuthServiceError("The verification code is invalid", "INVALID_OTP");
+    }
+    if (!user.otpExpiresAt || user.otpExpiresAt <= new Date()) {
+      throw new AuthServiceError("The verification code has expired. Request a new code.", "OTP_EXPIRED");
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const verified = await transaction.user.updateMany({
+        where: { id: user.id, isVerified: false, otpCode, otpExpiresAt: { gt: new Date() } },
+        data: { isVerified: true, otpCode: null, otpExpiresAt: null },
+      });
+      if (verified.count !== 1) {
+        throw new AuthServiceError("The verification code is invalid or expired", "INVALID_OTP");
+      }
+      const verifiedUser = await transaction.user.findUniqueOrThrow({ where: { id: user.id } });
+      return this.issueTokens(verifiedUser, requestContext, transaction);
+    });
+  }
+
+  async resendOtp(email: string): Promise<{ email: string }> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user) throw new AuthServiceError("No account was found for this email", "ACCOUNT_NOT_FOUND");
+    if (user.isVerified) throw new AuthServiceError("This account is already verified", "ACCOUNT_ALREADY_VERIFIED");
+
+    const now = Date.now();
+    if (user.otpExpiresAt) {
+      const nextAllowedAt = user.otpExpiresAt.getTime() - OTP_TTL_MS + OTP_RESEND_COOLDOWN_MS;
+      if (now < nextAllowedAt) {
+        const seconds = Math.ceil((nextAllowedAt - now) / 1000);
+        throw new AuthServiceError(`Please wait ${seconds} seconds before requesting another code`, "OTP_RESEND_COOLDOWN");
+      }
+    }
+    const otpCode = this.generateOtp();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { otpCode, otpExpiresAt: new Date(now + OTP_TTL_MS) },
+    });
+    await this.sendOtpEmail(user.email, otpCode);
+    return { email: user.email };
   }
 
   async login(email: string, password: string, requestContext?: { ipAddress?: string; userAgent?: string }): Promise<AuthResult> {
     const user = await this.prisma.user.findUnique({ where: { email } });
-    if (!user || !(await argon2.verify(user.passwordHash, password))) {
+    const passwordMatches = user && (user.passwordHash.startsWith("$argon2")
+      ? await argon2.verify(user.passwordHash, password)
+      : await bcrypt.compare(password, user.passwordHash));
+    if (!user || !passwordMatches) {
       throw new Error("INVALID_CREDENTIALS");
     }
+    if (!user.isVerified) throw new Error("EMAIL_NOT_VERIFIED");
 
     return this.issueTokens(user, requestContext);
   }
@@ -73,6 +154,10 @@ export class AuthService {
     if (!storedToken || storedToken.expiresAt <= new Date()) {
       if (storedToken) await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
       throw new Error("INVALID_REFRESH_TOKEN");
+    }
+    if (!storedToken.user.isVerified) {
+      await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
+      throw new Error("EMAIL_NOT_VERIFIED");
     }
 
     return this.prisma.$transaction(async (transaction) => {
@@ -118,8 +203,28 @@ export class AuthService {
     const { id, email, fullName, avatarUrl, role, isVerified } = user;
     return { id, email, fullName, avatarUrl, role, isVerified };
   }
-
   private hashRefreshToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+
+  private generateOtp(): string {
+    return randomInt(100000, 1000000).toString();
+  }
+
+  private otpMatches(expected: string, supplied: string): boolean {
+    const expectedBuffer = Buffer.from(expected);
+    const suppliedBuffer = Buffer.from(supplied);
+    return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
+  }
+
+  private async sendOtpEmail(email: string, otpCode: string): Promise<void> {
+    try {
+      await this.mailService.sendOtpEmail(email, otpCode);
+    } catch (error) {
+      if (error instanceof MailServiceError) {
+        throw new AuthServiceError(error.message, error.code);
+      }
+      throw error;
+    }
   }
 }

@@ -1,0 +1,4 @@
+[
+  { "name": "Cà chua", "category": "vegetable", "defaultUnit": "g", "caloriesPer100g": 18, "allergenTags": [] },
+  { "name": "Gạo", "category": "grain", "defaultUnit": "g", "caloriesPer100g": 130, "allergenTags": [] }
+]

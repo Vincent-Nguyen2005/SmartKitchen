@@ -1,7 +1,7 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from ".prisma/client-auth";
 import healthRouter from "./routes/health.route";
 import createAuthRouter from "./routes/auth.routes";
 
@@ -13,14 +13,14 @@ if (process.env.NODE_ENV === "production" && (!process.env.JWT_SECRET || process
 
 const app = express();
 const prisma = new PrismaClient();
-const allowedOrigins = (process.env.CORS_ORIGIN ?? "").split(",").map((origin) => origin.trim()).filter(Boolean);
-app.use(cors({
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) callback(null, true);
-    else callback(new Error("Origin is not allowed by CORS"));
-  },
+const corsOptions: cors.CorsOptions = {
+  origin: (_origin, callback) => callback(null, true),
   credentials: true,
-}));
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204,
+};
+app.options("*", cors(corsOptions));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 app.use("/health", healthRouter);

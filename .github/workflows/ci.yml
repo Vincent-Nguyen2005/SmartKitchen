@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-build:
+    name: CI / lint-build (${{ matrix.package }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: gateway
+            prisma_schema: ''
+          - package: auth-service
+            prisma_schema: services/auth-service/prisma/schema.prisma
+          - package: family-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: inventory-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: nutrition-service
+            prisma_schema: services/nutrition-service/prisma/schema.prisma
+          - package: meal-diary-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: recipe-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: menu-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: shopping-list-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: payment-service
+            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+          - package: notification-service
+            prisma_schema: services/notification-service/prisma/schema.prisma
+          - package: admin-service
+            prisma_schema: services/admin-service/prisma/schema.prisma
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client when present
+        if: hashFiles(matrix.prisma_schema) != ''
+        run: pnpm --filter "${{ matrix.package }}" run prisma:generate
+      - name: Lint
+        run: pnpm turbo run lint --filter="${{ matrix.package }}"
+      - name: Build
+        run: pnpm turbo run build --filter="${{ matrix.package }}"
+
+  ci-success:
+    name: CI / ci-success
+    if: always()
+    needs: [lint-build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require matrix success
+        if: needs.lint-build.result != 'success'
+        run: exit 1
+      - name: CI passed
+        run: echo "All workspace lint and build checks passed."

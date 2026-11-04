@@ -21,6 +21,9 @@ const request = async <T>(baseUrl: string, path: string, options: ApiRequestOpti
     const message = typeof payload.error === "string" ? payload.error : `Request failed (${response.status})`;
     throw new ApiError(message, response.status, payload.details);
   }
+  if (payload.success === true && payload.data && typeof payload.data === "object") {
+    return payload.data as T;
+  }
   return payload as T;
 };
 
@@ -28,8 +31,14 @@ export const authApi = {
   login: (email: string, password: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/login", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password }),
   }),
-  register: (email: string, password: string, fullName?: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/register", {
+  register: (email: string, password: string, fullName?: string) => request<{ email: string; verificationRequired: boolean }>(AUTH_BASE_URL, "/register", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password, fullName }),
+  }),
+  verifyOtp: (email: string, otpCode: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/verify-otp", {
+    method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, otpCode }),
+  }),
+  resendOtp: (email: string) => request<{ email: string }>(AUTH_BASE_URL, "/resend-otp", {
+    method: "POST", body: JSON.stringify({ email }),
   }),
   refresh: (refreshToken: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/refresh", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ refreshToken }),

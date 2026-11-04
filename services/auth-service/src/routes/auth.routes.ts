@@ -1,13 +1,15 @@
 import { Router } from "express";
 import { AuthController } from "../controllers/auth.controller";
 import { AuthService } from "../services/auth.service";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from ".prisma/client-auth";
 
 export const createAuthRouter = (prisma: PrismaClient): Router => {
   const router = Router();
   const controller = new AuthController(new AuthService(prisma));
 
   router.post("/register", controller.register);
+  router.post("/verify-otp", controller.verifyOtp);
+  router.post("/resend-otp", controller.resendOtp);
   router.post("/login", controller.login);
   router.post("/google", controller.google);
   router.post("/refresh", controller.refresh);

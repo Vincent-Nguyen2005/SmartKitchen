@@ -6,9 +6,12 @@ type SessionContextValue = {
   user: AuthUser | null;
   accessToken: string | null;
   family: ApiFamily | null;
+  pendingVerificationEmail: string | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   register: (fullName: string, email: string, password: string) => Promise<void>;
+  verifyOtp: (otpCode: string) => Promise<void>;
+  resendOtp: () => Promise<void>;
   signOut: () => Promise<void>;
   loadFamily: () => Promise<void>;
   createFamily: (name: string) => Promise<void>;
@@ -27,6 +30,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [family, setFamily] = useState<ApiFamily | null>(null);
+  const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
   const saveTokens = useCallback(async (access: string, refresh: string | undefined, authUser: AuthUser) => {
@@ -43,8 +47,20 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
 
   const register = useCallback(async (fullName: string, email: string, password: string) => {
     const result = await authApi.register(email, password, fullName);
+    setPendingVerificationEmail(result.email);
+  }, []);
+
+  const verifyOtp = useCallback(async (otpCode: string) => {
+    if (!pendingVerificationEmail) throw new Error("No account is waiting for verification");
+    const result = await authApi.verifyOtp(pendingVerificationEmail, otpCode);
     await saveTokens(result.accessToken, result.refreshToken, result.user);
-  }, [saveTokens]);
+    setPendingVerificationEmail(null);
+  }, [pendingVerificationEmail, saveTokens]);
+
+  const resendOtp = useCallback(async () => {
+    if (!pendingVerificationEmail) throw new Error("No account is waiting for verification");
+    await authApi.resendOtp(pendingVerificationEmail);
+  }, [pendingVerificationEmail]);
 
   const refreshSession = useCallback(async (refresh: string) => {
     const result = await authApi.refresh(refresh);
@@ -153,7 +169,13 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     if (ready && accessToken) void loadFamily().catch(() => undefined);
   }, [accessToken, loadFamily, ready]);
 
-  const value = useMemo(() => ({ user, accessToken, family, ready, signIn, register, signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode }), [user, accessToken, family, ready, signIn, register, signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode]);
+  const value = useMemo(() => ({
+    user, accessToken, family, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp,
+    signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+  }), [
+    user, accessToken, family, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp,
+    signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+  ]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 

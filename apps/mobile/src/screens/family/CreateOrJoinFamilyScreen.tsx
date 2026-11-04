@@ -38,8 +38,8 @@ export default function CreateOrJoinFamilyScreen({ onCreate, onJoin, onBack }: P
           <Text style={styles.title}>Make it a shared space</Text>
           <Text style={styles.subtitle}>Bring your household together to plan, shop, and cook.</Text>
           <View style={styles.tabs}>
-            <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === "create" }} onPress={() => { setMode("create"); setError(""); }} style={[styles.tab, mode === "create" && styles.activeTab]}><Text style={[styles.tabText, mode === "create" && styles.activeTabText}>Create new</Text></Pressable>
-            <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === "join" }} onPress={() => { setMode("join"); setError(""); }} style={[styles.tab, mode === "join" && styles.activeTab]}><Text style={[styles.tabText, mode === "join" && styles.activeTabText}>Join a family</Text></Pressable>
+            <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === "create" }} onPress={() => { setMode("create"); setError(""); }} style={[styles.tab, mode === "create" && styles.activeTab]}><Text style={[styles.tabText, mode === "create" && styles.activeTabText]}>Create new</Text></Pressable>
+            <Pressable accessibilityRole="tab" accessibilityState={{ selected: mode === "join" }} onPress={() => { setMode("join"); setError(""); }} style={[styles.tab, mode === "join" && styles.activeTab]}><Text style={[styles.tabText, mode === "join" && styles.activeTabText]}>Join a family</Text></Pressable>
           </View>
           <View style={styles.formCard}>
             {mode === "create" ? <>

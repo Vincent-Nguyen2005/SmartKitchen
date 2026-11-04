@@ -1,7 +1,10 @@
-﻿import express from "express";
+import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
+import itemsRouter from "./routes/items.route";
+import alertsRouter from "./routes/alerts.route";
+import { errorHandler } from "./middleware/error.middleware";
 
 dotenv.config();
 
@@ -10,11 +13,13 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/health", healthRouter);
+app.use("/api/inventory/items", itemsRouter);
+app.use("/api/inventory/alerts", alertsRouter);
 
-// TODO: mount cac route nghiep vu cua inventory-service tai day
-// app.use("/api/inventory", mainRouter);
+app.use(errorHandler);
 
-const PORT = process.env.PORT || 4003;
-app.listen(PORT, () => {
-  console.log(`[inventory-service] dang chay tai http://localhost:${PORT}`);
+const PORT = Number(process.env.PORT) || 4003;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`[inventory-service] dang chay tai http://0.0.0.0:${PORT}`);
 });

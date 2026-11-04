@@ -1,12 +1,14 @@
 import { Request, Response } from "express";
 import { z } from "zod";
-import { AuthService } from "../services/auth.service";
+import { AuthService, AuthServiceError } from "../services/auth.service";
 
 const credentialsSchema = z.object({
   email: z.string().trim().email(),
   password: z.string().min(8).max(128),
 });
 const refreshSchema = z.object({ refreshToken: z.string().min(32).optional() });
+const verifyOtpSchema = z.object({ email: z.string().trim().email(), otpCode: z.string().regex(/^\d{6}$/) });
+const resendOtpSchema = z.object({ email: z.string().trim().email() });
 
 const registerSchema = credentialsSchema.extend({
   fullName: z.string().trim().min(2).max(100).optional(),
@@ -49,13 +51,59 @@ export class AuthController {
 
     try {
       const result = await this.authService.register(parsed.data.email.toLowerCase(), parsed.data.password, parsed.data.fullName);
-      this.sendAuthResult(req, res, result, 201);
+      res.status(201).json({ success: true, data: { ...result, verificationRequired: true } });
     } catch (error) {
       if (this.isPrismaUniqueError(error)) {
         res.status(409).json({ error: "Email is already registered" });
         return;
       }
+      if (error instanceof AuthServiceError) {
+        this.respondAuthServiceError(res, error);
+        return;
+      }
+      console.error("[auth-service] registration failed", error);
       res.status(500).json({ error: "Unable to register user" });
+    }
+  };
+
+  verifyOtp = async (req: Request, res: Response): Promise<void> => {
+    const parsed = verifyOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid verification data", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      const result = await this.authService.verifyOtp(parsed.data.email, parsed.data.otpCode, {
+        ipAddress: req.ip,
+        userAgent: req.get("user-agent"),
+      });
+      this.sendAuthResult(req, res, result);
+    } catch (error) {
+      if (error instanceof AuthServiceError) {
+        this.respondAuthServiceError(res, error);
+        return;
+      }
+      console.error("[auth-service] OTP verification failed", error);
+      res.status(500).json({ error: "Unable to verify the account" });
+    }
+  };
+
+  resendOtp = async (req: Request, res: Response): Promise<void> => {
+    const parsed = resendOtpSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid resend request", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      const result = await this.authService.resendOtp(parsed.data.email);
+      res.json({ success: true, data: result });
+    } catch (error) {
+      if (error instanceof AuthServiceError) {
+        this.respondAuthServiceError(res, error);
+        return;
+      }
+      console.error("[auth-service] OTP resend failed", error);
+      res.status(500).json({ error: "Unable to resend the verification code" });
     }
   };
 
@@ -75,6 +123,10 @@ export class AuthController {
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
         res.status(401).json({ error: "Invalid email or password" });
+        return;
+      }
+      if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
+        res.status(403).json({ error: "Verify your email address before signing in" });
         return;
       }
       res.status(500).json({ error: "Unable to log in" });
@@ -172,6 +224,11 @@ export class AuthController {
         res.status(401).json({ error: "Refresh token is invalid, expired, or already used" });
         return;
       }
+      if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
+        this.clearRefreshCookie(res);
+        res.status(403).json({ error: "Verify your email address before signing in" });
+        return;
+      }
       res.status(500).json({ error: "Unable to refresh session" });
     }
   };
@@ -239,5 +296,24 @@ export class AuthController {
 
   private isPrismaUniqueError(error: unknown): boolean {
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+  }
+
+  private respondAuthServiceError(res: Response, error: AuthServiceError): void {
+    const statusByCode: Record<string, number> = {
+      EMAIL_ALREADY_REGISTERED: 409,
+      EMAIL_NOT_CONFIGURED: 503,
+      EMAIL_DELIVERY_FAILED: 503,
+      INVALID_OTP: 400,
+      OTP_EXPIRED: 410,
+      ACCOUNT_NOT_FOUND: 404,
+      ACCOUNT_ALREADY_VERIFIED: 409,
+      OTP_RESEND_COOLDOWN: 429,
+    };
+    const statusCode = statusByCode[error.code] ?? 500;
+    if (error.code === "OTP_RESEND_COOLDOWN") {
+      const seconds = error.message.match(/wait (\d+) seconds/i)?.[1];
+      if (seconds) res.setHeader("Retry-After", seconds);
+    }
+    res.status(statusCode).json({ error: error.message, code: error.code });
   }
 }
