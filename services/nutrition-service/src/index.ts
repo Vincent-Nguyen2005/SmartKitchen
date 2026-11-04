@@ -1,7 +1,8 @@
-import express from "express";
+﻿import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
+import nutritionProfileRouter from "./routes/nutrition-profile.route";
 
 dotenv.config();
 
@@ -10,9 +11,7 @@ app.use(cors());
 app.use(express.json());
 
 app.use("/health", healthRouter);
-
-// TODO: mount cac route nghiep vu cua nutrition-service tai day
-// app.use("/api/nutrition", mainRouter);
+app.use("/api/nutrition-profile", nutritionProfileRouter);
 
 const PORT = process.env.PORT || 4004;
 app.listen(PORT, () => {

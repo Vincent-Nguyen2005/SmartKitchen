@@ -115,7 +115,7 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"], interval: 5s, timeout: 5s, retries: 10 }
   notification-service:
     build: ./services/notification-service
-    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db }
+    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
     ports: ["4010:4010"]
     depends_on: { notification-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -146,6 +146,12 @@ services:
       PAYMENT_SERVICE_URL: http://payment-service:4009
       NOTIFICATION_SERVICE_URL: http://notification-service:4010
       ADMIN_SERVICE_URL: http://admin-service:4011
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 100
+      AUTH_RATE_LIMIT_MAX: 20
+      CACHE_TTL_SECONDS: 30
+      CACHE_MAX_ITEMS: 100
+      TRUST_PROXY: "false"
     ports: ["4000:4000"]
     depends_on:
       auth-service: { condition: service_healthy }
