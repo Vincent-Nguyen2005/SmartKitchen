@@ -62,6 +62,14 @@ describe("route table", () => {
     delete process.env.AUTH_SERVICE_URL;
     expect(getTarget(auth)).toBe("http://localhost:4001");
   });
+
+  it("accepts a bare host:port (Render private network) and adds http://", () => {
+    process.env.AUTH_SERVICE_URL = "smartkitchen-auth:4001";
+    expect(getTarget(gatewayRoutes[0])).toBe("http://smartkitchen-auth:4001");
+    process.env.AUTH_SERVICE_URL = "https://auth.example.com";
+    expect(getTarget(gatewayRoutes[0])).toBe("https://auth.example.com");
+    delete process.env.AUTH_SERVICE_URL;
+  });
 });
 
 describe("proxying", () => {

@@ -14,6 +14,12 @@ describe("resolveHealthTargets", () => {
     expect(targets.find((target) => target.serviceName === "auth-service")?.url).toBe("http://auth-service:4001");
     expect(targets.find((target) => target.serviceName === "gateway")?.url).toBe("http://gateway:4000");
   });
+
+  it("adds http:// to a bare host:port from Render's private network", () => {
+    const targets = resolveHealthTargets({ AUTH_SERVICE_URL: "smartkitchen-auth:4001", GATEWAY_URL: "https://api.example.com/" });
+    expect(targets.find((target) => target.serviceName === "auth-service")?.url).toBe("http://smartkitchen-auth:4001");
+    expect(targets.find((target) => target.serviceName === "gateway")?.url).toBe("https://api.example.com");
+  });
 });
 
 describe("healthMonitorConfig", () => {

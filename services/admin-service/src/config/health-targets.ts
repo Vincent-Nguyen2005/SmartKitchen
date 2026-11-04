@@ -22,7 +22,8 @@ export const healthTargetDefinitions: TargetDefinition[] = [
 export const resolveHealthTargets = (env: NodeJS.ProcessEnv = process.env): HealthTarget[] =>
   healthTargetDefinitions.map((definition) => ({
     serviceName: definition.serviceName,
-    url: (env[definition.envKey] || definition.defaultUrl).replace(/\/+$/, ""),
+    // A bare host:port (Render private network `hostport`) gets http://.
+    url: (env[definition.envKey] || definition.defaultUrl).replace(/^(?![a-z][a-z0-9+.-]*:\/\/)/i, "http://").replace(/\/+$/, ""),
   }));
 
 const positiveNumber = (value: string | undefined, fallback: number, min = 1): number => {

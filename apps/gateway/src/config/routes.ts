@@ -19,4 +19,7 @@ export const gatewayRoutes: GatewayRoute[] = [
   { prefix: "/api/admin", serviceName: "admin-service", envKey: "ADMIN_SERVICE_URL", defaultTarget: "http://localhost:4011" },
 ];
 
-export const getTarget = (route: GatewayRoute): string => process.env[route.envKey] || route.defaultTarget;
+/** Accepts a full URL or a bare host:port (Render private network `hostport`), which gets http://. */
+export const normalizeServiceUrl = (value: string): string => (/^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `http://${value}`);
+
+export const getTarget = (route: GatewayRoute): string => normalizeServiceUrl(process.env[route.envKey] || route.defaultTarget);
