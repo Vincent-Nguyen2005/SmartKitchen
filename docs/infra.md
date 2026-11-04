@@ -99,7 +99,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 |---|---|---|
 | `port is already allocated` / `EADDRINUSE` | Another process or an old stack uses 40xx/54xx | `docker compose -p smartkitchen down`; find the process with `netstat -ano \| findstr :4000` (or `lsof -i :4000`) and stop it if it is yours |
 | `503 DATABASE_UNAVAILABLE`, logs show `P2021` (table does not exist) | Migrations not applied | Rebuild/restart the service (images migrate on start) or run `pnpm --filter <service> prisma:deploy` with its `DATABASE_URL` |
-| `503 DATABASE_UNAVAILABLE`, `P1001` | Database container down | `docker compose -p smartkitchen up -d <name>-db` |
+| `503 DATABASE_UNAVAILABLE`, logs show `P1001` / `P1017` / `P2024` | Database container down or restarting (`P1017`: connections in the pool were closed) | `docker compose -p smartkitchen up -d <name>-db`; the service keeps running and recovers by itself |
 | `429 RATE_LIMITED` during tests | Gateway limiter (100/min, auth 20/min) | Wait `retryAfterSeconds`, or raise `RATE_LIMIT_MAX` locally |
 | `401 UNAUTHORIZED` from the gateway with a valid-looking token | Gateway and auth-service use different `JWT_SECRET` | Set the same value in `.env` and recreate both containers |
 | E2E smoke: authenticated checks fail with `401` | A `JWT_SECRET` in your shell (it wins over `.env`) differs from the one the stack runs with | Unset it (`Remove-Item Env:JWT_SECRET` / `unset JWT_SECRET`) so the script reads `.env`, or recreate the stack from `.env` |
@@ -127,6 +127,6 @@ Update `INTERNAL_API_KEY` (Render env group `smartkitchen-internal`) for notific
 - [ ] Scripts: `prisma:generate`, `prisma:deploy`, `prisma:migrate`. Do **not** put `prisma generate` inside `build` (turbo runs `prisma:generate` before `build`).
 - [ ] Commit migrations; schema changes only through new migrations. No `migrate dev` / `db push` outside development.
 - [ ] Dockerfile: `node:20-alpine`, multi-stage, `NODE_ENV=production`, `USER node`, `CMD npx --no-install prisma migrate deploy && npm start`.
-- [ ] Compose: its own database with a healthcheck; the service `depends_on` it with `service_healthy`; a healthcheck on `/health` (prefer `127.0.0.1` over `localhost`, which can resolve to IPv6 in Alpine).
+- [ ] Compose: its own database with a `pg_isready` healthcheck; the service `depends_on` it with `service_healthy`; a service healthcheck on `http://127.0.0.1:<port>/health` (never `localhost`); add the service to the gateway's `depends_on` with `condition: service_started`.
 - [ ] `.env.example` with placeholders only; fill in `prisma_schema` in the `ci.yml` matrix.
 - [ ] `pnpm check:infra` passes.

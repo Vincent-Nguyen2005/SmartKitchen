@@ -170,7 +170,23 @@ if (existsSync(join(root, "deploy/render.yaml"))) {
   warn("deploy/render.yaml not found");
 }
 
-// ---------- 6. UTF-8 without BOM ----------
+// ---------- 6. docker-compose startup robustness ----------
+// docker-compose.yml is infra-owned, so these FAIL. Rationale: docs/infra.md "Startup order and healthchecks".
+console.log("\n# docker-compose healthchecks and gateway startup");
+{
+  const composeText = read("docker-compose.yml");
+  // "localhost" can resolve to IPv6 ::1 inside Alpine while Node apps often listen on IPv4 only.
+  const localhostChecks = [...composeText.matchAll(/healthcheck:.*?localhost[^"]*/g)].map((match) => match[0].match(/localhost:\d+/)?.[0]);
+  check(localhostChecks.length === 0, `healthchecks use 127.0.0.1, not localhost${localhostChecks.length ? ` (found: ${localhostChecks.join(", ")})` : ""}`);
+  // The gateway answers 503 per route and DEGRADED on /api/health, so one unhealthy backend must not block its start.
+  const gatewayBlock = composeText.match(/^ {2}gateway:\n([\s\S]*?)(?=^ {2}[a-z][a-z0-9-]*:\n|^[a-z])/m)?.[1] ?? "";
+  const dependsOn = gatewayBlock.match(/^ {4}depends_on:\n((?: {6}.*\n)+)/m)?.[1] ?? "";
+  const blocking = [...dependsOn.matchAll(/^ {6}([a-z0-9-]+): \{ condition: service_healthy \}/gm)].map((match) => match[1]);
+  check(Boolean(dependsOn), "gateway declares depends_on for the backend services");
+  check(blocking.length === 0, `gateway depends_on uses service_started, not service_healthy${blocking.length ? ` (blocking: ${blocking.join(", ")})` : ""}`);
+}
+
+// ---------- 7. UTF-8 without BOM ----------
 console.log("\n# UTF-8 without BOM (json, yml, yaml, ts, tsx, prisma, sh, mjs; .ps1 may keep a BOM)");
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git", ".turbo", "coverage", ".expo"]);
 const BOM_EXTENSIONS = /\.(json|ya?ml|tsx?|prisma|sh|mjs)$/;
