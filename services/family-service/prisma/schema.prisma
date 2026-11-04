@@ -1,5 +1,7 @@
 generator client {
   provider = "prisma-client-js"
+  output = "../node_modules/.prisma/client-family"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -7,9 +9,68 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho family-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum FamilyRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+}
+
+model FamilyGroup {
+  id          String             @id @default(uuid()) @db.Uuid
+  name        String
+  code        String             @unique
+  codeExpiresAt DateTime         @default(dbgenerated("CURRENT_TIMESTAMP + interval '7 days'"))
+  ownerId     String             @db.Uuid
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  members     FamilyMember[]
+  invitations FamilyInvitation[]
+  settings    FamilySettings?
+
+  @@index([ownerId])
+}
+
+model FamilySettings {
+  id                         String      @id @default(uuid()) @db.Uuid
+  familyId                   String      @unique @db.Uuid
+  defaultDietaryRestrictions String[]    @default([])
+  currency                   String      @default("USD") @db.VarChar(3)
+  monthlyBudget              Decimal?    @db.Decimal(10, 2)
+  householdRules             String[]    @default([])
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
+  family                     FamilyGroup @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+model FamilyMember {
+  id       String      @id @default(uuid()) @db.Uuid
+  familyId String      @db.Uuid
+  userId   String      @db.Uuid
+  role     FamilyRole  @default(MEMBER)
+  joinedAt DateTime    @default(now())
+  family   FamilyGroup @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, userId])
+  @@index([userId])
+}
+
+model FamilyInvitation {
+  id        String           @id @default(uuid()) @db.Uuid
+  familyId  String           @db.Uuid
+  email     String
+  role      FamilyRole       @default(MEMBER)
+  token     String           @unique
+  status    InvitationStatus @default(PENDING)
+  expiresAt DateTime
+  createdAt DateTime         @default(now())
+  family    FamilyGroup      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, email, status])
+  @@index([expiresAt])
+}

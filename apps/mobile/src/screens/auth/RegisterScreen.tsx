@@ -47,8 +47,8 @@ export default function RegisterScreen({
     setLoading(true);
     try {
       await onSubmit?.(fullName.trim(), email.trim().toLowerCase(), password);
-    } catch {
-      setError("Unable to create your account. Please try again.");
+    } catch (registrationError) {
+      setError(registrationError instanceof Error ? registrationError.message : "Unable to create your account. Please try again.");
     } finally {
       setLoading(false);
     }
