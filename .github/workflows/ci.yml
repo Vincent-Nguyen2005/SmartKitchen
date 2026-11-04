@@ -30,7 +30,7 @@ jobs:
           - package: inventory-service
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: nutrition-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/nutrition-service/prisma/schema.prisma
           - package: meal-diary-service
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: recipe-service
