@@ -79,7 +79,7 @@ stateDiagram-v2
 
 ## Errors
 
-`{ error, message, details? }`, never a stack trace: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`, `409 CONFLICT` / `INVALID_TRANSITION`, `429 RATE_LIMITED`, `503 DATABASE_UNAVAILABLE` (database unreachable or table missing: P1001, P1002, P2021), `500 INTERNAL_ERROR`.
+`{ error, message, details? }`, never a stack trace: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`, `409 CONFLICT` / `INVALID_TRANSITION`, `429 RATE_LIMITED`, `503 DATABASE_UNAVAILABLE` (database unreachable, connection dropped or timed out, pool exhausted, or table missing: Prisma P1001, P1002, P1008, P1017, P2021, P2024 and initialization errors; the service keeps running and recovers when the database is back), `500 INTERNAL_ERROR`.
 
 ## Environment
 
