@@ -1,4 +1,4 @@
-import { ActivityLevel, Gender, PrismaClient, Prisma } from "@prisma/client";
+import { ActivityLevel, Gender, PrismaClient, Prisma } from ".prisma/client-nutrition";
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { calculateDailyCalories } from "../utils/nutrition-calculator";
