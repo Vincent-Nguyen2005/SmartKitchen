@@ -33,5 +33,18 @@ model ShoppingItem {
   
   shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
 
-  @@index([shoppingListId])
+  @@index([shoppingListId]) 
+}
+model PurchaseHistory {
+  id             String   @id @default(uuid()) @db.Uuid
+  familyId       String   @db.Uuid
+  itemKey        String
+  name           String
+  unit           String
+  quantity       Float
+  purchasedAt    DateTime @default(now())
+  shoppingItemId String?  @unique @db.Uuid
+  createdAt      DateTime @default(now())
+
+  @@index([familyId, itemKey, purchasedAt])
 }

@@ -64,7 +64,7 @@ export class ShoppingListService {
 
     // Đếm tần suất xuất hiện của từng món
     const frequencyMap: Record<string, { count: number; unit: string }> = {};
-    purchasedItems.forEach((item) => {
+    purchasedItems.forEach((item: { name: string; unit: string }) => {
       if (frequencyMap[item.name]) {
         frequencyMap[item.name].count += 1;
       } else {
