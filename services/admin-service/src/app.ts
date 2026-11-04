@@ -8,8 +8,21 @@ import { errorHandler } from "./middleware/error-handler";
 import { prisma as defaultPrisma } from "./lib/prisma";
 import { createHealthMonitor, type HealthMonitor } from "./jobs/health-monitor";
 import { healthMonitorConfig, resolveHealthTargets } from "./config/health-targets";
+import { createReportRouter } from "./routes/report.route";
+import { createReporterNotifier, type ReporterNotifier } from "./lib/notify-client";
 
-type AppDeps = { prisma?: typeof defaultPrisma; monitor?: HealthMonitor };
+type AppDeps = { prisma?: typeof defaultPrisma; monitor?: HealthMonitor; notifier?: ReporterNotifier };
+
+const positiveInt = (value: string | undefined, fallback: number): number => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+export const createDefaultNotifier = (): ReporterNotifier => createReporterNotifier({
+  baseUrl: process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4010",
+  apiKey: process.env.INTERNAL_API_KEY,
+  timeoutMs: positiveInt(process.env.NOTIFY_TIMEOUT_MS, 2000),
+});
 
 export const createDefaultMonitor = (prisma: typeof defaultPrisma = defaultPrisma): HealthMonitor => {
   const config = healthMonitorConfig();
@@ -25,6 +38,12 @@ export const createApp = (deps: AppDeps = {}): express.Express => {
 
   app.use("/health", healthRouter);
   app.use("/health-monitor", createHealthMonitorRouter(prisma, monitor));
+  // User-facing report routes must be mounted before adminRouter (which requires ADMIN for everything after it).
+  app.use("/reports", createReportRouter({
+    prisma,
+    notifier: deps.notifier ?? createDefaultNotifier(),
+    maxReportsPerHour: positiveInt(process.env.REPORT_RATE_LIMIT_PER_HOUR, 5),
+  }));
   // adminRouter applies requireAdmin to everything after its public routes, so mount it last.
   app.use(adminRouter);
   app.use(errorHandler);

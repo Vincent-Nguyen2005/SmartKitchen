@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 const prismaMock = vi.hoisted(() => ({
   recommendationWeight: { findMany: vi.fn().mockResolvedValue([]) },
   serviceHealthLog: { findMany: vi.fn().mockResolvedValue([]), count: vi.fn() },
+  accountReport: { count: vi.fn().mockResolvedValue(0), create: vi.fn().mockResolvedValue({ id: "r1", status: "OPEN" }) },
   $transaction: vi.fn(),
 }));
 vi.mock("./lib/prisma", () => ({ prisma: prismaMock }));
@@ -31,6 +32,18 @@ describe("admin app wiring", () => {
     const admin = await request(app).get("/health-monitor/status").set("x-user-id", "a1").set("x-user-role", "ADMIN");
     expect(admin.status).toBe(200);
     expect(admin.body.overall).toBe("UNKNOWN");
+  });
+
+  it("lets normal users file reports (mounted before the admin-only router)", async () => {
+    const response = await request(createApp({ monitor, notifier: vi.fn() })).post("/reports")
+      .set("x-user-id", "user-1").set("x-user-role", "USER")
+      .send({ category: "SPAM", description: "Sends spam links every day" });
+    expect(response.status).toBe(201);
+  });
+
+  it("keeps the admin report list behind require-admin", async () => {
+    const response = await request(createApp({ monitor, notifier: vi.fn() })).get("/reports").set("x-user-id", "user-1").set("x-user-role", "USER");
+    expect(response.status).toBe(403);
   });
 
   it("builds a default monitor covering all twelve targets when none is injected", async () => {

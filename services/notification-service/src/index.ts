@@ -1,25 +1,13 @@
-import "express-async-errors";
-import express from "express";
-import cors from "cors";
 import dotenv from "dotenv";
-import healthRouter from "./routes/health.route";
-import promotionRouter from "./routes/promotion.route";
-import cron from "node-cron";
-import { dispatchActivePromotions } from "./services/promotion-dispatch.service";
-import { errorHandler, logProcessError } from "./middleware/error-handler";
 
 dotenv.config();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
+import cron from "node-cron";
+import { createApp } from "./app";
+import { dispatchActivePromotions } from "./services/promotion-dispatch.service";
+import { logProcessError } from "./middleware/error-handler";
 
-app.use("/health", healthRouter);
-app.use(promotionRouter);
-app.use(errorHandler);
-
-// TODO: mount cac route nghiep vu cua notification-service tai day
-// app.use("/api/notification", mainRouter);
+const app = createApp();
 
 const PORT = process.env.PORT || 4010;
 if (process.env.ENABLE_JOBS !== "false") {
