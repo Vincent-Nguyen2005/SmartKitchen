@@ -37,8 +37,8 @@ export default function LoginScreen({
     setLoading(true);
     try {
       await onSubmit?.(email.trim().toLowerCase(), password);
-    } catch {
-      setError("Unable to sign in. Check your details and try again.");
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : "Unable to sign in. Check your details and try again.");
     } finally {
       setLoading(false);
     }

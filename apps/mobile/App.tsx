@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   View,
   Text,
   TouchableOpacity,
@@ -7,11 +9,16 @@ import {
   Platform,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import LoginScreen from "./src/screens/auth/LoginScreen";
+import OtpVerificationScreen from "./src/screens/auth/OtpVerificationScreen";
+import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import { SessionProvider, useSession } from "./src/services/session";
 
 type Tab = "inventory" | "shopping" | "nutrition";
+type AuthView = "login" | "register" | "otp";
 
 // Logic lấy API và User ID của Hùng
 const apiBaseUrl =
@@ -28,13 +35,57 @@ export function resolveNutritionUserId(
   return userId || undefined;
 }
 
-export default function App() {
+function AppContent(): React.JSX.Element {
+  const session = useSession();
   const [tab, setTab] = useState<Tab>("inventory");
+  const [authView, setAuthView] = useState<AuthView>("login");
   const sessionUserId: string | undefined = undefined; // Tạm thời để undefined như Hùng
   const userId = resolveNutritionUserId(sessionUserId);
 
+  if (!session.ready) {
+    return (
+      <SafeAreaView style={styles.loading}>
+        <ActivityIndicator color="#2F6B5F" size="large" />
+      </SafeAreaView>
+    );
+  }
+
+  if (!session.user) {
+    if (authView === "otp" && session.pendingVerificationEmail) {
+      return (
+        <OtpVerificationScreen
+          email={session.pendingVerificationEmail}
+          onVerify={session.verifyOtp}
+          onResend={session.resendOtp}
+          onBack={() => setAuthView("register")}
+        />
+      );
+    }
+    if (authView === "register") {
+      return (
+        <RegisterScreen
+          navigation={{ navigate: () => setAuthView("login") }}
+          onSubmit={async (fullName, email, password) => {
+            await session.register(fullName, email, password);
+            setAuthView("otp");
+          }}
+        />
+      );
+    }
+    return (
+      <LoginScreen
+        navigation={{
+          navigate: (screen) => {
+            if (screen === "Register") setAuthView("register");
+            else Alert.alert("Password reset", "Password reset is not available in this test build.");
+          },
+        }}
+        onSubmit={session.signIn}
+      />
+    );
+  }
+
   return (
-    <SafeAreaProvider>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerText}>SmartKitchen</Text>
@@ -103,11 +154,15 @@ export default function App() {
             ))}
         </View>
       </SafeAreaView>
-    </SafeAreaProvider>
   );
 }
 
+export default function App(): React.JSX.Element {
+  return <SafeAreaProvider><SessionProvider><AppContent /></SessionProvider></SafeAreaProvider>;
+}
+
 const styles = StyleSheet.create({
+  loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: "#fff" },
   header: { padding: 12, backgroundColor: "#007AFF", alignItems: "center" },
   headerText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
