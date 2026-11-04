@@ -32,3 +32,30 @@ POST/PUT JSON body:
 ```
 
 The calculation uses Mifflin-St Jeor and the activity factors declared in `src/utils/nutrition-calculator.ts`. Input measurements must be positive and within the API's sanity bounds.
+
+## Health declarations
+
+The gateway exposes `GET /api/nutrition-profile/allergies` and `GET /api/nutrition-profile/health-conditions` for the available master data. `GET` and `POST /api/nutrition-profile/user/profile/health` read and replace the caller's saved selections. These user-specific requests require the same trusted `X-User-Id` UUID header.
+
+POST JSON body:
+
+```json
+{
+  "allergyIds": [],
+  "conditionIds": []
+}
+```
+
+## Meal logs
+
+`POST /api/nutrition-profile/meals/log` creates a meal and its items. `GET /api/nutrition-profile/meals/history` accepts either `?date=YYYY-MM-DD` or `?startDate=YYYY-MM-DD&endDate=YYYY-MM-DD`; the end date is inclusive and dates are interpreted in UTC. The response includes meal items and daily calorie/macronutrient totals. `DELETE /api/nutrition-profile/meals/:id` removes one of the caller's logs. All meal endpoints require the trusted `X-User-Id` UUID header.
+
+Meal log POST JSON body:
+
+```json
+{
+  "mealType": "LUNCH",
+  "source": "HOME",
+  "items": [{ "foodName": "Rice", "calories": 200, "quantity": 1 }]
+}
+```

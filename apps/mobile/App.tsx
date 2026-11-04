@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState } from "react";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import MealDiaryScreen from "./src/screens/meal-diary/MealDiaryScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
 
 const apiBaseUrl =
@@ -20,6 +21,7 @@ export function resolveNutritionUserId(
 export default function App(): React.JSX.Element {
   const sessionUserId: string | undefined = undefined;
   const userId = resolveNutritionUserId(sessionUserId);
+  const [activeTab, setActiveTab] = useState<"diary" | "profile">("diary");
 
   return (
     <SafeAreaProvider>
@@ -35,13 +37,74 @@ export default function App(): React.JSX.Element {
           </View>
         </SafeAreaView>
       ) : (
-        <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+        <View style={styles.app}>
+          <SafeAreaView edges={["top"]} style={styles.navigation}>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "diary" }}
+              onPress={() => setActiveTab("diary")}
+              style={[styles.tab, activeTab === "diary" && styles.activeTab]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "diary" && styles.activeTabText,
+                ]}
+              >
+                Nhật ký
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "profile" }}
+              onPress={() => setActiveTab("profile")}
+              style={[styles.tab, activeTab === "profile" && styles.activeTab]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "profile" && styles.activeTabText,
+                ]}
+              >
+                Hồ sơ
+              </Text>
+            </Pressable>
+          </SafeAreaView>
+          <View style={styles.screen}>
+            {activeTab === "diary" ? (
+              <MealDiaryScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+            ) : (
+              <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+            )}
+          </View>
+        </View>
       )}
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
+  app: { backgroundColor: "#F4F7F2", flex: 1 },
+  navigation: {
+    backgroundColor: "#FFFFFF",
+    borderBottomColor: "#DCE5DD",
+    borderBottomWidth: 1,
+    flexDirection: "row",
+    paddingHorizontal: 18,
+    paddingTop: 6,
+  },
+  tab: {
+    alignItems: "center",
+    borderBottomColor: "transparent",
+    borderBottomWidth: 3,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 46,
+  },
+  activeTab: { borderBottomColor: "#28735D" },
+  tabText: { color: "#77847D", fontSize: 14, fontWeight: "700" },
+  activeTabText: { color: "#183D32" },
+  screen: { flex: 1 },
   safeArea: { backgroundColor: "#F4F7F2", flex: 1, justifyContent: "center" },
   notice: { padding: 24 },
   title: { color: "#182A24", fontSize: 22, fontWeight: "700" },
