@@ -1,4 +1,4 @@
-﻿import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from "express";
 import { ShoppingListService } from "../services/shopping-list.service";
 import {
   familyQuerySchema,

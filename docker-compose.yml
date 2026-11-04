@@ -20,7 +20,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db
     ports: ["4001:4001"]
     depends_on: { auth-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4001/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4001/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   family-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: family_db }
@@ -36,7 +36,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@family-db:5432/family_db
     ports: ["4002:4002"]
     depends_on: { family-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4002/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4002/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   inventory-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: inventory_db }
@@ -48,7 +48,7 @@ services:
     environment: { PORT: 4003, DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db }
     ports: ["4003:4003"]
     depends_on: { inventory-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4003/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4003/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   nutrition-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: nutrition_db }
@@ -60,7 +60,7 @@ services:
     environment: { PORT: 4004, DATABASE_URL: postgresql://postgres:postgres@nutrition-db:5432/nutrition_db }
     ports: ["4004:4004"]
     depends_on: { nutrition-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4004/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4004/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   meal-diary-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: meal_diary_db }
@@ -72,7 +72,7 @@ services:
     environment: { PORT: 4005, DATABASE_URL: postgresql://postgres:postgres@meal-diary-db:5432/meal_diary_db }
     ports: ["4005:4005"]
     depends_on: { meal-diary-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4005/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4005/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   recipe-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: recipe_db }
@@ -84,7 +84,7 @@ services:
     environment: { PORT: 4006, DATABASE_URL: postgresql://postgres:postgres@recipe-db:5432/recipe_db }
     ports: ["4006:4006"]
     depends_on: { recipe-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4006/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4006/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   menu-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: menu_db }
@@ -96,7 +96,7 @@ services:
     environment: { PORT: 4007, DATABASE_URL: postgresql://postgres:postgres@menu-db:5432/menu_db }
     ports: ["4007:4007"]
     depends_on: { menu-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   shopping-list-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: shopping_list_db }
@@ -108,7 +108,7 @@ services:
     environment: { PORT: 4008, DATABASE_URL: postgresql://postgres:postgres@shopping-list-db:5432/shopping_list_db }
     ports: ["4008:4008"]
     depends_on: { shopping-list-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4008/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4008/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   payment-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: payment_db }
@@ -120,7 +120,7 @@ services:
     environment: { PORT: 4009, DATABASE_URL: postgresql://postgres:postgres@payment-db:5432/payment_db }
     ports: ["4009:4009"]
     depends_on: { payment-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4009/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4009/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   notification-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: notification_db }
@@ -132,7 +132,7 @@ services:
     environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, INTERNAL_API_KEY: "${INTERNAL_API_KEY:-dev-only-internal-key-change-me}", PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
     ports: ["4010:4010"]
     depends_on: { notification-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   admin-db:
     image: postgres:16-alpine
     environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: postgres, POSTGRES_DB: admin_db }
@@ -163,7 +163,7 @@ services:
       REPORT_RATE_LIMIT_PER_HOUR: ${REPORT_RATE_LIMIT_PER_HOUR:-5}
     ports: ["4011:4011"]
     depends_on: { admin-db: { condition: service_healthy } }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4011/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4011/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   gateway:
     build: ./apps/gateway
     environment:
@@ -199,7 +199,7 @@ services:
       payment-service: { condition: service_healthy }
       notification-service: { condition: service_healthy }
       admin-service: { condition: service_healthy }
-    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4000/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
 volumes:
   auth-db-data:
   family-db-data:
