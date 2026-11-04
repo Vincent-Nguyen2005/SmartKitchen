@@ -1,4 +1,4 @@
-import type { ActivityLevel, Gender } from "@prisma/client";
+import type { ActivityLevel, Gender } from ".prisma/client-nutrition";
 
 export type NutritionMeasurements = {
   height: number;
