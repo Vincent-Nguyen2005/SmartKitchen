@@ -53,6 +53,14 @@ Approximate list prices (verify on render.com/pricing before buying; prices chan
 - **Free Postgres databases expire** after a limited period; do not use them for data you need to keep.
 - Cheaper alternative for a demo: one Postgres instance with 11 logical databases (`CREATE DATABASE …` per service). This keeps database-per-service at the schema level but shares the instance's CPU/RAM and backups. It is not in the blueprint, since each service would then need its connection string set by hand.
 
+### Budget options (decision pending with the team)
+
+Render private services and several managed PostgreSQL databases need paid plans: about **$46/month** for stage 1. For a student project the team still has to choose. The blueprint stays as it is until then.
+
+- **Run only around demo dates.** Deploy a few days before a demo or grading session, then **suspend** the services and databases afterwards. Paid instances are billed per second while running. Check Render's current rules on suspended databases and backups before relying on this.
+- **Cheaper single-host alternative.** Run the existing `docker-compose.yml` on one small VPS (one VM, all 12 services + 11 Postgres containers, only the gateway port exposed behind HTTPS). It is much cheaper, but you own patching, backups and uptime, and it has no managed rollback.
+- In both cases the free tier is not suitable for the backend: free web services sleep, so the promotion cron and the health poller stop (see above).
+
 ## Staged plan
 
 1. **Stage 1 (now):** gateway, auth-service, notification-service, admin-service and their databases. Every other gateway route answers `503 SERVICE_UNAVAILABLE`, and the admin health dashboard shows those services as DOWN until stage 2.
