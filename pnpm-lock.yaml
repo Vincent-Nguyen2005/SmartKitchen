@@ -135,6 +135,9 @@ importers:
       express-async-errors:
         specifier: ^3.1.1
         version: 3.1.1(express@4.22.2)
+      prisma:
+        specifier: 5.22.0
+        version: 5.22.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -154,9 +157,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 2.1.9
         version: 2.1.9(vitest@2.1.9(@types/node@20.19.43)(lightningcss@1.33.0)(terser@5.51.2))
-      prisma:
-        specifier: 5.22.0
-        version: 5.22.0
       supertest:
         specifier: ^7.0.0
         version: 7.3.1
@@ -402,6 +402,9 @@ importers:
       node-cron:
         specifier: ^3.0.3
         version: 3.0.3
+      prisma:
+        specifier: 5.22.0
+        version: 5.22.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -424,9 +427,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 2.1.9
         version: 2.1.9(vitest@2.1.9(@types/node@20.19.43)(lightningcss@1.33.0)(terser@5.51.2))
-      prisma:
-        specifier: 5.22.0
-        version: 5.22.0
       supertest:
         specifier: ^7.0.0
         version: 7.3.1

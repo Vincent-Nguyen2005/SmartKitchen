@@ -123,11 +123,54 @@ for (const workspace of workspaces) {
     const output = schema.match(/output\s*=\s*"([^"]+)"/)?.[1] ?? "";
     check(/\.prisma\/client-[a-z0-9-]+$/.test(output), `${name}: dedicated Prisma client output (found "${output || "default"}")`, level);
     check(!/prisma generate/.test(workspace.pkg.scripts?.build ?? ""), `${name}: build script does not run prisma generate`, level);
-    check(workspace.pkg.dependencies?.["@prisma/client"] === "5.22.0" && workspace.pkg.devDependencies?.prisma === "5.22.0", `${name}: prisma and @prisma/client pinned to 5.22.0`, level);
+    const prismaCli = workspace.pkg.dependencies?.prisma ?? workspace.pkg.devDependencies?.prisma;
+    check(workspace.pkg.dependencies?.["@prisma/client"] === "5.22.0" && prismaCli === "5.22.0", `${name}: prisma and @prisma/client pinned to 5.22.0`, level);
   }
 }
 
-// ---------- 4. UTF-8 without BOM ----------
+// ---------- 4. production Dockerfiles ----------
+console.log("\n# Production Dockerfiles");
+for (const workspace of workspaces) {
+  const dockerfile = `${workspace.dir}/Dockerfile`;
+  if (!existsSync(join(root, dockerfile))) continue;
+  const name = workspace.pkg.name;
+  const level = INFRA_OWNED.has(name) ? fail : warn;
+  const text = read(dockerfile);
+  const stages = text.split(/^FROM\s+/m).slice(1);
+  const runtime = stages[stages.length - 1] ?? "";
+  check(stages.length >= 2 && stages.every((stage) => stage.startsWith("node:20-alpine")), `${name}: multi-stage node:20-alpine`, level);
+  check(/^USER\s+node\s*$/m.test(runtime), `${name}: runtime runs as non-root USER node`, level);
+  check(/^ENV\s+NODE_ENV=production\s*$/m.test(runtime), `${name}: runtime sets NODE_ENV=production`, level);
+  check(!/(^|\n)(?!#).*prisma\s+(migrate\s+dev|db\s+push)/.test(text), `${name}: never runs prisma migrate dev / db push`, level);
+  const schemaPath = `${workspace.dir}/prisma/schema.prisma`;
+  if (existsSync(join(root, schemaPath)) && /^model\s+\w+/m.test(read(schemaPath))) {
+    check(/apk add --no-cache openssl/.test(runtime), `${name}: openssl installed in the runtime stage (Prisma engines)`, level);
+    if (INFRA_OWNED.has(name)) {
+      check(/prisma\s+migrate\s+deploy/.test(runtime) && /COPY .*\/app\/prisma \.\/prisma/.test(runtime), `${name}: runs prisma migrate deploy on start with prisma/ copied`, level);
+      check(/COPY .*\/app\/node_modules \.\/node_modules|client-[a-z-]+/.test(runtime), `${name}: dedicated Prisma client copied into the runtime stage`, level);
+    }
+  }
+}
+
+// ---------- 5. deploy blueprint: only the gateway is public ----------
+console.log("\n# deploy/render.yaml");
+if (existsSync(join(root, "deploy/render.yaml"))) {
+  const blueprint = read("deploy/render.yaml").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+  const typed = [...blueprint.matchAll(/- type: (\w+)\n\s+name: ([\w-]+)/g)].map(([, type, name]) => ({ type, name }));
+  const publicServices = typed.filter((service) => service.type === "web").map((service) => service.name);
+  check(publicServices.length === 1 && publicServices[0] === "smartkitchen-gateway", `only the gateway is public (web services: ${publicServices.join(", ") || "none"})`);
+  check(typed.filter((service) => service.type !== "web").every((service) => service.type === "pserv"), "every backend is a private service (pserv)");
+  check(!/^\s+(?:value):\s*"?[A-Za-z0-9+/_-]{32,}"?\s*$/m.test(blueprint), "no literal secret-looking values (secrets use generateValue or sync: false)");
+  for (const key of ["JWT_SECRET", "INTERNAL_API_KEY", "PARTNER_API_KEY", "EXPO_ACCESS_TOKEN", "SMTP_PASS"]) {
+    const block = blueprint.match(new RegExp(`key: ${key}\\n\\s+(\\w+):`));
+    check(!block || ["generateValue", "sync"].includes(block[1]), `${key} uses generateValue or sync: false`);
+  }
+  check([...blueprint.matchAll(/ipAllowList: \[\]/g)].length === [...blueprint.matchAll(/databaseName:/g)].length, "every database is private (ipAllowList: [])");
+} else {
+  warn("deploy/render.yaml not found");
+}
+
+// ---------- 6. UTF-8 without BOM ----------
 console.log("\n# UTF-8 without BOM (json, yml, yaml, ts, tsx, prisma, sh, mjs; .ps1 may keep a BOM)");
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git", ".turbo", "coverage", ".expo"]);
 const BOM_EXTENSIONS = /\.(json|ya?ml|tsx?|prisma|sh|mjs)$/;
