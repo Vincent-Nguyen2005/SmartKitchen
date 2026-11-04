@@ -84,3 +84,28 @@ describe("gateway authentication end to end", () => {
     expect(isInternalPath("/api/recipes/internal-tips")).toBe(false);
   });
 });
+
+describe("per-user notification routes are never served from the shared cache", () => {
+  const tokenFor = (subject: string) => jwt.sign({ role: "USER" }, SECRET, { subject, expiresIn: "15m" });
+
+  it("forwards each user's inbox/preferences request with that user's identity and bypasses the cache", async () => {
+    const app = createApp({ jwtSecret: SECRET });
+    for (const path of ["/api/notifications/notifications", "/api/notifications/preferences"]) {
+      upstreamHits = 0;
+      const a = await request(app).get(path).set("authorization", `Bearer ${tokenFor("user-a")}`);
+      const b = await request(app).get(path).set("authorization", `Bearer ${tokenFor("user-b")}`);
+      const aAgain = await request(app).get(path).set("authorization", `Bearer ${tokenFor("user-a")}`);
+      expect([a, b, aAgain].map((response) => response.headers["x-cache"])).toEqual(["BYPASS", "BYPASS", "BYPASS"]);
+      expect([a.body.userId, b.body.userId, aAgain.body.userId]).toEqual(["user-a", "user-b", "user-a"]);
+      expect(upstreamHits).toBe(3);
+    }
+  });
+
+  it("does not cache them for anonymous callers either (not a cacheable route)", async () => {
+    const app = createApp({ jwtSecret: SECRET });
+    const first = await request(app).get("/api/notifications/notifications");
+    const second = await request(app).get("/api/notifications/notifications");
+    expect([first.headers["x-cache"], second.headers["x-cache"]]).toEqual(["BYPASS", "BYPASS"]);
+    expect(upstreamHits).toBe(2);
+  });
+});

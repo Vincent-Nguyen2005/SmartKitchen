@@ -7,9 +7,10 @@
     "dev": "expo start"
   },
   "dependencies": {
-    "axios": "^1.20.0",
     "@expo/metro-runtime": "~58.0.17",
+    "axios": "^1.20.0",
     "expo": "~58.0.21",
+    "expo-notifications": "~58.1.8",
     "expo-secure-store": "^58.0.2",
     "react": "19.3.0",
     "react-dom": "19.3.0",

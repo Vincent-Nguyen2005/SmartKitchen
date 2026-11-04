@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,8 +16,12 @@ import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
 import { SessionProvider, useSession } from "./src/services/session";
+import NotificationsHome from "./src/screens/notifications/NotificationsHome";
+import AdminHome from "./src/screens/admin/AdminHome";
+import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
+import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
-type Tab = "inventory" | "shopping" | "nutrition";
+type Tab = "inventory" | "shopping" | "nutrition" | "notifications" | "admin";
 type AuthView = "login" | "register" | "otp";
 
 // Logic lấy API và User ID của Hùng
@@ -41,6 +45,18 @@ function AppContent(): React.JSX.Element {
   const [authView, setAuthView] = useState<AuthView>("login");
   const sessionUserId: string | undefined = undefined; // Tạm thời để undefined như Hùng
   const userId = resolveNutritionUserId(sessionUserId);
+  const isAdmin = session.user?.role === "ADMIN";
+
+  // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
+  useEffect(() => {
+    if (!session.user || !session.accessToken) return;
+    void registerDeviceToken(createGatewayClient(session.accessToken));
+  }, [session.user?.id, session.accessToken]);
+
+  // Leave the admin tab if the signed-in user is not an admin (e.g. after switching accounts).
+  useEffect(() => {
+    if (tab === "admin" && !isAdmin) setTab("inventory");
+  }, [isAdmin, tab]);
 
   if (!session.ready) {
     return (
@@ -132,12 +148,32 @@ function AppContent(): React.JSX.Element {
               🥗 Dinh dưỡng
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            accessibilityRole="tab"
+            accessibilityLabel="Thông báo"
+            style={[styles.tab, tab === "notifications" && styles.tabActive]}
+            onPress={() => setTab("notifications")}
+          >
+            <Text style={[styles.tabText, tab === "notifications" && styles.tabTextActive]}>🔔 Thông báo</Text>
+          </TouchableOpacity>
+          {isAdmin && (
+            <TouchableOpacity
+              accessibilityRole="tab"
+              accessibilityLabel="Quản trị"
+              style={[styles.tab, tab === "admin" && styles.tabActive]}
+              onPress={() => setTab("admin")}
+            >
+              <Text style={[styles.tabText, tab === "admin" && styles.tabTextActive]}>🛠 Quản trị</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Nội dung hiển thị theo Tab */}
         <View style={styles.content}>
           {tab === "inventory" && <InventoryScreen />}
           {tab === "shopping" && <ShoppingCartScreen />}
+          {tab === "notifications" && <NotificationsHome />}
+          {tab === "admin" && isAdmin && <AdminHome />}
           {tab === "nutrition" &&
             (userId ? (
               <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />

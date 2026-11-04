@@ -62,7 +62,12 @@ if ($partner.Status -eq 200 -or $partner.Status -eq 201) { Pass 'promotion partn
 $partnerObject = Read-Json 'promotion partner response JSON' $partner
 $partnerId = if ($null -ne $partnerObject) { [string]$partnerObject.id } else { '' }
 if ([string]::IsNullOrWhiteSpace($partnerId)) { Fail 'promotion partner id present' $partner 'partner id' }
-$device = Invoke-Api POST "$NotificationUrl/device-tokens" $null (@{ userId = 'e2e-user-001'; token = 'e2e-device-token'; platform = 'ANDROID' } | ConvertTo-Json)
+# User-owned notification routes go through the gateway: identity comes only from the signed access token.
+$userHeaders = @{ Authorization = "Bearer $e2eToken" }
+$otherUserHeaders = @{ Authorization = "Bearer $(New-DevJwt 'e2e-user-002' 'USER')" }
+$adminBearer = @{ Authorization = "Bearer $(New-DevJwt 'e2e-admin-001' 'ADMIN')" }
+Expect-Status 'notifications require identity (401)' (Invoke-Api GET "$BaseUrl/api/notifications/notifications") 401
+$device = Invoke-Api POST "$BaseUrl/api/notifications/device-tokens" $userHeaders (@{ token = 'e2e-device-token'; platform = 'ANDROID' } | ConvertTo-Json)
 Expect-Status 'promotion device token registration' $device 201
 $promotionId = ''
 if ($partnerId) {
@@ -75,12 +80,17 @@ if ($partnerId) {
 if ($promotionId) {
     $match = Invoke-Api POST "$NotificationUrl/promotions/match" $null (@{ userId = 'e2e-user-001'; keywords = @('Cà Chua') } | ConvertTo-Json)
     if ($match.Status -eq 200 -and $match.Body -match $promotionId) { Pass 'promotion keyword match' } else { Fail 'promotion keyword match' $match 200 }
-    $dispatch = Invoke-Api POST "$NotificationUrl/promotions/$promotionId/dispatch" $null (@{ userIds = @('e2e-user-001') } | ConvertTo-Json)
+    $dispatchBody = @{ userIds = @('e2e-user-001') } | ConvertTo-Json
+    Expect-Status 'promotion dispatch as USER is forbidden (403)' (Invoke-Api POST "$BaseUrl/api/notifications/promotions/$promotionId/dispatch" $userHeaders $dispatchBody) 403
+    $dispatch = Invoke-Api POST "$BaseUrl/api/notifications/promotions/$promotionId/dispatch" $adminBearer $dispatchBody
     Expect-Status 'promotion mock dispatch' $dispatch 200
-    $notifications = Invoke-Api GET "$NotificationUrl/notifications?userId=e2e-user-001"
+    $notifications = Invoke-Api GET "$BaseUrl/api/notifications/notifications" $userHeaders
     if ($notifications.Status -eq 200 -and $notifications.Body -match '"status":"SENT"') { Pass 'promotion notification is SENT' } else { Fail 'promotion notification is SENT' $notifications 200 }
-} else { $missing = [pscustomobject]@{ Method = 'POST'; Url = "$NotificationUrl/promotions/<missing>/dispatch"; Status = 0; Body = ''; Headers = @{}; Error = 'promotion id unavailable' }; Fail 'promotion keyword match' $missing 200; Fail 'promotion mock dispatch' $missing 200; Fail 'promotion notification is SENT' $missing 200 }
-[void](Invoke-Api DELETE "$NotificationUrl/device-tokens/e2e-device-token")
+} else { $missing = [pscustomobject]@{ Method = 'POST'; Url = "$BaseUrl/api/notifications/promotions/<missing>/dispatch"; Status = 0; Body = ''; Headers = @{}; Error = 'promotion id unavailable' }; Fail 'promotion keyword match' $missing 200; Fail 'promotion dispatch as USER is forbidden (403)' $missing 403; Fail 'promotion mock dispatch' $missing 200; Fail 'promotion notification is SENT' $missing 200 }
+Expect-Status 'IDOR: another user cannot list this inbox (403)' (Invoke-Api GET "$BaseUrl/api/notifications/notifications?userId=e2e-user-001" $otherUserHeaders) 403
+Expect-Status 'IDOR: another user cannot read these preferences (403)' (Invoke-Api GET "$BaseUrl/api/notifications/preferences/e2e-user-001" $otherUserHeaders) 403
+Expect-Status 'IDOR: another user cannot delete this device token (404)' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $otherUserHeaders) 404
+Expect-Status 'device token cleanup by its owner' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $userHeaders) 204
 
 $adminHeaders = @{ 'x-user-id' = 'e2e-admin-001'; 'x-user-role' = 'ADMIN' }
 $forbidden = Invoke-Api GET "$AdminUrl/weights"

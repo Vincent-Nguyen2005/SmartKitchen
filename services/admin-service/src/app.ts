@@ -19,7 +19,7 @@ const positiveInt = (value: string | undefined, fallback: number): number => {
 };
 
 export const createDefaultNotifier = (): ReporterNotifier => createReporterNotifier({
-  baseUrl: process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4010",
+  baseUrl: (process.env.NOTIFICATION_SERVICE_URL || "http://localhost:4010").replace(/^(?![a-z][a-z0-9+.-]*:\/\/)/i, "http://"),
   apiKey: process.env.INTERNAL_API_KEY,
   timeoutMs: positiveInt(process.env.NOTIFY_TIMEOUT_MS, 2000),
 });
