@@ -25,7 +25,9 @@ app.use(express.json());
 
 app.use("/health", healthRouter);
 
-app.use("/api/auth", createAuthRouter(prisma));
+const authRouter = createAuthRouter(prisma);
+app.use("/api/auth", authRouter);
+app.use("/", authRouter);
 
 const PORT = process.env.PORT || 4001;
 const server = app.listen(PORT, () => {

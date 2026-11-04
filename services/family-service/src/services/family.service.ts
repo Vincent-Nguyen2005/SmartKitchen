@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import { FamilyRole, InvitationStatus, Prisma, PrismaClient } from "@prisma/client";
+import { FamilyRole, InvitationStatus, Prisma, PrismaClient } from ".prisma/client-family";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -28,8 +28,9 @@ export class FamilyService {
             codeExpiresAt: new Date(Date.now() + INVITATION_TTL_MS),
             ownerId: userId,
             members: { create: { userId, role: FamilyRole.OWNER } },
+            settings: { create: {} },
           },
-          include: { members: { orderBy: { joinedAt: "asc" } } },
+          include: { members: { orderBy: { joinedAt: "asc" } }, settings: true },
         });
       } catch (error) {
         if (!this.isUniqueError(error)) throw error;
@@ -50,10 +51,35 @@ export class FamilyService {
     return { ...membership.family, currentUserRole: membership.role };
   }
 
-  async leaveFamily(userId: string): Promise<void> {
-    const membership = await this.prisma.familyMember.findFirst({ where: { userId } });
+  async getFamilySettings(userId: string) {
+    const membership = await this.prisma.familyMember.findFirst({ where: { userId }, select: { familyId: true } });
     if (!membership) throw new FamilyServiceError("You do not belong to a family", 404);
-    if (membership.role === FamilyRole.OWNER) {
+    const settings = await this.prisma.familySettings.upsert({
+      where: { familyId: membership.familyId },
+      create: { familyId: membership.familyId },
+      update: {},
+    });
+    return this.serializeSettings(settings);
+  }
+
+  async updateFamilySettings(userId: string, updates: Prisma.FamilySettingsUpdateInput) {
+    const { family } = await this.requireManager(userId);
+    await this.prisma.familySettings.upsert({
+      where: { familyId: family.id },
+      create: { familyId: family.id },
+      update: {},
+    });
+    const settings = await this.prisma.familySettings.update({ where: { familyId: family.id }, data: updates });
+    return this.serializeSettings(settings);
+  }
+
+  async leaveFamily(userId: string): Promise<void> {
+    const membership = await this.prisma.familyMember.findFirst({
+      where: { userId },
+      include: { family: { select: { ownerId: true } } },
+    });
+    if (!membership) throw new FamilyServiceError("You do not belong to a family", 404);
+    if (membership.role === FamilyRole.OWNER || membership.family.ownerId === userId) {
       throw new FamilyServiceError("The owner cannot leave before ownership is transferred", 409);
     }
     await this.prisma.familyMember.delete({ where: { id: membership.id } });
@@ -183,7 +209,9 @@ export class FamilyService {
     const { family, role: actorRole } = await this.requireManager(actorId);
     const target = await this.prisma.familyMember.findFirst({ where: { id: memberId, familyId: family.id } });
     if (!target) throw new FamilyServiceError("Family member not found", 404);
-    if (target.role === FamilyRole.OWNER) throw new FamilyServiceError("The family owner role cannot be changed", 403);
+    if (target.role === FamilyRole.OWNER || target.userId === family.ownerId) {
+      throw new FamilyServiceError("The family owner role cannot be changed", 403);
+    }
     if (actorRole === FamilyRole.ADMIN && target.role !== FamilyRole.MEMBER) {
       throw new FamilyServiceError("Admins can only manage members", 403);
     }
@@ -193,11 +221,49 @@ export class FamilyService {
     return this.prisma.familyMember.update({ where: { id: target.id }, data: { role } });
   }
 
+  async transferOwnership(actorId: string, memberId: string) {
+    const { family, role: actorRole } = await this.requireManager(actorId);
+    if (actorRole !== FamilyRole.OWNER) {
+      throw new FamilyServiceError("Only the owner can transfer ownership", 403);
+    }
+
+    return this.prisma.$transaction(async (transaction) => {
+      const target = await transaction.familyMember.findFirst({
+        where: { id: memberId, familyId: family.id },
+      });
+      if (!target) throw new FamilyServiceError("Family member not found", 404);
+      if (target.userId === actorId) throw new FamilyServiceError("You already own this family", 400);
+      if (target.role === FamilyRole.OWNER) {
+        throw new FamilyServiceError("Ownership can only be transferred to an admin or member", 400);
+      }
+
+      const transfer = await transaction.familyGroup.updateMany({
+        where: { id: family.id, ownerId: actorId },
+        data: { ownerId: target.userId },
+      });
+      if (transfer.count !== 1) {
+        throw new FamilyServiceError("Family ownership has already changed; refresh and try again", 409);
+      }
+
+      const newOwner = await transaction.familyMember.update({
+        where: { id: target.id },
+        data: { role: FamilyRole.OWNER },
+      });
+      await transaction.familyMember.update({
+        where: { familyId_userId: { familyId: family.id, userId: actorId } },
+        data: { role: FamilyRole.ADMIN },
+      });
+      return newOwner;
+    });
+  }
+
   async removeMember(actorId: string, memberId: string): Promise<void> {
     const { family, role: actorRole } = await this.requireManager(actorId);
     const target = await this.prisma.familyMember.findFirst({ where: { id: memberId, familyId: family.id } });
     if (!target) throw new FamilyServiceError("Family member not found", 404);
-    if (target.role === FamilyRole.OWNER) throw new FamilyServiceError("The family owner cannot be removed", 403);
+    if (target.role === FamilyRole.OWNER || target.userId === family.ownerId) {
+      throw new FamilyServiceError("The family owner cannot be removed", 403);
+    }
     if (actorRole === FamilyRole.ADMIN && target.role !== FamilyRole.MEMBER) {
       throw new FamilyServiceError("Admins can only remove members", 403);
     }
@@ -214,6 +280,13 @@ export class FamilyService {
       throw new FamilyServiceError("Owner or admin permission is required", 403);
     }
     return { family: membership.family, role: membership.role };
+  }
+
+  private serializeSettings<T extends { monthlyBudget: Prisma.Decimal | null }>(settings: T) {
+    return {
+      ...settings,
+      monthlyBudget: settings.monthlyBudget === null ? null : Number(settings.monthlyBudget),
+    };
   }
 
   private createJoinCode(): string {

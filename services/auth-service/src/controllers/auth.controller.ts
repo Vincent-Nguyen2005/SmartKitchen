@@ -7,7 +7,10 @@ const credentialsSchema = z.object({
   password: z.string().min(8).max(128),
 });
 const refreshSchema = z.object({ refreshToken: z.string().min(32).optional() });
-const verifyOtpSchema = z.object({ email: z.string().trim().email(), otpCode: z.string().regex(/^\d{6}$/) });
+const verifyOtpSchema = z.object({
+  email: z.string().trim().email(),
+  otpCode: z.string().regex(/^\d{6}$/),
+});
 const resendOtpSchema = z.object({ email: z.string().trim().email() });
 
 const registerSchema = credentialsSchema.extend({

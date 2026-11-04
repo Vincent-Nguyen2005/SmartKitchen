@@ -12,13 +12,14 @@ type Props = {
   onRefresh?: () => Promise<void> | void;
   onCreateOrJoin?: () => void;
   onManageMembers?: () => void;
+  onManageSettings?: () => void;
   onLeave?: () => Promise<void>;
   onRegenerateJoinCode?: () => Promise<void>;
 };
 
 const roleLabel: Record<FamilyRole, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member" };
 
-export default function FamilyOverviewScreen({ family, loading = false, error, onRefresh, onCreateOrJoin, onManageMembers, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
+export default function FamilyOverviewScreen({ family, loading = false, error, onRefresh, onCreateOrJoin, onManageMembers, onManageSettings, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
   const [leaving, setLeaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -75,6 +76,9 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
                 </View>
               ))}
             </View>
+            {canManage && !!onManageSettings && <Pressable onPress={onManageSettings} style={styles.settingsButton}>
+              <Text style={styles.actionLink}>Family preferences and settings</Text>
+            </Pressable>}
             {family.currentUserRole === "OWNER" ? <Text style={styles.ownerNote}>As the owner, transfer ownership before leaving this family.</Text> : (
               <Pressable disabled={!onLeave || leaving} onPress={leave} style={styles.leaveButton}>
                 {leaving ? <ActivityIndicator color="#B42318" /> : <Text style={styles.leaveText}>Leave family</Text>}
@@ -128,6 +132,7 @@ const styles = StyleSheet.create({
   leaveButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 12, borderWidth: 1, marginTop: 22, minHeight: 48, justifyContent: "center" },
   leaveText: { color: "#B42318", fontSize: 14, fontWeight: "700" },
   refreshButton: { alignItems: "center", padding: 18 },
+  settingsButton: { alignItems: "center", borderColor: "#C8DAD0", borderRadius: 12, borderWidth: 1, marginTop: 16, minHeight: 48, justifyContent: "center" },
   emptyCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 18, borderWidth: 1, marginTop: 22, padding: 24 },
   emptyTitle: { color: "#17211F", fontSize: 20, fontWeight: "700", textAlign: "center" },
   emptyCopy: { color: "#68736F", fontSize: 14, lineHeight: 21, marginTop: 9, textAlign: "center" },

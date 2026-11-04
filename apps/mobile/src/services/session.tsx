@@ -1,11 +1,12 @@
 import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import * as SecureStore from "expo-secure-store";
-import { ApiFamily, AuthUser, authApi, familyApi } from "./api";
+import { ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi } from "./api";
 
 type SessionContextValue = {
   user: AuthUser | null;
   accessToken: string | null;
   family: ApiFamily | null;
+  familySettings: ApiFamilySettings | null;
   pendingVerificationEmail: string | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -20,6 +21,8 @@ type SessionContextValue = {
   updateMemberRole: (memberId: string, role: "ADMIN" | "MEMBER") => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
   regenerateJoinCode: () => Promise<void>;
+  transferOwnership: (memberId: string) => Promise<void>;
+  updateFamilySettings: (settings: Partial<Omit<ApiFamilySettings, "id" | "familyId" | "createdAt" | "updatedAt">>) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -30,6 +33,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [family, setFamily] = useState<ApiFamily | null>(null);
+  const [familySettings, setFamilySettings] = useState<ApiFamilySettings | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
@@ -84,10 +88,17 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
 
   const loadFamily = useCallback(async () => {
     try {
-      const result = await withToken((token) => familyApi.getMine(token));
-      setFamily(result.family);
+      const results = await withToken(async (token) => Promise.all([
+        familyApi.getMine(token),
+        familyApi.getSettings(token),
+      ]));
+      setFamily(results[0].family);
+      setFamilySettings(results[1].settings);
     } catch (error) {
-      if (error instanceof Error && "status" in error && error.status === 404) setFamily(null);
+      if (error instanceof Error && "status" in error && error.status === 404) {
+        setFamily(null);
+        setFamilySettings(null);
+      }
       else throw error;
     }
   }, [withToken]);
@@ -107,6 +118,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const leaveFamily = useCallback(async () => {
     await withToken((token) => familyApi.leave(token));
     setFamily(null);
+    setFamilySettings(null);
   }, [withToken]);
 
   const updateMemberRole = useCallback(async (memberId: string, role: "ADMIN" | "MEMBER") => {
@@ -124,6 +136,16 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setFamily((current) => current ? { ...current, code: result.joinCode.code, codeExpiresAt: result.joinCode.codeExpiresAt } : current);
   }, [withToken]);
 
+  const transferOwnership = useCallback(async (memberId: string) => {
+    await withToken((token) => familyApi.transferOwnership(token, memberId));
+    await loadFamily();
+  }, [loadFamily, withToken]);
+
+  const updateFamilySettings = useCallback(async (settings: Partial<Omit<ApiFamilySettings, "id" | "familyId" | "createdAt" | "updatedAt">>) => {
+    const result = await withToken((token) => familyApi.updateSettings(token, settings));
+    setFamilySettings(result.settings);
+  }, [withToken]);
+
   const signOut = useCallback(async () => {
     const access = accessToken ?? await SecureStore.getItemAsync(ACCESS_KEY);
     const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
@@ -133,6 +155,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setAccessToken(null);
     setUser(null);
     setFamily(null);
+    setFamilySettings(null);
   }, [accessToken]);
 
   useEffect(() => {
@@ -170,11 +193,13 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   }, [accessToken, loadFamily, ready]);
 
   const value = useMemo(() => ({
-    user, accessToken, family, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp,
-    signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    transferOwnership, updateFamilySettings,
   }), [
-    user, accessToken, family, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp,
-    signOut, loadFamily, createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    transferOwnership, updateFamilySettings,
   ]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

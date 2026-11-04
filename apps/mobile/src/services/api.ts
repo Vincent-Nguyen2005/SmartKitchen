@@ -54,6 +54,16 @@ export type AuthUser = { id: string; email: string; fullName: string | null; ava
 export type ApiFamilyRole = "OWNER" | "ADMIN" | "MEMBER";
 export type ApiFamilyMember = { id: string; userId: string; role: ApiFamilyRole; joinedAt: string; displayName?: string; email?: string };
 export type ApiFamily = { id: string; name: string; code: string; codeExpiresAt: string; members: ApiFamilyMember[]; currentUserRole: ApiFamilyRole };
+export type ApiFamilySettings = {
+  id: string;
+  familyId: string;
+  defaultDietaryRestrictions: string[];
+  currency: string;
+  monthlyBudget: number | null;
+  householdRules: string[];
+  createdAt: string;
+  updatedAt: string;
+};
 
 export const familyApi = {
   getMine: (token: string) => request<{ family: ApiFamily }>(FAMILY_BASE_URL, "/me", {}, token),
@@ -63,6 +73,11 @@ export const familyApi = {
   updateRole: (token: string, memberId: string, role: Exclude<ApiFamilyRole, "OWNER">) => request<{ member: ApiFamilyMember }>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }, token),
   removeMember: (token: string, memberId: string) => request<void>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}`, { method: "DELETE" }, token),
   regenerateJoinCode: (token: string) => request<{ joinCode: { id: string; code: string; codeExpiresAt: string } }>(FAMILY_BASE_URL, "/join-code/regenerate", { method: "POST" }, token),
+  getSettings: (token: string) => request<{ settings: ApiFamilySettings }>(FAMILY_BASE_URL, "/settings", {}, token),
+  updateSettings: (token: string, settings: Partial<Omit<ApiFamilySettings, "id" | "familyId" | "createdAt" | "updatedAt">>) =>
+    request<{ settings: ApiFamilySettings }>(FAMILY_BASE_URL, "/settings", { method: "PATCH", body: JSON.stringify(settings) }, token),
+  transferOwnership: (token: string, memberId: string) =>
+    request<{ member: ApiFamilyMember }>(FAMILY_BASE_URL, "/transfer-ownership", { method: "POST", body: JSON.stringify({ memberId }) }, token),
   verifyInvitation: (accessToken: string, codeOrToken: string) => {
     const parameter = codeOrToken.length >= 16 ? "token" : "code";
     return request<{ invitation: { type: "invitation" | "join-code"; family: { id: string; name: string }; role?: ApiFamilyRole; expiresAt: string } }>(FAMILY_BASE_URL, `/invitations/verify?${parameter}=${encodeURIComponent(codeOrToken)}`, {}, accessToken);

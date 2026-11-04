@@ -26,7 +26,7 @@ jobs:
           - package: auth-service
             prisma_schema: services/auth-service/prisma/schema.prisma
           - package: family-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/family-service/prisma/schema.prisma
           - package: inventory-service
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: nutrition-service

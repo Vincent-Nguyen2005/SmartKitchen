@@ -4,8 +4,9 @@ import { useSession } from "../../services/session";
 import CreateOrJoinFamilyScreen from "./CreateOrJoinFamilyScreen";
 import FamilyOverviewScreen from "./FamilyOverviewScreen";
 import ManageMembersScreen from "./ManageMembersScreen";
+import FamilySettingsScreen from "./FamilySettingsScreen";
 
-type View = "overview" | "setup" | "members";
+type View = "overview" | "setup" | "members" | "settings";
 
 /** A drop-in family flow that binds the existing presentation screens to the live APIs. */
 export default function FamilyScreenFlow(): React.JSX.Element {
@@ -36,6 +37,15 @@ export default function FamilyScreenFlow(): React.JSX.Element {
       onBack={() => setView("overview")}
       onChangeRole={session.updateMemberRole}
       onRemove={session.removeMember}
+      onTransferOwnership={session.transferOwnership}
+    />;
+  }
+
+  if (view === "settings" && session.family) {
+    return <FamilySettingsScreen
+      settings={session.familySettings}
+      onBack={() => setView("overview")}
+      onSave={session.updateFamilySettings}
     />;
   }
 
@@ -45,6 +55,7 @@ export default function FamilyScreenFlow(): React.JSX.Element {
     onRefresh={async () => { try { await session.loadFamily(); setFamilyError(""); } catch { setFamilyError("Unable to load family details."); } }}
     onCreateOrJoin={() => setView("setup")}
     onManageMembers={() => setView("members")}
+    onManageSettings={() => setView("settings")}
     onLeave={async () => { await session.leaveFamily(); setView("overview"); }}
     onRegenerateJoinCode={async () => {
       try { await session.regenerateJoinCode(); setFamilyError(""); }

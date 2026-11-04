@@ -216,7 +216,6 @@ export class AuthService {
     const suppliedBuffer = Buffer.from(supplied);
     return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
   }
-
   private async sendOtpEmail(email: string, otpCode: string): Promise<void> {
     try {
       await this.mailService.sendOtpEmail(email, otpCode);

@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output = "../node_modules/.prisma/client-family"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -30,8 +31,21 @@ model FamilyGroup {
   updatedAt   DateTime           @updatedAt
   members     FamilyMember[]
   invitations FamilyInvitation[]
+  settings    FamilySettings?
 
   @@index([ownerId])
+}
+
+model FamilySettings {
+  id                         String      @id @default(uuid()) @db.Uuid
+  familyId                   String      @unique @db.Uuid
+  defaultDietaryRestrictions String[]    @default([])
+  currency                   String      @default("USD") @db.VarChar(3)
+  monthlyBudget              Decimal?    @db.Decimal(10, 2)
+  householdRules             String[]    @default([])
+  createdAt                  DateTime    @default(now())
+  updatedAt                  DateTime    @updatedAt
+  family                     FamilyGroup @relation(fields: [familyId], references: [id], onDelete: Cascade)
 }
 
 model FamilyMember {
