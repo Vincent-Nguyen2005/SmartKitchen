@@ -85,4 +85,4 @@ Gateway-generated errors are JSON: `{ "error": "<CODE>", ... }`.
 
 ## Tests
 
-`pnpm --filter gateway test` (Vitest + supertest, 40 tests, 98.59 % line coverage at the last run). Live checks: `pnpm test:routing`, `pnpm test:e2e-smoke`.
+`pnpm --filter gateway test` (Vitest + supertest, 42 tests, 98.59 % line coverage at the last run, including a check that per-user notification routes are never served from the cache). Live checks: `pnpm test:routing`, `pnpm test:e2e-smoke`.

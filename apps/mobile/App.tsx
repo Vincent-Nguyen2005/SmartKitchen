@@ -50,7 +50,7 @@ function AppContent(): React.JSX.Element {
   // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
   useEffect(() => {
     if (!session.user || !session.accessToken) return;
-    void registerDeviceToken(createGatewayClient(session.accessToken), session.user.id);
+    void registerDeviceToken(createGatewayClient(session.accessToken));
   }, [session.user?.id, session.accessToken]);
 
   // Leave the admin tab if the signed-in user is not an admin (e.g. after switching accounts).

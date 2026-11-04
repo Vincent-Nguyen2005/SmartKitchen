@@ -36,13 +36,14 @@ export default function NotificationListScreen(): React.JSX.Element {
   const requestId = useRef(0);
 
   const load = useCallback(async (nextPage: number, mode: "initial" | "refresh" | "more") => {
+    // userId is not sent: the gateway derives identity from the access token. It is only a reload trigger.
     if (!userId) return;
     const id = ++requestId.current;
     if (mode === "initial") setLoading(true);
     if (mode === "refresh") setRefreshing(true);
     if (mode === "more") setLoadingMore(true);
     try {
-      const result = await api.get<Page<AppNotification>>(`/api/notifications/notifications${query({ userId, page: nextPage, limit: PAGE_SIZE, status: filter === "unread" ? "SENT" : undefined })}`);
+      const result = await api.get<Page<AppNotification>>(`/api/notifications/notifications${query({ page: nextPage, limit: PAGE_SIZE, status: filter === "unread" ? "SENT" : undefined })}`);
       if (id !== requestId.current) return; // a newer request replaced this one
       setItems((current) => (nextPage === 1 ? result.items : [...current, ...result.items]));
       setPage(nextPage);

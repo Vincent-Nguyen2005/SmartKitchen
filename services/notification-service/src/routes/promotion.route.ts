@@ -1,9 +1,10 @@
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { keywordsOverlap, normalizedKeywords } from "../lib/promotion";
 import { dispatchPromotion } from "../services/promotion-dispatch.service";
 import { createApiKeyGuard } from "../middleware/api-key";
+import { callerUserId, forbidOtherUser, namesOtherUser, requireAdmin, requireUser } from "../middleware/identity";
 
 const router = Router();
 const apiKeyGuard = createApiKeyGuard("PARTNER_API_KEY", "Invalid partner API key");
@@ -11,19 +12,41 @@ const error = (response: { status: (code: number) => { json: (body: unknown) => 
 const page = (value: unknown, fallback: number, max: number): number => Math.min(Math.max(Number(value) || fallback, 1), max);
 const promotionSchema = z.object({ title: z.string().min(1), description: z.string().optional(), discountInfo: z.string().optional(), productKeywords: z.array(z.string()), imageUrl: z.string().url().optional(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), isActive: z.boolean().optional() });
 
-router.post("/device-tokens", async (request, response) => {
-  const parsed = z.object({ userId: z.string().min(1), token: z.string().min(1), platform: z.enum(["IOS", "ANDROID"]) }).safeParse(request.body);
+// User routes: identity comes only from the gateway's x-user-id (see middleware/identity.ts).
+// A userId still sent by a client must match the caller (403 otherwise) and is never trusted.
+router.post("/device-tokens", requireUser, async (request, response) => {
+  const parsed = z.object({ userId: z.string().min(1).optional(), token: z.string().min(1), platform: z.enum(["IOS", "ANDROID"]) }).safeParse(request.body);
   if (!parsed.success) return error(response, parsed.error.flatten());
-  const token = await prisma.deviceToken.upsert({ where: { token: parsed.data.token }, update: { ...parsed.data, isActive: true, lastUsedAt: new Date() }, create: { ...parsed.data, lastUsedAt: new Date() } });
+  if (namesOtherUser(request, parsed.data.userId)) return forbidOtherUser(response);
+  // A push token identifies a physical device; when another account signs in on it, the token moves to that account.
+  const data = { userId: callerUserId(request), token: parsed.data.token, platform: parsed.data.platform };
+  const token = await prisma.deviceToken.upsert({ where: { token: data.token }, update: { ...data, isActive: true, lastUsedAt: new Date() }, create: { ...data, lastUsedAt: new Date() } });
   return response.status(201).json(token);
 });
-router.delete("/device-tokens/:token", async (request, response) => { await prisma.deviceToken.updateMany({ where: { token: request.params.token }, data: { isActive: false } }); return response.status(204).send(); });
-router.get("/preferences/:userId", async (request, response) => response.json(await prisma.notificationPreference.upsert({ where: { userId: request.params.userId }, update: {}, create: { userId: request.params.userId } })));
-router.put("/preferences/:userId", async (request, response) => {
-  const parsed = z.object({ pushEnabled: z.boolean().optional(), promotionEnabled: z.boolean().optional(), quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional() }).safeParse(request.body);
-  if (!parsed.success) return error(response, parsed.error.flatten());
-  return response.json(await prisma.notificationPreference.upsert({ where: { userId: request.params.userId }, update: parsed.data, create: { userId: request.params.userId, ...parsed.data } }));
+router.delete("/device-tokens/:token", requireUser, async (request, response) => {
+  const result = await prisma.deviceToken.updateMany({ where: { token: request.params.token, userId: callerUserId(request) }, data: { isActive: false } });
+  // 404 (not 403) for someone else's token, so existence is not leaked.
+  if (result.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Device token not found" });
+  return response.status(204).send();
 });
+const preferencesSchema = z.object({ pushEnabled: z.boolean().optional(), promotionEnabled: z.boolean().optional(), quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional() });
+const readPreferences = async (request: Request, response: Response) => {
+  if (namesOtherUser(request, request.params.userId)) return forbidOtherUser(response);
+  const userId = callerUserId(request);
+  return response.json(await prisma.notificationPreference.upsert({ where: { userId }, update: {}, create: { userId } }));
+};
+const writePreferences = async (request: Request, response: Response) => {
+  if (namesOtherUser(request, request.params.userId)) return forbidOtherUser(response);
+  const parsed = preferencesSchema.safeParse(request.body);
+  if (!parsed.success) return error(response, parsed.error.flatten());
+  const userId = callerUserId(request);
+  return response.json(await prisma.notificationPreference.upsert({ where: { userId }, update: parsed.data, create: { userId, ...parsed.data } }));
+};
+router.get("/preferences", requireUser, readPreferences);
+router.put("/preferences", requireUser, writePreferences);
+// Kept for older clients; :userId must be the caller.
+router.get("/preferences/:userId", requireUser, readPreferences);
+router.put("/preferences/:userId", requireUser, writePreferences);
 router.post("/partners", apiKeyGuard, async (request, response) => {
   const parsed = z.object({ name: z.string().min(1), logoUrl: z.string().url().optional() }).safeParse(request.body);
   if (!parsed.success) return error(response, parsed.error.flatten());
@@ -59,13 +82,23 @@ router.post("/promotions/match", async (request, response) => {
   const promotions = await prisma.promotion.findMany({ where: { isActive: true, startsAt: { lte: new Date() }, endsAt: { gte: new Date() } } });
   return response.json({ promotions: promotions.filter((promotion) => keywordsOverlap(promotion.productKeywords, parsed.data.keywords)) });
 });
-router.get("/notifications", async (request, response) => {
+router.get("/notifications", requireUser, async (request, response) => {
+  if (namesOtherUser(request, request.query.userId)) return forbidOtherUser(response);
+  const status = z.enum(["PENDING", "SENT", "FAILED", "READ"]).optional().safeParse(request.query.status || undefined);
+  if (!status.success) return error(response, status.error.flatten());
   const take = page(request.query.limit, 20, 100); const skip = (page(request.query.page, 1, 100000) - 1) * take;
-  const where = { userId: String(request.query.userId || ""), status: request.query.status ? String(request.query.status) as "PENDING" | "SENT" | "FAILED" | "READ" : undefined };
+  const where = { userId: callerUserId(request), status: status.data };
   const [items, total] = await prisma.$transaction([prisma.notification.findMany({ where, skip, take, orderBy: { createdAt: "desc" } }), prisma.notification.count({ where })]); return response.json({ items, page: Math.floor(skip / take) + 1, limit: take, total });
 });
-router.patch("/notifications/:id/read", async (request, response) => response.json(await prisma.notification.update({ where: { id: request.params.id }, data: { status: "READ", readAt: new Date() } })));
-router.post("/promotions/:id/dispatch", async (request, response) => {
+router.patch("/notifications/:id/read", requireUser, async (request, response) => {
+  // Scoped to the caller: someone else's notification is reported as 404, like a missing one.
+  const result = await prisma.notification.updateMany({ where: { id: request.params.id, userId: callerUserId(request) }, data: { status: "READ", readAt: new Date() } });
+  if (result.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Notification not found" });
+  return response.json(await prisma.notification.findUnique({ where: { id: request.params.id } }));
+});
+// Sending a promotion to users is an operator action (admin screens / support), not a partner one:
+// partners only ingest promotions, and the scheduled job calls dispatchPromotion() directly.
+router.post("/promotions/:id/dispatch", requireAdmin, async (request, response) => {
   const parsed = z.object({ userIds: z.array(z.string()).optional() }).safeParse(request.body || {}); if (!parsed.success) return error(response, parsed.error.flatten());
   const users = parsed.data.userIds || (await prisma.deviceToken.findMany({ where: { isActive: true }, distinct: ["userId"], select: { userId: true } })).map((user) => user.userId);
   return response.json({ dispatched: await dispatchPromotion(request.params.id, users) });

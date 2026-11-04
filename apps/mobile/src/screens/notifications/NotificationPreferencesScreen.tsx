@@ -24,7 +24,8 @@ export default function NotificationPreferencesScreen(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const path = userId ? `/api/notifications/preferences/${encodeURIComponent(userId)}` : null;
+  // The caller's own preferences: identity comes from the access token, not from the URL.
+  const path = userId ? "/api/notifications/preferences" : null;
 
   const load = useCallback(async () => {
     if (!path) return;

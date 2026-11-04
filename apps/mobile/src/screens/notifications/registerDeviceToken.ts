@@ -12,7 +12,7 @@ export type RegistrationResult =
  * - expo-notifications is loaded lazily, so the app still runs where the native module is missing.
  * - Expo requires an EAS projectId for push tokens: EXPO_PUBLIC_EAS_PROJECT_ID (not a secret).
  */
-export async function registerDeviceToken(api: GatewayClient, userId: string): Promise<RegistrationResult> {
+export async function registerDeviceToken(api: GatewayClient): Promise<RegistrationResult> {
   if (Platform.OS !== "ios" && Platform.OS !== "android") return { status: "skipped", reason: "unsupported-platform" };
   const projectId = process.env.EXPO_PUBLIC_EAS_PROJECT_ID?.trim();
   if (!projectId) return { status: "skipped", reason: "no-project-id" };
@@ -31,7 +31,6 @@ export async function registerDeviceToken(api: GatewayClient, userId: string): P
 
     const { data: token } = await Notifications.getExpoPushTokenAsync({ projectId });
     await api.post("/api/notifications/device-tokens", {
-      userId,
       token,
       platform: Platform.OS === "ios" ? "IOS" : "ANDROID",
     });
