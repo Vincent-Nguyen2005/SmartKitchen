@@ -1,18 +1,12 @@
-import { timingSafeEqual } from "node:crypto";
-import { Router, type Request } from "express";
+import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { keywordsOverlap, normalizedKeywords } from "../lib/promotion";
 import { dispatchPromotion } from "../services/promotion-dispatch.service";
+import { createApiKeyGuard } from "../middleware/api-key";
 
 const router = Router();
-const apiKeyGuard = (request: Request, response: { status: (code: number) => { json: (body: unknown) => void } }, next: () => void): void => {
-  const expected = process.env.PARTNER_API_KEY || "";
-  const actual = request.header("x-api-key") || "";
-  const valid = expected.length > 0 && actual.length === expected.length && timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
-  if (!valid) { response.status(401).json({ error: "UNAUTHORIZED", message: "Invalid partner API key" }); return; }
-  next();
-};
+const apiKeyGuard = createApiKeyGuard("PARTNER_API_KEY", "Invalid partner API key");
 const error = (response: { status: (code: number) => { json: (body: unknown) => void } }, details: unknown): void => response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details });
 const page = (value: unknown, fallback: number, max: number): number => Math.min(Math.max(Number(value) || fallback, 1), max);
 const promotionSchema = z.object({ title: z.string().min(1), description: z.string().optional(), discountInfo: z.string().optional(), productKeywords: z.array(z.string()), imageUrl: z.string().url().optional(), startsAt: z.coerce.date(), endsAt: z.coerce.date(), isActive: z.boolean().optional() });

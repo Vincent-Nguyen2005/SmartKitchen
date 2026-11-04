@@ -129,7 +129,7 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"], interval: 5s, timeout: 5s, retries: 10 }
   notification-service:
     build: ./services/notification-service
-    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
+    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, INTERNAL_API_KEY: "${INTERNAL_API_KEY:-dev-only-internal-key-change-me}", PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
     ports: ["4010:4010"]
     depends_on: { notification-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -141,7 +141,26 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d admin_db"], interval: 5s, timeout: 5s, retries: 10 }
   admin-service:
     build: ./services/admin-service
-    environment: { PORT: 4011, DATABASE_URL: postgresql://postgres:postgres@admin-db:5432/admin_db }
+    environment:
+      PORT: 4011
+      DATABASE_URL: postgresql://postgres:postgres@admin-db:5432/admin_db
+      ENABLE_JOBS: "true"
+      HEALTH_POLL_INTERVAL_SECONDS: ${HEALTH_POLL_INTERVAL_SECONDS:-60}
+      HEALTH_LOG_RETENTION_DAYS: 14
+      AUTH_SERVICE_URL: http://auth-service:4001
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4003
+      NUTRITION_SERVICE_URL: http://nutrition-service:4004
+      MEAL_DIARY_SERVICE_URL: http://meal-diary-service:4005
+      RECIPE_SERVICE_URL: http://recipe-service:4006
+      MENU_SERVICE_URL: http://menu-service:4007
+      SHOPPING_LIST_SERVICE_URL: http://shopping-list-service:4008
+      PAYMENT_SERVICE_URL: http://payment-service:4009
+      NOTIFICATION_SERVICE_URL: http://notification-service:4010
+      ADMIN_SERVICE_URL: http://admin-service:4011
+      GATEWAY_URL: http://gateway:4000
+      INTERNAL_API_KEY: "${INTERNAL_API_KEY:-dev-only-internal-key-change-me}"
+      REPORT_RATE_LIMIT_PER_HOUR: ${REPORT_RATE_LIMIT_PER_HOUR:-5}
     ports: ["4011:4011"]
     depends_on: { admin-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:4011/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -166,6 +185,7 @@ services:
       CACHE_TTL_SECONDS: 30
       CACHE_MAX_ITEMS: 100
       TRUST_PROXY: "false"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
     ports: ["4000:4000"]
     depends_on:
       auth-service: { condition: service_healthy }

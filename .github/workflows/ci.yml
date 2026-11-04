@@ -23,6 +23,7 @@ jobs:
         include:
           - package: gateway
             prisma_schema: ''
+            run_tests: true
           - package: auth-service
             prisma_schema: services/auth-service/prisma/schema.prisma
           - package: family-service
@@ -43,8 +44,10 @@ jobs:
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: notification-service
             prisma_schema: services/notification-service/prisma/schema.prisma
+            run_tests: true
           - package: admin-service
             prisma_schema: services/admin-service/prisma/schema.prisma
+            run_tests: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -66,15 +69,31 @@ jobs:
         run: pnpm turbo run lint --filter="${{ matrix.package }}"
       - name: Build
         run: pnpm turbo run build --filter="${{ matrix.package }}"
+      - name: Test with coverage
+        if: matrix.run_tests == true
+        run: pnpm turbo run test:coverage --filter="${{ matrix.package }}"
+
+  infra-check:
+    name: CI / infra-check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Route table, env examples, CI matrix and Prisma rules
+        run: node scripts/check-infra.mjs
 
   ci-success:
     name: CI / ci-success
     if: always()
-    needs: [lint-build]
+    needs: [lint-build, infra-check]
     runs-on: ubuntu-latest
     steps:
       - name: Require matrix success
-        if: needs.lint-build.result != 'success'
+        if: needs.lint-build.result != 'success' || needs.infra-check.result != 'success'
         run: exit 1
       - name: CI passed
-        run: echo "All workspace lint and build checks passed."
+        run: echo "All workspace lint, build, test and infra checks passed."

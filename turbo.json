@@ -14,6 +14,14 @@
     },
     "prisma:generate": {
       "inputs": ["prisma/schema.prisma"]
+    },
+    "test": {
+      "dependsOn": ["prisma:generate"],
+      "outputs": []
+    },
+    "test:coverage": {
+      "dependsOn": ["prisma:generate"],
+      "outputs": ["coverage/**"]
     }
   }
 }

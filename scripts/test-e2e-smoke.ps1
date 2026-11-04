@@ -32,6 +32,17 @@ function Pass([string]$Label) { Write-Host "PASS $Label" -ForegroundColor Green;
 function Fail([string]$Label, $Response, [string]$Expected) { $detail = "$($Response.Method) $($Response.Url), status $($Response.Status), expected $Expected, body: $(Body-Snippet $Response)"; if ($Response.Error) { $detail += "; error: $($Response.Error)" }; Write-Host "FAIL $Label ($detail)" -ForegroundColor Red; $script:failed++ }
 function Expect-Status([string]$Label, $Response, [int]$Expected) { if ($Response.Status -eq $Expected) { Pass $Label } else { Fail $Label $Response $Expected } }
 function Expect-Header([string]$Label, $Response, [string]$Name, [string]$Expected) { if ((Header-Value $Response $Name) -eq $Expected) { Pass $Label } else { Fail $Label $Response "$Name=$Expected" } }
+# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min). Uses JWT_SECRET or the compose dev placeholder.
+function ConvertTo-Base64Url([byte[]]$Bytes) { [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
+function New-DevJwt([string]$Subject, [string]$Role) {
+    $secret = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { 'dev-only-insecure-jwt-secret-change-me' }
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $header = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
+    $payload = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes("{`"sub`":`"$Subject`",`"role`":`"$Role`",`"iat`":$now,`"exp`":$($now + 900)}"))
+    $hmac = New-Object System.Security.Cryptography.HMACSHA256 (,[Text.Encoding]::UTF8.GetBytes($secret))
+    $signature = ConvertTo-Base64Url ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes("$header.$payload")))
+    return "$header.$payload.$signature"
+}
 function Read-Json([string]$Label, $Response) { if ($Response.Status -eq 0 -or [string]::IsNullOrWhiteSpace($Response.Body)) { Fail $Label $Response 'JSON body'; return $null }; try { return ($Response.Body | ConvertFrom-Json) } catch { Fail $Label $Response 'valid JSON'; return $null } }
 
 foreach ($route in @(@('gateway health', "$BaseUrl/health", 200), @('aggregate health', "$BaseUrl/api/health", 200), @('auth routing', "$BaseUrl/api/auth/health", 200), @('families routing', "$BaseUrl/api/families/health", 200), @('inventory routing', "$BaseUrl/api/inventory/health", 200), @('nutrition routing', "$BaseUrl/api/nutrition/health", 200), @('meal-diary routing', "$BaseUrl/api/meal-diary/health", 200), @('recipes routing', "$BaseUrl/api/recipes/health", 200), @('menus routing', "$BaseUrl/api/menus/health", 200), @('shopping-list routing', "$BaseUrl/api/shopping-list/health", 200), @('payments routing', "$BaseUrl/api/payments/health", 200), @('notifications routing', "$BaseUrl/api/notifications/health", 200), @('admin routing', "$BaseUrl/api/admin/health", 200), @('unknown route', "$BaseUrl/api/unknown-route", 404))) { $response = Invoke-Api GET $route[1]; Expect-Status $route[0] $response $route[2] }
@@ -40,7 +51,9 @@ $cacheUrl = "$BaseUrl/api/notifications/promotions?active=true&e2e=$([DateTimeOf
 $cacheFirst = Invoke-Api GET $cacheUrl; $cacheSecond = Invoke-Api GET $cacheUrl
 Expect-Status 'cache public GET first response' $cacheFirst 200; Expect-Header 'cache MISS on first public GET' $cacheFirst 'x-cache' 'MISS'
 Expect-Status 'cache public GET second response' $cacheSecond 200; Expect-Header 'cache HIT on second public GET' $cacheSecond 'x-cache' 'HIT'
-Expect-Header 'authenticated GET bypasses cache' (Invoke-Api GET $cacheUrl @{ Authorization = 'Bearer e2e-test' }) 'x-cache' 'BYPASS'
+$e2eToken = New-DevJwt 'e2e-user-001' 'USER'
+Expect-Header 'authenticated GET bypasses cache' (Invoke-Api GET $cacheUrl @{ Authorization = "Bearer $e2eToken" }) 'x-cache' 'BYPASS'
+Expect-Status 'invalid Bearer token is rejected (401)' (Invoke-Api GET $cacheUrl @{ Authorization = 'Bearer e2e-invalid-token' }) 401
 Expect-Header 'POST bypasses cache' (Invoke-Api POST $cacheUrl $null '{}') 'x-cache' 'BYPASS'
 
 $partnerHeaders = @{ 'x-api-key' = $ApiKey }
