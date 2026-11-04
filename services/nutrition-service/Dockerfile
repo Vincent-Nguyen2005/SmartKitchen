@@ -14,10 +14,11 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 RUN apk add --no-cache openssl
 ENV NODE_ENV=production
-COPY --from=build /app/package*.json ./
+COPY --chown=node:node --from=build /app/package*.json ./
 RUN npm install --omit=dev
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules/.prisma/client-nutrition ./node_modules/.prisma/client-nutrition
-COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
+COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/node_modules/.prisma/client-nutrition ./node_modules/.prisma/client-nutrition
+COPY --chown=node:node --from=build /app/node_modules/@prisma ./node_modules/@prisma
+USER node
 EXPOSE 4004
 CMD ["npm", "start"]
