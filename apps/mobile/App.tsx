@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Archive, Bell, LogOut, Salad, Settings, ShoppingBasket, Users } from "lucide-react-native";
+import { AppIcon, colors, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
   View,
@@ -70,7 +71,7 @@ function AppContent(): React.JSX.Element {
   if (!session.ready) {
     return (
       <SafeAreaView style={styles.loading}>
-        <ActivityIndicator color="#2F6B5F" size="large" />
+        <ActivityIndicator color={colors.primary} size="large" />
       </SafeAreaView>
     );
   }
@@ -123,57 +124,57 @@ function AppContent(): React.JSX.Element {
   }
 
   return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerText}>SmartKitchen</Text>
-          <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button" onPress={() => { void session.signOut(); }} style={styles.signOutButton}>
-            <LogOut color="#FFFFFF" size={18} strokeWidth={2.2} />
-            <Text style={styles.signOutText}>Đăng xuất</Text>
-          </TouchableOpacity>
-        </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerText}>SmartKitchen</Text>
+        <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button" onPress={() => { void session.signOut(); }} style={styles.signOutButton}>
+          <AppIcon icon={LogOut} size="sm" color={colors.surface} />
+          <Text style={styles.signOutText}>Đăng xuất</Text>
+        </TouchableOpacity>
+      </View>
 
-        <View style={styles.tabBar}>
-          {tabs.filter(({ key }) => key !== "admin" || isAdmin).map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <TouchableOpacity
-                accessibilityLabel={label}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                key={key}
-                style={[styles.tab, active && styles.tabActive]}
-                onPress={() => setTab(key)}
-              >
-                <Icon color={active ? "#2F6B5F" : "#888888"} size={20} strokeWidth={active ? 2.4 : 2} />
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
+      <View style={styles.tabBar}>
+        {tabs.filter(({ key }) => key !== "admin" || isAdmin).map(({ key, label, icon: Icon }) => {
+          const active = tab === key;
+          return (
+            <TouchableOpacity
+              accessibilityLabel={label}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              key={key}
+              style={[styles.tab, active && styles.tabActive]}
+              onPress={() => setTab(key)}
+            >
+              <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
+              <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
 
-        {/* Nội dung hiển thị theo Tab */}
-        <View style={styles.content}>
-          {tab === "inventory" && <InventoryScreen />}
-          {tab === "shopping" && <ShoppingCartScreen />}
-          {tab === "family" && <FamilyScreenFlow />}
-          {tab === "notifications" && <NotificationsHome />}
-          {tab === "admin" && isAdmin && <AdminHome />}
-          {tab === "nutrition" &&
-            (userId ? (
-              <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-            ) : (
-              <View style={styles.center}>
-                <Text style={styles.noticeTitle}>
-                  Thiếu thông tin người dùng
-                </Text>
-                <Text style={styles.noticeMessage}>
-                  Không tìm thấy user ID. Hãy đặt EXPO_PUBLIC_USER_ID trong file
-                  .env để chạy thử cục bộ.
-                </Text>
-              </View>
-            ))}
-        </View>
-      </SafeAreaView>
+      {/* Nội dung hiển thị theo Tab */}
+      <View style={styles.content}>
+        {tab === "inventory" && <InventoryScreen onOpenFamily={() => setTab("family")} />}
+        {tab === "shopping" && <ShoppingCartScreen />}
+        {tab === "family" && <FamilyScreenFlow />}
+        {tab === "notifications" && <NotificationsHome />}
+        {tab === "admin" && isAdmin && <AdminHome />}
+        {tab === "nutrition" &&
+          (userId ? (
+            <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.noticeTitle}>
+                Thiếu thông tin người dùng
+              </Text>
+              <Text style={styles.noticeMessage}>
+                Không tìm thấy user ID. Hãy đặt EXPO_PUBLIC_USER_ID trong file
+                .env để chạy thử cục bộ.
+              </Text>
+            </View>
+          ))}
+      </View>
+    </SafeAreaView>
   );
 }
 
@@ -189,48 +190,49 @@ export default function App(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
-  container: { flex: 1, backgroundColor: "#fff" },
-  header: { padding: 12, backgroundColor: "#2F6B5F", alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  headerText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  signOutButton: { alignItems: "center", flexDirection: "row", gap: 6, padding: 8 },
-  signOutText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  container: { flex: 1, backgroundColor: colors.background },
+  header: { alignItems: "center", backgroundColor: colors.primary, flexDirection: "row", justifyContent: "space-between", padding: spacing.md },
+  headerText: { ...textStyles.subheading, color: colors.surface },
+  signOutButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  signOutText: { ...textStyles.labelSmall, color: colors.surface },
   tabBar: {
     flexDirection: "row",
     borderBottomWidth: 1,
-    borderBottomColor: "#eee",
+    borderBottomColor: colors.border,
   },
   tab: {
     alignItems: "center",
     flex: 1,
-    gap: 4,
-    paddingHorizontal: 4,
-    paddingVertical: 10,
-    backgroundColor: "#fafafa",
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: touchTarget + spacing.md,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.background,
   },
   tabActive: {
-    backgroundColor: "#fff",
+    backgroundColor: colors.surface,
     borderBottomWidth: 3,
-    borderBottomColor: "#2F6B5F",
+    borderBottomColor: colors.primary,
   },
-  tabText: { fontSize: 10, fontWeight: "600", color: "#888", textAlign: "center" },
-  tabTextActive: { color: "#2F6B5F" },
+  tabText: { ...textStyles.labelSmall, color: colors.muted, textAlign: "center" },
+  tabTextActive: { color: colors.primary },
   content: { flex: 1 },
-  restoreError: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#F4F7F2" },
-  retryButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#2F6B5F", borderRadius: 12, marginTop: 20, paddingHorizontal: 24, paddingVertical: 14 },
-  retryText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  restoreError: { backgroundColor: colors.background, flex: 1, justifyContent: "center", padding: spacing.xl },
+  retryButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: colors.primary, borderRadius: 12, justifyContent: "center", marginTop: spacing.lg, minHeight: touchTarget, paddingHorizontal: spacing.xl },
+  retryText: { ...textStyles.label, color: colors.surface },
 
   // Styles cho phần thông báo thiếu user của Hùng
   center: {
     flex: 1,
     justifyContent: "center",
-    padding: 24,
-    backgroundColor: "#F4F7F2",
+    padding: spacing.xl,
+    backgroundColor: colors.background,
   },
-  noticeTitle: { color: "#182A24", fontSize: 22, fontWeight: "700" },
+  noticeTitle: { ...textStyles.heading, color: colors.text },
   noticeMessage: {
-    color: "#65746C",
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 10,
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.sm,
   },
 });

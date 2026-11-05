@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client-inventory"
+  provider      = "prisma-client-js"
+  output        = "../node_modules/.prisma/client-inventory"
   binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
@@ -63,8 +63,8 @@ model FoodItem {
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
 
-  category        Category?       @relation(fields: [categoryId], references: [id])
-  logs            InventoryLog[]
+  category Category?      @relation(fields: [categoryId], references: [id])
+  logs     InventoryLog[]
 
   @@index([familyId])
   @@index([expiryDate])
@@ -72,17 +72,17 @@ model FoodItem {
 }
 
 model InventoryLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  itemId     String   @db.Uuid
-  action     String
-  oldValue   Json?
-  newValue   Json?
-  note       String?
-  createdBy  String?  @db.Uuid
-  externalRef String? @unique @db.Uuid
-  createdAt  DateTime @default(now())
+  id          String   @id @default(uuid()) @db.Uuid
+  itemId      String   @db.Uuid
+  action      String
+  oldValue    Json?
+  newValue    Json?
+  note        String?
+  createdBy   String?  @db.Uuid
+  externalRef String?  @unique @db.Uuid
+  createdAt   DateTime @default(now())
 
-  item       FoodItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  item FoodItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
 }

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, Plus, RefreshCw } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { useSession } from "../../services/session";
 import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi } from "./shoppingApi";
 
@@ -254,7 +255,7 @@ export default function ShoppingCartScreen(): React.JSX.Element {
             onPress={() => confirmPurchase(item)}
             style={[styles.confirmButton, busyItemId === item.id && styles.disabled]}
           >
-            {busyItemId === item.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <View style={styles.inlineAction}><Check color="#FFFFFF" size={14} /><Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text></View>}
+            {busyItemId === item.id ? <ActivityIndicator size="small" color={colors.surface} /> : <View style={styles.inlineAction}><AppIcon icon={Check} size="sm" color={colors.surface} /><Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text></View>}
           </Pressable>
         )}
         {!item.isPurchased && (
@@ -272,22 +273,22 @@ export default function ShoppingCartScreen(): React.JSX.Element {
   };
 
   if (!ready || loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color="#215B43" /><Text style={styles.helper}>Đang tải danh sách...</Text></View>;
+    return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.helper}>Đang tải danh sách...</Text></View>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={[styles.header, { paddingHorizontal: isCompact ? 14 : isWide ? 32 : 20 }, isWide && styles.wideContent]}>
+      <View style={[styles.header, { paddingHorizontal: isCompact ? spacing.md : isWide ? spacing.xl : spacing.xl }, isWide && styles.wideContent]}>
         <View style={styles.headerTitle}>
           <Text style={styles.eyebrow}>SMARTKITCHEN / SHOPPING</Text>
           <Text style={styles.title}>Đi chợ</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách đi chợ" onPress={() => void fetchData(true)} style={styles.refreshButton}>
-          <View style={styles.inlineAction}><RefreshCw color="#215B43" size={14} /><Text style={styles.refreshText}>Làm mới</Text></View>
+          <View style={styles.inlineAction}><AppIcon icon={RefreshCw} size="sm" color={colors.primary} /><Text style={styles.refreshText}>Làm mới</Text></View>
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? 12 : 16 }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? spacing.md : spacing.lg }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
         {!family ? (
           <View style={styles.emptyBox}><Text style={styles.emptyText}>Tạo hoặc tham gia gia đình để dùng danh sách đi chợ.</Text></View>
         ) : (
@@ -306,11 +307,11 @@ export default function ShoppingCartScreen(): React.JSX.Element {
                 </ScrollView>
               </View>
               <Pressable accessibilityRole="button" disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
-                {saving ? <ActivityIndicator color="#FFFFFF" /> : <View style={styles.inlineAction}><Plus color="#FFFFFF" size={16} /><Text style={styles.addButtonText}>Lưu vào danh sách</Text></View>}
+                {saving ? <ActivityIndicator color={colors.surface} /> : <View style={styles.inlineAction}><AppIcon icon={Plus} size="sm" color={colors.surface} /><Text style={styles.addButtonText}>Lưu vào danh sách</Text></View>}
               </Pressable>
               <Text style={styles.helper}>Món chỉ nằm trong danh sách. Kho chỉ được cập nhật sau khi bạn xác nhận đã mua.</Text>
               <Pressable accessibilityRole="button" accessibilityState={{ busy: generating, disabled: generating }} disabled={generating} onPress={() => void generateFromMenu()} style={[styles.generateButton, generating && styles.disabled]}>
-                {generating ? <ActivityIndicator color="#215B43" /> : <Text style={styles.generateButtonText}>Tạo danh sách từ thực đơn hiện tại</Text>}
+                {generating ? <ActivityIndicator color={colors.primary} /> : <Text style={styles.generateButtonText}>Tạo danh sách từ thực đơn hiện tại</Text>}
               </Pressable>
             </View>
 
@@ -349,13 +350,13 @@ export default function ShoppingCartScreen(): React.JSX.Element {
       <Modal animationType="slide" onRequestClose={() => { if (!busyItemId) setEditingItem(null); }} transparent visible={editingItem !== null}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.sectionTitle}>Sửa {editingItem?.name}</Text>
+            <Text style={styles.modalTitle}>Sửa {editingItem?.name}</Text>
             <Text style={styles.helper}>Đơn vị: {editingItem ? unitLabels[editingItem.unit] : ""}</Text>
             <TextInput accessibilityLabel="Số lượng cần mua" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.input} />
             <TextInput accessibilityLabel="Ghi chú món cần mua" value={editNote} onChangeText={setEditNote} placeholder="Ghi chú (không bắt buộc)" style={styles.input} />
             <View style={styles.modalActions}>
               <Pressable accessibilityRole="button" disabled={busyItemId !== null} onPress={() => setEditingItem(null)} style={styles.cancelButton}><Text style={styles.retryText}>Hủy</Text></Pressable>
-              <Pressable accessibilityRole="button" disabled={busyItemId !== null} onPress={() => void saveEditedItem()} style={[styles.addButton, busyItemId !== null && styles.disabled]}>{busyItemId === editingItem?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.addButtonText}>Lưu thay đổi</Text>}</Pressable>
+              <Pressable accessibilityRole="button" disabled={busyItemId !== null} onPress={() => void saveEditedItem()} style={[styles.addButton, busyItemId !== null && styles.disabled]}>{busyItemId === editingItem?.id ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.addButtonText}>Lưu thay đổi</Text>}</Pressable>
             </View>
           </View>
         </View>
@@ -365,67 +366,68 @@ export default function ShoppingCartScreen(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: "#F3F6F0", flex: 1 },
+  container: { backgroundColor: colors.background, flex: 1 },
   wideContent: { alignSelf: "center", maxWidth: 900, width: "100%" },
-  header: { alignItems: "center", alignSelf: "center", backgroundColor: "#FFFFFF", borderBottomColor: "#E5EBE3", borderBottomWidth: 1, flexDirection: "row", gap: 12, justifyContent: "space-between", paddingVertical: 15, width: "100%" },
+  header: { alignItems: "center", alignSelf: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.lg, width: "100%" },
   headerTitle: { flex: 1, minWidth: 0 },
-  eyebrow: { color: "#547364", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
-  title: { color: "#17271F", fontSize: 28, fontWeight: "800", marginTop: 4 },
-  refreshButton: { backgroundColor: "#E9F1EB", borderRadius: 7, paddingHorizontal: 12, paddingVertical: 9 },
-  inlineAction: { alignItems: "center", flexDirection: "row", gap: 6, justifyContent: "center" },
-  refreshText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
-  content: { alignSelf: "center", gap: 14, paddingBottom: 30, width: "100%" },
-  addCard: { backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 11, borderWidth: 1, gap: 10, padding: 15 },
-  sectionTitle: { color: "#17271F", fontSize: 15, fontWeight: "800" },
-  input: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 44, paddingHorizontal: 11, paddingVertical: 9 },
-  quantityRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+  eyebrow: { color: colors.primary, ...typography.caption, letterSpacing: 1.2 },
+  title: { ...textStyles.pageTitle, color: colors.text, marginTop: spacing.xs },
+  refreshButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 7, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  inlineAction: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "center" },
+  refreshText: { color: colors.primary, ...typography.labelSmall },
+  content: { alignSelf: "center", gap: spacing.lg, paddingBottom: spacing.xl, width: "100%" },
+  addCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 11, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
+  sectionTitle: { ...textStyles.subheading, color: colors.text },
+  modalTitle: { ...textStyles.heading, color: colors.text },
+  input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  quantityRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   unitPicker: { flex: 1, minWidth: 0 },
   quantityInput: { minWidth: 68, width: 76 },
-  unitChoices: { alignItems: "center", gap: 6 },
-  unitChip: { backgroundColor: "#EEF2ED", borderRadius: 16, justifyContent: "center", minHeight: 40, paddingHorizontal: 10 },
-  unitChipSelected: { backgroundColor: "#D4E7D8" },
-  unitChipText: { color: "#53655A", fontSize: 11, fontWeight: "600" },
-  unitChipTextSelected: { color: "#215B43", fontWeight: "800" },
-  addButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 43, paddingHorizontal: 12 },
-  addButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
-  helper: { color: "#64736A", fontSize: 11, lineHeight: 17 },
-  suggestionBox: { backgroundColor: "#FFF9E6", borderColor: "#F3C875", borderRadius: 11, borderWidth: 1, gap: 9, padding: 14 },
-  suggestionList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  suggestionChip: { backgroundColor: "#FFFFFF", borderColor: "#F3C875", borderRadius: 16, borderWidth: 1, justifyContent: "center", minHeight: 40, paddingHorizontal: 10, paddingVertical: 7 },
-  suggestionText: { color: "#6C5730", fontSize: 11, fontWeight: "600" },
-  suggestionMeta: { color: "#756744", fontSize: 10, marginTop: 4 },
-  listContainer: { gap: 8 },
-  listHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8 },
-  listTitle: { color: "#17271F", fontSize: 18, fontWeight: "800", marginBottom: 1 },
-  completeButton: { alignItems: "center", borderColor: "#215B43", borderRadius: 6, borderWidth: 1, justifyContent: "center", minHeight: 40, paddingHorizontal: 11 },
-  completeButtonText: { color: "#215B43", fontSize: 11, fontWeight: "800" },
-  itemCard: { alignItems: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#E5EBE3", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 10, padding: 13 },
-  itemActions: { alignItems: "center", gap: 2, justifyContent: "center" },
-  smallAction: { alignItems: "center", justifyContent: "center", minHeight: 36, minWidth: 42, paddingHorizontal: 4 },
-  smallActionText: { color: "#215B43", fontSize: 10, fontWeight: "800" },
-  deleteActionText: { color: "#A75132", fontSize: 10, fontWeight: "800" },
-  itemInfo: { flex: 1, gap: 4, minWidth: 0 },
-  itemName: { color: "#26372D", fontSize: 15, fontWeight: "700" },
-  itemMeta: { color: "#66736A", flexShrink: 1, fontSize: 11 },
-  statusText: { flexShrink: 1, fontSize: 10, fontWeight: "700", marginTop: 2 },
-  statusSynced: { color: "#215B43" },
-  statusNeedsSync: { color: "#A75132" },
-  statusReference: { color: "#68766D" },
-  confirmButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, minWidth: 74, paddingHorizontal: 9 },
-  confirmButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+  unitChoices: { alignItems: "center", gap: spacing.sm },
+  unitChip: { backgroundColor: colors.primarySoft, borderRadius: 16, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  unitChipSelected: { backgroundColor: colors.primarySoft },
+  unitChipText: { color: colors.muted, ...typography.labelSmall },
+  unitChipTextSelected: { color: colors.primary },
+  addButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  addButtonText: { color: colors.surface, ...typography.label },
+  helper: { color: colors.muted, ...typography.bodySmall },
+  suggestionBox: { backgroundColor: colors.warningSoft, borderColor: colors.warning, borderRadius: 11, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
+  suggestionList: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  suggestionChip: { backgroundColor: colors.surface, borderColor: colors.warning, borderRadius: 16, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  suggestionText: { color: colors.warning, ...typography.labelSmall },
+  suggestionMeta: { color: colors.muted, ...typography.caption, marginTop: spacing.xs },
+  listContainer: { gap: spacing.sm },
+  listHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
+  listTitle: { color: colors.text, ...typography.subheading, marginBottom: spacing.xs },
+  completeButton: { alignItems: "center", borderColor: colors.primary, borderRadius: 6, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  completeButtonText: { color: colors.primary, ...typography.labelSmall },
+  itemCard: { alignItems: "flex-start", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: spacing.md, padding: spacing.lg },
+  itemActions: { alignItems: "center", gap: spacing.xs, justifyContent: "center" },
+  smallAction: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget, paddingHorizontal: spacing.xs },
+  smallActionText: { color: colors.primary, ...typography.labelSmall },
+  deleteActionText: { color: colors.danger, ...typography.labelSmall },
+  itemInfo: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  itemName: { color: colors.text, ...typography.label },
+  itemMeta: { color: colors.muted, flexShrink: 1, ...typography.bodySmall },
+  statusText: { flexShrink: 1, ...typography.caption, marginTop: spacing.xs },
+  statusSynced: { color: colors.primary },
+  statusNeedsSync: { color: colors.danger },
+  statusReference: { color: colors.muted },
+  confirmButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, minWidth: 74, paddingHorizontal: spacing.md },
+  confirmButtonText: { color: colors.surface, ...typography.labelSmall },
   disabled: { opacity: 0.6 },
-  emptyBox: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 9, padding: 20 },
-  emptyText: { color: "#64736A", fontSize: 13, lineHeight: 19, textAlign: "center" },
-  errorBox: { backgroundColor: "#FFF1EF", borderRadius: 8, gap: 7, padding: 12 },
-  errorText: { color: "#A75132", fontSize: 12, lineHeight: 17 },
-  retryButton: { alignSelf: "flex-start", minHeight: 40, justifyContent: "center", paddingHorizontal: 4 },
-  retryText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
-  notice: { backgroundColor: "#E9F1EB", borderRadius: 8, color: "#215B43", fontSize: 12, lineHeight: 18, padding: 11 },
-  generateButton: { alignItems: "center", borderColor: "#215B43", borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: 10 },
-  generateButtonText: { color: "#215B43", fontSize: 12, fontWeight: "800", textAlign: "center" },
-  modalBackdrop: { backgroundColor: "rgba(0,0,0,0.42)", flex: 1, justifyContent: "center", padding: 16 },
-  modalCard: { alignSelf: "center", backgroundColor: "#FFFFFF", borderRadius: 12, gap: 12, maxWidth: 480, padding: 16, width: "100%" },
-  modalActions: { flexDirection: "row", gap: 8, justifyContent: "flex-end" },
-  cancelButton: { alignItems: "center", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: 14 },
-  center: { alignItems: "center", backgroundColor: "#F3F6F0", flex: 1, gap: 12, justifyContent: "center", padding: 32 },
+  emptyBox: { alignItems: "center", backgroundColor: colors.surface, borderRadius: 9, padding: spacing.xl },
+  emptyText: { color: colors.muted, ...typography.body, textAlign: "center" },
+  errorBox: { backgroundColor: colors.dangerSoft, borderRadius: 8, gap: spacing.sm, padding: spacing.md },
+  errorText: { color: colors.danger, ...typography.bodySmall },
+  retryButton: { alignSelf: "flex-start", minHeight: touchTarget, justifyContent: "center", paddingHorizontal: spacing.xs },
+  retryText: { color: colors.primary, ...typography.labelSmall },
+  notice: { backgroundColor: colors.primarySoft, borderRadius: 8, color: colors.primary, ...typography.bodySmall, padding: spacing.md },
+  generateButton: { alignItems: "center", borderColor: colors.primary, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
+  generateButtonText: { color: colors.primary, ...typography.labelSmall, textAlign: "center" },
+  modalBackdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "center", padding: spacing.lg },
+  modalCard: { alignSelf: "center", backgroundColor: colors.surface, borderRadius: 12, gap: spacing.md, maxWidth: 480, padding: spacing.lg, width: "100%" },
+  modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
+  cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
+  center: { alignItems: "center", backgroundColor: colors.background, flex: 1, gap: spacing.md, justifyContent: "center", padding: spacing.xl },
 });
