@@ -11,7 +11,8 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 
 | File | What it does | API (through the gateway) |
 |---|---|---|
-| `AdminHome.tsx` | Báo cáo / Hệ thống / Nguyên liệu / Trọng số | — |
+| `AdminHome.tsx` | Tổng quan (default) / Báo cáo / Hệ thống / Nguyên liệu / Trọng số | — |
+| `DashboardScreen.tsx` | Overview for 24h or 7d: KPI cards (overall status, services up / slow / down, open reports, reports resolved in the window), bar charts of reports by status and by category, line charts of response time (average + p95) and uptime over time with a service picker, horizontal bar chart of uptime per service (worst first). Each card has its own loading / empty / error state; pull-to-refresh | `GET /api/admin/health-monitor/status`, `/summary?window=`, `/timeseries?service=&window=`, `GET /api/admin/reports/stats?window=` |
 | `ReportsScreen.tsx` | Account reports: status + category filters, paging, detail (side panel on tablets, full-screen on phones), allowed transitions only, note required to resolve/reject, 409 conflict message | `GET /api/admin/reports`, `PATCH /api/admin/reports/:id/status` |
 | `SystemHealthScreen.tsx` | Overall + per-service status (colour + text), uptime / avg / p95 for 24h or 7d, "Kiểm tra ngay", pull-to-refresh | `GET /api/admin/health-monitor/status`, `/summary`, `POST /check-now` |
 | `IngredientsScreen.tsx` | Master ingredients: debounced search, active/hidden filter, create/edit form, soft delete (switch), duplicate-name message | `/api/admin/ingredients` |
@@ -19,7 +20,9 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 
 All screens use the shared client and UI from `../notifications/` (`gatewayApi.ts`, `useGatewayApi.ts`, `ui.tsx`) and the tokens/icons from `../../theme/`: loading / empty / error-with-retry states with an icon, accessible labels, `useWindowDimensions` layouts (1 column on phones, 2–3 on tablets/landscape).
 
-Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: Flag (Báo cáo), Activity (Hệ thống), Carrot (Nguyên liệu), SlidersHorizontal (Trọng số). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
+Charts (`charts/`): `BarChart` (vertical, or horizontal for many / long labels) and `LineChart` (several series, `null` values leave a gap, legend below), drawn with `react-native-svg` and the `chartColors` tokens, without a chart library. They measure their width, so they fill one column on phones and half the width on tablets. The SVG is hidden from screen readers; each chart has an `accessibilityLabel` that summarises its data (e.g. "Báo cáo theo trạng thái: Mới 2, Đang xem xét 1, …").
+
+Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: LayoutDashboard (Tổng quan), Flag (Báo cáo), Activity (Hệ thống), Carrot (Nguyên liệu), SlidersHorizontal (Trọng số). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
 
 ## Manual test steps
 
@@ -34,3 +37,6 @@ Preparation: stack running, signed in as a user whose role is `ADMIN` in auth_db
 7. **Weights:** change a value and save → the version increases. Edit the same weight from another device first → saving here shows the conflict message and reloads the new value. A value of `1.5` shows the range error.
 8. **Responsive:** on a tablet (width ≥ 720 and height ≥ 500) reports show list + detail side by side; on a phone, also in landscape, the detail opens full screen with a back button. Health, ingredient and weight cards use 2–3 columns on wide screens and a lone last card keeps the column width. Native builds are portrait-locked by `app.config.ts`, so check landscape on web or a tablet.
 9. **Errors:** stop admin-service → each screen shows the error state with "Thử lại".
+10. **Dashboard:** open "Quản trị" → "Tổng quan" is shown first. KPI numbers match the other tabs (open reports = "Mới" in Báo cáo; services match Hệ thống). Switch 24 giờ / 7 ngày → "Đã xử lý (…)" and all charts reload. Pick a service in "Theo thời gian" → both line charts show only that service; gaps appear where no sample was taken. Resolve a report → pull to refresh → "Đã xử lý" and the status chart update.
+11. **Dashboard states:** a fresh stack (no samples yet) shows the empty state in the time and per-service charts; stop admin-service → the dashboard shows one error with "Thử lại"; with admin-service running but a slow / failing request, only that card shows its error.
+12. **Dashboard accessibility:** with TalkBack / VoiceOver each chart is read as one summary sentence; KPI cards read label, value and detail.

@@ -21,6 +21,17 @@ export const colors = {
   overlay: "rgba(0, 0, 0, 0.3)",
 } as const;
 
+/**
+ * Chart palette. Series colours are distinguishable for common colour-vision deficiencies when paired
+ * with the labels/legends the charts always show; status colours reuse `colors`.
+ */
+export const chartColors = {
+  series: ["#2F6B5F", "#B54708", "#5B4BB7", "#1F6FB2", "#475467"],
+  grid: "#E4E9E5",
+  axis: "#65746C",
+  label: "#182A24",
+} as const;
+
 /** 4-point spacing scale. */
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 
