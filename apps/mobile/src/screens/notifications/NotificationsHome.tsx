@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { View } from "react-native";
+import { Bell, Settings, Tag } from "lucide-react-native";
 import NotificationListScreen from "./NotificationListScreen";
 import NotificationPreferencesScreen from "./NotificationPreferencesScreen";
 import PromotionsScreen from "./PromotionsScreen";
@@ -19,9 +20,9 @@ export default function NotificationsHome(): React.JSX.Element {
           value={section}
           onChange={setSection}
           options={[
-            { value: "inbox", label: "Thông báo" },
-            { value: "promotions", label: "Khuyến mãi" },
-            { value: "settings", label: "Cài đặt" },
+            { value: "inbox", label: "Thông báo", icon: Bell },
+            { value: "promotions", label: "Khuyến mãi", icon: Tag },
+            { value: "settings", label: "Cài đặt", icon: Settings },
           ]}
         />
       </View>

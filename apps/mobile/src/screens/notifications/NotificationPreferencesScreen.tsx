@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ScrollView, Switch, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { BellRing, CircleCheck, Moon, Save, Tag, X } from "lucide-react-native";
 import { errorMessage } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
+import { AppIcon, type LucideIcon } from "../../theme";
 import { Button, colors, Field, ScreenState, styles, useLayout } from "./ui";
 
 type Preferences = {
@@ -72,11 +74,12 @@ export default function NotificationPreferencesScreen(): React.JSX.Element {
 
   if (loading || !prefs) return <ScreenState loading={loading} error={error} onRetry={() => void load()} />;
 
-  const toggle = (key: "pushEnabled" | "promotionEnabled", label: string, hint: string) => (
-    <View style={[styles.card, styles.row, { justifyContent: "space-between" }]}>
-      <View style={{ flex: 1, paddingRight: 12 }}>
-        <Text style={[styles.title, { fontSize: 16 }]}>{label}</Text>
-        <Text style={{ color: colors.muted, marginTop: 2 }}>{hint}</Text>
+  const toggle = (key: "pushEnabled" | "promotionEnabled", icon: LucideIcon, label: string, hint: string) => (
+    <View style={[styles.card, styles.spaceBetween]}>
+      <View style={local.iconWrap}><AppIcon icon={icon} color={colors.primary} /></View>
+      <View style={local.toggleText}>
+        <Text style={styles.subtitle}>{label}</Text>
+        <Text style={styles.muted}>{hint}</Text>
       </View>
       <Switch
         accessibilityLabel={label}
@@ -88,22 +91,38 @@ export default function NotificationPreferencesScreen(): React.JSX.Element {
   );
 
   return (
-    <ScrollView contentContainerStyle={{ alignSelf: "center", gap: 12, maxWidth: isWide ? 640 : undefined, padding: gutter, width: "100%" }}>
-      {toggle("pushEnabled", "Thông báo đẩy", "Nhận thông báo trên điện thoại.")}
-      {toggle("promotionEnabled", "Khuyến mãi", "Nhận khuyến mãi phù hợp với kho thực phẩm của bạn.")}
-      <View style={styles.card}>
-        <Text style={[styles.title, { fontSize: 16, marginBottom: 8 }]}>Giờ yên tĩnh</Text>
-        <Text style={{ color: colors.muted, marginBottom: 8 }}>Không gửi khuyến mãi trong khoảng này. Có thể qua nửa đêm, ví dụ 22:00 – 06:00.</Text>
-        <View style={[styles.wrapRow]}>
-          <View style={{ flexGrow: 1, minWidth: 140 }}><Field label="Bắt đầu" placeholder="22:00" value={start} onChangeText={setStart} keyboardType="numbers-and-punctuation" maxLength={5} /></View>
-          <View style={{ flexGrow: 1, minWidth: 140 }}><Field label="Kết thúc" placeholder="06:00" value={end} onChangeText={setEnd} keyboardType="numbers-and-punctuation" maxLength={5} /></View>
+    <ScrollView contentContainerStyle={[local.content, { maxWidth: isWide ? 640 : undefined, padding: gutter }]}>
+      {toggle("pushEnabled", BellRing, "Thông báo đẩy", "Nhận thông báo trên điện thoại.")}
+      {toggle("promotionEnabled", Tag, "Khuyến mãi", "Nhận khuyến mãi phù hợp với kho thực phẩm của bạn.")}
+      <View style={[styles.card, local.quiet]}>
+        <View style={styles.row}>
+          <View style={local.iconWrap}><AppIcon icon={Moon} color={colors.primary} /></View>
+          <Text style={[styles.subtitle, local.toggleText]}>Giờ yên tĩnh</Text>
+        </View>
+        <Text style={styles.muted}>Không gửi khuyến mãi trong khoảng này. Có thể qua nửa đêm, ví dụ 22:00 – 06:00.</Text>
+        <View style={styles.wrapRow}>
+          <View style={local.timeField}><Field label="Bắt đầu" placeholder="22:00" value={start} onChangeText={setStart} keyboardType="numbers-and-punctuation" maxLength={5} /></View>
+          <View style={local.timeField}><Field label="Kết thúc" placeholder="06:00" value={end} onChangeText={setEnd} keyboardType="numbers-and-punctuation" maxLength={5} /></View>
         </View>
         {quietError ? <Text style={styles.errorText} accessibilityLiveRegion="polite">{quietError}</Text> : null}
-        {(start || end) ? <Button variant="secondary" label="Tắt giờ yên tĩnh" onPress={() => { setStart(""); setEnd(""); }} style={{ marginTop: 8 }} /> : null}
+        {(start || end) ? <Button variant="secondary" icon={X} label="Tắt giờ yên tĩnh" onPress={() => { setStart(""); setEnd(""); }} /> : null}
       </View>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      {notice ? <Text style={{ color: colors.success }} accessibilityLiveRegion="polite">{notice}</Text> : null}
-      <Button label="Lưu cài đặt" onPress={() => void save()} busy={saving} disabled={Boolean(quietError)} />
+      {notice ? (
+        <View style={styles.row} accessibilityLiveRegion="polite">
+          <AppIcon icon={CircleCheck} size="sm" color={colors.success} />
+          <Text style={styles.success}>{notice}</Text>
+        </View>
+      ) : null}
+      <Button label="Lưu cài đặt" icon={Save} onPress={() => void save()} busy={saving} disabled={Boolean(quietError)} />
     </ScrollView>
   );
 }
+
+const local = StyleSheet.create({
+  content: { alignSelf: "center", gap: 12, width: "100%" },
+  iconWrap: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 999, height: 40, justifyContent: "center", width: 40 },
+  toggleText: { flex: 1, gap: 2, paddingRight: 4 },
+  quiet: { gap: 8 },
+  timeField: { flexBasis: 140, flexGrow: 1 },
+});
