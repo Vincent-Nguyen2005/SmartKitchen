@@ -3,13 +3,37 @@ set -u
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 BASE_URL="${BASE_URL:-http://localhost:4000}"; NOTIFICATION_URL="${NOTIFICATION_URL:-http://localhost:4010}"; ADMIN_URL="${ADMIN_URL:-http://localhost:4011}"; API_KEY="${PARTNER_API_KEY:-replace-with-partner-key}"
 passed=0; failed=0; skipped=0; body_file=/tmp/smartkitchen-e2e-body; headers_file=/tmp/smartkitchen-e2e-headers
+
+# JWT_SECRET signs the dev tokens below: the environment wins, otherwise the root .env is read.
+# Only the JWT_SECRET line is parsed and the value is never printed or exported. No placeholder fallback.
+read_jwt_secret(){
+  local file="$1" line value
+  [[ -f "$file" && -r "$file" ]] || return 1
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%$'\r'}"
+    [[ "$line" =~ ^[[:space:]]*(export[[:space:]]+)?JWT_SECRET[[:space:]]*=(.*)$ ]] || continue
+    value="${BASH_REMATCH[2]}"
+    value="${value#"${value%%[![:space:]]*}"}"; value="${value%"${value##*[![:space:]]}"}"
+    if [[ "$value" =~ ^\"(.*)\"$ || "$value" =~ ^\'(.*)\'$ ]]; then value="${BASH_REMATCH[1]}"
+    else value="${value%%[[:space:]]#*}"; fi
+    [[ -n "$value" ]] && { printf '%s' "$value"; return 0; }
+  done < "$file"
+  return 1
+}
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+jwt_secret="${JWT_SECRET:-}"
+[[ -n "$jwt_secret" ]] || jwt_secret="$(read_jwt_secret "$script_dir/../.env" || true)"
+if [[ -z "$jwt_secret" ]]; then
+  printf "${RED}FAIL${NC} %s\n" 'JWT_SECRET is not set: export it or copy .env.example to .env and set JWT_SECRET (the same value the stack runs with).' >&2
+  exit 1
+fi
 pass_case(){ printf "${GREEN}PASS${NC} %s\n" "$1"; passed=$((passed+1)); }
 fail_case(){ printf "${RED}FAIL${NC} %s (method=%s url=%s status=%s expected=%s body=%s)\n" "$1" "$2" "$3" "$4" "$5" "$(head -c 300 "$body_file" 2>/dev/null)"; failed=$((failed+1)); }
 call(){ local method="$1" url="$2"; shift 2; curl -sS -D "$headers_file" -o "$body_file" -w '%{http_code}' --max-time 10 -X "$method" "$@" "$url" 2>/tmp/smartkitchen-e2e-curl-error || true; }
 status_header(){ tr -d '\r' < "$headers_file" | awk -F': ' -v key="$1" 'tolower($1)==tolower(key){print $2}' | tail -n 1; }
-# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min). Uses JWT_SECRET or the compose dev placeholder.
+# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min), signed with $jwt_secret.
 b64url(){ openssl base64 -A | tr '+/' '-_' | tr -d '='; }
-dev_jwt(){ local secret="${JWT_SECRET:-dev-only-insecure-jwt-secret-change-me}" now; now=$(date +%s); local h p s; h=$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url); p=$(printf '{"sub":"%s","role":"%s","iat":%s,"exp":%s}' "$1" "$2" "$now" "$((now+900))" | b64url); s=$(printf '%s' "$h.$p" | openssl dgst -sha256 -hmac "$secret" -binary | b64url); printf '%s.%s.%s' "$h" "$p" "$s"; }
+dev_jwt(){ local secret="$jwt_secret" now; now=$(date +%s); local h p s; h=$(printf '%s' '{"alg":"HS256","typ":"JWT"}' | b64url); p=$(printf '{"sub":"%s","role":"%s","iat":%s,"exp":%s}' "$1" "$2" "$now" "$((now+900))" | b64url); s=$(printf '%s' "$h.$p" | openssl dgst -sha256 -hmac "$secret" -binary | b64url); printf '%s.%s.%s' "$h" "$p" "$s"; }
 expect_status(){ local label="$1" method="$2" url="$3" expected="$4"; shift 4; local actual; actual=$(call "$method" "$url" "$@"); [[ "$actual" == "$expected" ]] && pass_case "$label" || fail_case "$label" "$method" "$url" "$actual" "$expected"; }
 expect_header(){ local label="$1" method="$2" url="$3" expected="$4"; shift 4; local actual; actual=$(call "$method" "$url" "$@"); [[ "$(status_header x-cache)" == "$expected" ]] && pass_case "$label" || fail_case "$label" "$method" "$url" "$actual" "x-cache=$expected"; }
 for route in "gateway health|GET|$BASE_URL/health|200" "aggregate health|GET|$BASE_URL/api/health|200" "auth routing|GET|$BASE_URL/api/auth/health|200" "families routing|GET|$BASE_URL/api/families/health|200" "inventory routing|GET|$BASE_URL/api/inventory/health|200" "nutrition routing|GET|$BASE_URL/api/nutrition/health|200" "meal-diary routing|GET|$BASE_URL/api/meal-diary/health|200" "recipes routing|GET|$BASE_URL/api/recipes/health|200" "menus routing|GET|$BASE_URL/api/menus/health|200" "shopping-list routing|GET|$BASE_URL/api/shopping-list/health|200" "payments routing|GET|$BASE_URL/api/payments/health|200" "notifications routing|GET|$BASE_URL/api/notifications/health|200" "admin routing|GET|$BASE_URL/api/admin/health|200" "unknown route|GET|$BASE_URL/api/unknown-route|404"; do IFS='|' read -r label method url expected <<< "$route"; expect_status "$label" "$method" "$url" "$expected"; done

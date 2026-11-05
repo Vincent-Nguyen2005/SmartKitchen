@@ -5,6 +5,28 @@ $AdminUrl = if ($env:ADMIN_URL) { $env:ADMIN_URL } else { 'http://localhost:4011
 $ApiKey = if ($env:PARTNER_API_KEY) { $env:PARTNER_API_KEY } else { 'replace-with-partner-key' }
 $passed = 0; $failed = 0; $skipped = 0
 
+# JWT_SECRET signs the dev tokens below: the environment wins, otherwise the root .env is read.
+# Only the JWT_SECRET line is parsed and the value is never printed. No placeholder fallback.
+function Resolve-JwtSecret {
+    if ($env:JWT_SECRET) { return $env:JWT_SECRET }
+    $envFile = Join-Path (Split-Path -Parent $PSScriptRoot) '.env'
+    if (-not (Test-Path -LiteralPath $envFile -PathType Leaf)) { return $null }
+    try { $lines = Get-Content -LiteralPath $envFile -ErrorAction Stop } catch { return $null }
+    foreach ($line in $lines) {
+        if ($line -notmatch '^\s*(?:export\s+)?JWT_SECRET\s*=(.*)$') { continue }
+        $value = $Matches[1].Trim()
+        if ($value -match '^"(.*)"$' -or $value -match "^'(.*)'$") { $value = $Matches[1] }
+        else { $value = ($value -replace '\s+#.*$', '').Trim() }
+        if ($value) { return $value }
+    }
+    return $null
+}
+$JwtSecret = Resolve-JwtSecret
+if (-not $JwtSecret) {
+    Write-Host 'FAIL JWT_SECRET is not set: export it or copy .env.example to .env and set JWT_SECRET (the same value the stack runs with).' -ForegroundColor Red
+    exit 1
+}
+
 function Invoke-Api {
     param([string]$Method, [string]$Url, [hashtable]$Headers = $null, [string]$Body = $null)
     try {
@@ -32,10 +54,10 @@ function Pass([string]$Label) { Write-Host "PASS $Label" -ForegroundColor Green;
 function Fail([string]$Label, $Response, [string]$Expected) { $detail = "$($Response.Method) $($Response.Url), status $($Response.Status), expected $Expected, body: $(Body-Snippet $Response)"; if ($Response.Error) { $detail += "; error: $($Response.Error)" }; Write-Host "FAIL $Label ($detail)" -ForegroundColor Red; $script:failed++ }
 function Expect-Status([string]$Label, $Response, [int]$Expected) { if ($Response.Status -eq $Expected) { Pass $Label } else { Fail $Label $Response $Expected } }
 function Expect-Header([string]$Label, $Response, [string]$Name, [string]$Expected) { if ((Header-Value $Response $Name) -eq $Expected) { Pass $Label } else { Fail $Label $Response "$Name=$Expected" } }
-# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min). Uses JWT_SECRET or the compose dev placeholder.
+# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min), signed with $JwtSecret.
 function ConvertTo-Base64Url([byte[]]$Bytes) { [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
 function New-DevJwt([string]$Subject, [string]$Role) {
-    $secret = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { 'dev-only-insecure-jwt-secret-change-me' }
+    $secret = $JwtSecret
     $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $header = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
     $payload = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes("{`"sub`":`"$Subject`",`"role`":`"$Role`",`"iat`":$now,`"exp`":$($now + 900)}"))

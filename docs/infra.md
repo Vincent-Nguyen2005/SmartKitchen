@@ -70,7 +70,7 @@ Local database credentials are `postgres` / `postgres` (local only). Host ports 
    ```
    Compose refuses to start without `JWT_SECRET`. `.env` is git-ignored; never commit it.
 3. `docker compose -p smartkitchen up -d --build`
-4. Check: `pnpm test:health` (12 endpoints), `pnpm test:routing`, `pnpm test:e2e-smoke`. The smoke scripts read the same `JWT_SECRET` from the environment to sign a dev token.
+4. Check: `pnpm test:health` (12 endpoints), `pnpm test:routing`, `pnpm test:e2e-smoke`. The e2e smoke scripts sign a dev token with `JWT_SECRET`: from the environment if set, otherwise from the root `.env` (only that key is parsed, never printed). Without either they fail with "copy .env.example to .env and set JWT_SECRET". `pnpm test:prod-smoke` does not need `JWT_SECRET`.
 
 Notification and admin images run `prisma migrate deploy` on start. Seed admin data once: `pnpm --filter admin-service prisma:seed` with `DATABASE_URL` pointing at port 5411.
 
@@ -96,6 +96,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 | `503 DATABASE_UNAVAILABLE`, `P1001` | Database container down | `docker compose -p smartkitchen up -d <name>-db` |
 | `429 RATE_LIMITED` during tests | Gateway limiter (100/min, auth 20/min) | Wait `retryAfterSeconds`, or raise `RATE_LIMIT_MAX` locally |
 | `401 UNAUTHORIZED` from the gateway with a valid-looking token | Gateway and auth-service use different `JWT_SECRET` | Set the same value in `.env` and recreate both containers |
+| E2E smoke: authenticated checks fail with `401` | A `JWT_SECRET` in your shell (it wins over `.env`) differs from the one the stack runs with | Unset it (`Remove-Item Env:JWT_SECRET` / `unset JWT_SECRET`) so the script reads `.env`, or recreate the stack from `.env` |
 | `bash: not found` / WSL error when running `pnpm test:*:bash` from PowerShell | `bash` resolves to WSL, which is not installed | Run the `.sh` scripts from Git Bash, or use the PowerShell variants |
 | inventory / shopping-list containers `unhealthy` while `/health` works from the host | Their healthcheck calls `localhost`, which resolves to IPv6 `::1` in Alpine while the app listens on IPv4 | Owner fix (Khanh): use `127.0.0.1` in the healthcheck, or let the app listen on all interfaces. Pre-existing on main |
 | Metro: `Unable to resolve "invariant"` when bundling the mobile app | `metro.config.js` disabled hierarchical lookup under pnpm's isolated layout | Fixed in `fix/mobile-metro` (pending PR) |
