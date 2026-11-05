@@ -2,7 +2,7 @@ const AUTH_BASE_URL = process.env.EXPO_PUBLIC_AUTH_API_URL ?? "http://localhost:
 const FAMILY_BASE_URL = process.env.EXPO_PUBLIC_FAMILY_API_URL ?? "http://localhost:4002/api/family";
 
 export class ApiError extends Error {
-  constructor(message: string, readonly status: number, readonly details?: unknown) {
+  constructor(message: string, readonly status: number, readonly details?: unknown, readonly code?: string) {
     super(message);
     this.name = "ApiError";
   }
@@ -19,7 +19,7 @@ const request = async <T>(baseUrl: string, path: string, options: ApiRequestOpti
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
     const message = typeof payload.error === "string" ? payload.error : `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, payload.details);
+    throw new ApiError(message, response.status, payload.details, typeof payload.code === "string" ? payload.code : undefined);
   }
   if (payload.success === true && payload.data && typeof payload.data === "object") {
     return payload.data as T;

@@ -14,6 +14,17 @@ Install dependencies from the repository root:
 pnpm install
 ```
 
+Create the root `.env` **before** the first `docker compose up` (compose refuses to start without `JWT_SECRET`). `.env` is git-ignored; never commit it.
+
+```powershell
+Copy-Item .env.example .env          # bash: cp .env.example .env
+# Generate a 64-character hex secret and paste it as JWT_SECRET in .env:
+-join (1..64 | % { [char]((48..57)+(97..102) | Get-Random) })
+# bash: openssl rand -hex 32
+```
+
+Full documentation (architecture, gateway, notification and admin services, troubleshooting, runbook): [docs/README.md](docs/README.md).
+
 ## Functional Verification Steps
 
 1. Run the local type check and build:

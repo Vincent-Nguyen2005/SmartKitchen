@@ -32,6 +32,17 @@ function Pass([string]$Label) { Write-Host "PASS $Label" -ForegroundColor Green;
 function Fail([string]$Label, $Response, [string]$Expected) { $detail = "$($Response.Method) $($Response.Url), status $($Response.Status), expected $Expected, body: $(Body-Snippet $Response)"; if ($Response.Error) { $detail += "; error: $($Response.Error)" }; Write-Host "FAIL $Label ($detail)" -ForegroundColor Red; $script:failed++ }
 function Expect-Status([string]$Label, $Response, [int]$Expected) { if ($Response.Status -eq $Expected) { Pass $Label } else { Fail $Label $Response $Expected } }
 function Expect-Header([string]$Label, $Response, [string]$Name, [string]$Expected) { if ((Header-Value $Response $Name) -eq $Expected) { Pass $Label } else { Fail $Label $Response "$Name=$Expected" } }
+# Dev-only HS256 access token shaped like auth-service's (sub + role, 15 min). Uses JWT_SECRET or the compose dev placeholder.
+function ConvertTo-Base64Url([byte[]]$Bytes) { [Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_') }
+function New-DevJwt([string]$Subject, [string]$Role) {
+    $secret = if ($env:JWT_SECRET) { $env:JWT_SECRET } else { 'dev-only-insecure-jwt-secret-change-me' }
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $header = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes('{"alg":"HS256","typ":"JWT"}'))
+    $payload = ConvertTo-Base64Url ([Text.Encoding]::UTF8.GetBytes("{`"sub`":`"$Subject`",`"role`":`"$Role`",`"iat`":$now,`"exp`":$($now + 900)}"))
+    $hmac = New-Object System.Security.Cryptography.HMACSHA256 (,[Text.Encoding]::UTF8.GetBytes($secret))
+    $signature = ConvertTo-Base64Url ($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes("$header.$payload")))
+    return "$header.$payload.$signature"
+}
 function Read-Json([string]$Label, $Response) { if ($Response.Status -eq 0 -or [string]::IsNullOrWhiteSpace($Response.Body)) { Fail $Label $Response 'JSON body'; return $null }; try { return ($Response.Body | ConvertFrom-Json) } catch { Fail $Label $Response 'valid JSON'; return $null } }
 
 foreach ($route in @(@('gateway health', "$BaseUrl/health", 200), @('aggregate health', "$BaseUrl/api/health", 200), @('auth routing', "$BaseUrl/api/auth/health", 200), @('families routing', "$BaseUrl/api/families/health", 200), @('inventory routing', "$BaseUrl/api/inventory/health", 200), @('nutrition routing', "$BaseUrl/api/nutrition/health", 200), @('meal-diary routing', "$BaseUrl/api/meal-diary/health", 200), @('recipes routing', "$BaseUrl/api/recipes/health", 200), @('menus routing', "$BaseUrl/api/menus/health", 200), @('shopping-list routing', "$BaseUrl/api/shopping-list/health", 200), @('payments routing', "$BaseUrl/api/payments/health", 200), @('notifications routing', "$BaseUrl/api/notifications/health", 200), @('admin routing', "$BaseUrl/api/admin/health", 200), @('unknown route', "$BaseUrl/api/unknown-route", 404))) { $response = Invoke-Api GET $route[1]; Expect-Status $route[0] $response $route[2] }
@@ -40,7 +51,9 @@ $cacheUrl = "$BaseUrl/api/notifications/promotions?active=true&e2e=$([DateTimeOf
 $cacheFirst = Invoke-Api GET $cacheUrl; $cacheSecond = Invoke-Api GET $cacheUrl
 Expect-Status 'cache public GET first response' $cacheFirst 200; Expect-Header 'cache MISS on first public GET' $cacheFirst 'x-cache' 'MISS'
 Expect-Status 'cache public GET second response' $cacheSecond 200; Expect-Header 'cache HIT on second public GET' $cacheSecond 'x-cache' 'HIT'
-Expect-Header 'authenticated GET bypasses cache' (Invoke-Api GET $cacheUrl @{ Authorization = 'Bearer e2e-test' }) 'x-cache' 'BYPASS'
+$e2eToken = New-DevJwt 'e2e-user-001' 'USER'
+Expect-Header 'authenticated GET bypasses cache' (Invoke-Api GET $cacheUrl @{ Authorization = "Bearer $e2eToken" }) 'x-cache' 'BYPASS'
+Expect-Status 'invalid Bearer token is rejected (401)' (Invoke-Api GET $cacheUrl @{ Authorization = 'Bearer e2e-invalid-token' }) 401
 Expect-Header 'POST bypasses cache' (Invoke-Api POST $cacheUrl $null '{}') 'x-cache' 'BYPASS'
 
 $partnerHeaders = @{ 'x-api-key' = $ApiKey }
@@ -49,7 +62,12 @@ if ($partner.Status -eq 200 -or $partner.Status -eq 201) { Pass 'promotion partn
 $partnerObject = Read-Json 'promotion partner response JSON' $partner
 $partnerId = if ($null -ne $partnerObject) { [string]$partnerObject.id } else { '' }
 if ([string]::IsNullOrWhiteSpace($partnerId)) { Fail 'promotion partner id present' $partner 'partner id' }
-$device = Invoke-Api POST "$NotificationUrl/device-tokens" $null (@{ userId = 'e2e-user-001'; token = 'e2e-device-token'; platform = 'ANDROID' } | ConvertTo-Json)
+# User-owned notification routes go through the gateway: identity comes only from the signed access token.
+$userHeaders = @{ Authorization = "Bearer $e2eToken" }
+$otherUserHeaders = @{ Authorization = "Bearer $(New-DevJwt 'e2e-user-002' 'USER')" }
+$adminBearer = @{ Authorization = "Bearer $(New-DevJwt 'e2e-admin-001' 'ADMIN')" }
+Expect-Status 'notifications require identity (401)' (Invoke-Api GET "$BaseUrl/api/notifications/notifications") 401
+$device = Invoke-Api POST "$BaseUrl/api/notifications/device-tokens" $userHeaders (@{ token = 'e2e-device-token'; platform = 'ANDROID' } | ConvertTo-Json)
 Expect-Status 'promotion device token registration' $device 201
 $promotionId = ''
 if ($partnerId) {
@@ -62,12 +80,17 @@ if ($partnerId) {
 if ($promotionId) {
     $match = Invoke-Api POST "$NotificationUrl/promotions/match" $null (@{ userId = 'e2e-user-001'; keywords = @('Cà Chua') } | ConvertTo-Json)
     if ($match.Status -eq 200 -and $match.Body -match $promotionId) { Pass 'promotion keyword match' } else { Fail 'promotion keyword match' $match 200 }
-    $dispatch = Invoke-Api POST "$NotificationUrl/promotions/$promotionId/dispatch" $null (@{ userIds = @('e2e-user-001') } | ConvertTo-Json)
+    $dispatchBody = @{ userIds = @('e2e-user-001') } | ConvertTo-Json
+    Expect-Status 'promotion dispatch as USER is forbidden (403)' (Invoke-Api POST "$BaseUrl/api/notifications/promotions/$promotionId/dispatch" $userHeaders $dispatchBody) 403
+    $dispatch = Invoke-Api POST "$BaseUrl/api/notifications/promotions/$promotionId/dispatch" $adminBearer $dispatchBody
     Expect-Status 'promotion mock dispatch' $dispatch 200
-    $notifications = Invoke-Api GET "$NotificationUrl/notifications?userId=e2e-user-001"
+    $notifications = Invoke-Api GET "$BaseUrl/api/notifications/notifications" $userHeaders
     if ($notifications.Status -eq 200 -and $notifications.Body -match '"status":"SENT"') { Pass 'promotion notification is SENT' } else { Fail 'promotion notification is SENT' $notifications 200 }
-} else { $missing = [pscustomobject]@{ Method = 'POST'; Url = "$NotificationUrl/promotions/<missing>/dispatch"; Status = 0; Body = ''; Headers = @{}; Error = 'promotion id unavailable' }; Fail 'promotion keyword match' $missing 200; Fail 'promotion mock dispatch' $missing 200; Fail 'promotion notification is SENT' $missing 200 }
-[void](Invoke-Api DELETE "$NotificationUrl/device-tokens/e2e-device-token")
+} else { $missing = [pscustomobject]@{ Method = 'POST'; Url = "$BaseUrl/api/notifications/promotions/<missing>/dispatch"; Status = 0; Body = ''; Headers = @{}; Error = 'promotion id unavailable' }; Fail 'promotion keyword match' $missing 200; Fail 'promotion dispatch as USER is forbidden (403)' $missing 403; Fail 'promotion mock dispatch' $missing 200; Fail 'promotion notification is SENT' $missing 200 }
+Expect-Status 'IDOR: another user cannot list this inbox (403)' (Invoke-Api GET "$BaseUrl/api/notifications/notifications?userId=e2e-user-001" $otherUserHeaders) 403
+Expect-Status 'IDOR: another user cannot read these preferences (403)' (Invoke-Api GET "$BaseUrl/api/notifications/preferences/e2e-user-001" $otherUserHeaders) 403
+Expect-Status 'IDOR: another user cannot delete this device token (404)' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $otherUserHeaders) 404
+Expect-Status 'device token cleanup by its owner' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $userHeaders) 204
 
 $adminHeaders = @{ 'x-user-id' = 'e2e-admin-001'; 'x-user-role' = 'ADMIN' }
 $forbidden = Invoke-Api GET "$AdminUrl/weights"

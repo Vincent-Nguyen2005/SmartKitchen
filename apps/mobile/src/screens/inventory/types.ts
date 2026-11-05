@@ -6,6 +6,7 @@ export interface FoodItem {
   storageLocation: string;
   expiryDate: string | null;
   status: string;
+  barcode?: string | null;
 }
 
 export interface ShoppingItem {

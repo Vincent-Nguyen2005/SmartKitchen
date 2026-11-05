@@ -10,7 +10,6 @@ export const idParamSchema = z.object({
 
 export const updateItemBodySchema = z
   .object({
-    isPurchased: z.boolean().optional(),
     quantity: z.number().positive().optional(),
     note: z.string().max(500).nullable().optional(),
   })
@@ -20,3 +19,14 @@ export const updateItemBodySchema = z
   });
 
 export type UpdateItemBody = z.infer<typeof updateItemBodySchema>;
+
+export const addItemBodySchema = z.object({
+  familyId: z.string().uuid(),
+  shoppingListId: z.string().uuid().optional(),
+  name: z.string().trim().min(1).max(100),
+  quantity: z.number().finite().positive().max(1_000_000).default(1),
+  unit: z.enum(["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"]).default("PIECE"),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
+export const generateBodySchema = z.object({ familyId: z.string().uuid() });

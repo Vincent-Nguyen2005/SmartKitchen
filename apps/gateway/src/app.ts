@@ -9,6 +9,7 @@ import { gatewayRoutes, getTarget } from "./config/routes";
 import { performanceConfig } from "./config/performance";
 import { responseCache } from "./middleware/cache";
 import { createAuthRateLimiter, createGlobalRateLimiter } from "./middleware/rate-limit";
+import { createAuthenticate, resolveJwtSecret } from "./middleware/authenticate";
 
 const serviceHealthTimeoutMs = 2000;
 
@@ -23,10 +24,8 @@ const requestId = (req: Request, res: Response, next: () => void): void => {
   next();
 };
 
-const authenticate = (_req: Request, _res: Response, next: () => void): void => {
-  // TODO: wire JWT verification when the Auth Service contract is ready.
-  next();
-};
+// Service-to-service endpoints (e.g. notification-service /internal/*) are never exposed publicly.
+export const isInternalPath = (path: string): boolean => /^\/api\/[^/]+\/internal(\/|$)/i.test(path);
 
 const serviceHealth = async (route: (typeof gatewayRoutes)[number]): Promise<ServiceStatus> => {
   const controller = new AbortController();
@@ -41,8 +40,11 @@ const serviceHealth = async (route: (typeof gatewayRoutes)[number]): Promise<Ser
   }
 };
 
-export const createApp = (): express.Express => {
+type AppOptions = { jwtSecret?: string | null };
+
+export const createApp = (options: AppOptions = {}): express.Express => {
   const app = express();
+  const jwtSecret = options.jwtSecret === undefined ? resolveJwtSecret() : options.jwtSecret;
   app.set("trust proxy", performanceConfig.trustProxy);
   const origins = (process.env.CORS_ORIGINS || "*").split(",").map((origin) => origin.trim());
 
@@ -70,12 +72,12 @@ export const createApp = (): express.Express => {
 
   app.use("/api", createGlobalRateLimiter());
   app.use("/api/auth", createAuthRateLimiter());
-  app.use((req, _res, next) => {
-    delete req.headers["x-user-id"];
-    delete req.headers["x-user-role"];
+  app.use((req, res, next) => {
+    if (isInternalPath(req.path)) { res.status(404).json({ error: "ROUTE_NOT_FOUND", path: req.originalUrl }); return; }
     next();
   });
-  app.use(authenticate);
+  // Strips client-supplied x-user-id/x-user-role, then sets them only from a verified access token.
+  app.use(createAuthenticate(jwtSecret));
   app.use(responseCache);
   for (const route of gatewayRoutes) {
     app.use(route.prefix, createProxyMiddleware({

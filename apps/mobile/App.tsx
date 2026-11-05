@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { Archive, Bell, LogOut, Salad, Settings, ShoppingBasket, Users } from "lucide-react-native";
 import {
   ActivityIndicator,
   View,
@@ -16,23 +17,21 @@ import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
 import { SessionProvider, useSession } from "./src/services/session";
-import {
-  Apple,
-  LogOut,
-  ShoppingCart,
-  Users,
-  Utensils,
-  type LucideIcon,
-} from "lucide-react-native";
+import NotificationsHome from "./src/screens/notifications/NotificationsHome";
+import AdminHome from "./src/screens/admin/AdminHome";
+import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
+import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
-type Tab = "inventory" | "shopping" | "nutrition" | "family";
+type Tab = "inventory" | "shopping" | "nutrition" | "family" | "notifications" | "admin";
 type AuthView = "login" | "register" | "otp";
-const tabs: Array<{ key: Tab; label: string; icon: LucideIcon }> = [
-  { key: "inventory", label: "Kho", icon: Apple },
-  { key: "shopping", label: "Đi chợ", icon: ShoppingCart },
+const tabs = [
+  { key: "inventory", label: "Kho", icon: Archive },
+  { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
   { key: "family", label: "Gia đình", icon: Users },
-  { key: "nutrition", label: "Dinh dưỡng", icon: Utensils },
-];
+  { key: "nutrition", label: "Dinh dưỡng", icon: Salad },
+  { key: "notifications", label: "Thông báo", icon: Bell },
+  { key: "admin", label: "Quản trị", icon: Settings },
+] as const;
 
 // Logic lấy API và User ID của Hùng
 const apiBaseUrl =
@@ -55,6 +54,18 @@ function AppContent(): React.JSX.Element {
   const [authView, setAuthView] = useState<AuthView>("login");
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
+  const isAdmin = session.user?.role === "ADMIN";
+
+  // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
+  useEffect(() => {
+    if (!session.user || !session.accessToken) return;
+    void registerDeviceToken(createGatewayClient(session.accessToken));
+  }, [session.user?.id, session.accessToken]);
+
+  // Leave the admin tab if the signed-in user is not an admin (e.g. after switching accounts).
+  useEffect(() => {
+    if (tab === "admin" && !isAdmin) setTab("inventory");
+  }, [isAdmin, tab]);
 
   if (!session.ready) {
     return (
@@ -108,7 +119,7 @@ function AppContent(): React.JSX.Element {
         </View>
 
         <View style={styles.tabBar}>
-          {tabs.map(({ key, label, icon: Icon }) => {
+          {tabs.filter(({ key }) => key !== "admin" || isAdmin).map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
               <TouchableOpacity
@@ -131,6 +142,8 @@ function AppContent(): React.JSX.Element {
           {tab === "inventory" && <InventoryScreen />}
           {tab === "shopping" && <ShoppingCartScreen />}
           {tab === "family" && <FamilyScreenFlow />}
+          {tab === "notifications" && <NotificationsHome />}
+          {tab === "admin" && isAdmin && <AdminHome />}
           {tab === "nutrition" &&
             (userId ? (
               <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
@@ -151,7 +164,13 @@ function AppContent(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  return <SafeAreaProvider><SessionProvider><AppContent /></SessionProvider></SafeAreaProvider>;
+  return (
+    <SafeAreaProvider>
+      <SessionProvider>
+        <AppContent />
+      </SessionProvider>
+    </SafeAreaProvider>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -179,7 +198,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderBottomColor: "#2F6B5F",
   },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#888" },
+  tabText: { fontSize: 10, fontWeight: "600", color: "#888", textAlign: "center" },
   tabTextActive: { color: "#2F6B5F" },
   content: { flex: 1 },
 

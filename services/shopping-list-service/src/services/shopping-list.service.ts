@@ -6,11 +6,13 @@ import { UpdateItemBody } from "../validators/shopping-list.validator";
 
 const INVENTORY_API_URL =
   process.env.INVENTORY_API_URL || "http://localhost:4003";
+const PURCHASE_SYNC_API_KEY = process.env.PURCHASE_SYNC_API_KEY || (process.env.NODE_ENV === "production" ? "" : "dev-only-purchase-sync-key-change-me");
 
 export class ShoppingListService {
-  static async generateFromInventory(familyId: string) {
+  static async generateFromInventory(familyId: string, authorization: string) {
     const response = await axios.get(
       `${INVENTORY_API_URL}/api/inventory/items?familyId=${familyId}`,
+      { headers: { Authorization: authorization }, timeout: 8000 },
     );
     const allItems = response.data.items || [];
 
@@ -52,6 +54,31 @@ export class ShoppingListService {
       orderBy: { createdAt: "desc" },
     });
   }
+
+  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null }) {
+    return prisma.$transaction(async (transaction) => {
+      let list = data.shoppingListId
+        ? await transaction.shoppingList.findFirst({ where: { id: data.shoppingListId, familyId: data.familyId } })
+        : await transaction.shoppingList.findFirst({ where: { familyId: data.familyId, status: LIST_STATUS.ACTIVE }, orderBy: { createdAt: "desc" } });
+      if (data.shoppingListId && !list) throw new AppError(404, "LIST_NOT_FOUND", "Shopping list not found");
+      if (list && list.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
+      if (!list) {
+        list = await transaction.shoppingList.create({
+          data: { familyId: data.familyId, name: "Danh sách đi chợ", status: LIST_STATUS.ACTIVE },
+        });
+      }
+      return transaction.shoppingItem.create({
+        data: {
+          shoppingListId: list.id,
+          name: data.name,
+          quantity: data.quantity,
+          unit: data.unit,
+          note: data.note,
+        },
+      });
+    });
+  }
+
   static async getSuggestions(familyId: string) {
     // Lấy tất cả các item đã mua thành công
     const purchasedItems = await prisma.shoppingItem.findMany({
@@ -83,7 +110,7 @@ export class ShoppingListService {
   static async updateItem(id: string, familyId: string, data: UpdateItemBody) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
-      select: { shoppingList: { select: { status: true } } },
+      select: { isPurchased: true, shoppingList: { select: { status: true } } },
     });
     if (!item) {
       throw new AppError(404, "NOT_FOUND", "Shopping item not found");
@@ -91,7 +118,86 @@ export class ShoppingListService {
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) {
       throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     }
+    if (item.isPurchased) throw new AppError(409, "ITEM_ALREADY_PURCHASED", "Purchased items cannot be changed");
     return prisma.shoppingItem.update({ where: { id }, data });
+  }
+
+  static async confirmPurchase(id: string, familyId: string, userId: string) {
+    const item = await prisma.shoppingItem.findFirst({
+      where: { id, shoppingList: { familyId } },
+      include: { shoppingList: { select: { status: true } } },
+    });
+    if (!item) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
+    if (item.isPurchased && item.inventoryAppliedAt) {
+      return { item, inventoryItemId: item.inventoryItemId, alreadyApplied: true, alreadyPurchased: true };
+    }
+    if (item.shoppingList.status !== LIST_STATUS.ACTIVE) {
+      throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
+    }
+    if (!PURCHASE_SYNC_API_KEY) throw new AppError(503, "PURCHASE_SYNC_NOT_CONFIGURED", "Inventory synchronization is not configured");
+
+    let inventoryResult: { success?: boolean; data?: { item?: unknown; alreadyApplied?: boolean } };
+    try {
+      const response = await axios.post(
+        `${INVENTORY_API_URL}/api/inventory/internal/purchases`,
+        {
+          externalPurchaseId: item.id,
+          familyId,
+          createdByUserId: userId,
+          name: item.name,
+          quantity: item.quantity,
+          unit: item.unit,
+        },
+        { headers: { "x-internal-api-key": PURCHASE_SYNC_API_KEY }, timeout: 8000 },
+      );
+      inventoryResult = response.data;
+      if (inventoryResult.success !== true) throw new Error("Inventory service rejected the purchase");
+    } catch {
+      throw new AppError(503, "INVENTORY_SYNC_FAILED", "The item was not marked purchased because inventory could not be updated. Retry to try again.");
+    }
+
+    const syncedInventoryItemId = inventoryResult.data?.item && typeof inventoryResult.data.item === "object" && "id" in inventoryResult.data.item
+      ? String((inventoryResult.data.item as { id: string }).id)
+      : null;
+    const purchasedItem = await prisma.$transaction(async (transaction) => {
+      const current = await transaction.shoppingItem.findFirst({ where: { id, shoppingList: { familyId } } });
+      if (!current) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
+      const updated = await transaction.shoppingItem.update({
+        where: { id },
+        data: {
+          isPurchased: true,
+          inventoryAppliedAt: current.inventoryAppliedAt ?? new Date(),
+          inventoryItemId: current.inventoryItemId ?? syncedInventoryItemId,
+        },
+      });
+      await transaction.purchaseHistory.upsert({
+        where: { shoppingItemId: id },
+        create: {
+          familyId,
+          itemKey: item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(),
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          shoppingItemId: id,
+        },
+        update: {
+          familyId,
+          itemKey: item.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase(),
+          name: item.name,
+          unit: item.unit,
+          quantity: item.quantity,
+          purchasedAt: new Date(),
+        },
+      });
+      return updated;
+    });
+
+    return {
+      item: purchasedItem,
+      inventoryItemId: purchasedItem.inventoryItemId,
+      alreadyApplied: inventoryResult.data?.alreadyApplied ?? false,
+      alreadyPurchased: item.isPurchased,
+    };
   }
 
   static async complete(id: string, familyId: string) {

@@ -1,163 +1,218 @@
 import React, { useEffect, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import axios from "axios";
+import { Check, Plus, RefreshCw } from "lucide-react-native";
+import { useSession } from "../../services/session";
+import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi } from "./shoppingApi";
 
-const API_URL = "http://localhost:4008/api/shopping-list";
-const FAMILY_ID = "11111111-1111-1111-1111-111111111111";
+const unitChoices: ShoppingUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
+const unitLabels: Record<ShoppingUnit, string> = {
+  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
+  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
+};
 
-interface ShoppingItem {
-  id: string;
-  name: string;
-  quantity: number;
-  unit: string;
-  isPurchased: boolean;
-  note?: string;
-}
-
-interface ShoppingList {
-  id: string;
-  name: string;
-  items: ShoppingItem[];
-}
-
-interface Suggestion {
-  name: string;
-  count: number;
-  unit: string;
-}
-
-export default function ShoppingCartScreen() {
+export default function ShoppingCartScreen(): React.JSX.Element {
+  const { family, accessToken, ready } = useSession();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 360;
+  const isWide = width >= 720;
   const [lists, setLists] = useState<ShoppingList[]>([]);
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestions, setSuggestions] = useState<ShoppingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [busyItemId, setBusyItemId] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [unit, setUnit] = useState<ShoppingUnit>("PIECE");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (showLoading = false) => {
+    if (!ready) return;
+    if (!family?.id || !accessToken) {
+      setLists([]);
+      setSuggestions([]);
+      setLoading(false);
+      return;
+    }
+    if (showLoading) setLoading(true);
+    setError(null);
     try {
-      setLoading(true);
-
-      // 1. Lấy danh sách đi chợ chính
-      const resLists = await axios.get(`${API_URL}?familyId=${FAMILY_ID}`);
-      setLists(resLists.data.lists || []);
-
-      // 2. Lấy gợi ý mua sắm (bọc try-catch riêng để tránh lỗi nếu endpoint chưa sẵn sàng)
-      try {
-        const resSuggestions = await axios.get(
-          `${API_URL}/suggestions?familyId=${FAMILY_ID}`,
-        );
-        setSuggestions(resSuggestions.data.data || []);
-      } catch (suggestionErr) {
-        console.log("Suggestions API not available yet:", suggestionErr);
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Lỗi", "Không thể tải dữ liệu danh sách đi chợ");
+      const [nextLists, nextSuggestions] = await Promise.all([
+        shoppingApi.list(accessToken, family.id),
+        shoppingApi.suggestions(accessToken, family.id).catch(() => []),
+      ]);
+      setLists(nextLists);
+      setSuggestions(nextSuggestions);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Không thể tải danh sách đi chợ.");
     } finally {
       setLoading(false);
     }
   };
 
-  const toggleItem = async (item: ShoppingItem) => {
+  useEffect(() => { void fetchData(true); }, [family?.id, accessToken, ready]);
+
+  const addItem = async () => {
+    if (!family?.id || !accessToken) { setError("Đăng nhập và tạo hoặc tham gia gia đình trước."); return; }
+    const itemName = name.trim();
+    const parsedQuantity = Number(quantity.replace(",", "."));
+    if (!itemName) { setError("Nhập tên món cần mua."); return; }
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) { setError("Số lượng phải lớn hơn 0."); return; }
+    setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
-      // Cập nhật trạng thái item qua API
-      await axios.patch(`${API_URL}/items/${item.id}/purchase`, {
-        isPurchased: !item.isPurchased,
-      });
-      fetchData(); // Tải lại dữ liệu
-    } catch (err) {
-      Alert.alert("Lỗi", "Không thể cập nhật trạng thái món hàng");
+      await shoppingApi.addItem(accessToken, { familyId: family.id, name: itemName, quantity: parsedQuantity, unit });
+      setName("");
+      setQuantity("1");
+      setNotice("Đã lưu vào danh sách để tham khảo. Kho chưa thay đổi cho đến khi bạn xác nhận đã mua.");
+      await fetchData(false);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Không lưu được món vào danh sách.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const confirmPurchase = (item: ShoppingItem) => {
+    if (!family?.id || !accessToken) return;
+    const actionLabel = item.isPurchased ? "Đồng bộ vào kho" : "Đã mua và thêm vào kho";
+    Alert.alert(
+      "Xác nhận mua",
+      `Thêm ${item.quantity} ${unitLabels[item.unit]} ${item.name} vào kho của gia đình?`,
+      [
+        { text: "Để sau", style: "cancel" },
+        {
+          text: actionLabel,
+          onPress: () => {
+            void (async () => {
+              setBusyItemId(item.id);
+              setError(null);
+              setNotice(null);
+              try {
+                const result = await shoppingApi.confirmPurchase(accessToken, family.id, item.id);
+                setLists((current) => current.map((list) => ({
+                  ...list,
+                  items: list.items.map((currentItem) => currentItem.id === item.id ? result.item : currentItem),
+                })));
+                setNotice(result.alreadyApplied
+                  ? "Món này đã được đồng bộ vào kho trước đó; số lượng không bị cộng lại."
+                  : "Đã xác nhận mua và cập nhật số lượng trong kho.");
+                await fetchData(false);
+              } catch (requestError) {
+                setError(requestError instanceof Error ? requestError.message : "Chưa cập nhật được kho. Món vẫn có thể thử lại.");
+              } finally {
+                setBusyItemId(null);
+              }
+            })();
+          },
+        },
+      ],
+    );
+  };
 
-  const renderItem = (item: ShoppingItem) => (
-    <TouchableOpacity
-      key={item.id}
-      style={styles.itemRow}
-      onPress={() => toggleItem(item)}
-    >
-      <View
-        style={[styles.checkbox, item.isPurchased && styles.checkboxChecked]}
-      >
-        {item.isPurchased && <Text style={styles.checkmark}>✓</Text>}
-      </View>
-      <View style={styles.itemInfo}>
-        <Text
-          style={[
-            styles.itemName,
-            item.isPurchased && styles.textStrikethrough,
-          ]}
-        >
-          {item.name}
-        </Text>
-        <Text style={styles.itemMeta}>
-          {item.quantity} {item.unit} {item.note ? `• ${item.note}` : ""}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
-
-  if (loading) {
+  const renderItem = (item: ShoppingItem) => {
+    const isSynced = Boolean(item.inventoryAppliedAt);
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#007AFF" />
+      <View key={item.id} style={styles.itemCard}>
+        <View style={styles.itemInfo}>
+          <Text style={styles.itemName}>{item.name}</Text>
+          <Text style={styles.itemMeta}>{item.quantity} {unitLabels[item.unit]}{item.note ? ` • ${item.note}` : ""}</Text>
+          <Text style={[styles.statusText, isSynced ? styles.statusSynced : item.isPurchased ? styles.statusNeedsSync : styles.statusReference]}>
+            {isSynced ? "Đã mua • Đã thêm vào kho" : item.isPurchased ? "Đã mua • Chưa xác nhận cập nhật kho" : "Để tham khảo • Chưa thêm vào kho"}
+          </Text>
+        </View>
+        {!isSynced && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.isPurchased ? `Đồng bộ ${item.name} vào kho` : `Xác nhận đã mua ${item.name}`}
+            accessibilityState={{ busy: busyItemId === item.id, disabled: busyItemId === item.id }}
+            disabled={busyItemId === item.id}
+            onPress={() => confirmPurchase(item)}
+            style={[styles.confirmButton, busyItemId === item.id && styles.disabled]}
+          >
+            {busyItemId === item.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <View style={styles.inlineAction}><Check color="#FFFFFF" size={14} /><Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text></View>}
+          </Pressable>
+        )}
       </View>
     );
+  };
+
+  if (!ready || loading) {
+    return <View style={styles.center}><ActivityIndicator size="large" color="#215B43" /><Text style={styles.helper}>Đang tải danh sách...</Text></View>;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>🛒 Đi chợ</Text>
-        <TouchableOpacity onPress={fetchData} style={styles.refreshBtn}>
-          <Text style={styles.refreshText}>Làm mới</Text>
-        </TouchableOpacity>
+      <View style={[styles.header, { paddingHorizontal: isCompact ? 14 : isWide ? 32 : 20 }, isWide && styles.wideContent]}>
+        <View style={styles.headerTitle}>
+          <Text style={styles.eyebrow}>SMARTKITCHEN / SHOPPING</Text>
+          <Text style={styles.title}>Đi chợ</Text>
+        </View>
+        <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách đi chợ" onPress={() => void fetchData(true)} style={styles.refreshButton}>
+          <View style={styles.inlineAction}><RefreshCw color="#215B43" size={14} /><Text style={styles.refreshText}>Làm mới</Text></View>
+        </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.listContent}>
-        {/* HIỂN THỊ GỢI Ý - SCRUM-193 */}
-        {suggestions.length > 0 && (
-          <View style={styles.suggestionBox}>
-            <Text style={styles.suggestionTitle}>
-              💡 Gợi ý mua sắm (Dựa trên thói quen)
-            </Text>
-            <View style={styles.suggestionList}>
-              {suggestions.map((s, idx) => (
-                <View key={idx} style={styles.suggestionChip}>
-                  <Text style={styles.suggestionText}>
-                    {s.name} (x{s.count})
-                  </Text>
-                </View>
-              ))}
+      <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? 12 : 16 }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
+        {!family ? (
+          <View style={styles.emptyBox}><Text style={styles.emptyText}>Tạo hoặc tham gia gia đình để dùng danh sách đi chợ.</Text></View>
+        ) : (
+          <>
+            <View style={styles.addCard}>
+              <Text style={styles.sectionTitle}>Lưu món để tham khảo</Text>
+              <TextInput accessibilityLabel="Tên món cần mua" value={name} onChangeText={setName} placeholder="Ví dụ: Sữa tươi" style={styles.input} returnKeyType="done" />
+              <View style={styles.quantityRow}>
+                <TextInput accessibilityLabel="Số lượng cần mua" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
+                <ScrollView style={styles.unitPicker} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChoices}>
+                  {unitChoices.map((choice) => (
+                    <Pressable accessibilityRole="button" accessibilityState={{ selected: unit === choice }} accessibilityLabel={`Đơn vị ${unitLabels[choice]}`} key={choice} onPress={() => setUnit(choice)} style={[styles.unitChip, unit === choice && styles.unitChipSelected]}>
+                      <Text style={[styles.unitChipText, unit === choice && styles.unitChipTextSelected]}>{unitLabels[choice]}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+              <Pressable accessibilityRole="button" disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
+                {saving ? <ActivityIndicator color="#FFFFFF" /> : <View style={styles.inlineAction}><Plus color="#FFFFFF" size={16} /><Text style={styles.addButtonText}>Lưu vào danh sách</Text></View>}
+              </Pressable>
+              <Text style={styles.helper}>Món chỉ nằm trong danh sách. Kho chỉ được cập nhật sau khi bạn xác nhận đã mua.</Text>
             </View>
-          </View>
-        )}
 
-        {/* HIỂN THỊ DANH SÁCH ĐI CHỢ */}
-        {lists.map((list) => (
-          <View key={list.id} style={styles.listContainer}>
-            <Text style={styles.listTitle}>{list.name}</Text>
-            {list.items.map((item) => renderItem(item))}
-          </View>
-        ))}
+            {suggestions.length > 0 && (
+              <View style={styles.suggestionBox}>
+                <Text style={styles.sectionTitle}>Gợi ý từ các lần mua trước</Text>
+                <View style={styles.suggestionList}>
+                  {suggestions.map((suggestion) => (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Dùng gợi ý ${suggestion.name}, đã mua ${suggestion.count} lần`} key={`${suggestion.name}-${suggestion.unit}`} onPress={() => { setName(suggestion.name); setUnit(suggestion.unit); }} style={styles.suggestionChip}>
+                      <Text style={styles.suggestionText}>{suggestion.name} · {suggestion.count} lần</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            )}
 
-        {lists.length === 0 && (
-          <View style={styles.center}>
-            <Text style={styles.emptyText}>
-              Chưa có danh sách nào. Hãy tạo từ kho!
-            </Text>
-          </View>
+            {error && <View style={styles.errorBox}><Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={() => void fetchData(true)} style={styles.retryButton}><Text style={styles.retryText}>Thử tải lại</Text></Pressable></View>}
+            {notice && <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text>}
+
+            {lists.map((list) => (
+              <View key={list.id} style={styles.listContainer}>
+                <Text style={styles.listTitle}>{list.name}</Text>
+                {list.items.length ? list.items.map(renderItem) : <Text style={styles.helper}>Chưa có món nào trong danh sách này.</Text>}
+              </View>
+            ))}
+            {!lists.length && !error && <View style={styles.emptyBox}><Text style={styles.emptyText}>Chưa có món nào. Lưu một món ở trên để bắt đầu.</Text></View>}
+          </>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -165,83 +220,53 @@ export default function ShoppingCartScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F6F0" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 20,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#eee",
-  },
-  title: { fontSize: 22, fontWeight: "bold", color: "#17271F" },
-  refreshBtn: { padding: 8, backgroundColor: "#007AFF", borderRadius: 6 },
-  refreshText: { color: "#fff", fontSize: 13, fontWeight: "600" },
-  listContent: { padding: 16 },
-  suggestionBox: {
-    backgroundColor: "#FFF9E6",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#F3C875",
-  },
-  suggestionTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#A75132",
-    marginBottom: 10,
-  },
-  suggestionList: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  suggestionChip: {
-    backgroundColor: "#fff",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: "#F3C875",
-  },
-  suggestionText: { fontSize: 13, color: "#333", fontWeight: "500" },
-  listContainer: { marginBottom: 24 },
-  listTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#17271F",
-    marginBottom: 12,
-  },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: "#E5EBE3",
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: "#007AFF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  checkboxChecked: { backgroundColor: "#007AFF" },
-  checkmark: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  itemInfo: { flex: 1 },
-  itemName: { fontSize: 16, fontWeight: "600", color: "#333" },
-  textStrikethrough: { textDecorationLine: "line-through", color: "#999" },
-  itemMeta: { fontSize: 13, color: "#666", marginTop: 4 },
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 40,
-    marginTop: 40,
-  },
-  emptyText: { color: "#999", fontSize: 15, textAlign: "center" },
+  container: { backgroundColor: "#F3F6F0", flex: 1 },
+  wideContent: { alignSelf: "center", maxWidth: 900, width: "100%" },
+  header: { alignItems: "center", alignSelf: "center", backgroundColor: "#FFFFFF", borderBottomColor: "#E5EBE3", borderBottomWidth: 1, flexDirection: "row", gap: 12, justifyContent: "space-between", paddingVertical: 15, width: "100%" },
+  headerTitle: { flex: 1, minWidth: 0 },
+  eyebrow: { color: "#547364", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
+  title: { color: "#17271F", fontSize: 28, fontWeight: "800", marginTop: 4 },
+  refreshButton: { backgroundColor: "#E9F1EB", borderRadius: 7, paddingHorizontal: 12, paddingVertical: 9 },
+  inlineAction: { alignItems: "center", flexDirection: "row", gap: 6, justifyContent: "center" },
+  refreshText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
+  content: { alignSelf: "center", gap: 14, paddingBottom: 30, width: "100%" },
+  addCard: { backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 11, borderWidth: 1, gap: 10, padding: 15 },
+  sectionTitle: { color: "#17271F", fontSize: 15, fontWeight: "800" },
+  input: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 44, paddingHorizontal: 11, paddingVertical: 9 },
+  quantityRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+  unitPicker: { flex: 1, minWidth: 0 },
+  quantityInput: { minWidth: 68, width: 76 },
+  unitChoices: { alignItems: "center", gap: 6 },
+  unitChip: { backgroundColor: "#EEF2ED", borderRadius: 16, justifyContent: "center", minHeight: 40, paddingHorizontal: 10 },
+  unitChipSelected: { backgroundColor: "#D4E7D8" },
+  unitChipText: { color: "#53655A", fontSize: 11, fontWeight: "600" },
+  unitChipTextSelected: { color: "#215B43", fontWeight: "800" },
+  addButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 43, paddingHorizontal: 12 },
+  addButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  helper: { color: "#64736A", fontSize: 11, lineHeight: 17 },
+  suggestionBox: { backgroundColor: "#FFF9E6", borderColor: "#F3C875", borderRadius: 11, borderWidth: 1, gap: 9, padding: 14 },
+  suggestionList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  suggestionChip: { backgroundColor: "#FFFFFF", borderColor: "#F3C875", borderRadius: 16, borderWidth: 1, justifyContent: "center", minHeight: 40, paddingHorizontal: 10, paddingVertical: 7 },
+  suggestionText: { color: "#6C5730", fontSize: 11, fontWeight: "600" },
+  listContainer: { gap: 8 },
+  listTitle: { color: "#17271F", fontSize: 18, fontWeight: "800", marginBottom: 1 },
+  itemCard: { alignItems: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#E5EBE3", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 10, padding: 13 },
+  itemInfo: { flex: 1, gap: 4, minWidth: 0 },
+  itemName: { color: "#26372D", fontSize: 15, fontWeight: "700" },
+  itemMeta: { color: "#66736A", flexShrink: 1, fontSize: 11 },
+  statusText: { flexShrink: 1, fontSize: 10, fontWeight: "700", marginTop: 2 },
+  statusSynced: { color: "#215B43" },
+  statusNeedsSync: { color: "#A75132" },
+  statusReference: { color: "#68766D" },
+  confirmButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, minWidth: 74, paddingHorizontal: 9 },
+  confirmButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+  disabled: { opacity: 0.6 },
+  emptyBox: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 9, padding: 20 },
+  emptyText: { color: "#64736A", fontSize: 13, lineHeight: 19, textAlign: "center" },
+  errorBox: { backgroundColor: "#FFF1EF", borderRadius: 8, gap: 7, padding: 12 },
+  errorText: { color: "#A75132", fontSize: 12, lineHeight: 17 },
+  retryButton: { alignSelf: "flex-start", minHeight: 40, justifyContent: "center", paddingHorizontal: 4 },
+  retryText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
+  notice: { backgroundColor: "#E9F1EB", borderRadius: 8, color: "#215B43", fontSize: 12, lineHeight: 18, padding: 11 },
+  center: { alignItems: "center", backgroundColor: "#F3F6F0", flex: 1, gap: 12, justifyContent: "center", padding: 32 },
 });
