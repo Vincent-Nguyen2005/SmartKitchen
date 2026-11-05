@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { CircleCheck, CircleQuestionMark, CircleX, RefreshCw, Server, TriangleExclamationPoint } from "lucide-react-native";
+import { AppIcon, type LucideIcon } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Button, colors, ScreenState, Segmented, styles, useLayout } from "../notifications/ui";
+import { Badge, Button, colors, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 
 type Status = "UP" | "DOWN" | "DEGRADED" | null;
 type StatusResponse = { overall: "UP" | "DOWN" | "DEGRADED" | "UNKNOWN"; checkedAt: string | null; services: { serviceName: string; status: Status; responseTimeMs: number | null; checkedAt: string | null }[] };
@@ -12,10 +14,15 @@ const statusColor = (status: Status | "UNKNOWN"): string =>
   status === "UP" ? colors.success : status === "DEGRADED" ? colors.warning : status === "DOWN" ? colors.danger : colors.muted;
 const statusLabel = (status: Status | "UNKNOWN"): string =>
   status === "UP" ? "Hoạt động" : status === "DEGRADED" ? "Chậm" : status === "DOWN" ? "Ngừng" : "Chưa có dữ liệu";
+const statusBackground = (status: Status | "UNKNOWN"): string =>
+  status === "UP" ? colors.successSoft : status === "DEGRADED" ? colors.warningSoft : status === "DOWN" ? colors.dangerSoft : colors.background;
+const statusIcon = (status: Status | "UNKNOWN"): LucideIcon =>
+  status === "UP" ? CircleCheck : status === "DEGRADED" ? TriangleExclamationPoint : status === "DOWN" ? CircleX : CircleQuestionMark;
 
 export default function SystemHealthScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
   const { columns, gutter } = useLayout();
+  const grid = useGridCell(columns);
   const [window, setWindow] = useState<"24h" | "7d">("24h");
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
@@ -54,42 +61,45 @@ export default function SystemHealthScreen(): React.JSX.Element {
   };
 
   if (loading || (!status && error)) return <ScreenState loading={loading} error={error} onRetry={() => void load()} />;
-  if (!status) return <ScreenState empty />;
+  if (!status) return <ScreenState empty emptyIcon={Server} />;
   const byName = new Map((summary?.services ?? []).map((service) => [service.serviceName, service]));
 
   return (
     <ScrollView
-      contentContainerStyle={{ gap: 12, padding: gutter }}
+      contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
     >
-      <View style={[styles.card, styles.wrapRow, { alignItems: "center", justifyContent: "space-between" }]}>
-        <View accessible accessibilityLabel={`Tổng thể: ${statusLabel(status.overall)}`}>
-          <Text style={{ color: colors.muted }}>Tổng thể</Text>
-          <Text style={[styles.title, { color: statusColor(status.overall), fontSize: 22 }]}>{statusLabel(status.overall)}</Text>
-          <Text style={{ color: colors.muted, fontSize: 12 }}>{status.checkedAt ? `Kiểm tra lúc ${new Date(status.checkedAt).toLocaleString("vi-VN")}` : "Chưa có lần kiểm tra nào"}</Text>
+      <View style={[styles.card, styles.wrapRow, local.overall]}>
+        <View style={[styles.row, local.overallText]} accessible accessibilityLabel={`Tổng thể: ${statusLabel(status.overall)}`}>
+          <AppIcon icon={statusIcon(status.overall)} size="xl" color={statusColor(status.overall)} />
+          <View style={local.flex}>
+            <Text style={styles.muted}>Tổng thể</Text>
+            <Text style={[styles.headline, { color: statusColor(status.overall) }]}>{statusLabel(status.overall)}</Text>
+            <Text style={styles.caption}>{status.checkedAt ? `Kiểm tra lúc ${new Date(status.checkedAt).toLocaleString("vi-VN")}` : "Chưa có lần kiểm tra nào"}</Text>
+          </View>
         </View>
-        <Button label="Kiểm tra ngay" onPress={() => void checkNow()} busy={checking} />
+        <Button label="Kiểm tra ngay" icon={RefreshCw} onPress={() => void checkNow()} busy={checking} />
       </View>
       <Segmented<"24h" | "7d"> label="Khoảng thời gian" value={window} onChange={setWindow} options={[{ value: "24h", label: "24 giờ" }, { value: "7d", label: "7 ngày" }]} />
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}>
+      <View style={[styles.wrapRow, { gap: grid.gap }]} onLayout={grid.onLayout}>
         {status.services.map((service) => {
           const stats = byName.get(service.serviceName);
           return (
             <View
               key={service.serviceName}
-              style={[styles.card, { borderLeftColor: statusColor(service.status), borderLeftWidth: 4, flexBasis: columns === 3 ? "31%" : columns === 2 ? "47%" : "100%", flexGrow: 1 }]}
+              style={[styles.card, local.service, { borderLeftColor: statusColor(service.status), width: grid.cellWidth ?? "100%" }]}
               accessible
               accessibilityLabel={`${service.serviceName}: ${statusLabel(service.status)}. Uptime ${stats?.uptimePercent ?? "không rõ"} phần trăm.`}
             >
-              <View style={[styles.row, { justifyContent: "space-between" }]}>
-                <Text style={[styles.title, { fontSize: 15 }]}>{service.serviceName}</Text>
-                <Text style={{ color: statusColor(service.status), fontWeight: "700" }}>{statusLabel(service.status)}</Text>
+              <View style={styles.spaceBetween}>
+                <Text style={[styles.subtitle, local.flex]} numberOfLines={1}>{service.serviceName}</Text>
+                <Badge label={statusLabel(service.status)} icon={statusIcon(service.status)} color={statusColor(service.status)} background={statusBackground(service.status)} />
               </View>
-              <Text style={{ color: colors.muted, marginTop: 4 }}>
+              <Text style={styles.muted}>
                 Uptime {stats?.uptimePercent ?? "–"}% · TB {stats?.avgResponseTimeMs ?? "–"} ms · p95 {stats?.p95ResponseTimeMs ?? "–"} ms
               </Text>
-              <Text style={{ color: colors.muted, fontSize: 12 }}>{stats?.samples ?? 0} lần đo · lần cuối {service.responseTimeMs ?? "–"} ms</Text>
+              <Text style={styles.caption}>{stats?.samples ?? 0} lần đo · lần cuối {service.responseTimeMs ?? "–"} ms</Text>
             </View>
           );
         })}
@@ -97,3 +107,11 @@ export default function SystemHealthScreen(): React.JSX.Element {
     </ScrollView>
   );
 }
+
+const local = StyleSheet.create({
+  content: { gap: 12 },
+  overall: { alignItems: "center", justifyContent: "space-between" },
+  overallText: { flexGrow: 1, flexShrink: 1, minWidth: 200 },
+  flex: { flex: 1, minWidth: 0 },
+  service: { borderLeftWidth: 4, gap: 4 },
+});

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, RefreshControl, Text, View } from "react-native";
+import { FlatList, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { Calendar, Search, SearchX, Tag, Tags } from "lucide-react-native";
 import { errorMessage, query, type Page } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
-import { colors, Field, ScreenState, styles, useLayout } from "./ui";
+import { AppIcon } from "../../theme";
+import { colors, Field, ScreenState, styles, useGridCell, useLayout } from "./ui";
 
 type Promotion = {
   id: string;
@@ -19,6 +21,7 @@ const PAGE_SIZE = 20;
 export default function PromotionsScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
   const { columns, gutter } = useLayout();
+  const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
   const [keyword, setKeyword] = useState("");
   const [items, setItems] = useState<Promotion[]>([]);
@@ -56,7 +59,7 @@ export default function PromotionsScreen(): React.JSX.Element {
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter, paddingTop: 8 }]}>
-      <Field label="Tìm khuyến mãi" placeholder="Ví dụ: cà chua" value={search} onChangeText={setSearch} returnKeyType="search" autoCorrect={false} />
+      <Field label="Tìm khuyến mãi" icon={Search} placeholder="Ví dụ: cà chua" value={search} onChangeText={setSearch} returnKeyType="search" autoCorrect={false} />
       {loading || (error && items.length === 0) ? (
         <ScreenState loading={loading} error={error} onRetry={() => void load(1)} />
       ) : (
@@ -64,22 +67,33 @@ export default function PromotionsScreen(): React.JSX.Element {
           data={items}
           key={`cols-${columns}`}
           numColumns={columns}
-          columnWrapperStyle={columns > 1 ? { gap: 12 } : undefined}
+          onLayout={grid.onLayout}
+          columnWrapperStyle={columns > 1 ? { gap: grid.gap } : undefined}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+          contentContainerStyle={local.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(1, true)} tintColor={colors.primary} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (items.length < total) void load(page + 1); }}
-          ListEmptyComponent={<ScreenState empty emptyText={keyword ? `Không có khuyến mãi cho "${keyword}".` : "Hiện chưa có khuyến mãi."} />}
+          ListEmptyComponent={keyword
+            ? <ScreenState empty emptyIcon={SearchX} emptyText={`Không có khuyến mãi cho "${keyword}".`} />
+            : <ScreenState empty emptyIcon={Tags} emptyText="Hiện chưa có khuyến mãi." />}
           renderItem={({ item }) => (
-            <View style={[styles.card, { flex: 1 }]} accessible accessibilityLabel={`${item.title}. ${item.discountInfo ?? ""}. Hết hạn ${new Date(item.endsAt).toLocaleDateString("vi-VN")}`}>
+            <View style={[styles.card, local.card, { maxWidth: grid.cellWidth }]} accessible accessibilityLabel={`${item.title}. ${item.discountInfo ?? ""}. Hết hạn ${new Date(item.endsAt).toLocaleDateString("vi-VN")}`}>
               <Text style={styles.title}>{item.title}</Text>
-              {item.discountInfo ? <Text style={{ color: colors.success, fontWeight: "600", marginTop: 4 }}>{item.discountInfo}</Text> : null}
-              {item.description ? <Text style={{ color: colors.text, marginTop: 4 }}>{item.description}</Text> : null}
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>
-                {new Date(item.startsAt).toLocaleDateString("vi-VN")} – {new Date(item.endsAt).toLocaleDateString("vi-VN")}
-              </Text>
-              {item.productKeywords.length ? <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>{item.productKeywords.join(" · ")}</Text> : null}
+              {item.discountInfo ? (
+                <View style={styles.row}>
+                  <AppIcon icon={Tag} size="sm" color={colors.success} />
+                  <Text style={local.discount}>{item.discountInfo}</Text>
+                </View>
+              ) : null}
+              {item.description ? <Text style={styles.body}>{item.description}</Text> : null}
+              <View style={[styles.row, local.footer]}>
+                <AppIcon icon={Calendar} size="sm" color={colors.muted} />
+                <Text style={styles.caption}>
+                  {new Date(item.startsAt).toLocaleDateString("vi-VN")} – {new Date(item.endsAt).toLocaleDateString("vi-VN")}
+                </Text>
+              </View>
+              {item.productKeywords.length ? <Text style={styles.caption}>{item.productKeywords.join(" · ")}</Text> : null}
             </View>
           )}
         />
@@ -87,3 +101,10 @@ export default function PromotionsScreen(): React.JSX.Element {
     </View>
   );
 }
+
+const local = StyleSheet.create({
+  listContent: { gap: 12, paddingBottom: 24 },
+  card: { flex: 1, gap: 6 },
+  discount: { color: colors.success, flexShrink: 1, fontWeight: "600" },
+  footer: { marginTop: 2 },
+});

@@ -4,7 +4,7 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 
 ## Access
 
-- The "🛠 Quản trị" tab is rendered only when `useSession().user.role === "ADMIN"` (see `App.tsx`). `AdminHome` repeats the check and shows "Không có quyền truy cập" otherwise.
+- The "Quản trị" tab is rendered only when `useSession().user.role === "ADMIN"` (see `App.tsx`). `AdminHome` repeats the check and shows "Không có quyền truy cập" otherwise.
 - This is a UI guard only. The real check is on the server: the gateway sets `x-user-role` from the verified access token and admin-service requires `ADMIN` on every admin endpoint.
 
 ## Screens
@@ -17,7 +17,9 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 | `IngredientsScreen.tsx` | Master ingredients: debounced search, active/hidden filter, create/edit form, soft delete (switch), duplicate-name message | `/api/admin/ingredients` |
 | `WeightsScreen.tsx` | Recommendation weights: edit 0–1 values, sent with `expectedVersion`; on 409 shows a conflict message and reloads | `/api/admin/weights` |
 
-All screens use the shared client and UI from `../notifications/` (`gatewayApi.ts`, `useGatewayApi.ts`, `ui.tsx`): loading / empty / error-with-retry states, accessible labels, `useWindowDimensions` layouts (1 column on phones, 2–3 on tablets/landscape).
+All screens use the shared client and UI from `../notifications/` (`gatewayApi.ts`, `useGatewayApi.ts`, `ui.tsx`) and the tokens/icons from `../../theme/`: loading / empty / error-with-retry states with an icon, accessible labels, `useWindowDimensions` layouts (1 column on phones, 2–3 on tablets/landscape).
+
+Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: Flag (Báo cáo), Activity (Hệ thống), Carrot (Nguyên liệu), SlidersHorizontal (Trọng số). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
 
 ## Manual test steps
 
@@ -30,5 +32,5 @@ Preparation: stack running, signed in as a user whose role is `ADMIN` in auth_db
 5. **System health:** after two poll cycles all services show "Hoạt động" with uptime %. Stop a service (`docker compose -p smartkitchen stop recipe-service`) → "Kiểm tra ngay" → it shows "Ngừng"; start it again → back to "Hoạt động". Switch 24h / 7d.
 6. **Ingredients:** search `ca chua` finds "Cà chua". Create a duplicate name → "Tên nguyên liệu đã tồn tại." Hide an ingredient with the switch → it moves to "Đã ẩn".
 7. **Weights:** change a value and save → the version increases. Edit the same weight from another device first → saving here shows the conflict message and reloads the new value. A value of `1.5` shows the range error.
-8. **Responsive:** on a tablet / landscape, reports show list + detail side by side; health cards use 2–3 columns.
+8. **Responsive:** on a tablet (width ≥ 720 and height ≥ 500) reports show list + detail side by side; on a phone, also in landscape, the detail opens full screen with a back button. Health, ingredient and weight cards use 2–3 columns on wide screens and a lone last card keeps the column width. Native builds are portrait-locked by `app.config.ts`, so check landscape on web or a tablet.
 9. **Errors:** stop admin-service → each screen shows the error state with "Thử lại".

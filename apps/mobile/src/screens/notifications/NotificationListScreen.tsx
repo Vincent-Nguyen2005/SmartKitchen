@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, RefreshControl, Text, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { BellOff, Clock, Inbox, Info, ShoppingCart, Tag } from "lucide-react-native";
 import { errorMessage, query, type Page } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
-import { colors, ScreenState, Segmented, styles, useLayout } from "./ui";
+import { AppIcon, type LucideIcon } from "../../theme";
+import { colors, ScreenState, Segmented, styles, useGridCell, useLayout } from "./ui";
 
 export type AppNotification = {
   id: string;
@@ -21,10 +23,18 @@ const typeLabel: Record<AppNotification["type"], string> = {
   SHOPPING_REMINDER: "Nhắc đi chợ",
   SYSTEM: "Hệ thống",
 };
+const typeIcon: Record<AppNotification["type"], LucideIcon> = {
+  PROMOTION: Tag,
+  EXPIRY_ALERT: Clock,
+  SHOPPING_REMINDER: ShoppingCart,
+  SYSTEM: Info,
+};
 
 export default function NotificationListScreen(): React.JSX.Element {
   const { api, userId } = useGatewayApi();
   const { gutter, isWide } = useLayout();
+  const columns = isWide ? 2 : 1;
+  const grid = useGridCell(columns);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [page, setPage] = useState(1);
@@ -84,15 +94,18 @@ export default function NotificationListScreen(): React.JSX.Element {
       ) : (
         <FlatList
           data={items}
-          key={isWide ? "wide" : "narrow"}
-          numColumns={isWide ? 2 : 1}
-          columnWrapperStyle={isWide ? { gap: 12 } : undefined}
+          key={`cols-${columns}`}
+          numColumns={columns}
+          onLayout={grid.onLayout}
+          columnWrapperStyle={columns > 1 ? { gap: grid.gap } : undefined}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
+          contentContainerStyle={local.listContent}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(1, "refresh")} tintColor={colors.primary} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => { if (!loadingMore && items.length < total) void load(page + 1, "more"); }}
-          ListEmptyComponent={<ScreenState empty emptyText={filter === "unread" ? "Không có thông báo chưa đọc." : "Bạn chưa có thông báo nào."} />}
+          ListEmptyComponent={filter === "unread"
+            ? <ScreenState empty emptyIcon={BellOff} emptyText="Không có thông báo chưa đọc." />
+            : <ScreenState empty emptyIcon={Inbox} emptyText="Bạn chưa có thông báo nào." />}
           ListFooterComponent={loadingMore ? <ScreenState loading /> : error ? <Text style={styles.errorText}>{error}</Text> : null}
           renderItem={({ item }) => {
             const unread = item.status !== "READ";
@@ -102,14 +115,19 @@ export default function NotificationListScreen(): React.JSX.Element {
                 accessibilityLabel={`${unread ? "Chưa đọc. " : ""}${item.title}. ${item.body}`}
                 accessibilityHint={unread ? "Chạm để đánh dấu đã đọc" : undefined}
                 onPress={() => void markRead(item)}
-                style={[styles.card, { flex: 1 }, unread && { backgroundColor: colors.unread, borderColor: colors.primary }]}
+                style={({ pressed }) => [styles.card, local.card, { maxWidth: grid.cellWidth }, unread && local.unread, pressed && styles.pressed]}
               >
-                <View style={styles.row}>
-                  {unread ? <View accessibilityElementsHidden style={{ backgroundColor: colors.primary, borderRadius: 4, height: 8, width: 8 }} /> : null}
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>{typeLabel[item.type]} · {new Date(item.createdAt).toLocaleString("vi-VN")}</Text>
+                <View style={[local.iconWrap, unread && local.iconWrapUnread]}>
+                  <AppIcon icon={typeIcon[item.type]} color={unread ? colors.primaryText : colors.primary} />
                 </View>
-                <Text style={[styles.title, { fontSize: 16, marginTop: 4, fontWeight: unread ? "700" : "500" }]}>{item.title}</Text>
-                <Text style={{ color: colors.text, marginTop: 4 }}>{item.body}</Text>
+                <View style={local.content}>
+                  <View style={styles.row}>
+                    <Text style={[styles.caption, local.meta]} numberOfLines={1}>{typeLabel[item.type]} · {new Date(item.createdAt).toLocaleString("vi-VN")}</Text>
+                    {unread ? <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={local.dot} /> : null}
+                  </View>
+                  <Text style={[styles.subtitle, { fontWeight: unread ? "700" : "500" }]}>{item.title}</Text>
+                  <Text style={styles.body}>{item.body}</Text>
+                </View>
               </Pressable>
             );
           }}
@@ -118,3 +136,14 @@ export default function NotificationListScreen(): React.JSX.Element {
     </View>
   );
 }
+
+const local = StyleSheet.create({
+  listContent: { gap: 12, paddingBottom: 24 },
+  card: { flex: 1, flexDirection: "row", gap: 12 },
+  unread: { backgroundColor: colors.unread, borderColor: colors.primary },
+  iconWrap: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 999, height: 40, justifyContent: "center", width: 40 },
+  iconWrapUnread: { backgroundColor: colors.primary },
+  content: { flex: 1, gap: 4, minWidth: 0 },
+  meta: { flex: 1 },
+  dot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 },
+});

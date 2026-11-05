@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Modal, Pressable, RefreshControl, ScrollView, Switch, Text, View } from "react-native";
+import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Carrot, Pencil, Plus, Save, Search, SearchX, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { AppIcon, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Button, colors, Field, ScreenState, Segmented, styles, useLayout } from "../notifications/ui";
+import { Button, colors, Field, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 
 type Ingredient = {
   id: string;
@@ -27,6 +29,7 @@ const optionalNumber = (value: string): number | null => (value.trim() === "" ? 
 export default function IngredientsScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
   const { columns, gutter, isWide } = useLayout();
+  const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [active, setActive] = useState<"true" | "false" | "all">("true");
@@ -95,46 +98,68 @@ export default function IngredientsScreen(): React.JSX.Element {
     }
   };
 
-  return (
-    <View style={[styles.screen, { paddingHorizontal: gutter }]}>
-      <View style={[styles.wrapRow, { alignItems: "flex-end" }]}>
-        <View style={{ flexGrow: 1, minWidth: 200 }}><Field label="Tìm nguyên liệu" placeholder="Không dấu cũng được" value={search} onChangeText={setSearch} autoCorrect={false} /></View>
-        <Button label="Thêm nguyên liệu" onPress={() => { setFormError(null); setDraft(emptyDraft); }} style={{ marginBottom: 10 }} />
+  // Search, add and filter are the list header, so on short screens (phones in landscape) they scroll
+  // away with the list. While loading or after an error the list shows the state instead (same requests).
+  const showState = loading || Boolean(error && items.length === 0);
+  const toolbar = (
+    <View>
+      <View style={[styles.wrapRow, local.toolbar]}>
+        <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Không dấu cũng được" value={search} onChangeText={setSearch} autoCorrect={false} /></View>
+        <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(emptyDraft); }} style={local.addButton} />
       </View>
       <Segmented<"true" | "false" | "all"> label="Trạng thái" value={active} onChange={setActive}
         options={[{ value: "true", label: "Đang dùng" }, { value: "false", label: "Đã ẩn" }, { value: "all", label: "Tất cả" }]} />
-      {loading || (error && items.length === 0) ? <ScreenState loading={loading} error={error} onRetry={() => void load(1)} /> : (
-        <FlatList
-          data={items}
-          key={`cols-${columns}`}
-          numColumns={columns}
-          columnWrapperStyle={columns > 1 ? { gap: 12 } : undefined}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={{ gap: 12, paddingBottom: 24 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(1, true)} tintColor={colors.primary} />}
-          onEndReachedThreshold={0.4}
-          onEndReached={() => { if (items.length < total) void load(page + 1); }}
-          ListEmptyComponent={<ScreenState empty emptyText="Không tìm thấy nguyên liệu." />}
-          ListHeaderComponent={error ? <Text style={styles.errorText}>{error}</Text> : null}
-          renderItem={({ item }) => (
-            <View style={[styles.card, { flex: 1, opacity: item.isActive ? 1 : 0.6 }]}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Sửa ${item.name}`} onPress={() => { setFormError(null); setDraft(toDraft(item)); }}>
+      {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+
+  return (
+    <View style={[styles.screen, { paddingHorizontal: gutter }]}>
+      <FlatList
+        style={local.flex}
+        data={showState ? [] : items}
+        key={`cols-${columns}`}
+        numColumns={columns}
+        onLayout={grid.onLayout}
+        columnWrapperStyle={columns > 1 ? { gap: grid.gap } : undefined}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={local.listContent}
+        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(1, true)} tintColor={colors.primary} />}
+        onEndReachedThreshold={0.4}
+        onEndReached={() => { if (!showState && items.length < total) void load(page + 1); }}
+        ListEmptyComponent={showState
+          ? <ScreenState loading={loading} error={error} onRetry={() => void load(1)} />
+          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText="Không tìm thấy nguyên liệu." />}
+        ListHeaderComponent={toolbar}
+        renderItem={({ item }) => (
+          <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Sửa ${item.name}`}
+              onPress={() => { setFormError(null); setDraft(toDraft(item)); }}
+              style={({ pressed }) => [styles.spaceBetween, local.editArea, pressed && styles.pressed]}
+            >
+              <View style={local.flex}>
                 <Text style={styles.title}>{item.name}</Text>
-                <Text style={{ color: colors.muted, marginTop: 2 }}>{item.category} · {item.defaultUnit}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}</Text>
-              </Pressable>
-              <View style={[styles.row, { justifyContent: "space-between", marginTop: 8 }]}>
-                <Text style={{ color: colors.muted }}>{item.isActive ? "Đang dùng" : "Đã ẩn (xóa mềm)"}</Text>
-                <Switch accessibilityLabel={`${item.name}: đang dùng`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
+                <Text style={styles.muted}>{item.category} · {item.defaultUnit}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}</Text>
               </View>
+              <AppIcon icon={Pencil} size="sm" color={colors.muted} />
+            </Pressable>
+            <View style={styles.spaceBetween}>
+              <Text style={styles.muted}>{item.isActive ? "Đang dùng" : "Đã ẩn (xóa mềm)"}</Text>
+              <Switch accessibilityLabel={`${item.name}: đang dùng`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
             </View>
-          )}
-        />
-      )}
+          </View>
+        )}
+      />
 
       <Modal visible={draft !== null} animationType="slide" transparent={isWide} onRequestClose={() => setDraft(null)}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: isWide ? "rgba(0,0,0,0.3)" : colors.background, justifyContent: "center" }}>
-          <ScrollView contentContainerStyle={{ alignSelf: "center", backgroundColor: colors.background, borderRadius: isWide ? 16 : 0, gap: 4, maxWidth: 560, padding: 20, width: "100%" }}>
-            <Text style={[styles.title, { marginBottom: 12 }]}>{draft?.id ? "Sửa nguyên liệu" : "Thêm nguyên liệu"}</Text>
+        <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
+          <ScrollView contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
+            <View style={[styles.spaceBetween, local.modalHeader]}>
+              <Text style={[styles.title, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa nguyên liệu" : "Thêm nguyên liệu"}</Text>
+              <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />
+            </View>
             {draft ? (
               <>
                 <Field label="Tên *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} />
@@ -146,9 +171,9 @@ export default function IngredientsScreen(): React.JSX.Element {
               </>
             ) : null}
             {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
-            <View style={[styles.wrapRow, { justifyContent: "flex-end", marginTop: 12 }]}>
+            <View style={[styles.wrapRow, local.modalActions]}>
               <Button variant="secondary" label="Hủy" onPress={() => setDraft(null)} />
-              <Button label="Lưu" onPress={() => void save()} busy={saving} />
+              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} />
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -156,3 +181,17 @@ export default function IngredientsScreen(): React.JSX.Element {
     </View>
   );
 }
+
+const local = StyleSheet.create({
+  toolbar: { alignItems: "flex-end", paddingTop: 8 },
+  search: { flexBasis: 200, flexGrow: 1 },
+  addButton: { marginBottom: 10 },
+  listContent: { gap: 12, paddingBottom: 24 },
+  card: { flex: 1, gap: 8 },
+  editArea: { minHeight: 44 },
+  flex: { flex: 1, minWidth: 0 },
+  modalBackdrop: { flex: 1, justifyContent: "center" },
+  modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 560, padding: 20, width: "100%" },
+  modalHeader: { marginBottom: 8 },
+  modalActions: { justifyContent: "flex-end", marginTop: 12 },
+});

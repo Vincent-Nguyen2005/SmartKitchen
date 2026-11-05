@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
+import { Activity, Carrot, Flag, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
+import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, Segmented, styles, useLayout } from "../notifications/ui";
 import IngredientsScreen from "./IngredientsScreen";
@@ -21,8 +23,9 @@ export default function AdminHome(): React.JSX.Element {
   if (!isAdmin) {
     return (
       <View style={[styles.screen, styles.state]}>
+        <AppIcon icon={ShieldExclamationPoint} size="xl" color={colors.warning} />
         <Text style={styles.title}>Không có quyền truy cập</Text>
-        <Text style={{ color: colors.muted, textAlign: "center" }}>Khu vực này chỉ dành cho quản trị viên.</Text>
+        <Text style={styles.mutedText}>Khu vực này chỉ dành cho quản trị viên.</Text>
       </View>
     );
   }
@@ -34,10 +37,10 @@ export default function AdminHome(): React.JSX.Element {
           value={section}
           onChange={setSection}
           options={[
-            { value: "reports", label: "Báo cáo" },
-            { value: "health", label: "Hệ thống" },
-            { value: "ingredients", label: "Nguyên liệu" },
-            { value: "weights", label: "Trọng số" },
+            { value: "reports", label: "Báo cáo", icon: Flag },
+            { value: "health", label: "Hệ thống", icon: Activity },
+            { value: "ingredients", label: "Nguyên liệu", icon: Carrot },
+            { value: "weights", label: "Trọng số", icon: SlidersHorizontal },
           ]}
         />
       </View>

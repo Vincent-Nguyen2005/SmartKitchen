@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { RefreshControl, ScrollView, Text, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { CircleCheck, CircleExclamationPoint, Info, Save, SlidersHorizontal } from "lucide-react-native";
+import { AppIcon } from "../../theme";
 import { errorMessage, GatewayApiError } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Button, colors, Field, ScreenState, styles, useLayout } from "../notifications/ui";
+import { Button, colors, Field, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 
 type Weight = { id: string; key: string; value: number; description: string | null; version: number; updatedBy: string; updatedAt: string };
 
@@ -15,6 +17,7 @@ const labels: Record<string, string> = {
 export default function WeightsScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
   const { columns, gutter } = useLayout();
+  const grid = useGridCell(columns);
   const [weights, setWeights] = useState<Weight[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -67,22 +70,41 @@ export default function WeightsScreen(): React.JSX.Element {
 
   return (
     <ScrollView
-      contentContainerStyle={{ flexDirection: "row", flexWrap: "wrap", gap: 12, padding: gutter }}
+      contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
     >
-      <Text style={{ color: colors.muted, width: "100%" }}>Tổng hiện tại: {sum.toFixed(2)} (nên bằng 1.00). Mỗi lần lưu gửi kèm phiên bản để tránh ghi đè thay đổi của người khác.</Text>
-      {weights.length === 0 ? <ScreenState empty emptyText="Chưa có trọng số (chạy seed admin-service)." /> : null}
-      {weights.map((weight) => (
-        <View key={weight.key} style={[styles.card, { flexBasis: columns > 1 ? "45%" : "100%", flexGrow: 1 }]}>
-          <Text style={styles.title}>{labels[weight.key] ?? weight.key}</Text>
-          <Text style={{ color: colors.muted, marginBottom: 8 }}>{weight.key} · phiên bản {weight.version} · {weight.updatedBy}</Text>
-          <Field label="Giá trị (0 – 1)" keyboardType="decimal-pad" value={drafts[weight.key] ?? ""} onChangeText={(text) => setDrafts((current) => ({ ...current, [weight.key]: text }))} />
-          {messages[weight.key] ? (
-            <Text accessibilityLiveRegion="polite" style={{ color: messages[weight.key].tone === "error" ? colors.danger : colors.success, marginBottom: 8 }}>{messages[weight.key].text}</Text>
-          ) : null}
-          <Button label="Lưu" onPress={() => void save(weight)} busy={saving === weight.key} accessibilityLabel={`Lưu ${labels[weight.key] ?? weight.key}`} />
-        </View>
-      ))}
+      <View style={[styles.row, local.summary]}>
+        <AppIcon icon={Info} size="sm" color={colors.muted} />
+        <Text style={[styles.muted, local.flex]}>Tổng hiện tại: {sum.toFixed(2)} (nên bằng 1.00). Mỗi lần lưu gửi kèm phiên bản để tránh ghi đè thay đổi của người khác.</Text>
+      </View>
+      {weights.length === 0 ? <ScreenState empty emptyIcon={SlidersHorizontal} emptyText="Chưa có trọng số (chạy seed admin-service)." /> : null}
+      <View style={[styles.wrapRow, { gap: grid.gap }]} onLayout={grid.onLayout}>
+        {weights.map((weight) => {
+          const message = messages[weight.key];
+          return (
+            <View key={weight.key} style={[styles.card, { width: grid.cellWidth ?? "100%" }]}>
+              <Text style={styles.title}>{labels[weight.key] ?? weight.key}</Text>
+              <Text style={[styles.caption, local.meta]}>{weight.key} · phiên bản {weight.version} · {weight.updatedBy}</Text>
+              <Field label="Giá trị (0 – 1)" keyboardType="decimal-pad" value={drafts[weight.key] ?? ""} onChangeText={(text) => setDrafts((current) => ({ ...current, [weight.key]: text }))} />
+              {message ? (
+                <View style={[styles.row, local.message]} accessibilityLiveRegion="polite">
+                  <AppIcon icon={message.tone === "error" ? CircleExclamationPoint : CircleCheck} size="sm" color={message.tone === "error" ? colors.danger : colors.success} />
+                  <Text style={[local.flex, { color: message.tone === "error" ? colors.danger : colors.success }]}>{message.text}</Text>
+                </View>
+              ) : null}
+              <Button label="Lưu" icon={Save} onPress={() => void save(weight)} busy={saving === weight.key} accessibilityLabel={`Lưu ${labels[weight.key] ?? weight.key}`} />
+            </View>
+          );
+        })}
+      </View>
     </ScrollView>
   );
 }
+
+const local = StyleSheet.create({
+  content: { gap: 12 },
+  summary: { alignItems: "flex-start" },
+  flex: { flex: 1 },
+  meta: { marginBottom: 8, marginTop: 2 },
+  message: { alignItems: "flex-start", marginBottom: 8 },
+});

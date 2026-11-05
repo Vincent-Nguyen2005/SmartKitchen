@@ -6,13 +6,15 @@ Owner: Huy. Responsibility: notification center, promotions and user notificatio
 
 | File | What it does |
 |---|---|
-| `NotificationsHome.tsx` | Entry point of the "🔔 Thông báo" tab: Thông báo / Khuyến mãi / Cài đặt |
+| `NotificationsHome.tsx` | Entry point of the "Thông báo" tab: Thông báo / Khuyến mãi / Cài đặt |
 | `NotificationListScreen.tsx` | Inbox: paging (load more on scroll), pull-to-refresh, unread highlight + filter, tap to mark as read |
 | `PromotionsScreen.tsx` | Active promotions with debounced search (accent-insensitive on the server), paging, pull-to-refresh |
 | `NotificationPreferencesScreen.tsx` | Push / promotion toggles, quiet hours (HH:mm, overnight allowed), save |
 | `registerDeviceToken.ts` | Registers the Expo push token after sign-in; never throws |
 
-Shared by the admin screens too: `gatewayApi.ts` (API client), `useGatewayApi.ts` (session → client), `ui.tsx` (layout, states, buttons).
+Shared by the admin screens too: `gatewayApi.ts` (API client), `useGatewayApi.ts` (session → client), `ui.tsx` (layout, states, buttons, segmented tabs, fields, badges). Colours, spacing, font sizes and the icon wrapper come from `../../theme/` (see its README).
+
+Icons are Lucide, named imports only. Section tabs: Bell (Thông báo), Tag (Khuyến mãi), Settings (Cài đặt). Each inbox card shows its type icon (Tag, Clock, ShoppingCart, Info); loading / empty / error states show an icon, and the error state has "Thử lại".
 
 ## How it talks to the backend
 
@@ -31,10 +33,6 @@ Shared by the admin screens too: `gatewayApi.ts` (API client), `useGatewayApi.ts
 
 `App.tsx` calls `registerDeviceToken()` once per signed-in user. It is skipped (no error shown) on web, without `EXPO_PUBLIC_EAS_PROJECT_ID`, when the user denies permission, or when the native module is missing (`expo-notifications` is loaded lazily). Expo Go on Android cannot receive remote push since SDK 53, so use a development build for real push.
 
-## Known issue: Metro bundling
-
-On main (as of e04d0eb) `apps/mobile/metro.config.js` sets `disableHierarchicalLookup`, so Metro cannot resolve react-native's own dependencies under `node_modules/.pnpm` and every bundle fails (`Unable to resolve "invariant"`). This is pre-existing and not caused by these screens. It is fixed in `fix/mobile-metro` (pending PR); until that is merged, `tsc --noEmit` is the check for these screens.
-
 ## Manual test steps (no test runner in apps/mobile)
 
 Preparation: `docker compose -p smartkitchen up -d`, then in `apps/mobile` run `pnpm dev` (or `npx expo start`). Sign in with a verified account.
@@ -48,5 +46,5 @@ Preparation: `docker compose -p smartkitchen up -d`, then in `apps/mobile` run `
 7. **Promotions search:** type `ca chua` (no accents) → promotions titled "Cà chua…" appear; an unknown word → the empty state names it.
 8. **Preferences:** toggle Khuyến mãi off → Lưu → reopen → still off. Quiet hours `22:00`/`06:00` saves; `7:00` shows the HH:mm validation error and the save button is disabled.
 9. **Push registration (dev build):** allow notifications → `device_tokens` has a row for the user; deny → app keeps working.
-10. **Responsive:** rotate the phone / use a tablet → inbox shows 2 columns, promotions 2–3 columns, preferences are centred (max 640 px).
+10. **Responsive:** on a wide window or tablet → inbox shows 2 columns, promotions 2–3 columns (a lone last card keeps the column width), preferences are centred (max 640 px). Native builds are portrait-locked by `app.config.ts`, so check landscape on web (`pnpm --filter mobile exec expo start --web`) or a tablet.
 11. **Accessibility:** with TalkBack/VoiceOver, every card reads its title and unread state; switches and buttons have labels.
