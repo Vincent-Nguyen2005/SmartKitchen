@@ -13,7 +13,7 @@ jobs:
         include:
           - service: nutrition
             package: nutrition-service
-            prisma_schema: services/nutrition-service/prisma/schema.prisma
+            prisma_schema: prisma/schema.prisma
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nutrition_db
     steps:
