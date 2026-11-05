@@ -1,0 +1,66 @@
+PROMPT THỰC HIỆN SPRINT 4 — KHANH (SMARTKITCHEN)
+
+VAI TRÒ
+Bạn là kỹ sư phụ trách các hạng mục Sprint 4 của Khanh trong dự án SmartKitchen. Hãy kiểm tra repository và hoàn thiện đúng các story được giao, dựa trên code, kiến trúc, package và quy ước hiện có.
+
+NGUỒN SCOPE
+- Dùng `TAILIEU/Architecture & Member Responsibility Mapping.txt` làm nguồn chuẩn. Sprint 4 của Khanh gồm:
+  - #55 — Unit tests cho Inventory Service và Shopping List Service (EPIC-04/09).
+  - #62 — Hoàn thiện UI responsive cho màn hình Inventory và Shopping List (EPIC-04/09).
+  - #67 — Viết tài liệu cho Inventory và Shopping List (EPIC-04/09).
+- Đọc `services/inventory-service/README.md`, `services/shopping-list-service/README.md` và README của hai mobile screen để nắm phần Sprint 3 đã có.
+- Đây là công việc hoàn thiện trên chức năng sẵn có. Không scaffold lại, viết lại toàn bộ module hay thay thế luồng barcode/OCR/voice, danh sách mua hoặc xác nhận mua.
+
+AN TOÀN TRƯỚC KHI SỬA
+- Đọc `git status` và diff trước khi thay đổi. Có thể tồn tại thay đổi chưa commit của người dùng, đặc biệt từ Sprint 3. Giữ nguyên chúng; không reset, checkout, xóa, hoàn nguyên hoặc ghi đè file đang thay đổi nếu chưa xác định chính xác phần cần chỉnh.
+- Đọc các `AGENTS.md`/hướng dẫn repository nếu có.
+- Không reset cơ sở dữ liệu, xóa Docker volume, chạy migration phá hủy dữ liệu hoặc đưa secret vào code, test, tài liệu hay log.
+
+PHẠM VI SỞ HỮU
+- Backend: `services/inventory-service/`, `services/shopping-list-service/`.
+- Mobile: `apps/mobile/src/screens/inventory/`, `apps/mobile/src/screens/shopping-cart/`.
+- Có thể sửa test/config, package scripts, lockfile hoặc CI liên quan trực tiếp khi cần để hoàn thành ba story. Mọi thay đổi dùng chung phải nhỏ, có lý do rõ ràng. Không sửa service, màn hình hoặc tài liệu thuộc Khanh khác ngoài phạm vi cần thiết.
+
+STORY CẦN HOÀN THÀNH
+
+1. #55 — Unit tests cho Inventory và Shopping List
+- Kiểm tra cách các service khác trong repo dùng Vitest, Supertest, Prisma mock, config và scripts; dùng cùng convention thay vì tự tạo test stack khác.
+- Hiện hai service chưa có `test` script/test suite như notification-service và admin-service. Thêm test tooling tối thiểu, tương thích phiên bản repo và pnpm workspace; cập nhật `pnpm-lock.yaml` nếu dependency thực sự cần.
+- Tạo unit/API wiring tests có thể chạy lặp lại mà không cần database, family-service, inventory-service, gateway, network ngoài hoặc credential thật. Mock Prisma và HTTP client ở ranh giới thích hợp; kiểm tra hành vi quan sát được, tránh test implementation detail.
+- Inventory: ưu tiên kiểm tra xác thực/ownership và family scope; validation và lỗi API; CRUD/soft delete và lọc dữ liệu đã xóa; nhánh cảnh báo nếu có; các luồng mua hàng quan trọng gồm tạo/cộng số lượng, ghi nhận idempotency bền vững, retry cùng `externalPurchaseId` không cộng trùng, và ID đã gắn với family khác bị từ chối.
+- Shopping List: kiểm tra ownership/family scope, validation và lỗi API; lưu món tham khảo không cập nhật kho; cập nhật/completion theo trạng thái list/item; xác nhận mua chỉ đánh dấu đã mua sau khi inventory thành công; lỗi hoặc timeout từ inventory để item retry được; retry/đã đồng bộ không áp dụng mua lặp; đề xuất từ lịch sử mua nếu phù hợp.
+- Nếu cần test route, dùng Supertest giống các service đã có. Test cả phản hồi thành công và các lỗi quan trọng như 400/401/403/404/409/503 theo contract thực tế.
+- Cung cấp scripts `test` cho mỗi service và, nếu phù hợp với convention hiện tại, `test:coverage`. Nếu CI chưa chạy unit tests cho các package này, thêm bước CI chỉ cho Inventory và Shopping List, không làm thay đổi hành vi job của owner khác.
+
+2. #62 — Hoàn thiện responsive UI
+- Rà soát `InventoryListScreen.tsx`, `InventoryCapturePanel.tsx`, `ShoppingCartScreen.tsx` cùng API/types; giữ nguyên flow nghiệp vụ và phong cách UI hiện có.
+- Kiểm tra bố cục ở màn hình hẹp (từ khoảng 320 dp), điện thoại thường và màn hình rộng/tablet. Tránh tràn ngang, chữ/nút bị cắt, hàng điều khiển bị ép, khoảng trống bất thường; bố cục phải cuộn được và hoạt động với safe area, bàn phím và nội dung dài.
+- Điều chỉnh bố cục theo chiều rộng bằng các API React Native hiện có khi cần. Giữ vùng nhấn đủ dùng, trạng thái focus/disabled rõ ràng, nhãn trợ năng cho điều khiển không tự mô tả được và thông báo lỗi có thể nhận biết bằng screen reader.
+- Bảo toàn và làm rõ các trạng thái loading, empty, error/retry, saving, capture draft và purchase sync. Không hiển thị thành công trước khi server trả về thành công; không làm mất draft khi request thất bại.
+- Giữ văn bản UI tiếng Việt và đảm bảo các nhãn trạng thái phân biệt rõ “Để tham khảo”, “Đã mua” và “Đã thêm vào kho”. Không thêm giả lập dữ liệu hoặc tự đổi API contract.
+
+3. #67 — Tài liệu Inventory và Shopping List
+- Cập nhật README của từng service ngay trong thư mục sở hữu. Cập nhật README mobile tương ứng nếu thay đổi UI, cấu hình hoặc thao tác ảnh hưởng hướng dẫn sử dụng.
+- Tài liệu phải khớp code thực tế, tối thiểu nêu: trách nhiệm service/screen và owner Khanh; cấu hình environment; lệnh cài/chạy/build/test; migration và Prisma generate/deploy an toàn; API method/path, auth, family scope, request/response và lỗi chính; luồng inventory, barcode/OCR và mua hàng liên service.
+- Nêu rõ shopping item được lưu tham khảo không làm thay đổi kho; xác nhận mua gọi nội bộ sang inventory; `PURCHASE_SYNC_API_KEY` chỉ được dùng giữa server; idempotency dựa trên purchase ID bền vững; và item chỉ được đánh dấu đã đồng bộ khi inventory thành công.
+- Nêu cấu hình/giới hạn OCR thật (Tesseract, ngôn ngữ, tải language data nếu cần), barcode lookup và các quyền thiết bị trong README mobile. Không ghi API key, JWT, giá trị secret hoặc URL/credential riêng tư.
+- Chỉ ghi lệnh, endpoint và nền tảng đã kiểm tra từ code/tài liệu. Ghi rõ điều kiện hoặc phần chưa xác minh thay vì tuyên bố đã chạy nếu chưa chạy.
+
+QUY ƯỚC KỸ THUẬT VÀ BẢO MẬT
+- Giữ TypeScript strict hiện tại, cấu trúc Express/Prisma, schema, response envelope và middleware hiện có. Không thay đổi API hoặc migration nếu story không đòi hỏi.
+- Request family-scoped phải tiếp tục kiểm tra JWT và membership qua family-service; không tin user ID/role do client tự khai báo.
+- Endpoint purchase nội bộ phải tiếp tục chặn client/gateway và dùng secret phía server. Không đưa secret vào app mobile, response, log hay fixtures.
+- Không gọi dịch vụ ngoài trong unit tests. Không dùng test làm thay đổi database dùng chung.
+- Chỉ cập nhật tài liệu và CI liên quan các module của Khanh; tránh chỉnh sửa ownership của người khác.
+
+TIÊU CHÍ CHẤP NHẬN
+- `pnpm --filter inventory-service test` và `pnpm --filter shopping-list-service test` chạy độc lập, ổn định, không cần external service/database thật.
+- Tests kiểm tra các nhánh thành công, lỗi và đảm bảo tính idempotent/không đánh dấu mua nhầm khi đồng bộ inventory thất bại.
+- Hai màn hình dùng được ở viewport hẹp và rộng, không tràn nội dung, điều khiển quan trọng có nhãn/trạng thái trợ năng, và các flow hiện tại vẫn được giữ.
+- README của hai service mô tả đúng API, cấu hình, migration, bảo mật và lệnh test; README mobile mô tả đúng thao tác/quyền nếu có thay đổi tương ứng.
+- Các kiểm tra đã chạy được báo cáo chính xác; không tuyên bố kiểm thử thiết bị hoặc production nếu chưa thực hiện.
+
+KẾT QUẢ CUỐI
+- Tóm tắt kết quả theo #55, #62, #67.
+- Liệt kê các file chính đã sửa, scripts test đã thêm và lệnh kiểm tra đã chạy cùng kết quả.
+- Nêu dependency/cấu hình cần thiết và giới hạn còn lại nếu có.

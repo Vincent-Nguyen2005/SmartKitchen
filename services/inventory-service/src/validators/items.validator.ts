@@ -22,11 +22,11 @@ const ItemStatusEnum = z.enum([
 
 export const createItemSchema = z.object({
   familyId: z.string().uuid(),
-  name: z.string().min(1, "Name is required").max(100),
+  name: z.string().trim().min(1, "Name is required").max(100),
   description: z.string().max(500).optional(),
-  quantity: z.number().min(0).default(0),
+  quantity: z.number().finite().min(0).default(0),
   unit: UnitEnum.default("PIECE"),
-  minQuantity: z.number().min(0).optional(),
+  minQuantity: z.number().finite().min(0).optional(),
   categoryId: z.string().uuid().optional(),
   storageLocation: StorageLocationEnum.default("FRIDGE"),
   expiryDate: z
@@ -38,8 +38,11 @@ export const createItemSchema = z.object({
   barcode: z.string().trim().regex(/^\d{8,14}$/, "Barcode must contain 8 to 14 digits").optional(),
 });
 
-export const updateItemSchema = createItemSchema.omit({ familyId: true }).partial().extend({
+export const updateItemSchema = createItemSchema.omit({ familyId: true, expiryDate: true }).partial().extend({
+  expiryDate: z.string().datetime().nullable().optional().transform((value) => value === undefined ? undefined : value === null ? null : new Date(value)),
   status: ItemStatusEnum.optional(),
+}).strict().refine((data) => Object.keys(data).length > 0, {
+  message: "At least one field is required",
 });
 
 export const listItemsQuerySchema = z.object({
@@ -55,6 +58,10 @@ export const listItemsQuerySchema = z.object({
 export const catalogSearchQuerySchema = z.object({
   q: z.string().trim().min(2).max(80),
 });
+
+export const consumeItemSchema = z.object({
+  quantity: z.number().finite().positive(),
+}).strict();
 
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;

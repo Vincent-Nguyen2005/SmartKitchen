@@ -8,6 +8,7 @@ router.get("/catalog/search", ItemsController.searchCatalog);
 router.post("/", ItemsController.create);
 router.get("/", ItemsController.list);
 router.get("/:id", ItemsController.getById);
+router.post("/:id/consume", ItemsController.consume);
 router.put("/:id", ItemsController.update);
 router.delete("/:id", ItemsController.delete);
 

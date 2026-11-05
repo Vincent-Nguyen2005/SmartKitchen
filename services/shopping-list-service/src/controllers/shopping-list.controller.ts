@@ -17,7 +17,7 @@ export class ShoppingListController {
     try {
       const { familyId } = generateBodySchema.parse(req.body);
       await requireFamilyMembership(auth(req), familyId);
-      const result = await ShoppingListService.generateFromInventory(familyId, req.header("authorization") || "");
+      const result = await ShoppingListService.generateFromMenu(familyId, req.header("authorization") || "");
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);
@@ -39,7 +39,7 @@ export class ShoppingListController {
     try {
       const { familyId } = familyQuerySchema.parse(req.query);
       await requireFamilyMembership(auth(req), familyId);
-      const suggestions = await ShoppingListService.getSuggestions(familyId);
+      const suggestions = await ShoppingListService.getSuggestions(familyId, req.header("authorization") || "");
       res.json({ success: true, data: suggestions });
     } catch (err) {
       next(err);
@@ -78,6 +78,18 @@ export class ShoppingListController {
       const body = updateItemBodySchema.parse(req.body);
       const item = await ShoppingListService.updateItem(id, familyId, body);
       res.json({ success: true, data: item });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async deleteItem(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const { familyId } = familyQuerySchema.parse(req.query);
+      await requireFamilyMembership(auth(req), familyId);
+      await ShoppingListService.removeItem(id, familyId);
+      res.status(204).send();
     } catch (err) {
       next(err);
     }

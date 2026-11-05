@@ -22,7 +22,7 @@ jobs:
       matrix:
         include:
           - package: gateway
-            prisma_schema: ''
+            prisma_schema: ""
             run_tests: true
           - package: auth-service
             prisma_schema: services/auth-service/prisma/schema.prisma
@@ -33,15 +33,15 @@ jobs:
           - package: nutrition-service
             prisma_schema: services/nutrition-service/prisma/schema.prisma
           - package: meal-diary-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
           - package: recipe-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
           - package: menu-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
           - package: shopping-list-service
             prisma_schema: services/shopping-list-service/prisma/schema.prisma
           - package: payment-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
           - package: notification-service
             prisma_schema: services/notification-service/prisma/schema.prisma
             run_tests: true
@@ -72,6 +72,29 @@ jobs:
       - name: Test with coverage
         if: matrix.run_tests == true
         run: pnpm turbo run test:coverage --filter="${{ matrix.package }}"
+      - name: Test inventory and shopping list
+        if: matrix.package == 'inventory-service' || matrix.package == 'shopping-list-service'
+        run: pnpm turbo run test --filter="${{ matrix.package }}"
+
+  mobile-typecheck:
+    name: CI / mobile-typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Type-check mobile app
+        run: pnpm --filter mobile typecheck
 
   infra-check:
     name: CI / infra-check
@@ -89,11 +112,11 @@ jobs:
   ci-success:
     name: CI / ci-success
     if: always()
-    needs: [lint-build, infra-check]
+    needs: [lint-build, mobile-typecheck, infra-check]
     runs-on: ubuntu-latest
     steps:
       - name: Require matrix success
-        if: needs.lint-build.result != 'success' || needs.infra-check.result != 'success'
+        if: needs.lint-build.result != 'success' || needs.mobile-typecheck.result != 'success' || needs.infra-check.result != 'success'
         run: exit 1
       - name: CI passed
-        run: echo "All workspace lint, build, test and infra checks passed."
+        run: echo "All workspace lint, build, test, mobile type-check and infrastructure checks passed."

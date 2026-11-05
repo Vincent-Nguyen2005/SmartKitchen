@@ -12,6 +12,7 @@ datasource db {
 model ShoppingList {
   id        String         @id @default(uuid()) @db.Uuid
   familyId  String         @db.Uuid
+  activeFamilyId String?   @unique @db.Uuid
   name      String
   status    String         @default("ACTIVE") // ACTIVE | COMPLETED | ARCHIVED
   createdAt DateTime       @default(now())
@@ -29,13 +30,16 @@ model ShoppingItem {
   isPurchased    Boolean      @default(false)
   inventoryAppliedAt DateTime?
   inventoryItemId String?      @db.Uuid
+  generatedKey String?
+  sourceMenuId String?        @db.Uuid
   note           String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
   shoppingList   ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
 
-  @@index([shoppingListId]) 
+  @@index([shoppingListId])
+  @@unique([shoppingListId, generatedKey])
 }
 model PurchaseHistory {
   id             String   @id @default(uuid()) @db.Uuid

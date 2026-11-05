@@ -24,11 +24,12 @@ export class AlertsController {
   static async refreshStatus(req: Request, res: Response, next: NextFunction) {
     try {
       const query = expiringQuerySchema.parse(req.query);
-      await requireFamilyMembership(req as InventoryAuthRequest, query.familyId);
-      const count = await AlertsService.updateExpiringStatus(query);
+      const auth = req as InventoryAuthRequest;
+      await requireFamilyMembership(auth, query.familyId);
+      const count = await AlertsService.updateExpiringStatus(query, auth.authUser.userId);
       res.json({
         success: true,
-        message: `Updated ${count} items to NEAR_EXPIRY`,
+        message: `Updated ${count} expiry statuses`,
         updatedCount: count,
       });
     } catch (err) {

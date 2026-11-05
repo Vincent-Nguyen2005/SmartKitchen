@@ -9,6 +9,7 @@ router.get("/suggestions", ShoppingListController.suggestions);
 router.post("/items", ShoppingListController.addItem);
 router.post("/items/:id/purchase", ShoppingListController.confirmPurchase);
 router.patch("/items/:id", ShoppingListController.updateItem);
+router.delete("/items/:id", ShoppingListController.deleteItem);
 router.patch("/:id/complete", ShoppingListController.complete);
 
 export default router;
