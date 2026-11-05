@@ -75,6 +75,20 @@ function AppContent(): React.JSX.Element {
     );
   }
 
+  if (session.restoreError) {
+    return (
+      <SafeAreaView style={styles.restoreError}>
+        <Text style={styles.noticeTitle}>Không thể khôi phục phiên đăng nhập</Text>
+        <Text style={styles.noticeMessage}>
+          Vui lòng kiểm tra kết nối mạng và thử lại. Bạn không cần đăng nhập lại.
+        </Text>
+        <TouchableOpacity accessibilityRole="button" onPress={session.retryRestore} style={styles.retryButton}>
+          <Text style={styles.retryText}>Thử lại</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
   if (!session.user) {
     if (authView === "otp" && session.pendingVerificationEmail) {
       return (
@@ -201,6 +215,9 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 10, fontWeight: "600", color: "#888", textAlign: "center" },
   tabTextActive: { color: "#2F6B5F" },
   content: { flex: 1 },
+  restoreError: { flex: 1, justifyContent: "center", padding: 24, backgroundColor: "#F4F7F2" },
+  retryButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#2F6B5F", borderRadius: 12, marginTop: 20, paddingHorizontal: 24, paddingVertical: 14 },
+  retryText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
 
   // Styles cho phần thông báo thiếu user của Hùng
   center: {

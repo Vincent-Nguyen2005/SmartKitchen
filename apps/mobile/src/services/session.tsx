@@ -1,6 +1,7 @@
-import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
-import { ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi } from "./api";
+import { Platform } from "react-native";
+import { ApiError, ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi } from "./api";
 
 type SessionContextValue = {
   user: AuthUser | null;
@@ -9,6 +10,8 @@ type SessionContextValue = {
   familySettings: ApiFamilySettings | null;
   pendingVerificationEmail: string | null;
   ready: boolean;
+  restoreError: boolean;
+  retryRestore: () => void;
   signIn: (email: string, password: string) => Promise<void>;
   register: (fullName: string, email: string, password: string) => Promise<void>;
   verifyOtp: (otpCode: string) => Promise<void>;
@@ -29,6 +32,19 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 const ACCESS_KEY = "smartkitchen.access-token";
 const REFRESH_KEY = "smartkitchen.refresh-token";
 
+const tokenStorage = {
+  get: async (key: string): Promise<string | null> =>
+    Platform.OS === "web" ? globalThis.localStorage?.getItem(key) ?? null : SecureStore.getItemAsync(key),
+  set: async (key: string, value: string): Promise<void> => {
+    if (Platform.OS === "web") globalThis.localStorage?.setItem(key, value);
+    else await SecureStore.setItemAsync(key, value);
+  },
+  remove: async (key: string): Promise<void> => {
+    if (Platform.OS === "web") globalThis.localStorage?.removeItem(key);
+    else await SecureStore.deleteItemAsync(key);
+  },
+};
+
 export function SessionProvider({ children }: PropsWithChildren): React.JSX.Element {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
@@ -36,12 +52,22 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const [familySettings, setFamilySettings] = useState<ApiFamilySettings | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [restoreError, setRestoreError] = useState(false);
+  const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const refreshInFlight = useRef<Promise<string> | null>(null);
+
+  const retryRestore = useCallback(() => {
+    setReady(false);
+    setRestoreError(false);
+    setRestoreAttempt((attempt) => attempt + 1);
+  }, []);
 
   const saveTokens = useCallback(async (access: string, refresh: string | undefined, authUser: AuthUser) => {
+    if (!refresh) throw new Error("Authentication response did not include a refresh token");
+    await tokenStorage.set(REFRESH_KEY, refresh);
+    await tokenStorage.set(ACCESS_KEY, access);
     setAccessToken(access);
     setUser(authUser);
-    await SecureStore.setItemAsync(ACCESS_KEY, access);
-    if (refresh) await SecureStore.setItemAsync(REFRESH_KEY, refresh);
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -66,20 +92,29 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     await authApi.resendOtp(pendingVerificationEmail);
   }, [pendingVerificationEmail]);
 
-  const refreshSession = useCallback(async (refresh: string) => {
-    const result = await authApi.refresh(refresh);
-    await saveTokens(result.accessToken, result.refreshToken, result.user);
-    return result.accessToken;
+  const refreshSession = useCallback((refresh: string): Promise<string> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+    const pending = (async () => {
+      try {
+        const result = await authApi.refresh(refresh);
+        await saveTokens(result.accessToken, result.refreshToken, result.user);
+        return result.accessToken;
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = pending;
+    return pending;
   }, [saveTokens]);
 
   const withToken = useCallback(async <T,>(operation: (token: string) => Promise<T>): Promise<T> => {
-    let token = accessToken ?? await SecureStore.getItemAsync(ACCESS_KEY);
+    let token = accessToken ?? await tokenStorage.get(ACCESS_KEY);
     if (!token) throw new Error("Authentication required");
     try {
       return await operation(token);
     } catch (error) {
       if (!(error instanceof Error) || !("status" in error) || error.status !== 401) throw error;
-      const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
+      const refresh = await tokenStorage.get(REFRESH_KEY);
       if (!refresh) throw error;
       token = await refreshSession(refresh);
       return operation(token);
@@ -147,57 +182,67 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   }, [withToken]);
 
   const signOut = useCallback(async () => {
-    const access = accessToken ?? await SecureStore.getItemAsync(ACCESS_KEY);
-    const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
+    const access = accessToken ?? await tokenStorage.get(ACCESS_KEY);
+    const refresh = await tokenStorage.get(REFRESH_KEY);
     if (access && refresh) await authApi.logout(access, refresh).catch(() => undefined);
-    await SecureStore.deleteItemAsync(ACCESS_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_KEY);
+    await tokenStorage.remove(ACCESS_KEY);
+    await tokenStorage.remove(REFRESH_KEY);
     setAccessToken(null);
     setUser(null);
     setFamily(null);
     setFamilySettings(null);
+    setRestoreError(false);
   }, [accessToken]);
 
   useEffect(() => {
     let active = true;
     const restore = async () => {
       try {
-        let token = await SecureStore.getItemAsync(ACCESS_KEY);
-        const refresh = await SecureStore.getItemAsync(REFRESH_KEY);
-        if (!token && refresh) token = await refreshSession(refresh);
+        const token = await tokenStorage.get(ACCESS_KEY);
+        const refresh = await tokenStorage.get(REFRESH_KEY);
+        if (!token && refresh) {
+          await refreshSession((await tokenStorage.get(REFRESH_KEY)) ?? refresh);
+          return;
+        }
         if (token) {
           const result = await authApi.me(token).catch(async (error: unknown) => {
             if (!(error instanceof Error) || !("status" in error) || error.status !== 401 || !refresh) throw error;
-            const renewed = await refreshSession(refresh);
-            token = renewed;
-            return authApi.me(renewed);
+            await refreshSession((await tokenStorage.get(REFRESH_KEY)) ?? refresh);
+            return null;
           });
-          if (active) {
+          if (active && result) {
             setAccessToken(token);
             setUser(result.user);
           }
         }
-      } catch {
-        await SecureStore.deleteItemAsync(ACCESS_KEY);
-        await SecureStore.deleteItemAsync(REFRESH_KEY);
+      } catch (error) {
+        // A network/server error must not turn a temporary outage into a permanent logout.
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          await Promise.allSettled([
+            tokenStorage.remove(ACCESS_KEY),
+            tokenStorage.remove(REFRESH_KEY),
+          ]);
+        } else if (active) {
+          setRestoreError(true);
+        }
       } finally {
         if (active) setReady(true);
       }
     };
     void restore();
     return () => { active = false; };
-  }, [refreshSession]);
+  }, [refreshSession, restoreAttempt]);
 
   useEffect(() => {
     if (ready && accessToken) void loadFamily().catch(() => undefined);
   }, [accessToken, loadFamily, ready]);
 
   const value = useMemo(() => ({
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings,
   }), [
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings,
   ]);
