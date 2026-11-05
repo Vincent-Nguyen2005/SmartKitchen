@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { PrismaClient } from ".prisma/client-admin";
 import { requireAdmin } from "../middleware/require-admin";
 import type { HealthMonitor } from "../jobs/health-monitor";
-import { overallStatus, summarize, summaryWindows, type HealthStatus, type SummaryWindow } from "../lib/health-stats";
+import { bucketize, overallStatus, summarize, summaryWindows, timeseriesRange, type HealthStatus, type SummaryWindow } from "../lib/health-stats";
 
 type MonitorPrisma = Pick<PrismaClient, "serviceHealthLog" | "$transaction">;
 
@@ -16,6 +16,10 @@ const historyQuery = z.object({
 }).refine((query) => !query.from || !query.to || query.from <= query.to, { message: "from must be before to", path: ["from"] });
 
 const summaryQuery = z.object({ window: z.enum(["24h", "7d"]).default("24h") });
+const timeseriesQuery = z.object({
+  service: z.string().trim().min(1).max(100).optional(),
+  window: z.enum(["24h", "7d"]).default("24h"),
+});
 
 export const createHealthMonitorRouter = (prisma: MonitorPrisma, monitor: HealthMonitor): Router => {
   const router = Router();
@@ -60,6 +64,29 @@ export const createHealthMonitorRouter = (prisma: MonitorPrisma, monitor: Health
     });
     const services = summarize(serviceNames, samples);
     return response.json({ window, from, to, overall: overallStatus(services.map((service) => service.lastStatus)), services });
+  });
+
+  // Bucketed uptime / response times for one service, or all configured services when `service` is omitted.
+  router.get("/timeseries", async (request, response) => {
+    const parsed = timeseriesQuery.safeParse(request.query);
+    if (!parsed.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "window must be 24h or 7d", details: parsed.error.flatten() });
+    const { service, window } = parsed.data;
+    if (service && !serviceNames.includes(service)) {
+      return response.status(400).json({ error: "VALIDATION_ERROR", message: "Unknown service", details: { service: ["Must be one of the monitored services"] } });
+    }
+    const { from, to, bucketMs, count } = timeseriesRange(window, new Date());
+    const samples = await prisma.serviceHealthLog.findMany({
+      where: { serviceName: service ?? { in: serviceNames }, checkedAt: { gte: from, lt: to } },
+      select: { serviceName: true, status: true, responseTimeMs: true, checkedAt: true },
+    });
+    return response.json({
+      service: service ?? null,
+      window,
+      bucketMinutes: bucketMs / 60_000,
+      from,
+      to,
+      buckets: bucketize(samples, from, bucketMs, count),
+    });
   });
 
   router.post("/check-now", async (_request, response) => {

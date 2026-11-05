@@ -24,7 +24,14 @@ Paths are as seen by the service; through the gateway prefix them with `/api/adm
 | `GET /health-monitor/status` | Latest status per service + `overall` |
 | `GET /health-monitor/history?service=&from=&to=&page=&limit=` | Raw samples (`limit` max 200, default 50) |
 | `GET /health-monitor/summary?window=24h\|7d` | Per service: uptime %, average and p95 response time, last status; `overall` |
+| `GET /health-monitor/timeseries?service=&window=24h\|7d` | Bucketed uptime %, average and p95 response time (admin dashboard charts) |
 | `POST /health-monitor/check-now` | Run one poll immediately and return the result |
+
+`GET /health-monitor/timeseries`:
+- `window` defaults to `24h`: buckets of 1 hour. `7d`: buckets of 6 hours. Bucket edges are aligned to the UTC epoch (full hours / 00, 06, 12, 18 UTC), so they stay stable between refreshes. The range covers the whole summary window `[now − window, now]`: the start is rounded down and the end up to a bucket edge, which gives 25 hourly / 29 six-hour buckets (24 / 28 when `now` is exactly on an edge). Every sample counted by `/summary` therefore lands in a bucket.
+- `service` is optional and must be one of the monitored services (otherwise `400 VALIDATION_ERROR`, "Unknown service"). Without it, every monitored service's samples are combined.
+- Each bucket uses the same math as the summary: `{ start, end, samples, uptimePercent, avgResponseTimeMs, p95ResponseTimeMs }`. Buckets without samples are returned with `samples: 0` and `null` values, so charts can show gaps.
+- Response: `{ service | null, window, bucketMinutes, from, to, buckets }`.
 
 - Targets: the 11 services and the gateway (`*_SERVICE_URL`, `GATEWAY_URL`), probed on `/health` every `HEALTH_POLL_INTERVAL_SECONDS` with a `HEALTH_CHECK_TIMEOUT_MS` timeout.
 - Classification: no response or non-2xx → `DOWN`; 2xx with body `status: DEGRADED` or slower than `HEALTH_DEGRADED_THRESHOLD_MS` → `DEGRADED`; otherwise `UP`.
@@ -40,7 +47,7 @@ Paths are as seen by the service; through the gateway prefix them with `/api/adm
 | `POST /reports` | `requireUser` | `{ category: ABUSE\|SPAM\|BUG\|OTHER, description (10–2000), reportedUserId? }`; cannot report yourself |
 | `GET /reports/mine?page=&limit=` | `requireUser` | Own reports (the handling admin's id is hidden) |
 | `GET /reports?status=&category=&sort=&page=&limit=` | `requireAdmin` | All reports; `sort` is `createdAt:desc` (default), `createdAt:asc`, `updatedAt:desc` or `updatedAt:asc` |
-| `GET /reports/stats` | `requireAdmin` | Counts per status and category |
+| `GET /reports/stats?window=24h\|7d` | `requireAdmin` | Counts per status and category. With the optional `window`, also `window` and `resolvedInWindow` (reports with status `RESOLVED` and `resolvedAt` inside the window); without it the response is unchanged |
 | `GET /reports/:id` | `requireAdmin` | One report |
 | `PATCH /reports/:id/status` | `requireAdmin` | `{ status, resolutionNote? }` |
 
