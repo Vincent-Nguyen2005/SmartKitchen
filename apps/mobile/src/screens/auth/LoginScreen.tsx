@@ -10,18 +10,21 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { ApiError } from "../../services/api";
+import { authErrorMessage } from "./authError";
+import { Eye, EyeOff } from "lucide-react-native";
 
-type AuthNavigation = {
-  navigate: (screen: "Register" | "ForgotPassword") => void;
-};
+type AuthNavigation = { navigate: (screen: "Register") => void };
 type Props = {
   navigation?: AuthNavigation;
   onSubmit?: (email: string, password: string) => Promise<void>;
+  onVerificationRequired?: () => void;
 };
 
 export default function LoginScreen({
   navigation,
   onSubmit,
+  onVerificationRequired,
 }: Props): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,14 +34,15 @@ export default function LoginScreen({
 
   const submit = async (): Promise<void> => {
     if (!/^\S+@\S+\.\S+$/.test(email.trim()))
-      return setError("Enter a valid email address.");
-    if (!password) return setError("Enter your password.");
+      return setError("Vui lòng nhập email hợp lệ.");
+    if (!password) return setError("Vui lòng nhập mật khẩu.");
     setError("");
     setLoading(true);
     try {
       await onSubmit?.(email.trim().toLowerCase(), password);
     } catch (loginError) {
-      setError(loginError instanceof Error ? loginError.message : "Unable to sign in. Check your details and try again.");
+      if (loginError instanceof ApiError && loginError.code === "EMAIL_NOT_VERIFIED") onVerificationRequired?.();
+      else setError(authErrorMessage(loginError, "Không thể đăng nhập. Vui lòng thử lại."));
     } finally {
       setLoading(false);
     }
@@ -52,16 +56,16 @@ export default function LoginScreen({
       >
         <View>
           <Text style={styles.kicker}>SMARTKITCHEN</Text>
-          <Text style={styles.title}>Welcome back</Text>
+          <Text style={styles.title}>Chào mừng trở lại</Text>
           <Text style={styles.subtitle}>
-            Sign in to keep your household in sync.
+            Đăng nhập để quản lý căn bếp của gia đình.
           </Text>
           <TextInput
             autoCapitalize="none"
             autoComplete="email"
             keyboardType="email-address"
             onChangeText={setEmail}
-            placeholder="Email address"
+            placeholder="Địa chỉ email"
             placeholderTextColor="#8B949E"
             style={styles.input}
             value={email}
@@ -70,20 +74,19 @@ export default function LoginScreen({
             <TextInput
               autoCapitalize="none"
               onChangeText={setPassword}
-              placeholder="Password"
+              placeholder="Mật khẩu"
               placeholderTextColor="#8B949E"
               secureTextEntry={!showPassword}
               style={styles.passwordInput}
               value={password}
             />
             <Pressable
+              accessibilityLabel={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
               accessibilityRole="button"
               onPress={() => setShowPassword((value) => !value)}
               style={styles.visibilityButton}
             >
-              <Text style={styles.visibilityText}>
-                {showPassword ? "Hide" : "Show"}
-              </Text>
+              {showPassword ? <EyeOff color="#2F6B5F" size={21} /> : <Eye color="#2F6B5F" size={21} />}
             </Pressable>
           </View>
           {!!error && (
@@ -102,14 +105,8 @@ export default function LoginScreen({
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryButtonText}>Sign in</Text>
+              <Text style={styles.primaryButtonText}>Đăng nhập</Text>
             )}
-          </Pressable>
-          <Pressable
-            onPress={() => navigation?.navigate("ForgotPassword")}
-            style={styles.linkButton}
-          >
-            <Text style={styles.link}>Forgot password?</Text>
           </Pressable>
         </View>
         <Pressable
@@ -117,8 +114,8 @@ export default function LoginScreen({
           style={styles.footer}
         >
           <Text style={styles.footerText}>
-            New to SmartKitchen?{" "}
-            <Text style={styles.link}>Create an account</Text>
+            Chưa có tài khoản?{" "}
+            <Text style={styles.link}>Đăng ký</Text>
           </Text>
         </Pressable>
       </KeyboardAvoidingView>
@@ -176,7 +173,6 @@ const styles = StyleSheet.create({
   },
   primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   pressed: { opacity: 0.8 },
-  linkButton: { alignItems: "center", padding: 18 },
   link: { color: "#2F6B5F", fontWeight: "700" },
   footer: { alignItems: "center", paddingVertical: 12 },
   footerText: { color: "#68736F", fontSize: 14 },
