@@ -52,6 +52,10 @@ export const listItemsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const catalogSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(80),
+});
+
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export type ListItemsQuery = z.infer<typeof listItemsQuerySchema>;

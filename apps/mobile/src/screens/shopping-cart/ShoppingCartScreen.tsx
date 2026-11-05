@@ -11,6 +11,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Check, Plus, RefreshCw } from "lucide-react-native";
 import { useSession } from "../../services/session";
 import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi } from "./shoppingApi";
 
@@ -141,7 +142,7 @@ export default function ShoppingCartScreen(): React.JSX.Element {
             onPress={() => confirmPurchase(item)}
             style={[styles.confirmButton, busyItemId === item.id && styles.disabled]}
           >
-            {busyItemId === item.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text>}
+            {busyItemId === item.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <View style={styles.inlineAction}><Check color="#FFFFFF" size={14} /><Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text></View>}
           </Pressable>
         )}
       </View>
@@ -159,7 +160,9 @@ export default function ShoppingCartScreen(): React.JSX.Element {
           <Text style={styles.eyebrow}>SMARTKITCHEN / SHOPPING</Text>
           <Text style={styles.title}>Đi chợ</Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={() => void fetchData(true)} style={styles.refreshButton}><Text style={styles.refreshText}>Làm mới</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách đi chợ" onPress={() => void fetchData(true)} style={styles.refreshButton}>
+          <View style={styles.inlineAction}><RefreshCw color="#215B43" size={14} /><Text style={styles.refreshText}>Làm mới</Text></View>
+        </Pressable>
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? 12 : 16 }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
@@ -181,7 +184,7 @@ export default function ShoppingCartScreen(): React.JSX.Element {
                 </ScrollView>
               </View>
               <Pressable accessibilityRole="button" disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
-                {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.addButtonText}>Lưu vào danh sách</Text>}
+                {saving ? <ActivityIndicator color="#FFFFFF" /> : <View style={styles.inlineAction}><Plus color="#FFFFFF" size={16} /><Text style={styles.addButtonText}>Lưu vào danh sách</Text></View>}
               </Pressable>
               <Text style={styles.helper}>Món chỉ nằm trong danh sách. Kho chỉ được cập nhật sau khi bạn xác nhận đã mua.</Text>
             </View>
@@ -224,6 +227,7 @@ const styles = StyleSheet.create({
   eyebrow: { color: "#547364", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   title: { color: "#17271F", fontSize: 28, fontWeight: "800", marginTop: 4 },
   refreshButton: { backgroundColor: "#E9F1EB", borderRadius: 7, paddingHorizontal: 12, paddingVertical: 9 },
+  inlineAction: { alignItems: "center", flexDirection: "row", gap: 6, justifyContent: "center" },
   refreshText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
   content: { alignSelf: "center", gap: 14, paddingBottom: 30, width: "100%" },
   addCard: { backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 11, borderWidth: 1, gap: 10, padding: 15 },

@@ -14,6 +14,13 @@ export type NewFoodItem = {
   storageLocation: "FRIDGE" | "FREEZER" | "PANTRY" | "COUNTER";
   barcode?: string;
 };
+export type ProductCatalogResult = {
+  barcode: string;
+  name: string;
+  brand?: string;
+  packageQuantity?: string;
+  imageUrl?: string;
+};
 
 type ApiEnvelope<T> = { success?: boolean; data?: T; error?: string; message?: string };
 
@@ -56,6 +63,11 @@ export const inventoryApi = {
     request<{ found: boolean; barcode: string; product: null | { barcode: string; name: string; brand?: string; packageQuantity?: string; imageUrl?: string }; source: string }>(
       accessToken,
       `/api/inventory/items/barcode/${encodeURIComponent(barcode)}`,
+    ),
+  searchCatalog: (accessToken: string, queryText: string) =>
+    request<{ results: ProductCatalogResult[]; source: string }>(
+      accessToken,
+      `/api/inventory/items/catalog/search${query({ q: queryText })}`,
     ),
   recognizeReceipt: (accessToken: string, imageBase64: string) =>
     request<{ rawText: string; items: Array<{ name: string; quantity: number; unit: InventoryUnit; sourceText: string }> }>(

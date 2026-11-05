@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Package, Search, X } from "lucide-react-native";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { inventoryApi } from "./inventoryApi";
@@ -79,7 +80,7 @@ export default function InventoryListScreen({
           {items.length} nguyên liệu trong kho
         </Text>
         <View style={styles.searchBox}>
-          <Text style={styles.searchMark}>Tìm</Text>
+          <Search color="#A75132" size={18} />
           <TextInput
             accessibilityLabel="Tìm trong kho thực phẩm"
             onChangeText={setSearch}
@@ -91,7 +92,7 @@ export default function InventoryListScreen({
           />
           {search.length > 0 && (
             <Pressable accessibilityRole="button" accessibilityLabel="Xóa nội dung tìm kiếm" onPress={() => setSearch("")} style={styles.clearButton}>
-              <Text style={styles.clearText}>Xóa</Text>
+              <X color="#27634B" size={18} />
             </Pressable>
           )}
         </View>
@@ -174,7 +175,7 @@ export default function InventoryListScreen({
                       isNearExpiry && { backgroundColor: "#F3C875" },
                     ]}
                   >
-                    <Text style={styles.placeholderEmoji}>📦</Text>
+                    <Package color="#547364" size={28} strokeWidth={1.8} />
                   </View>
                   <Text
                     style={[
@@ -241,16 +242,8 @@ const styles = StyleSheet.create({
     minHeight: 52,
     paddingHorizontal: 13,
   },
-  searchMark: {
-    color: "#A75132",
-    fontSize: 11,
-    fontWeight: "800",
-    marginRight: 10,
-    textTransform: "uppercase",
-  },
-  searchInput: { color: "#17271F", flex: 1, fontSize: 14, paddingVertical: 12 },
+  searchInput: { color: "#17271F", flex: 1, fontSize: 14, paddingHorizontal: 10, paddingVertical: 12 },
   clearButton: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
-  clearText: { color: "#27634B", fontSize: 12, fontWeight: "700" },
   categoryScroller: { alignSelf: "center", flexGrow: 0, flexShrink: 0, height: 72, width: "100%" },
   categoryRail: { alignItems: "center", gap: 8 },
   categoryButton: {
@@ -292,7 +285,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: "100%",
   },
-  placeholderEmoji: { fontSize: 42 },
   indexMark: {
     alignItems: "center",
     borderRadius: 4,

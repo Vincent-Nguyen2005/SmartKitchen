@@ -41,6 +41,7 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `PUT /api/inventory/items/:id?familyId=<uuid>` | Update allowed item fields for the family. Returns the updated item in `data`. |
 | `DELETE /api/inventory/items/:id?familyId=<uuid>` | Soft-delete a family item; the row is retained. |
 | `GET /api/inventory/items/barcode/:barcode` | Look up a barcode in Open Food Facts. A missing product returns `found: false` for manual entry; catalog data is community-contributed and must be reviewed. |
+| `GET /api/inventory/items/catalog/search?q=<name>` | Search the live Open Food Facts catalog by product name. Returns up to 8 results and does not add anything to family inventory until a user selects and confirms a product. Repeated queries are cached for 10 minutes; uncached searches are limited to 8 per minute per service instance. |
 | `GET /api/inventory/alerts/expiring?familyId=<uuid>&days=3` | List items expiring within 1–30 days (3 by default). |
 | `POST /api/inventory/alerts/refresh?familyId=<uuid>&days=3` | Update eligible item statuses to `NEAR_EXPIRY`; returns `updatedCount`. |
 | `POST /api/inventory/receipts/ocr` | Recognize a receipt without saving items. Body: `{ "imageBase64": "...", "mimeType": "image/jpeg" }`. Valid JPEG, PNG or WebP images are limited to 5 MB. Returns OCR text and candidate lines for user review. |

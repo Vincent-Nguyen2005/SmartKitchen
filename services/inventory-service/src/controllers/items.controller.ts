@@ -5,6 +5,7 @@ import {
   updateItemSchema,
   listItemsQuerySchema,
   itemScopeQuerySchema,
+  catalogSearchQuerySchema,
 } from "../validators/items.validator";
 import { InventoryAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
@@ -13,6 +14,16 @@ import { ProductCatalogService } from "../services/product-catalog.service";
 import { barcodeParamSchema } from "../validators/purchase.validator";
 
 export class ItemsController {
+  static async searchCatalog(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { q } = catalogSearchQuerySchema.parse(req.query);
+      const result = await ProductCatalogService.searchProducts(q);
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
   static async lookupBarcode(req: Request, res: Response, next: NextFunction) {
     try {
       const { barcode } = barcodeParamSchema.parse(req.params);
