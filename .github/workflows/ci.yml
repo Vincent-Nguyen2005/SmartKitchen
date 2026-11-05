@@ -29,7 +29,7 @@ jobs:
           - package: family-service
             prisma_schema: services/family-service/prisma/schema.prisma
           - package: inventory-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/inventory-service/prisma/schema.prisma
           - package: nutrition-service
             prisma_schema: services/nutrition-service/prisma/schema.prisma
           - package: meal-diary-service
@@ -39,7 +39,7 @@ jobs:
           - package: menu-service
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: shopping-list-service
-            prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/shopping-list-service/prisma/schema.prisma
           - package: payment-service
             prisma_schema: '' # chưa có model, bật lại khi owner thêm schema
           - package: notification-service

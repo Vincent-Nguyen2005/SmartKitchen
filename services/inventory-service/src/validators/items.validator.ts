@@ -35,14 +35,15 @@ export const createItemSchema = z.object({
     .optional()
     .transform((v) => (v ? new Date(v) : undefined)),
   imageUrl: z.string().url().optional(),
+  barcode: z.string().trim().regex(/^\d{8,14}$/, "Barcode must contain 8 to 14 digits").optional(),
 });
 
-export const updateItemSchema = createItemSchema.partial().extend({
+export const updateItemSchema = createItemSchema.omit({ familyId: true }).partial().extend({
   status: ItemStatusEnum.optional(),
 });
 
 export const listItemsQuerySchema = z.object({
-  familyId: z.string().uuid().optional(),
+  familyId: z.string().uuid(),
   categoryId: z.string().uuid().optional(),
   status: ItemStatusEnum.optional(),
   storageLocation: StorageLocationEnum.optional(),
@@ -51,6 +52,12 @@ export const listItemsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const catalogSearchQuerySchema = z.object({
+  q: z.string().trim().min(2).max(80),
+});
+
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
 export type ListItemsQuery = z.infer<typeof listItemsQuerySchema>;
+
+export const itemScopeQuerySchema = z.object({ familyId: z.string().uuid() });

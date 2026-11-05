@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { Archive, Bell, Salad, Settings, ShoppingBasket } from "lucide-react-native";
 import {
   ActivityIndicator,
   Alert,
@@ -93,7 +94,11 @@ function AppContent(): React.JSX.Element {
         navigation={{
           navigate: (screen) => {
             if (screen === "Register") setAuthView("register");
-            else Alert.alert("Password reset", "Password reset is not available in this test build.");
+            else
+              Alert.alert(
+                "Password reset",
+                "Password reset is not available in this test build.",
+              );
           },
         }}
         onSubmit={session.signIn}
@@ -102,99 +107,103 @@ function AppContent(): React.JSX.Element {
   }
 
   return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.headerText}>SmartKitchen</Text>
-        </View>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.headerText}>SmartKitchen</Text>
+      </View>
 
-        {/* Thanh Điều hướng 3 Tab */}
-        <View style={styles.tabBar}>
-          <TouchableOpacity
-            style={[styles.tab, tab === "inventory" && styles.tabActive]}
-            onPress={() => setTab("inventory")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                tab === "inventory" && styles.tabTextActive,
-              ]}
-            >
-              📦 Kho
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, tab === "shopping" && styles.tabActive]}
-            onPress={() => setTab("shopping")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                tab === "shopping" && styles.tabTextActive,
-              ]}
-            >
-              🛒 Đi chợ
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tab, tab === "nutrition" && styles.tabActive]}
-            onPress={() => setTab("nutrition")}
-          >
-            <Text
-              style={[
-                styles.tabText,
-                tab === "nutrition" && styles.tabTextActive,
-              ]}
-            >
-              🥗 Dinh dưỡng
-            </Text>
-          </TouchableOpacity>
+      {/* Thanh Điều hướng 3 Tab */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Kho"
+          style={[styles.tab, tab === "inventory" && styles.tabActive]}
+          onPress={() => setTab("inventory")}
+        >
+          <View style={styles.tabContent}>
+            <Archive size={18} color={tab === "inventory" ? "#007AFF" : "#888"} />
+            <Text style={[styles.tabText, tab === "inventory" && styles.tabTextActive]}>Kho</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Đi chợ"
+          style={[styles.tab, tab === "shopping" && styles.tabActive]}
+          onPress={() => setTab("shopping")}
+        >
+          <View style={styles.tabContent}>
+            <ShoppingBasket size={18} color={tab === "shopping" ? "#007AFF" : "#888"} />
+            <Text style={[styles.tabText, tab === "shopping" && styles.tabTextActive]}>Đi chợ</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Dinh dưỡng"
+          style={[styles.tab, tab === "nutrition" && styles.tabActive]}
+          onPress={() => setTab("nutrition")}
+        >
+          <View style={styles.tabContent}>
+            <Salad size={18} color={tab === "nutrition" ? "#007AFF" : "#888"} />
+            <Text style={[styles.tabText, tab === "nutrition" && styles.tabTextActive]}>Dinh dưỡng</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          accessibilityRole="tab"
+          accessibilityLabel="Thông báo"
+          style={[styles.tab, tab === "notifications" && styles.tabActive]}
+          onPress={() => setTab("notifications")}
+        >
+          <View style={styles.tabContent}>
+            <Bell size={18} color={tab === "notifications" ? "#007AFF" : "#888"} />
+            <Text style={[styles.tabText, tab === "notifications" && styles.tabTextActive]}>Thông báo</Text>
+          </View>
+        </TouchableOpacity>
+        {isAdmin && (
           <TouchableOpacity
             accessibilityRole="tab"
-            accessibilityLabel="Thông báo"
-            style={[styles.tab, tab === "notifications" && styles.tabActive]}
-            onPress={() => setTab("notifications")}
+            accessibilityLabel="Quản trị"
+            style={[styles.tab, tab === "admin" && styles.tabActive]}
+            onPress={() => setTab("admin")}
           >
-            <Text style={[styles.tabText, tab === "notifications" && styles.tabTextActive]}>🔔 Thông báo</Text>
+            <View style={styles.tabContent}>
+              <Settings size={18} color={tab === "admin" ? "#007AFF" : "#888"} />
+              <Text style={[styles.tabText, tab === "admin" && styles.tabTextActive]}>Quản trị</Text>
+            </View>
           </TouchableOpacity>
-          {isAdmin && (
-            <TouchableOpacity
-              accessibilityRole="tab"
-              accessibilityLabel="Quản trị"
-              style={[styles.tab, tab === "admin" && styles.tabActive]}
-              onPress={() => setTab("admin")}
-            >
-              <Text style={[styles.tabText, tab === "admin" && styles.tabTextActive]}>🛠 Quản trị</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        )}
+      </View>
 
-        {/* Nội dung hiển thị theo Tab */}
-        <View style={styles.content}>
-          {tab === "inventory" && <InventoryScreen />}
-          {tab === "shopping" && <ShoppingCartScreen />}
-          {tab === "notifications" && <NotificationsHome />}
-          {tab === "admin" && isAdmin && <AdminHome />}
-          {tab === "nutrition" &&
-            (userId ? (
-              <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-            ) : (
-              <View style={styles.center}>
-                <Text style={styles.noticeTitle}>
-                  Thiếu thông tin người dùng
-                </Text>
-                <Text style={styles.noticeMessage}>
-                  Không tìm thấy user ID. Hãy đặt EXPO_PUBLIC_USER_ID trong file
-                  .env để chạy thử cục bộ.
-                </Text>
-              </View>
-            ))}
-        </View>
-      </SafeAreaView>
+      {/* Nội dung hiển thị theo Tab */}
+      <View style={styles.content}>
+        {tab === "inventory" && <InventoryScreen />}
+        {tab === "shopping" && <ShoppingCartScreen />}
+        {tab === "notifications" && <NotificationsHome />}
+        {tab === "admin" && isAdmin && <AdminHome />}
+        {tab === "nutrition" &&
+          (userId ? (
+            <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+          ) : (
+            <View style={styles.center}>
+              <Text style={styles.noticeTitle}>Thiếu thông tin người dùng</Text>
+              <Text style={styles.noticeMessage}>
+                Không tìm thấy user ID. Hãy đặt EXPO_PUBLIC_USER_ID trong file
+                .env để chạy thử cục bộ.
+              </Text>
+            </View>
+          ))}
+      </View>
+    </SafeAreaView>
   );
 }
 
 export default function App(): React.JSX.Element {
-  return <SafeAreaProvider><SessionProvider><AppContent /></SessionProvider></SafeAreaProvider>;
+  return (
+    <SafeAreaProvider>
+      <SessionProvider>
+        <AppContent />
+      </SessionProvider>
+    </SafeAreaProvider>
+  );
 }
 
 const styles = StyleSheet.create({
@@ -209,16 +218,18 @@ const styles = StyleSheet.create({
   },
   tab: {
     flex: 1,
-    padding: 14,
+    paddingHorizontal: 3,
+    paddingVertical: 8,
     alignItems: "center",
     backgroundColor: "#fafafa",
   },
+  tabContent: { alignItems: "center", gap: 4 },
   tabActive: {
     backgroundColor: "#fff",
     borderBottomWidth: 3,
     borderBottomColor: "#007AFF",
   },
-  tabText: { fontSize: 14, fontWeight: "600", color: "#888" },
+  tabText: { fontSize: 10, fontWeight: "600", color: "#888", textAlign: "center" },
   tabTextActive: { color: "#007AFF" },
   content: { flex: 1 },
 
