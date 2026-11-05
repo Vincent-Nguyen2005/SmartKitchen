@@ -7,6 +7,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
@@ -35,6 +36,8 @@ function parseVoiceDraft(text: string): { name: string; quantity: string; unit: 
 }
 
 export default function InventoryCapturePanel({ familyId, accessToken, onSaved }: Props): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const isCompact = width < 360;
   const [mode, setMode] = useState<Mode>("manual");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -262,7 +265,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   };
 
   return (
-    <View style={styles.panel}>
+    <View style={[styles.panel, { padding: isCompact ? 12 : 16 }]}>
       <Text style={styles.panelTitle}>Thêm thực phẩm</Text>
       <Text style={styles.panelSubtitle}>Chọn cách nhập. Mọi kết quả đều là bản nháp cho bạn kiểm tra trước khi lưu.</Text>
       {!familyId || !accessToken ? (
@@ -273,7 +276,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             {([
               ["manual", "Nhập tay"], ["barcode", "Mã vạch"], ["receipt", "Hóa đơn"], ["voice", "Giọng nói"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
-              <Pressable key={value} onPress={() => chooseMode(value)} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
+              <Pressable accessibilityRole="button" accessibilityState={{ selected: mode === value }} key={value} onPress={() => chooseMode(value)} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
               </Pressable>
             ))}
@@ -283,8 +286,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             <View style={styles.section}>
               <Text style={styles.label}>Quét bằng camera hoặc nhập mã thủ công</Text>
               <View style={styles.barcodeRow}>
-                <TextInput value={barcode} onChangeText={setBarcode} placeholder="8–14 chữ số" keyboardType="number-pad" style={[styles.input, styles.barcodeInput]} />
-                <Pressable disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Tra cứu</Text></Pressable>
+                <TextInput accessibilityLabel="Mã vạch gồm 8 đến 14 chữ số" value={barcode} onChangeText={setBarcode} placeholder="8–14 chữ số" keyboardType="number-pad" style={[styles.input, styles.barcodeInput]} />
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Tra cứu</Text></Pressable>
               </View>
               {cameraActive ? (
                 <View style={styles.cameraFrame}>
@@ -298,10 +301,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
                       setNote("Không khởi chạy được máy quét. Bạn có thể nhập mã vạch bằng tay bên dưới.");
                     }}
                   />
-                  <Pressable onPress={() => setCameraActive(false)} style={styles.cameraClose}><Text style={styles.cameraCloseText}>Đóng camera</Text></Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => setCameraActive(false)} style={styles.cameraClose}><Text style={styles.cameraCloseText}>Đóng camera</Text></Pressable>
                 </View>
               ) : (
-                <Pressable onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></Pressable>
+                <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></Pressable>
               )}
               {barcodeResult && <Text style={styles.helper}>{barcodeResult}</Text>}
             </View>
@@ -311,20 +314,20 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             <View style={styles.section}>
               <Text style={styles.label}>Đọc hóa đơn (ảnh JPEG, PNG hoặc WebP, tối đa 5 MB)</Text>
               <View style={styles.actionsRow}>
-                <Pressable disabled={busy} onPress={() => void scanReceipt("camera")} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Chụp hóa đơn</Text></Pressable>
-                <Pressable disabled={busy} onPress={() => void scanReceipt("library")} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera")} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Chụp hóa đơn</Text></Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library")} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></Pressable>
               </View>
               {!!receiptText && <Text numberOfLines={4} style={styles.ocrText}>Văn bản OCR: {receiptText}</Text>}
               {receiptDrafts.map((draft) => (
                 <View key={draft.id} style={styles.receiptCard}>
                   <Text style={styles.sourceText}>Nhận diện: {draft.sourceText}</Text>
                   <Text style={styles.label}>Tên thực phẩm</Text>
-                  <TextInput value={draft.name} onChangeText={(value) => updateReceiptDraft(draft.id, "name", value)} style={styles.input} />
+                  <TextInput accessibilityLabel={`Tên thực phẩm nhận diện: ${draft.sourceText}`} value={draft.name} onChangeText={(value) => updateReceiptDraft(draft.id, "name", value)} style={styles.input} />
                   <View style={styles.barcodeRow}>
-                    <TextInput value={draft.quantity} onChangeText={(value) => updateReceiptDraft(draft.id, "quantity", value)} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                    <UnitButtons value={draft.unit} onChange={(value) => updateReceiptDraft(draft.id, "unit", value)} />
+                    <TextInput accessibilityLabel={`Số lượng cho ${draft.name || "món nhận diện"}`} value={draft.quantity} onChangeText={(value) => updateReceiptDraft(draft.id, "quantity", value)} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
+                    <UnitButtons fill value={draft.unit} onChange={(value) => updateReceiptDraft(draft.id, "unit", value)} />
                   </View>
-                  <Pressable disabled={busy} onPress={() => void saveReceiptDraft(draft)} style={styles.saveButton}><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></Pressable>
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveReceiptDraft(draft)} style={styles.saveButton}><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></Pressable>
                 </View>
               ))}
             </View>
@@ -333,7 +336,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
           {mode === "voice" && (
             <View style={styles.section}>
               <Text style={styles.label}>Nhận dạng tiếng Việt trên thiết bị</Text>
-              <Pressable disabled={busy} onPress={() => void startVoice()} style={[styles.voiceButton, recognizing && styles.voiceButtonActive]}>
+              <Pressable accessibilityRole="button" accessibilityState={{ busy: recognizing }} disabled={busy} onPress={() => void startVoice()} style={[styles.voiceButton, recognizing && styles.voiceButtonActive]}>
                 <Text style={styles.saveButtonText}>{recognizing ? "Dừng nhận dạng" : "Bắt đầu nói"}</Text>
               </Pressable>
               {!!voiceText && <Text style={styles.helper}>Bản nháp nghe được: {voiceText}</Text>}
@@ -344,12 +347,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
           {(mode === "manual" || mode === "voice" || (mode === "barcode" && (!!barcodeResult || /^\d{8,14}$/.test(barcode)))) && (
             <View style={styles.section}>
               <Text style={styles.label}>Xem lại tên</Text>
-              <TextInput value={name} onChangeText={setName} placeholder="Ví dụ: Gạo jasmine" style={styles.input} />
+              <TextInput accessibilityLabel="Tên thực phẩm" value={name} onChangeText={setName} placeholder="Ví dụ: Gạo jasmine" style={styles.input} />
               <Text style={styles.label}>Số lượng</Text>
-              <TextInput value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
+              <TextInput accessibilityLabel="Số lượng thực phẩm" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
               <Text style={styles.label}>Đơn vị</Text>
               <UnitButtons value={unit} onChange={setUnit} />
-              <Pressable disabled={busy} onPress={() => void saveMainDraft()} style={[styles.saveButton, busy && styles.disabledButton]}>
+              <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveMainDraft()} style={[styles.saveButton, busy && styles.disabledButton]}>
                 {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text>}
               </Pressable>
             </View>
@@ -362,11 +365,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   );
 }
 
-function UnitButtons({ value, onChange }: { value: InventoryUnit; onChange: (unit: InventoryUnit) => void }): React.JSX.Element {
+function UnitButtons({ value, onChange, fill = false }: { value: InventoryUnit; onChange: (unit: InventoryUnit) => void; fill?: boolean }): React.JSX.Element {
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitRow}>
+    <ScrollView style={fill && styles.unitScrollerFill} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitRow}>
       {units.map((unit) => (
-        <Pressable key={unit} onPress={() => onChange(unit)} style={[styles.unitButton, value === unit && styles.unitButtonActive]}>
+        <Pressable accessibilityRole="button" accessibilityState={{ selected: value === unit }} accessibilityLabel={`Đơn vị ${unitLabels[unit]}`} key={unit} onPress={() => onChange(unit)} style={[styles.unitButton, value === unit && styles.unitButtonActive]}>
           <Text style={[styles.unitText, value === unit && styles.unitTextActive]}>{unitLabels[unit]}</Text>
         </Pressable>
       ))}
@@ -375,7 +378,7 @@ function UnitButtons({ value, onChange }: { value: InventoryUnit; onChange: (uni
 }
 
 const styles = StyleSheet.create({
-  panel: { backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 12, borderWidth: 1, marginHorizontal: 22, marginTop: 16, padding: 16 },
+  panel: { alignSelf: "center", backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 12, borderWidth: 1, marginTop: 16, maxWidth: 860, width: "100%" },
   panelTitle: { color: "#17271F", fontSize: 18, fontWeight: "800" },
   panelSubtitle: { color: "#64736A", fontSize: 12, lineHeight: 18, marginTop: 4 },
   modeRow: { gap: 8, paddingVertical: 14 },
@@ -387,9 +390,9 @@ const styles = StyleSheet.create({
   label: { color: "#34483B", fontSize: 12, fontWeight: "700", marginTop: 2 },
   input: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 43, paddingHorizontal: 11, paddingVertical: 9 },
   barcodeRow: { alignItems: "center", flexDirection: "row", gap: 8 },
-  barcodeInput: { flex: 1 },
+  barcodeInput: { flex: 1, minWidth: 0 },
   quantityInput: { minWidth: 75, width: 90 },
-  secondaryButton: { alignItems: "center", backgroundColor: "#E9F1EB", borderRadius: 7, justifyContent: "center", minHeight: 42, paddingHorizontal: 12 },
+  secondaryButton: { alignItems: "center", backgroundColor: "#E9F1EB", borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
   secondaryButtonText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
   actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   cameraFrame: { backgroundColor: "#17271F", borderRadius: 8, height: 220, overflow: "hidden", position: "relative" },
@@ -400,7 +403,8 @@ const styles = StyleSheet.create({
   receiptCard: { backgroundColor: "#F6F8F4", borderRadius: 8, gap: 8, marginTop: 4, padding: 11 },
   sourceText: { color: "#78857C", fontSize: 10, lineHeight: 15 },
   unitRow: { gap: 6, paddingVertical: 2 },
-  unitButton: { backgroundColor: "#EEF2ED", borderRadius: 15, paddingHorizontal: 10, paddingVertical: 7 },
+  unitScrollerFill: { flex: 1, minWidth: 0 },
+  unitButton: { backgroundColor: "#EEF2ED", borderRadius: 15, justifyContent: "center", minHeight: 40, paddingHorizontal: 10 },
   unitButtonActive: { backgroundColor: "#D4E7D8" },
   unitText: { color: "#53655A", fontSize: 11, fontWeight: "600" },
   unitTextActive: { color: "#215B43", fontWeight: "800" },

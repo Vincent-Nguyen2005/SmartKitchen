@@ -7,6 +7,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FoodItem } from "./types";
@@ -24,6 +25,10 @@ export default function InventoryListScreen({
   onItemPress,
 }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 360;
+  const isWide = width >= 720;
+  const horizontalPadding = isCompact ? 16 : isWide ? 32 : 22;
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -67,16 +72,16 @@ export default function InventoryListScreen({
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
         <Text style={styles.eyebrow}>SMARTKITCHEN / INVENTORY</Text>
-        <Text style={styles.title}>Kho của bạn</Text>
+        <Text style={[styles.title, isCompact && styles.compactTitle]}>Kho của bạn</Text>
         <Text style={styles.subtitle}>
           {items.length} nguyên liệu trong kho
         </Text>
         <View style={styles.searchBox}>
           <Text style={styles.searchMark}>Tìm</Text>
           <TextInput
-            accessibilityLabel="Search inventory"
+            accessibilityLabel="Tìm trong kho thực phẩm"
             onChangeText={setSearch}
             placeholder="Gạo, sữa, trứng..."
             placeholderTextColor="#77847C"
@@ -85,7 +90,7 @@ export default function InventoryListScreen({
             value={search}
           />
           {search.length > 0 && (
-            <Pressable onPress={() => setSearch("")} style={styles.clearButton}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Xóa nội dung tìm kiếm" onPress={() => setSearch("")} style={styles.clearButton}>
               <Text style={styles.clearText}>Xóa</Text>
             </Pressable>
           )}
@@ -95,13 +100,16 @@ export default function InventoryListScreen({
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.categoryScroller}
-        contentContainerStyle={styles.categoryRail}
+        style={[styles.categoryScroller, isWide && styles.wideContent]}
+        contentContainerStyle={[styles.categoryRail, { paddingHorizontal: horizontalPadding }]}
       >
         {categories.map((category) => {
           const active = category === activeCategory;
           return (
             <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={category === "All" ? "Tất cả vị trí" : `Vị trí ${category}`}
               key={category}
               onPress={() => setActiveCategory(category)}
               style={[
@@ -122,7 +130,11 @@ export default function InventoryListScreen({
         })}
       </ScrollView>
 
-      <ScrollView style={styles.resultsScroller} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.resultsScroller}
+        contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
+        keyboardShouldPersistTaps="handled"
+      >
         <InventoryCapturePanel familyId={family?.id ?? null} accessToken={accessToken} onSaved={() => void loadItems()} />
         {loading ? (
           <View style={styles.center}>
@@ -131,8 +143,8 @@ export default function InventoryListScreen({
           </View>
         ) : error ? (
           <View style={styles.center}>
-            <Text style={styles.errorText}>⚠️ {error}</Text>
-            <Pressable onPress={() => void loadItems()} style={styles.retryBtn}>
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>⚠️ {error}</Text>
+            <Pressable accessibilityRole="button" onPress={() => void loadItems()} style={styles.retryBtn}>
               <Text style={styles.retryText}>Thử lại</Text>
             </Pressable>
           </View>
@@ -147,10 +159,14 @@ export default function InventoryListScreen({
             const isExpired = item.status === "EXPIRED";
             return (
               <Pressable
+                accessibilityRole={onItemPress ? "button" : undefined}
+                accessibilityLabel={`${item.name}, ${item.quantity} ${item.unit}, ${item.status}`}
+                disabled={!onItemPress}
+                key={item.id}
                 onPress={() => onItemPress?.(item)}
-                style={styles.recipeRow}
+                style={[styles.recipeRow, { gap: isCompact ? 10 : 14 }]}
               >
-                <View style={styles.imageWrap}>
+                <View style={[styles.imageWrap, { width: isCompact ? 76 : 112, height: isCompact ? 96 : 126 }]}>
                   <View
                     style={[
                       styles.placeholderImage,
@@ -199,7 +215,8 @@ export default function InventoryListScreen({
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F3F6F0", flex: 1 },
-  header: { paddingHorizontal: 22, paddingTop: 18 },
+  header: { alignSelf: "center", maxWidth: 920, paddingTop: 18, width: "100%" },
+  wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
   eyebrow: {
     color: "#547364",
     fontSize: 10,
@@ -211,6 +228,7 @@ const styles = StyleSheet.create({
     fontSize: 32,
     marginTop: 14,
   },
+  compactTitle: { fontSize: 28 },
   subtitle: { color: "#64736A", fontSize: 14, lineHeight: 20, marginTop: 6 },
   searchBox: {
     alignItems: "center",
@@ -231,10 +249,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   searchInput: { color: "#17271F", flex: 1, fontSize: 14, paddingVertical: 12 },
-  clearButton: { padding: 8 },
+  clearButton: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
   clearText: { color: "#27634B", fontSize: 12, fontWeight: "700" },
-  categoryScroller: { flexGrow: 0, flexShrink: 0, height: 72 },
-  categoryRail: { alignItems: "center", gap: 8, paddingHorizontal: 22 },
+  categoryScroller: { alignSelf: "center", flexGrow: 0, flexShrink: 0, height: 72, width: "100%" },
+  categoryRail: { alignItems: "center", gap: 8 },
   categoryButton: {
     alignItems: "center",
     backgroundColor: "#E5EBE3",
@@ -249,7 +267,7 @@ const styles = StyleSheet.create({
   categoryButtonActive: { backgroundColor: "#215B43" },
   categoryText: { color: "#4A5E51", fontSize: 13, fontWeight: "600" },
   categoryTextActive: { color: "#FFFFFF" },
-  listContent: { paddingBottom: 28, paddingHorizontal: 22 },
+  listContent: { alignSelf: "center", paddingBottom: 28, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
     color: "#79857C",
@@ -343,10 +361,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   retryBtn: {
+    alignItems: "center",
     backgroundColor: "#215B43",
     borderRadius: 6,
+    justifyContent: "center",
+    minHeight: 44,
     paddingHorizontal: 16,
-    paddingVertical: 8,
   },
   retryText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
 });

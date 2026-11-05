@@ -8,6 +8,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useSession } from "../../services/session";
@@ -21,6 +22,9 @@ const unitLabels: Record<ShoppingUnit, string> = {
 
 export default function ShoppingCartScreen(): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
+  const { width } = useWindowDimensions();
+  const isCompact = width < 360;
+  const isWide = width >= 720;
   const [lists, setLists] = useState<ShoppingList[]>([]);
   const [suggestions, setSuggestions] = useState<ShoppingSuggestion[]>([]);
   const [loading, setLoading] = useState(true);
@@ -129,7 +133,14 @@ export default function ShoppingCartScreen(): React.JSX.Element {
           </Text>
         </View>
         {!isSynced && (
-          <Pressable disabled={busyItemId === item.id} onPress={() => confirmPurchase(item)} style={[styles.confirmButton, busyItemId === item.id && styles.disabled]}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={item.isPurchased ? `Đồng bộ ${item.name} vào kho` : `Xác nhận đã mua ${item.name}`}
+            accessibilityState={{ busy: busyItemId === item.id, disabled: busyItemId === item.id }}
+            disabled={busyItemId === item.id}
+            onPress={() => confirmPurchase(item)}
+            style={[styles.confirmButton, busyItemId === item.id && styles.disabled]}
+          >
             {busyItemId === item.id ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.confirmButtonText}>{item.isPurchased ? "Đồng bộ kho" : "Đã mua"}</Text>}
           </Pressable>
         )}
@@ -143,33 +154,33 @@ export default function ShoppingCartScreen(): React.JSX.Element {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View>
+      <View style={[styles.header, { paddingHorizontal: isCompact ? 14 : isWide ? 32 : 20 }, isWide && styles.wideContent]}>
+        <View style={styles.headerTitle}>
           <Text style={styles.eyebrow}>SMARTKITCHEN / SHOPPING</Text>
           <Text style={styles.title}>Đi chợ</Text>
         </View>
-        <Pressable onPress={() => void fetchData(true)} style={styles.refreshButton}><Text style={styles.refreshText}>Làm mới</Text></Pressable>
+        <Pressable accessibilityRole="button" onPress={() => void fetchData(true)} style={styles.refreshButton}><Text style={styles.refreshText}>Làm mới</Text></Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? 12 : 16 }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
         {!family ? (
           <View style={styles.emptyBox}><Text style={styles.emptyText}>Tạo hoặc tham gia gia đình để dùng danh sách đi chợ.</Text></View>
         ) : (
           <>
             <View style={styles.addCard}>
               <Text style={styles.sectionTitle}>Lưu món để tham khảo</Text>
-              <TextInput value={name} onChangeText={setName} placeholder="Ví dụ: Sữa tươi" style={styles.input} returnKeyType="done" />
+              <TextInput accessibilityLabel="Tên món cần mua" value={name} onChangeText={setName} placeholder="Ví dụ: Sữa tươi" style={styles.input} returnKeyType="done" />
               <View style={styles.quantityRow}>
-                <TextInput value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChoices}>
+                <TextInput accessibilityLabel="Số lượng cần mua" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
+                <ScrollView style={styles.unitPicker} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChoices}>
                   {unitChoices.map((choice) => (
-                    <Pressable key={choice} onPress={() => setUnit(choice)} style={[styles.unitChip, unit === choice && styles.unitChipSelected]}>
+                    <Pressable accessibilityRole="button" accessibilityState={{ selected: unit === choice }} accessibilityLabel={`Đơn vị ${unitLabels[choice]}`} key={choice} onPress={() => setUnit(choice)} style={[styles.unitChip, unit === choice && styles.unitChipSelected]}>
                       <Text style={[styles.unitChipText, unit === choice && styles.unitChipTextSelected]}>{unitLabels[choice]}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
               </View>
-              <Pressable disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
+              <Pressable accessibilityRole="button" disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
                 {saving ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.addButtonText}>Lưu vào danh sách</Text>}
               </Pressable>
               <Text style={styles.helper}>Món chỉ nằm trong danh sách. Kho chỉ được cập nhật sau khi bạn xác nhận đã mua.</Text>
@@ -180,7 +191,7 @@ export default function ShoppingCartScreen(): React.JSX.Element {
                 <Text style={styles.sectionTitle}>Gợi ý từ các lần mua trước</Text>
                 <View style={styles.suggestionList}>
                   {suggestions.map((suggestion) => (
-                    <Pressable key={`${suggestion.name}-${suggestion.unit}`} onPress={() => { setName(suggestion.name); setUnit(suggestion.unit); }} style={styles.suggestionChip}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Dùng gợi ý ${suggestion.name}, đã mua ${suggestion.count} lần`} key={`${suggestion.name}-${suggestion.unit}`} onPress={() => { setName(suggestion.name); setUnit(suggestion.unit); }} style={styles.suggestionChip}>
                       <Text style={styles.suggestionText}>{suggestion.name} · {suggestion.count} lần</Text>
                     </Pressable>
                   ))}
@@ -188,8 +199,8 @@ export default function ShoppingCartScreen(): React.JSX.Element {
               </View>
             )}
 
-            {error && <View style={styles.errorBox}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text><Pressable onPress={() => void fetchData(true)}><Text style={styles.retryText}>Thử tải lại</Text></Pressable></View>}
-            {notice && <Text style={styles.notice}>{notice}</Text>}
+            {error && <View style={styles.errorBox}><Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{error}</Text><Pressable accessibilityRole="button" onPress={() => void fetchData(true)} style={styles.retryButton}><Text style={styles.retryText}>Thử tải lại</Text></Pressable></View>}
+            {notice && <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text>}
 
             {lists.map((list) => (
               <View key={list.id} style={styles.listContainer}>
@@ -207,19 +218,22 @@ export default function ShoppingCartScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: { backgroundColor: "#F3F6F0", flex: 1 },
-  header: { alignItems: "center", backgroundColor: "#FFFFFF", borderBottomColor: "#E5EBE3", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15 },
+  wideContent: { alignSelf: "center", maxWidth: 900, width: "100%" },
+  header: { alignItems: "center", alignSelf: "center", backgroundColor: "#FFFFFF", borderBottomColor: "#E5EBE3", borderBottomWidth: 1, flexDirection: "row", gap: 12, justifyContent: "space-between", paddingVertical: 15, width: "100%" },
+  headerTitle: { flex: 1, minWidth: 0 },
   eyebrow: { color: "#547364", fontSize: 9, fontWeight: "800", letterSpacing: 1.2 },
   title: { color: "#17271F", fontSize: 28, fontWeight: "800", marginTop: 4 },
   refreshButton: { backgroundColor: "#E9F1EB", borderRadius: 7, paddingHorizontal: 12, paddingVertical: 9 },
   refreshText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
-  content: { gap: 14, padding: 16, paddingBottom: 30 },
+  content: { alignSelf: "center", gap: 14, paddingBottom: 30, width: "100%" },
   addCard: { backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 11, borderWidth: 1, gap: 10, padding: 15 },
   sectionTitle: { color: "#17271F", fontSize: 15, fontWeight: "800" },
   input: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 44, paddingHorizontal: 11, paddingVertical: 9 },
   quantityRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+  unitPicker: { flex: 1, minWidth: 0 },
   quantityInput: { minWidth: 68, width: 76 },
   unitChoices: { alignItems: "center", gap: 6 },
-  unitChip: { backgroundColor: "#EEF2ED", borderRadius: 16, paddingHorizontal: 10, paddingVertical: 7 },
+  unitChip: { backgroundColor: "#EEF2ED", borderRadius: 16, justifyContent: "center", minHeight: 40, paddingHorizontal: 10 },
   unitChipSelected: { backgroundColor: "#D4E7D8" },
   unitChipText: { color: "#53655A", fontSize: 11, fontWeight: "600" },
   unitChipTextSelected: { color: "#215B43", fontWeight: "800" },
@@ -228,26 +242,27 @@ const styles = StyleSheet.create({
   helper: { color: "#64736A", fontSize: 11, lineHeight: 17 },
   suggestionBox: { backgroundColor: "#FFF9E6", borderColor: "#F3C875", borderRadius: 11, borderWidth: 1, gap: 9, padding: 14 },
   suggestionList: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  suggestionChip: { backgroundColor: "#FFFFFF", borderColor: "#F3C875", borderRadius: 16, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 7 },
+  suggestionChip: { backgroundColor: "#FFFFFF", borderColor: "#F3C875", borderRadius: 16, borderWidth: 1, justifyContent: "center", minHeight: 40, paddingHorizontal: 10, paddingVertical: 7 },
   suggestionText: { color: "#6C5730", fontSize: 11, fontWeight: "600" },
   listContainer: { gap: 8 },
   listTitle: { color: "#17271F", fontSize: 18, fontWeight: "800", marginBottom: 1 },
-  itemCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E5EBE3", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 10, padding: 13 },
-  itemInfo: { flex: 1, gap: 4 },
+  itemCard: { alignItems: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#E5EBE3", borderRadius: 9, borderWidth: 1, flexDirection: "row", gap: 10, padding: 13 },
+  itemInfo: { flex: 1, gap: 4, minWidth: 0 },
   itemName: { color: "#26372D", fontSize: 15, fontWeight: "700" },
-  itemMeta: { color: "#66736A", fontSize: 11 },
-  statusText: { fontSize: 10, fontWeight: "700", marginTop: 2 },
+  itemMeta: { color: "#66736A", flexShrink: 1, fontSize: 11 },
+  statusText: { flexShrink: 1, fontSize: 10, fontWeight: "700", marginTop: 2 },
   statusSynced: { color: "#215B43" },
   statusNeedsSync: { color: "#A75132" },
   statusReference: { color: "#68766D" },
-  confirmButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 37, minWidth: 74, paddingHorizontal: 9 },
+  confirmButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, minWidth: 74, paddingHorizontal: 9 },
   confirmButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
   disabled: { opacity: 0.6 },
   emptyBox: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 9, padding: 20 },
   emptyText: { color: "#64736A", fontSize: 13, lineHeight: 19, textAlign: "center" },
   errorBox: { backgroundColor: "#FFF1EF", borderRadius: 8, gap: 7, padding: 12 },
   errorText: { color: "#A75132", fontSize: 12, lineHeight: 17 },
-  retryText: { color: "#215B43", fontSize: 11, fontWeight: "800" },
+  retryButton: { alignSelf: "flex-start", minHeight: 40, justifyContent: "center", paddingHorizontal: 4 },
+  retryText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
   notice: { backgroundColor: "#E9F1EB", borderRadius: 8, color: "#215B43", fontSize: 12, lineHeight: 18, padding: 11 },
   center: { alignItems: "center", backgroundColor: "#F3F6F0", flex: 1, gap: 12, justifyContent: "center", padding: 32 },
 });
