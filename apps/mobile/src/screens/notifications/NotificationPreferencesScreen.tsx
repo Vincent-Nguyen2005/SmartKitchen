@@ -97,7 +97,7 @@ export default function NotificationPreferencesScreen(): React.JSX.Element {
       <View style={[styles.card, local.quiet]}>
         <View style={styles.row}>
           <View style={local.iconWrap}><AppIcon icon={Moon} color={colors.primary} /></View>
-          <Text style={[styles.subtitle, local.toggleText]}>Giờ yên tĩnh</Text>
+          <Text style={[styles.title, local.toggleText]} accessibilityRole="header">Giờ yên tĩnh</Text>
         </View>
         <Text style={styles.muted}>Không gửi khuyến mãi trong khoảng này. Có thể qua nửa đêm, ví dụ 22:00 – 06:00.</Text>
         <View style={styles.wrapRow}>

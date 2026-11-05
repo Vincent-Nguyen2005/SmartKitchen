@@ -35,6 +35,10 @@ export const chartColors = {
 /** 4-point spacing scale. */
 export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 
+/**
+ * @deprecated Use `typography` / `textStyles` / `AppText` from `./typography` (agreed scale, #71).
+ * Kept unchanged so existing imports keep working.
+ */
 export const fontSize = { caption: 12, small: 14, body: 15, subtitle: 16, title: 18, headline: 22 } as const;
 
 export const radius = { sm: 10, md: 12, lg: 16, pill: 999 } as const;

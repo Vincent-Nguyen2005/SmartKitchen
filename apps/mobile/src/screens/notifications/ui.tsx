@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { CircleExclamationPoint, Inbox, RefreshCw } from "lucide-react-native";
-import { AppIcon, breakpoints, colors, fontSize, radius, spacing, touchTarget, type LucideIcon } from "../../theme";
+import { AppIcon, breakpoints, colors, radius, spacing, textStyles, touchTarget, typography, type LucideIcon } from "../../theme";
 
 /** Shared UI for the notification and admin screens (owner: Huy). Tokens live in src/theme. */
 export { colors };
@@ -180,19 +180,34 @@ export function Badge({ label, color, background, icon }: BadgeProps): React.JSX
   );
 }
 
+/**
+ * Page title (28, the agreed pageTitle step). Hidden on short screens (phones in landscape, height < 500)
+ * so the content keeps its height; the app tab bar still names the page there.
+ */
+export function PageTitle({ children }: { children: string }): React.JSX.Element | null {
+  const { height } = useWindowDimensions();
+  if (height < breakpoints.splitMinHeight) return null;
+  return (
+    <View style={styles.pageTitleBlock}>
+      <Text style={styles.pageTitle} accessibilityRole="header" numberOfLines={2}>{children}</Text>
+    </View>
+  );
+}
+
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   state: { alignItems: "center", gap: spacing.md, justifyContent: "center", padding: spacing.xl, minHeight: 160 },
-  errorText: { color: colors.danger, fontSize: fontSize.body, textAlign: "center" },
-  mutedText: { color: colors.muted, fontSize: fontSize.small, textAlign: "center" },
-  // Typography
-  headline: { color: colors.text, fontSize: fontSize.headline, fontWeight: "700" },
-  title: { color: colors.text, fontSize: fontSize.title, fontWeight: "700" },
-  subtitle: { color: colors.text, fontSize: fontSize.subtitle, fontWeight: "600" },
-  body: { color: colors.text, fontSize: fontSize.body, lineHeight: 21 },
-  muted: { color: colors.muted, fontSize: fontSize.small, lineHeight: 20 },
-  caption: { color: colors.muted, fontSize: fontSize.caption },
-  success: { color: colors.success, fontSize: fontSize.body },
+  errorText: { ...typography.body, color: colors.danger, textAlign: "center" },
+  mutedText: { ...typography.bodySmall, color: colors.muted, textAlign: "center" },
+  // Typography: the shared scale from src/theme/typography.ts (no hard-coded font sizes, minimum 12).
+  pageTitle: textStyles.pageTitle,
+  headline: textStyles.heading,
+  title: textStyles.subheading,
+  subtitle: textStyles.label,
+  body: textStyles.body,
+  muted: { ...typography.bodySmall, color: colors.muted },
+  caption: textStyles.caption,
+  success: { ...typography.body, color: colors.success },
   // Containers
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, padding: 14 },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
@@ -205,21 +220,23 @@ export const styles = StyleSheet.create({
   danger: { backgroundColor: colors.danger },
   disabled: { opacity: 0.5 },
   pressed: { opacity: 0.8 },
-  buttonText: { color: colors.primaryText, fontSize: fontSize.body, fontWeight: "600" },
+  buttonText: { ...typography.label, color: colors.primaryText },
   // Segmented
   segmented: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.sm },
   segment: { alignItems: "center", borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, flexDirection: "row", gap: 6, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: 14, backgroundColor: colors.surface },
   segmentSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   segmentPressed: { backgroundColor: colors.primarySoft },
-  segmentText: { color: colors.text, fontSize: fontSize.small },
-  segmentTextSelected: { color: colors.primaryText, fontWeight: "600" },
+  segmentText: { ...typography.bodySmall, color: colors.text },
+  segmentTextSelected: { ...typography.labelSmall, color: colors.primaryText },
   // Fields
   field: { gap: spacing.xs, marginBottom: 10 },
-  fieldLabel: { color: colors.muted, fontSize: 13 },
-  input: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, color: colors.text, fontSize: fontSize.body, minHeight: touchTarget, paddingHorizontal: spacing.md },
+  fieldLabel: { ...typography.bodySmall, color: colors.muted },
+  input: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, color: colors.text, fontFamily: typography.body.fontFamily, fontSize: typography.body.fontSize, minHeight: touchTarget, paddingHorizontal: spacing.md },
   inputWithIcon: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  inputBare: { color: colors.text, flex: 1, fontSize: fontSize.body, minHeight: touchTarget - 2, minWidth: 0 },
+  // Inputs take the body size (16 also stops iOS from zooming on focus) but no lineHeight, which can clip on Android.
+  inputBare: { color: colors.text, flex: 1, fontFamily: typography.body.fontFamily, fontSize: typography.body.fontSize, minHeight: touchTarget - 2, minWidth: 0 },
   // Badge
   badge: { alignItems: "center", alignSelf: "flex-start", borderRadius: radius.pill, flexDirection: "row", gap: spacing.xs, paddingHorizontal: 10, paddingVertical: spacing.xs },
-  badgeText: { fontSize: 13, fontWeight: "600" },
+  badgeText: typography.labelSmall,
+  pageTitleBlock: { paddingTop: spacing.md },
 });

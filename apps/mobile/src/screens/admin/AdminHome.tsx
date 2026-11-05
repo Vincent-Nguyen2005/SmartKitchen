@@ -3,7 +3,7 @@ import { Text, View } from "react-native";
 import { Activity, Carrot, Flag, LayoutDashboard, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
 import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { colors, Segmented, styles, useLayout } from "../notifications/ui";
+import { colors, PageTitle, Segmented, styles, useLayout } from "../notifications/ui";
 import DashboardScreen from "./DashboardScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import ReportsScreen from "./ReportsScreen";
@@ -25,7 +25,7 @@ export default function AdminHome(): React.JSX.Element {
     return (
       <View style={[styles.screen, styles.state]}>
         <AppIcon icon={ShieldExclamationPoint} size="xl" color={colors.warning} />
-        <Text style={styles.title}>Không có quyền truy cập</Text>
+        <Text style={styles.headline} accessibilityRole="header">Không có quyền truy cập</Text>
         <Text style={styles.mutedText}>Khu vực này chỉ dành cho quản trị viên.</Text>
       </View>
     );
@@ -33,6 +33,7 @@ export default function AdminHome(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <View style={{ paddingHorizontal: gutter }}>
+        <PageTitle>Quản trị</PageTitle>
         <Segmented<Section>
           label="Mục quản trị"
           value={section}

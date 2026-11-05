@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { type LayoutChangeEvent, View } from "react-native";
 import Svg, { G, Line, Rect, Text as SvgText } from "react-native-svg";
-import { chartColors } from "../../../theme";
-import { chartFontFamily, formatNumber, niceScale, truncate } from "./scale";
+import { chartColors, typography } from "../../../theme";
+import { formatNumber, niceScale, truncate } from "./scale";
 
 export type BarDatum = { label: string; value: number | null; color?: string };
 
@@ -19,7 +19,9 @@ type BarChartProps = {
   formatValue?: (value: number) => string;
 };
 
-const FONT = 11;
+// SVG <text> does not inherit the React Native font: pass the theme caption size (12, the minimum) and family.
+const FONT = typography.caption.fontSize;
+const FAMILY = typography.caption.fontFamily;
 const ROW = 28;
 
 /** Small dependency-free bar chart drawn with react-native-svg (owner: Huy). */
@@ -54,13 +56,13 @@ function Vertical({ data, width, height, scale, formatValue }: PartProps & { hei
   const slot = plotWidth / Math.max(1, data.length);
   const barWidth = Math.min(44, slot * 0.6);
   const y = (value: number) => top + plotHeight - (value / scale.max) * plotHeight;
-  const maxChars = Math.max(3, Math.floor(slot / 6.5));
+  const maxChars = Math.max(3, Math.floor(slot / 7));
   return (
     <G>
       {scale.ticks.map((tick) => (
         <G key={tick}>
           <Line x1={axisWidth} x2={width} y1={y(tick)} y2={y(tick)} stroke={chartColors.grid} strokeWidth={1} />
-          <SvgText fontFamily={chartFontFamily} x={axisWidth - 6} y={y(tick) + 4} fontSize={FONT} fill={chartColors.axis} textAnchor="end">{formatValue(tick)}</SvgText>
+          <SvgText fontFamily={FAMILY} x={axisWidth - 6} y={y(tick) + 4} fontSize={FONT} fill={chartColors.axis} textAnchor="end">{formatValue(tick)}</SvgText>
         </G>
       ))}
       {data.map((datum, index) => {
@@ -70,8 +72,8 @@ function Vertical({ data, width, height, scale, formatValue }: PartProps & { hei
         return (
           <G key={datum.label}>
             <Rect x={cx - barWidth / 2} y={barTop} width={barWidth} height={Math.max(0, top + plotHeight - barTop)} rx={4} fill={datum.color ?? chartColors.series[0]} />
-            <SvgText fontFamily={chartFontFamily} x={cx} y={barTop - 4} fontSize={FONT} fontWeight="600" fill={chartColors.label} textAnchor="middle">{datum.value === null ? "–" : formatValue(value)}</SvgText>
-            <SvgText fontFamily={chartFontFamily} x={cx} y={height - 6} fontSize={FONT} fill={chartColors.axis} textAnchor="middle">{truncate(datum.label, maxChars)}</SvgText>
+            <SvgText fontFamily={FAMILY} x={cx} y={barTop - 4} fontSize={FONT} fontWeight="600" fill={chartColors.label} textAnchor="middle">{datum.value === null ? "–" : formatValue(value)}</SvgText>
+            <SvgText fontFamily={FAMILY} x={cx} y={height - 6} fontSize={FONT} fill={chartColors.axis} textAnchor="middle">{truncate(datum.label, maxChars)}</SvgText>
           </G>
         );
       })}
@@ -85,14 +87,14 @@ function Horizontal({ data, width, scale, formatValue }: PartProps) {
   const plotLeft = labelWidth + 6;
   const plotWidth = Math.max(1, width - plotLeft - valueWidth);
   const x = (value: number) => plotLeft + (value / scale.max) * plotWidth;
-  const maxChars = Math.max(6, Math.floor(labelWidth / 6.3));
+  const maxChars = Math.max(6, Math.floor(labelWidth / 6.9));
   const axisY = data.length * ROW + 4;
   return (
     <G>
       {scale.ticks.map((tick) => (
         <G key={tick}>
           <Line x1={x(tick)} x2={x(tick)} y1={0} y2={axisY} stroke={chartColors.grid} strokeWidth={1} />
-          <SvgText fontFamily={chartFontFamily} x={x(tick)} y={axisY + 14} fontSize={FONT} fill={chartColors.axis} textAnchor="middle">{formatValue(tick)}</SvgText>
+          <SvgText fontFamily={FAMILY} x={x(tick)} y={axisY + 14} fontSize={FONT} fill={chartColors.axis} textAnchor="middle">{formatValue(tick)}</SvgText>
         </G>
       ))}
       {data.map((datum, index) => {
@@ -100,9 +102,9 @@ function Horizontal({ data, width, scale, formatValue }: PartProps) {
         const value = datum.value ?? 0;
         return (
           <G key={datum.label}>
-            <SvgText fontFamily={chartFontFamily} x={labelWidth} y={rowY + ROW / 2 + 4} fontSize={FONT} fill={chartColors.label} textAnchor="end">{truncate(datum.label, maxChars)}</SvgText>
+            <SvgText fontFamily={FAMILY} x={labelWidth} y={rowY + ROW / 2 + 4} fontSize={FONT} fill={chartColors.label} textAnchor="end">{truncate(datum.label, maxChars)}</SvgText>
             <Rect x={plotLeft} y={rowY + 6} width={Math.max(datum.value === null ? 0 : 2, x(value) - plotLeft)} height={ROW - 12} rx={3} fill={datum.color ?? chartColors.series[0]} />
-            <SvgText fontFamily={chartFontFamily} x={width - 2} y={rowY + ROW / 2 + 4} fontSize={FONT} fontWeight="600" fill={chartColors.label} textAnchor="end">{datum.value === null ? "–" : formatValue(value)}</SvgText>
+            <SvgText fontFamily={FAMILY} x={width - 2} y={rowY + ROW / 2 + 4} fontSize={FONT} fontWeight="600" fill={chartColors.label} textAnchor="end">{datum.value === null ? "–" : formatValue(value)}</SvgText>
           </G>
         );
       })}

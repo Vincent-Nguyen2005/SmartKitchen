@@ -6,7 +6,7 @@ import {
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
-import { AppIcon, chartColors, fontSize, spacing, type LucideIcon } from "../../theme";
+import { AppIcon, chartColors, spacing, typography, type LucideIcon } from "../../theme";
 import { BarChart, formatNumber, LineChart } from "./charts";
 
 type Window = "24h" | "7d";
@@ -135,7 +135,7 @@ export default function DashboardScreen(): React.JSX.Element {
     <View key={key} style={[styles.card, local.chartCard, { width: chartGrid.cellWidth ?? "100%" }]}>
       <View style={styles.row}>
         <AppIcon icon={icon} size="sm" color={colors.primary} />
-        <Text style={[styles.subtitle, local.flex]} accessibilityRole="header">{title}</Text>
+        <Text style={[styles.title, local.flex]} accessibilityRole="header">{title}</Text>
       </View>
       {body}
     </View>
@@ -173,7 +173,7 @@ export default function DashboardScreen(): React.JSX.Element {
       </View>
 
       <View style={local.pickerBlock}>
-        <Text style={styles.subtitle} accessibilityRole="header">Theo thời gian ({windowText[window]})</Text>
+        <Text style={styles.title} accessibilityRole="header">Theo thời gian ({windowText[window]})</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.picker}>
           <Segmented<string> label="Chọn dịch vụ" value={service} onChange={setService}
             options={[{ value: "ALL", label: "Tất cả" }, ...services.map((item) => ({ value: item.serviceName, label: shortName(item.serviceName) }))]} />
@@ -205,7 +205,7 @@ export default function DashboardScreen(): React.JSX.Element {
       <View style={[styles.card, local.chartCard]}>
         <View style={styles.row}>
           <AppIcon icon={Server} size="sm" color={colors.primary} />
-          <Text style={[styles.subtitle, local.flex]} accessibilityRole="header">Uptime theo dịch vụ ({windowText[window]})</Text>
+          <Text style={[styles.title, local.flex]} accessibilityRole="header">Uptime theo dịch vụ ({windowText[window]})</Text>
         </View>
         {sectionState(summary.error, perServiceKnown.length === 0, "Chưa có lần đo nào trong khoảng này.", () => void loadOverview())
           ?? <BarChart
@@ -223,7 +223,7 @@ const local = StyleSheet.create({
   content: { gap: spacing.md },
   flex: { flex: 1, minWidth: 0 },
   kpi: { gap: spacing.xs, minHeight: 104 },
-  kpiValue: { fontSize: fontSize.title, fontWeight: "700" },
+  kpiValue: typography.subheading,
   chartCard: { gap: spacing.md },
   pickerBlock: { gap: spacing.xs },
   picker: { paddingRight: spacing.lg },

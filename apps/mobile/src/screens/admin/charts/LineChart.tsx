@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { type LayoutChangeEvent, Text, View } from "react-native";
 import Svg, { Circle, G, Line, Path, Text as SvgText } from "react-native-svg";
-import { chartColors, colors, fontSize, spacing } from "../../../theme";
-import { chartFontFamily, formatNumber, niceScale } from "./scale";
+import { chartColors, spacing, textStyles, typography } from "../../../theme";
+import { formatNumber, niceScale } from "./scale";
 
 export type LineSeries = { label: string; values: (number | null)[]; color?: string; dashed?: boolean };
 
@@ -18,7 +18,9 @@ type LineChartProps = {
   formatValue?: (value: number) => string;
 };
 
-const FONT = 11;
+// SVG <text> does not inherit the React Native font: pass the theme caption size (12, the minimum) and family.
+const FONT = typography.caption.fontSize;
+const FAMILY = typography.caption.fontFamily;
 
 /** Small dependency-free line chart drawn with react-native-svg. Null values leave a gap (owner: Huy). */
 export function LineChart({ series, xLabels, accessibilityLabel, height = 190, domainMax, domainMin, formatValue = formatNumber }: LineChartProps): React.JSX.Element {
@@ -45,11 +47,11 @@ export function LineChart({ series, xLabels, accessibilityLabel, height = 190, d
             {scale.ticks.map((tick) => (
               <G key={tick}>
                 <Line x1={axisWidth} x2={width} y1={y(tick)} y2={y(tick)} stroke={chartColors.grid} strokeWidth={1} />
-                <SvgText fontFamily={chartFontFamily} x={axisWidth - 6} y={y(tick) + 4} fontSize={FONT} fill={chartColors.axis} textAnchor="end">{formatValue(tick)}</SvgText>
+                <SvgText fontFamily={FAMILY} x={axisWidth - 6} y={y(tick) + 4} fontSize={FONT} fill={chartColors.axis} textAnchor="end">{formatValue(tick)}</SvgText>
               </G>
             ))}
             {xLabels.map((label, index) => (index % labelEvery === 0 || index === points - 1) && (index === points - 1 || points - 1 - index >= labelEvery / 2) ? (
-              <SvgText fontFamily={chartFontFamily} key={`x-${index}`} x={x(index)} y={height - 6} fontSize={FONT} fill={chartColors.axis} textAnchor={index === 0 ? "start" : index === points - 1 ? "end" : "middle"}>{label}</SvgText>
+              <SvgText fontFamily={FAMILY} key={`x-${index}`} x={x(index)} y={height - 6} fontSize={FONT} fill={chartColors.axis} textAnchor={index === 0 ? "start" : index === points - 1 ? "end" : "middle"}>{label}</SvgText>
             ) : null)}
             {series.map((item, seriesIndex) => {
               const color = item.color ?? chartColors.series[seriesIndex % chartColors.series.length];
@@ -78,7 +80,7 @@ export function LineChart({ series, xLabels, accessibilityLabel, height = 190, d
           {series.map((item, index) => (
             <View key={item.label} style={{ alignItems: "center", flexDirection: "row", gap: 6 }}>
               <View style={{ backgroundColor: item.color ?? chartColors.series[index % chartColors.series.length], borderRadius: 2, height: item.dashed ? 2 : 3, width: 18 }} />
-              <Text style={{ color: colors.muted, fontSize: fontSize.caption }}>{item.label}</Text>
+              <Text style={textStyles.caption}>{item.label}</Text>
             </View>
           ))}
         </View>
