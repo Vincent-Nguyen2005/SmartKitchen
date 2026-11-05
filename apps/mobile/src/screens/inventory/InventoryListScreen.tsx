@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Package, Pencil, Search, Trash2, X } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
@@ -25,16 +26,18 @@ type InventoryDialogMode = "edit" | "consume";
 
 type Props = {
   onItemPress?: (item: FoodItem) => void;
+  onOpenFamily?: () => void;
 };
 
 export default function InventoryListScreen({
   onItemPress,
+  onOpenFamily,
 }: Props): React.JSX.Element {
-  const { family, accessToken, ready } = useSession();
+  const { user, family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const isWide = width >= 720;
-  const horizontalPadding = isCompact ? 16 : isWide ? 32 : 22;
+  const horizontalPadding = isCompact ? spacing.lg : isWide ? spacing.xl : spacing.xl;
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,9 +58,21 @@ export default function InventoryListScreen({
 
   const loadItems = async () => {
     if (!ready) return;
-    if (!family?.id || !accessToken) {
+    if (!user) {
       setItems([]);
-      setError("Đăng nhập và tạo hoặc tham gia gia đình để xem kho thực phẩm.");
+      setError("Đăng nhập để xem kho.");
+      setLoading(false);
+      return;
+    }
+    if (!family?.id) {
+      setItems([]);
+      setError("Tạo hoặc tham gia gia đình để xem kho.");
+      setLoading(false);
+      return;
+    }
+    if (!accessToken) {
+      setItems([]);
+      setError("Đăng nhập để xem kho.");
       setLoading(false);
       return;
     }
@@ -80,7 +95,7 @@ export default function InventoryListScreen({
 
   useEffect(() => {
     void loadItems();
-  }, [family?.id, accessToken, ready]);
+  }, [user?.id, family?.id, accessToken, ready]);
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -197,68 +212,57 @@ export default function InventoryListScreen({
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
         <Text style={styles.eyebrow}>SMARTKITCHEN / INVENTORY</Text>
-        <Text style={[styles.title, isCompact && styles.compactTitle]}>Kho của bạn</Text>
+        <Text style={styles.title}>Kho của bạn</Text>
         <Text style={styles.subtitle}>
           {items.length} nguyên liệu trong kho
         </Text>
         <View style={styles.searchBox}>
-          <Search color="#A75132" size={18} />
+          <AppIcon icon={Search} size="md" color={colors.primary} />
           <TextInput
             accessibilityLabel="Tìm trong kho thực phẩm"
             onChangeText={setSearch}
             placeholder="Gạo, sữa, trứng..."
-            placeholderTextColor="#77847C"
+            placeholderTextColor={colors.muted}
             returnKeyType="search"
             style={styles.searchInput}
             value={search}
           />
           {search.length > 0 && (
-            <Pressable accessibilityRole="button" accessibilityLabel="Xóa nội dung tìm kiếm" onPress={() => setSearch("")} style={styles.clearButton}>
-              <X color="#27634B" size={18} />
-            </Pressable>
+            <IconButton accessibilityLabel="Xóa nội dung tìm kiếm" icon={X} onPress={() => setSearch("")} />
           )}
         </View>
       </View>
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={[styles.categoryScroller, isWide && styles.wideContent]}
-        contentContainerStyle={[styles.categoryRail, { paddingHorizontal: horizontalPadding }]}
-      >
-        {categories.map((category) => {
-          const active = category === activeCategory;
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={category === "All" ? "Tất cả vị trí" : `Vị trí ${category}`}
-              key={category}
-              onPress={() => setActiveCategory(category)}
-              style={[
-                styles.categoryButton,
-                active && styles.categoryButtonActive,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.categoryText,
-                  active && styles.categoryTextActive,
-                ]}
+      <View style={[styles.categoryScroller, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
+        <View style={styles.categoryRail}>
+          {categories.map((category) => {
+            const active = category === activeCategory;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: active }}
+                accessibilityLabel={category === "All" ? "Tất cả vị trí" : `Vị trí ${category}`}
+                key={category}
+                onPress={() => setActiveCategory(category)}
+                style={[styles.categoryButton, active && styles.categoryButtonActive]}
               >
-                {category}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+                <Text style={[styles.categoryText, active && styles.categoryTextActive]}>
+                  {category}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       <ScrollView
         style={styles.resultsScroller}
         contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
         keyboardShouldPersistTaps="handled"
       >
-        <InventoryCapturePanel familyId={family?.id ?? null} accessToken={accessToken} onSaved={() => void loadItems()} />
+        {family?.id && accessToken && (
+          <InventoryCapturePanel familyId={family.id} accessToken={accessToken} onSaved={() => void loadItems()} />
+        )}
         {family && !loading && (
           <View style={styles.alertPanel}>
             <View style={styles.alertHeader}>
@@ -267,7 +271,7 @@ export default function InventoryListScreen({
                 <Text style={styles.alertHint}>Đã quá hạn hoặc hạn trong 3 ngày tới</Text>
               </View>
               <Pressable accessibilityRole="button" accessibilityLabel="Cập nhật trạng thái cảnh báo hạn dùng" accessibilityState={{ busy: alertBusy }} disabled={alertBusy} onPress={() => void refreshAlerts()} style={styles.alertRefresh}>
-                {alertBusy ? <ActivityIndicator size="small" color="#215B43" /> : <Text style={styles.alertRefreshText}>Cập nhật</Text>}
+                {alertBusy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.alertRefreshText}>Cập nhật</Text>}
               </Pressable>
             </View>
             {alertError ? <Text accessibilityRole="alert" style={styles.alertError}>{alertError}</Text> : expiringItems.length === 0 ? <Text style={styles.alertHint}>Không có nguyên liệu quá hạn hoặc sắp hết hạn.</Text> : expiringItems.map((item) => (
@@ -279,15 +283,23 @@ export default function InventoryListScreen({
         )}
         {loading ? (
           <View style={styles.center}>
-            <ActivityIndicator size="large" color="#215B43" />
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>Đang tải kho...</Text>
           </View>
         ) : error ? (
           <View style={styles.center}>
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>⚠️ {error}</Text>
-            <Pressable accessibilityRole="button" onPress={() => void loadItems()} style={styles.retryBtn}>
-              <Text style={styles.retryText}>Thử lại</Text>
-            </Pressable>
+            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{error}</Text>
+            {user && !family?.id ? (
+              onOpenFamily && (
+                <Pressable accessibilityRole="button" onPress={onOpenFamily} style={styles.retryBtn}>
+                  <Text style={styles.retryText}>Mở tab Gia đình</Text>
+                </Pressable>
+              )
+            ) : user && family?.id ? (
+              <Pressable accessibilityRole="button" onPress={() => void loadItems()} style={styles.retryBtn}>
+                <Text style={styles.retryText}>Thử lại</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <>
@@ -301,17 +313,17 @@ export default function InventoryListScreen({
             return (
               <View
                 key={item.id}
-                style={[styles.recipeRow, { gap: isCompact ? 10 : 14 }]}
+                style={[styles.recipeRow, { gap: isCompact ? spacing.md : spacing.lg }]}
               >
                 <View style={[styles.imageWrap, { width: isCompact ? 76 : 112, height: isCompact ? 96 : 126 }]}>
                   <View
                     style={[
                       styles.placeholderImage,
-                      isExpired && { backgroundColor: "#F4C7C3" },
-                      isNearExpiry && { backgroundColor: "#F3C875" },
+                      isExpired && { backgroundColor: colors.dangerSoft },
+                      isNearExpiry && { backgroundColor: colors.warning },
                     ]}
                   >
-                    <Package color="#547364" size={28} strokeWidth={1.8} />
+                    <AppIcon icon={Package} size="lg" color={colors.primary} />
                   </View>
                   <Text
                     style={[
@@ -343,7 +355,7 @@ export default function InventoryListScreen({
                   </View>
                   <View style={styles.itemActions}>
                     <Pressable accessibilityRole="button" accessibilityLabel={`Sửa ${item.name}`} onPress={() => openEdit(item)} style={styles.itemAction}>
-                      <Pencil color="#215B43" size={14} /><Text style={styles.itemActionText}>Sửa</Text>
+                      <AppIcon icon={Pencil} size="sm" color={colors.primary} /><Text style={styles.itemActionText}>Sửa</Text>
                     </Pressable>
                     {item.status !== "CONSUMED" && item.quantity > 0 && (
                       <Pressable accessibilityRole="button" accessibilityLabel={`Ghi nhận đã dùng ${item.name}`} onPress={() => openConsume(item)} style={styles.itemAction}>
@@ -351,7 +363,7 @@ export default function InventoryListScreen({
                       </Pressable>
                     )}
                     <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${item.name}`} onPress={() => deleteItem(item)} style={styles.itemAction}>
-                      <Trash2 color="#A75132" size={14} /><Text style={styles.deleteActionText}>Xóa</Text>
+                      <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
                     </Pressable>
                   </View>
                 </View>
@@ -392,7 +404,7 @@ export default function InventoryListScreen({
             <View style={styles.modalActions}>
               <Pressable accessibilityRole="button" disabled={savingItem} onPress={closeDialog} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Hủy</Text></Pressable>
               <Pressable accessibilityRole="button" accessibilityState={{ busy: savingItem, disabled: savingItem }} disabled={savingItem} onPress={() => void (dialogMode === "edit" ? saveItem() : consumeItem())} style={[styles.saveButton, savingItem && styles.saveButtonDisabled]}>
-                {savingItem ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.saveButtonText}>{dialogMode === "edit" ? "Lưu thay đổi" : "Xác nhận đã dùng"}</Text>}
+                {savingItem ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.saveButtonText}>{dialogMode === "edit" ? "Lưu thay đổi" : "Xác nhận đã dùng"}</Text>}
               </Pressable>
             </View>
           </View>
@@ -403,71 +415,67 @@ export default function InventoryListScreen({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: "#F3F6F0", flex: 1 },
-  header: { alignSelf: "center", maxWidth: 920, paddingTop: 18, width: "100%" },
+  safeArea: { backgroundColor: colors.background, flex: 1 },
+  header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
   eyebrow: {
-    color: "#547364",
-    fontSize: 10,
-    fontWeight: "800",
+    color: colors.primary,
+    ...typography.caption,
     letterSpacing: 1.4,
   },
   title: {
-    color: "#17271F",
-    fontSize: 32,
-    marginTop: 14,
+    ...textStyles.pageTitle,
+    color: colors.text,
+    fontWeight: "700",
+    marginTop: spacing.lg,
   },
-  compactTitle: { fontSize: 28 },
-  subtitle: { color: "#64736A", fontSize: 14, lineHeight: 20, marginTop: 6 },
+  subtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.sm },
   searchBox: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DDE5DC",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: "row",
-    marginTop: 20,
+    marginTop: spacing.xl,
     minHeight: 52,
-    paddingHorizontal: 13,
+    paddingHorizontal: spacing.lg,
   },
-  searchInput: { color: "#17271F", flex: 1, fontSize: 14, paddingHorizontal: 10, paddingVertical: 12 },
-  clearButton: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
-  categoryScroller: { alignSelf: "center", flexGrow: 0, flexShrink: 0, height: 72, width: "100%" },
-  categoryRail: { alignItems: "center", gap: 8 },
+  searchInput: { color: colors.text, flex: 1, fontFamily, fontSize: typography.body.fontSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  categoryScroller: { alignSelf: "center", flexShrink: 0, width: "100%" },
+  categoryRail: { alignItems: "flex-start", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   categoryButton: {
     alignItems: "center",
-    backgroundColor: "#E5EBE3",
+    backgroundColor: colors.primarySoft,
     borderRadius: 24,
     flexGrow: 0,
     flexShrink: 0,
-    height: 48,
+    minHeight: touchTarget,
     justifyContent: "center",
-    minWidth: 64,
-    paddingHorizontal: 18,
+    paddingHorizontal: spacing.sm,
   },
-  categoryButtonActive: { backgroundColor: "#215B43" },
-  categoryText: { color: "#4A5E51", fontSize: 13, fontWeight: "600" },
-  categoryTextActive: { color: "#FFFFFF" },
-  listContent: { alignSelf: "center", paddingBottom: 28, width: "100%" },
+  categoryButtonActive: { backgroundColor: colors.primary },
+  categoryText: { color: colors.muted, ...typography.labelSmall },
+  categoryTextActive: { color: colors.surface },
+  listContent: { alignSelf: "center", paddingBottom: spacing.xl, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
-    color: "#79857C",
-    fontSize: 10,
-    fontWeight: "800",
+    color: colors.muted,
+    ...typography.caption,
     letterSpacing: 1.2,
-    marginBottom: 4,
+    marginBottom: spacing.xs,
   },
   recipeRow: {
-    borderBottomColor: "#DDE5DC",
+    borderBottomColor: colors.border,
     borderBottomWidth: 1,
     flexDirection: "row",
-    gap: 14,
-    paddingVertical: 15,
+    gap: spacing.lg,
+    paddingVertical: spacing.lg,
   },
   imageWrap: { height: 126, position: "relative", width: 112 },
   placeholderImage: {
     alignItems: "center",
-    backgroundColor: "#D9E1D8",
+    backgroundColor: colors.primarySoft,
     borderRadius: 6,
     height: "100%",
     justifyContent: "center",
@@ -476,109 +484,104 @@ const styles = StyleSheet.create({
   indexMark: {
     alignItems: "center",
     borderRadius: 4,
-    bottom: 7,
-    color: "#17271F",
-    fontSize: 10,
-    fontWeight: "800",
+    bottom: spacing.xs,
+    color: colors.text,
+    ...typography.caption,
     overflow: "hidden",
-    paddingHorizontal: 7,
-    paddingVertical: 5,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
     position: "absolute",
-    right: 7,
+    right: spacing.xs,
   },
-  indexWarm: { backgroundColor: "#F3C875" },
-  indexCool: { backgroundColor: "#B7D5C2" },
+  indexWarm: { backgroundColor: colors.warning },
+  indexCool: { backgroundColor: colors.primarySoft },
   recipeInfo: {
     flex: 1,
     justifyContent: "center",
     minWidth: 0,
-    paddingVertical: 2,
+    paddingVertical: spacing.xs,
   },
   recipeCategory: {
-    color: "#A75132",
-    fontSize: 9,
-    fontWeight: "800",
+    color: colors.primary,
+    ...typography.caption,
     letterSpacing: 1.1,
-    marginBottom: 5,
+    marginBottom: spacing.xs,
   },
   recipeTitle: {
-    color: "#17271F",
-    fontSize: 19,
-    lineHeight: 23,
+    color: colors.text,
+    ...typography.subheading,
   },
   recipeDescription: {
-    color: "#67746B",
-    fontSize: 12,
-    lineHeight: 17,
-    marginTop: 5,
+    color: colors.muted,
+    ...typography.bodySmall,
+    marginTop: spacing.xs,
   },
-  recipeMeta: { alignItems: "center", flexDirection: "row", marginTop: 11 },
-  metaText: { color: "#59685E", fontSize: 10, fontWeight: "600" },
+  recipeMeta: { alignItems: "center", flexDirection: "row", marginTop: spacing.md },
+  metaText: { color: colors.muted, ...typography.caption },
   metaDot: {
-    backgroundColor: "#C2CDC3",
+    backgroundColor: colors.border,
     borderRadius: 3,
     height: 4,
-    marginHorizontal: 7,
+    marginHorizontal: spacing.sm,
     width: 4,
   },
   emptyText: {
-    color: "#64736A",
-    fontSize: 14,
-    lineHeight: 21,
-    paddingVertical: 28,
+    color: colors.muted,
+    ...typography.body,
+    paddingVertical: spacing.xl,
   },
   center: {
     alignItems: "center",
     flex: 1,
     justifyContent: "center",
-    padding: 40,
+    padding: spacing.xl,
   },
-  loadingText: { color: "#64736A", fontSize: 14, marginTop: 12 },
+  loadingText: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.md },
   errorText: {
-    color: "#A75132",
-    fontSize: 14,
-    marginBottom: 12,
+    color: colors.danger,
+    ...typography.bodySmall,
+    marginBottom: spacing.md,
     textAlign: "center",
   },
   retryBtn: {
     alignItems: "center",
-    backgroundColor: "#215B43",
+    backgroundColor: colors.primary,
     borderRadius: 6,
     justifyContent: "center",
     minHeight: 44,
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
-  retryText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
-  alertPanel: { backgroundColor: "#FFF9E6", borderColor: "#F0D98F", borderRadius: 9, borderWidth: 1, gap: 7, marginBottom: 18, padding: 12 },
-  alertHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  retryText: { color: colors.surface, ...typography.labelSmall },
+  alertPanel: { backgroundColor: colors.warningSoft, borderColor: colors.warning, borderRadius: 9, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.xl, padding: spacing.md },
+  alertHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
   alertHeading: { flex: 1, minWidth: 0 },
-  alertTitle: { color: "#4A3C1D", fontSize: 14, fontWeight: "800" },
-  alertHint: { color: "#64736A", fontSize: 12, lineHeight: 18 },
-  alertRefresh: { alignItems: "center", justifyContent: "center", minHeight: 40, minWidth: 70, paddingHorizontal: 8 },
-  alertRefreshText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
-  alertError: { color: "#A75132", fontSize: 12, lineHeight: 18 },
-  expiredText: { color: "#A03E35", fontSize: 12, lineHeight: 18 },
-  nearExpiryText: { color: "#665221", fontSize: 12, lineHeight: 18 },
-  itemActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 9 },
-  itemAction: { alignItems: "center", borderColor: "#DDE5DC", borderRadius: 6, borderWidth: 1, flexDirection: "row", gap: 5, justifyContent: "center", minHeight: 36, paddingHorizontal: 8 },
-  itemActionText: { color: "#215B43", fontSize: 11, fontWeight: "700" },
-  deleteActionText: { color: "#A75132", fontSize: 11, fontWeight: "700" },
-  modalBackdrop: { backgroundColor: "rgba(0,0,0,0.42)", flex: 1, justifyContent: "center", padding: 16 },
-  modalCard: { alignSelf: "center", backgroundColor: "#FFFFFF", borderRadius: 12, gap: 12, maxHeight: "90%", padding: 16, width: "100%" },
+  alertTitle: { color: colors.warning, ...typography.subheading },
+  alertHint: { color: colors.muted, ...typography.bodySmall },
+  alertRefresh: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: 70, paddingHorizontal: spacing.sm },
+  alertRefreshText: { color: colors.primary, ...typography.labelSmall },
+  alertError: { color: colors.danger, ...typography.bodySmall },
+  expiredText: { color: colors.danger, ...typography.bodySmall },
+  nearExpiryText: { color: colors.warning, ...typography.bodySmall },
+  itemActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
+  itemAction: { alignItems: "center", borderColor: colors.border, borderRadius: 6, borderWidth: 1, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  itemActionText: { color: colors.primary, ...typography.labelSmall },
+  deleteActionText: { color: colors.danger, ...typography.labelSmall },
+  modalBackdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "center", padding: spacing.lg },
+  modalCard: { alignSelf: "center", backgroundColor: colors.surface, borderRadius: 12, gap: spacing.md, maxHeight: "90%", padding: spacing.lg, width: "100%" },
   modalWide: { maxWidth: 560 },
-  modalTitle: { color: "#17271F", fontSize: 18, fontWeight: "800" },
-  modalForm: { gap: 8, paddingBottom: 8 },
-  fieldLabel: { color: "#4A5E51", fontSize: 12, fontWeight: "700", marginTop: 4 },
-  modalInput: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 44, paddingHorizontal: 11 },
-  choiceRail: { alignItems: "center", gap: 7, paddingVertical: 4 },
-  choiceChip: { backgroundColor: "#EEF2ED", borderRadius: 16, justifyContent: "center", minHeight: 38, paddingHorizontal: 10 },
-  choiceChipActive: { backgroundColor: "#215B43" },
-  choiceText: { color: "#4A5E51", fontSize: 11, fontWeight: "600" },
-  choiceTextActive: { color: "#FFFFFF", fontWeight: "800" },
-  modalActions: { flexDirection: "row", gap: 8, justifyContent: "flex-end" },
-  cancelButton: { alignItems: "center", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: 14 },
-  cancelButtonText: { color: "#4A5E51", fontSize: 12, fontWeight: "700" },
-  saveButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: 14 },
+  modalTitle: { color: colors.text, ...typography.heading },
+  modalForm: { gap: spacing.sm, paddingBottom: spacing.sm },
+  fieldLabel: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
+  modalInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md },
+  choiceRail: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
+  choiceChip: { backgroundColor: colors.primarySoft, borderRadius: 16, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  choiceChipActive: { backgroundColor: colors.primary },
+  choiceText: { color: colors.muted, ...typography.labelSmall },
+  choiceTextActive: { color: colors.surface },
+  modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
+  cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
+  cancelButtonText: { color: colors.muted, ...typography.labelSmall },
+  saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
   saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800" },
+  saveButtonText: { color: colors.surface, ...typography.labelSmall },
 });

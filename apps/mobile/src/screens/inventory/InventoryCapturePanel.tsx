@@ -13,6 +13,7 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, Check, FileImage, Keyboard, Mic, Package, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { inventoryApi, InventoryUnit, ProductCatalogResult, ReceiptMimeType } from "./inventoryApi";
 
 type Mode = "manual" | "catalog" | "barcode" | "receipt" | "voice";
@@ -321,7 +322,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
     (mode === "catalog" && selectedCatalogProduct !== null);
 
   return (
-    <View style={[styles.panel, { padding: isCompact ? 12 : 16 }]}>
+    <View style={[styles.panel, { padding: isCompact ? spacing.md : spacing.lg }]}>
       <Text style={styles.panelTitle}>Thêm thực phẩm</Text>
       <Text style={styles.panelSubtitle}>Chọn cách nhập. Mọi kết quả đều là bản nháp cho bạn kiểm tra trước khi lưu.</Text>
       {!familyId || !accessToken ? (
@@ -334,11 +335,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             ] as Array<[Mode, string]>).map(([value, label]) => (
               <Pressable accessibilityRole="button" accessibilityState={{ selected: mode === value }} key={value} onPress={() => chooseMode(value)} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <View style={styles.modeContent}>
-                  {value === "manual" ? <Keyboard color={mode === value ? "#FFFFFF" : "#4A5E51"} size={15} />
-                    : value === "catalog" ? <Search color={mode === value ? "#FFFFFF" : "#4A5E51"} size={15} />
-                    : value === "barcode" ? <ScanBarcode color={mode === value ? "#FFFFFF" : "#4A5E51"} size={15} />
-                      : value === "receipt" ? <Receipt color={mode === value ? "#FFFFFF" : "#4A5E51"} size={15} />
-                        : <Mic color={mode === value ? "#FFFFFF" : "#4A5E51"} size={15} />}
+                  {value === "manual" ? <AppIcon icon={Keyboard} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                    : value === "catalog" ? <AppIcon icon={Search} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                    : value === "barcode" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                      : value === "receipt" ? <AppIcon icon={Receipt} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                        : <AppIcon icon={Mic} size="sm" color={mode === value ? colors.surface : colors.muted} />}
                   <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
                 </View>
               </Pressable>
@@ -359,24 +360,24 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
                   value={catalogQuery}
                 />
                 <Pressable accessibilityRole="button" accessibilityLabel="Tìm sản phẩm bên ngoài" disabled={catalogLoading} onPress={() => void searchCatalog()} style={styles.secondaryButton}>
-                  {catalogLoading ? <ActivityIndicator size="small" color="#215B43" /> : <View style={styles.actionContent}><Search color="#215B43" size={15} /><Text style={styles.secondaryButtonText}>Tìm</Text></View>}
+                  {catalogLoading ? <ActivityIndicator size="small" color={colors.primary} /> : <View style={styles.actionContent}><AppIcon icon={Search} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Tìm</Text></View>}
                 </Pressable>
               </View>
               <Text style={styles.helper}>Kết quả lấy trực tiếp từ Open Food Facts, không phải danh sách có sẵn. Dữ liệu do cộng đồng đóng góp nên hãy kiểm tra trước khi lưu.</Text>
               {selectedCatalogProduct && (
                 <View style={styles.catalogSelected}>
-                  {selectedCatalogProduct.imageUrl ? <Image source={{ uri: selectedCatalogProduct.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><Package color="#547364" size={20} /></View>}
+                  {selectedCatalogProduct.imageUrl ? <Image source={{ uri: selectedCatalogProduct.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><AppIcon icon={Package} size="md" color={colors.primary} /></View>}
                   <View style={styles.catalogProductInfo}>
                     <Text numberOfLines={2} style={styles.catalogProductName}>{selectedCatalogProduct.name}</Text>
                     <Text numberOfLines={1} style={styles.helper}>{selectedCatalogProduct.brand || "Open Food Facts"}{selectedCatalogProduct.packageQuantity ? ` · ${selectedCatalogProduct.packageQuantity}` : ""}</Text>
                     <Text style={styles.sourceText}>Mã vạch {selectedCatalogProduct.barcode}</Text>
                   </View>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn sản phẩm" onPress={() => { setSelectedCatalogProduct(null); setName(""); setBarcode(""); }} style={styles.clearProductButton}><X color="#53655A" size={17} /></Pressable>
+                  <IconButton accessibilityLabel="Bỏ chọn sản phẩm" icon={X} color={colors.muted} onPress={() => { setSelectedCatalogProduct(null); setName(""); setBarcode(""); }} />
                 </View>
               )}
               {!selectedCatalogProduct && catalogResults.map((product) => (
                 <Pressable accessibilityRole="button" accessibilityLabel={`Chọn ${product.name}${product.brand ? `, ${product.brand}` : ""}`} key={product.barcode} onPress={() => chooseCatalogProduct(product)} style={styles.catalogResult}>
-                  {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><Package color="#547364" size={20} /></View>}
+                  {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><AppIcon icon={Package} size="md" color={colors.primary} /></View>}
                   <View style={styles.catalogProductInfo}>
                     <Text numberOfLines={2} style={styles.catalogProductName}>{product.name}</Text>
                     <Text numberOfLines={1} style={styles.helper}>{product.brand || "Open Food Facts"}{product.packageQuantity ? ` · ${product.packageQuantity}` : ""}</Text>
@@ -393,7 +394,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
               <Text style={styles.label}>Quét bằng camera hoặc nhập mã thủ công</Text>
               <View style={styles.barcodeRow}>
                 <TextInput accessibilityLabel="Mã vạch gồm 8 đến 14 chữ số" value={barcode} onChangeText={setBarcode} placeholder="8–14 chữ số" keyboardType="number-pad" style={[styles.input, styles.barcodeInput]} />
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><View style={styles.actionContent}><Search color="#215B43" size={15} /><Text style={styles.secondaryButtonText}>Tra cứu</Text></View></Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={Search} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Tra cứu</Text></View></Pressable>
               </View>
               {cameraActive ? (
                 <View style={styles.cameraFrame}>
@@ -407,10 +408,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
                       setNote("Không khởi chạy được máy quét. Bạn có thể nhập mã vạch bằng tay bên dưới.");
                     }}
                   />
-                  <Pressable accessibilityRole="button" onPress={() => setCameraActive(false)} style={styles.cameraClose}><View style={styles.actionContent}><X color="#FFFFFF" size={14} /><Text style={styles.cameraCloseText}>Đóng camera</Text></View></Pressable>
+                  <Pressable accessibilityRole="button" onPress={() => setCameraActive(false)} style={styles.cameraClose}><View style={styles.actionContent}><AppIcon icon={X} size="sm" color={colors.surface} /><Text style={styles.cameraCloseText}>Đóng camera</Text></View></Pressable>
                 </View>
               ) : (
-                <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><View style={styles.actionContent}><ScanBarcode color="#215B43" size={15} /><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></View></Pressable>
+                <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={ScanBarcode} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></View></Pressable>
               )}
               {barcodeResult && <Text style={styles.helper}>{barcodeResult}</Text>}
             </View>
@@ -420,8 +421,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             <View style={styles.section}>
               <Text style={styles.label}>Đọc hóa đơn (ảnh JPEG, PNG hoặc WebP, tối đa 5 MB)</Text>
               <View style={styles.actionsRow}>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera")} style={styles.secondaryButton}><View style={styles.actionContent}><Camera color="#215B43" size={15} /><Text style={styles.secondaryButtonText}>Chụp hóa đơn</Text></View></Pressable>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library")} style={styles.secondaryButton}><View style={styles.actionContent}><FileImage color="#215B43" size={15} /><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></View></Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera")} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chụp hóa đơn</Text></View></Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library")} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></View></Pressable>
               </View>
               {!!receiptText && <Text numberOfLines={4} style={styles.ocrText}>Văn bản OCR: {receiptText}</Text>}
               {receiptDrafts.map((draft) => (
@@ -443,7 +444,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
             <View style={styles.section}>
               <Text style={styles.label}>Nhận dạng tiếng Việt trên thiết bị</Text>
               <Pressable accessibilityRole="button" accessibilityState={{ busy: recognizing }} disabled={busy} onPress={() => void startVoice()} style={[styles.voiceButton, recognizing && styles.voiceButtonActive]}>
-                <View style={styles.actionContent}><Mic color="#FFFFFF" size={16} /><Text style={styles.saveButtonText}>{recognizing ? "Dừng nhận dạng" : "Bắt đầu nói"}</Text></View>
+                <View style={styles.actionContent}><AppIcon icon={Mic} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>{recognizing ? "Dừng nhận dạng" : "Bắt đầu nói"}</Text></View>
               </Pressable>
               {!!voiceText && <Text style={styles.helper}>Bản nháp nghe được: {voiceText}</Text>}
               <Text style={styles.helper}>Âm thanh không được lưu hoặc gửi tới dịch vụ bên ngoài. Thiết bị cần hỗ trợ model tiếng Việt ngoại tuyến.</Text>
@@ -459,14 +460,14 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
               <Text style={styles.label}>Đơn vị</Text>
               <UnitButtons value={unit} onChange={setUnit} />
               <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveMainDraft()} style={[styles.saveButton, busy && styles.disabledButton]}>
-                {busy ? <ActivityIndicator color="#FFFFFF" /> : <View style={styles.actionContent}><Check color="#FFFFFF" size={16} /><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></View>}
+                {busy ? <ActivityIndicator color={colors.surface} /> : <View style={styles.actionContent}><AppIcon icon={Check} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></View>}
               </Pressable>
             </View>
           )}
         </>
       )}
       {note && <Text accessibilityRole="alert" style={styles.notice}>{note}</Text>}
-      {busy && <View style={styles.busyRow}><ActivityIndicator color="#215B43" /><Text style={styles.helper}>Đang xử lý…</Text></View>}
+      {busy && <View style={styles.busyRow}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>Đang xử lý…</Text></View>}
     </View>
   );
 }
@@ -484,51 +485,50 @@ function UnitButtons({ value, onChange, fill = false }: { value: InventoryUnit; 
 }
 
 const styles = StyleSheet.create({
-  panel: { alignSelf: "center", backgroundColor: "#FFFFFF", borderColor: "#DDE5DC", borderRadius: 12, borderWidth: 1, marginTop: 16, maxWidth: 860, width: "100%" },
-  panelTitle: { color: "#17271F", fontSize: 18, fontWeight: "800" },
-  panelSubtitle: { color: "#64736A", fontSize: 12, lineHeight: 18, marginTop: 4 },
-  modeRow: { gap: 8, paddingVertical: 14 },
-  modeButton: { backgroundColor: "#E5EBE3", borderRadius: 20, paddingHorizontal: 13, paddingVertical: 9 },
-  modeContent: { alignItems: "center", flexDirection: "row", gap: 6 },
-  modeButtonActive: { backgroundColor: "#215B43" },
-  modeText: { color: "#4A5E51", fontSize: 12, fontWeight: "700" },
-  modeTextActive: { color: "#FFFFFF" },
-  actionContent: { alignItems: "center", flexDirection: "row", gap: 6 },
-  catalogResult: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E5EBE3", borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 76, padding: 9 },
-  catalogSelected: { alignItems: "center", backgroundColor: "#F2F7F0", borderColor: "#B8D0BD", borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 76, padding: 9 },
-  catalogImage: { backgroundColor: "#F6F8F4", borderRadius: 6, height: 56, width: 56 },
-  catalogImageFallback: { alignItems: "center", backgroundColor: "#F6F8F4", borderRadius: 6, height: 56, justifyContent: "center", width: 56 },
-  catalogProductInfo: { flex: 1, gap: 3, minWidth: 0 },
-  catalogProductName: { color: "#26372D", fontSize: 13, fontWeight: "700" },
-  clearProductButton: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
-  emptyCatalog: { backgroundColor: "#F6F8F4", borderRadius: 8, color: "#64736A", fontSize: 12, lineHeight: 18, padding: 12 },
-  section: { borderTopColor: "#EDF1EB", borderTopWidth: 1, gap: 9, paddingTop: 13 },
-  label: { color: "#34483B", fontSize: 12, fontWeight: "700", marginTop: 2 },
-  input: { backgroundColor: "#FAFCF9", borderColor: "#DDE5DC", borderRadius: 7, borderWidth: 1, color: "#17271F", minHeight: 43, paddingHorizontal: 11, paddingVertical: 9 },
-  barcodeRow: { alignItems: "center", flexDirection: "row", gap: 8 },
+  panel: { alignSelf: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, marginTop: spacing.lg, maxWidth: 860, width: "100%" },
+  panelTitle: { ...textStyles.subheading, color: colors.text },
+  panelSubtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.xs },
+  modeRow: { gap: spacing.sm, paddingVertical: spacing.lg },
+  modeButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 20, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  modeContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  modeButtonActive: { backgroundColor: colors.primary },
+  modeText: { color: colors.muted, ...typography.labelSmall },
+  modeTextActive: { color: colors.surface },
+  actionContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  catalogResult: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 76, padding: spacing.md },
+  catalogSelected: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 76, padding: spacing.md },
+  catalogImage: { backgroundColor: colors.background, borderRadius: 6, height: 56, width: 56 },
+  catalogImageFallback: { alignItems: "center", backgroundColor: colors.background, borderRadius: 6, height: 56, justifyContent: "center", width: 56 },
+  catalogProductInfo: { flex: 1, gap: spacing.xs, minWidth: 0 },
+  catalogProductName: { color: colors.text, ...typography.label },
+  emptyCatalog: { backgroundColor: colors.background, borderRadius: 8, color: colors.muted, ...typography.bodySmall, padding: spacing.md },
+  section: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.md, paddingTop: spacing.lg },
+  label: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
+  input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
+  barcodeRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   barcodeInput: { flex: 1, minWidth: 0 },
   quantityInput: { minWidth: 75, width: 90 },
-  secondaryButton: { alignItems: "center", backgroundColor: "#E9F1EB", borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
-  secondaryButtonText: { color: "#215B43", fontSize: 12, fontWeight: "800" },
-  actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  cameraFrame: { backgroundColor: "#17271F", borderRadius: 8, height: 220, overflow: "hidden", position: "relative" },
-  cameraClose: { alignSelf: "flex-end", backgroundColor: "#17271FDD", borderRadius: 6, margin: 10, paddingHorizontal: 10, paddingVertical: 7 },
-  cameraCloseText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
-  helper: { color: "#64736A", fontSize: 12, lineHeight: 18 },
-  ocrText: { backgroundColor: "#F6F8F4", borderRadius: 6, color: "#64736A", fontSize: 11, lineHeight: 16, padding: 9 },
-  receiptCard: { backgroundColor: "#F6F8F4", borderRadius: 8, gap: 8, marginTop: 4, padding: 11 },
-  sourceText: { color: "#78857C", fontSize: 10, lineHeight: 15 },
-  unitRow: { gap: 6, paddingVertical: 2 },
+  secondaryButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
+  secondaryButtonText: { color: colors.primary, ...typography.labelSmall },
+  actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  cameraFrame: { backgroundColor: colors.text, borderRadius: 8, height: 220, overflow: "hidden", position: "relative" },
+  cameraClose: { alignSelf: "flex-end", backgroundColor: colors.overlay, borderRadius: 6, justifyContent: "center", margin: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  cameraCloseText: { color: colors.surface, ...typography.labelSmall },
+  helper: { color: colors.muted, ...typography.bodySmall },
+  ocrText: { backgroundColor: colors.background, borderRadius: 6, color: colors.muted, ...typography.bodySmall, padding: spacing.md },
+  receiptCard: { backgroundColor: colors.background, borderRadius: 8, gap: spacing.sm, marginTop: spacing.xs, padding: spacing.md },
+  sourceText: { color: colors.muted, ...typography.caption },
+  unitRow: { gap: spacing.sm, paddingVertical: spacing.xs },
   unitScrollerFill: { flex: 1, minWidth: 0 },
-  unitButton: { backgroundColor: "#EEF2ED", borderRadius: 15, justifyContent: "center", minHeight: 40, paddingHorizontal: 10 },
-  unitButtonActive: { backgroundColor: "#D4E7D8" },
-  unitText: { color: "#53655A", fontSize: 11, fontWeight: "600" },
-  unitTextActive: { color: "#215B43", fontWeight: "800" },
-  saveButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, marginTop: 5, paddingHorizontal: 12 },
-  voiceButton: { alignItems: "center", backgroundColor: "#215B43", borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: 12 },
-  voiceButtonActive: { backgroundColor: "#A75132" },
-  saveButtonText: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", textAlign: "center" },
+  unitButton: { backgroundColor: colors.primarySoft, borderRadius: 15, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  unitButtonActive: { backgroundColor: colors.primarySoft },
+  unitText: { color: colors.muted, ...typography.labelSmall },
+  unitTextActive: { color: colors.primary },
+  saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, marginTop: spacing.xs, paddingHorizontal: spacing.md },
+  voiceButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
+  voiceButtonActive: { backgroundColor: colors.danger },
+  saveButtonText: { color: colors.surface, ...typography.labelSmall, textAlign: "center" },
   disabledButton: { opacity: 0.65 },
-  notice: { color: "#A75132", fontSize: 12, lineHeight: 18, marginTop: 10 },
-  busyRow: { alignItems: "center", flexDirection: "row", gap: 8, marginTop: 10 },
+  notice: { color: colors.danger, ...typography.bodySmall, marginTop: spacing.md },
+  busyRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
 });
