@@ -9,6 +9,7 @@ The palette is the one already used by the auth/family and notification/admin sc
 | Export | Values |
 |---|---|
 | `colors` | `primary` #2F6B5F, `text` #182A24, `muted` #65746C, `border` #DCE3DE, `surface` #FFFFFF, `background` #F4F7F2, `danger` #B42318, `warning` #B54708, `success` #067647, plus `*Soft` backgrounds and `overlay` |
+| `chartColors` | `series` (5 colours, first = primary), `grid`, `axis`, `label`; used by the admin charts (`screens/admin/charts/`) |
 | `spacing` | `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24 |
 | `fontSize` | `caption` 12, `small` 14, `body` 15, `subtitle` 16, `title` 18, `headline` 22 |
 | `radius` | `sm` 10, `md` 12, `lg` 16, `pill` 999 |

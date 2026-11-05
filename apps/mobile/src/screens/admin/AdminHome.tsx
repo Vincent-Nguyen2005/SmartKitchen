@@ -1,15 +1,16 @@
 import React, { useState } from "react";
 import { Text, View } from "react-native";
-import { Activity, Carrot, Flag, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
+import { Activity, Carrot, Flag, LayoutDashboard, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
 import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, Segmented, styles, useLayout } from "../notifications/ui";
+import DashboardScreen from "./DashboardScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import ReportsScreen from "./ReportsScreen";
 import SystemHealthScreen from "./SystemHealthScreen";
 import WeightsScreen from "./WeightsScreen";
 
-type Section = "ingredients" | "weights" | "health" | "reports";
+type Section = "overview" | "ingredients" | "weights" | "health" | "reports";
 
 /**
  * Admin area. The entry point is only shown when useSession().user.role === "ADMIN";
@@ -18,7 +19,7 @@ type Section = "ingredients" | "weights" | "health" | "reports";
 export default function AdminHome(): React.JSX.Element {
   const { isAdmin } = useGatewayApi();
   const { gutter } = useLayout();
-  const [section, setSection] = useState<Section>("reports");
+  const [section, setSection] = useState<Section>("overview");
 
   if (!isAdmin) {
     return (
@@ -37,6 +38,7 @@ export default function AdminHome(): React.JSX.Element {
           value={section}
           onChange={setSection}
           options={[
+            { value: "overview", label: "Tổng quan", icon: LayoutDashboard },
             { value: "reports", label: "Báo cáo", icon: Flag },
             { value: "health", label: "Hệ thống", icon: Activity },
             { value: "ingredients", label: "Nguyên liệu", icon: Carrot },
@@ -45,6 +47,7 @@ export default function AdminHome(): React.JSX.Element {
         />
       </View>
       <View style={{ flex: 1 }}>
+        {section === "overview" && <DashboardScreen />}
         {section === "reports" && <ReportsScreen />}
         {section === "health" && <SystemHealthScreen />}
         {section === "ingredients" && <IngredientsScreen />}

@@ -77,3 +77,49 @@ export const overallStatus = (statuses: (HealthStatus | null)[]): OverallStatus 
 
 export const summaryWindows = { "24h": 24 * 60 * 60 * 1000, "7d": 7 * 24 * 60 * 60 * 1000 } as const;
 export type SummaryWindow = keyof typeof summaryWindows;
+
+const HOUR_MS = 60 * 60 * 1000;
+/** Bucket size per window: 1h buckets for 24h, 6h buckets for 7d. */
+export const timeseriesBuckets: Record<SummaryWindow, number> = { "24h": HOUR_MS, "7d": 6 * HOUR_MS };
+
+export type TimeseriesBucket = {
+  start: Date;
+  end: Date;
+  samples: number;
+  uptimePercent: number | null;
+  avgResponseTimeMs: number | null;
+  p95ResponseTimeMs: number | null;
+};
+
+/**
+ * Bucket boundaries covering the whole summary window [now - window, now], aligned to multiples of the
+ * bucket size (UTC epoch) so edges stay stable between refreshes: the start is rounded down and the end
+ * up. That gives 25 hourly buckets for 24h (24 when `now` is on the hour) and 29 six-hour buckets for 7d
+ * (28 on a boundary), and every sample the summary counts falls into a bucket.
+ */
+export const timeseriesRange = (window: SummaryWindow, now: Date): { from: Date; to: Date; bucketMs: number; count: number } => {
+  const bucketMs = timeseriesBuckets[window];
+  const start = Math.floor((now.getTime() - summaryWindows[window]) / bucketMs) * bucketMs;
+  const end = Math.ceil(now.getTime() / bucketMs) * bucketMs;
+  return { from: new Date(start), to: new Date(end), bucketMs, count: (end - start) / bucketMs };
+};
+
+/** Same math as the summary (uptime %, average, nearest-rank p95), per time bucket. Empty buckets are kept with nulls. */
+export const bucketize = (samples: HealthSample[], from: Date, bucketMs: number, count: number): TimeseriesBucket[] => {
+  const groups: HealthSample[][] = Array.from({ length: count }, () => []);
+  for (const sample of samples) {
+    const index = Math.floor((sample.checkedAt.getTime() - from.getTime()) / bucketMs);
+    if (index >= 0 && index < count) groups[index].push(sample);
+  }
+  return groups.map((rows, index) => {
+    const times = rows.map((row) => row.responseTimeMs).filter((value): value is number => typeof value === "number");
+    return {
+      start: new Date(from.getTime() + index * bucketMs),
+      end: new Date(from.getTime() + (index + 1) * bucketMs),
+      samples: rows.length,
+      uptimePercent: uptimePercent(rows.map((row) => row.status)),
+      avgResponseTimeMs: average(times),
+      p95ResponseTimeMs: percentile(times, 95),
+    };
+  });
+};

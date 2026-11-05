@@ -40,6 +40,10 @@ const mineSelect = { id: true, reportedUserId: true, category: true, description
 
 const validationError = (details: unknown) => ({ error: "VALIDATION_ERROR", message: "Invalid request", details });
 
+// Optional window for /stats: adds how many reports were resolved within it (dashboard KPI).
+const statsWindows = { "24h": 24 * HOUR_MS, "7d": 7 * 24 * HOUR_MS } as const;
+const statsSchema = z.object({ window: z.enum(["24h", "7d"]).optional() });
+
 export const createReportRouter = ({ prisma, notifier, maxReportsPerHour, clock = () => new Date() }: ReportDeps): Router => {
   const router = Router();
 
@@ -72,17 +76,23 @@ export const createReportRouter = ({ prisma, notifier, maxReportsPerHour, clock 
   });
 
   // ---- admin-only ----
-  router.get("/stats", requireAdmin, async (_request, response) => {
-    const [byStatus, byCategory] = await Promise.all([
+  router.get("/stats", requireAdmin, async (request, response) => {
+    const parsed = statsSchema.safeParse(request.query);
+    if (!parsed.success) return response.status(400).json(validationError(parsed.error.flatten()));
+    const { window } = parsed.data;
+    const since = window ? new Date(clock().getTime() - statsWindows[window]) : null;
+    const [byStatus, byCategory, resolvedInWindow] = await Promise.all([
       prisma.accountReport.groupBy({ by: ["status"], _count: { _all: true } }),
       prisma.accountReport.groupBy({ by: ["category"], _count: { _all: true } }),
+      since ? prisma.accountReport.count({ where: { status: "RESOLVED", resolvedAt: { gte: since } } }) : Promise.resolve(null),
     ]);
     // Zero-fill so every status/category is always present.
     const fill = (keys: readonly string[], counts: Map<string, number>) => Object.fromEntries(keys.map((name) => [name, counts.get(name) ?? 0]));
     const status = fill(statuses, new Map(byStatus.map((row) => [row.status, row._count._all])));
     const category = fill(categories, new Map(byCategory.map((row) => [row.category, row._count._all])));
     const total = Object.values(status).reduce((sum, value) => sum + value, 0);
-    return response.json({ total, byStatus: status, byCategory: category });
+    // Without ?window the response is unchanged.
+    return response.json({ total, byStatus: status, byCategory: category, ...(window ? { window, resolvedInWindow } : {}) });
   });
 
   router.get("/", requireAdmin, async (request, response) => {

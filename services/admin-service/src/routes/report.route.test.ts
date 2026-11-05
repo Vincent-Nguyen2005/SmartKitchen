@@ -131,6 +131,24 @@ describe("admin report endpoints", () => {
       byStatus: { OPEN: 2, IN_REVIEW: 0, RESOLVED: 1, REJECTED: 0 },
       byCategory: { ABUSE: 0, SPAM: 3, BUG: 0, OTHER: 0 },
     });
+    expect(prismaMock.accountReport.count).not.toHaveBeenCalled();
+  });
+
+  it("adds the reports resolved within ?window", async () => {
+    prismaMock.accountReport.groupBy.mockResolvedValue([]);
+    prismaMock.accountReport.count.mockResolvedValue(4);
+    const response = await asAdmin(request(buildApp()).get("/reports/stats?window=7d"));
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ total: 0, window: "7d", resolvedInWindow: 4 });
+    expect(prismaMock.accountReport.count).toHaveBeenCalledWith({
+      where: { status: "RESOLVED", resolvedAt: { gte: new Date(NOW.getTime() - 7 * 24 * 60 * 60 * 1000) } },
+    });
+  });
+
+  it("rejects an unknown stats window", async () => {
+    const response = await asAdmin(request(buildApp()).get("/reports/stats?window=30d"));
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe("VALIDATION_ERROR");
   });
 });
 

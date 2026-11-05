@@ -1,7 +1,7 @@
 import "express-async-errors";
 import express from "express";
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from ".prisma/client-admin";
 import { createHealthMonitorRouter } from "./health-monitor.route";
 import type { HealthMonitor } from "../jobs/health-monitor";
@@ -34,7 +34,7 @@ describe("health monitor routes", () => {
 
   it("rejects non-admin callers with 403 on every endpoint", async () => {
     const app = buildApp();
-    for (const [method, path] of [["get", "/status"], ["get", "/history"], ["get", "/summary"], ["post", "/check-now"]] as const) {
+    for (const [method, path] of [["get", "/status"], ["get", "/history"], ["get", "/summary"], ["get", "/timeseries"], ["post", "/check-now"]] as const) {
       const response = await request(app)[method](`/health-monitor${path}`).set("x-user-id", "u1").set("x-user-role", "USER");
       expect(response.status).toBe(403);
       expect(response.body.error).toBe("FORBIDDEN");
@@ -95,6 +95,56 @@ describe("health monitor routes", () => {
     prismaMock.serviceHealthLog.findMany.mockResolvedValue([]);
     expect((await asAdmin(request(buildApp()).get("/health-monitor/summary"))).body.window).toBe("24h");
     expect((await asAdmin(request(buildApp()).get("/health-monitor/summary?window=30d"))).status).toBe(400);
+  });
+
+  describe("timeseries", () => {
+    afterEach(() => vi.useRealTimers());
+    const now = new Date("2026-11-05T10:20:00.000Z");
+
+    it("returns hourly buckets covering the full 24h window for one service using the summary math", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(now);
+      prismaMock.serviceHealthLog.findMany.mockResolvedValue([
+        { serviceName: "gateway", status: "UP", responseTimeMs: 10, checkedAt: new Date("2026-11-05T10:05:00.000Z") },
+        { serviceName: "gateway", status: "DOWN", responseTimeMs: null, checkedAt: new Date("2026-11-05T10:10:00.000Z") },
+        { serviceName: "gateway", status: "UP", responseTimeMs: 30, checkedAt: new Date("2026-11-05T09:30:00.000Z") },
+      ]);
+      const response = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=gateway"));
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ service: "gateway", window: "24h", bucketMinutes: 60, from: "2026-11-04T10:00:00.000Z", to: "2026-11-05T11:00:00.000Z" });
+      expect(response.body.buckets).toHaveLength(25);
+      expect(response.body.buckets[24]).toMatchObject({ start: "2026-11-05T10:00:00.000Z", samples: 2, uptimePercent: 50, avgResponseTimeMs: 10, p95ResponseTimeMs: 10 });
+      expect(response.body.buckets[23]).toMatchObject({ samples: 1, uptimePercent: 100, avgResponseTimeMs: 30 });
+      expect(response.body.buckets[0]).toMatchObject({ samples: 0, uptimePercent: null });
+      expect(prismaMock.serviceHealthLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: { serviceName: "gateway", checkedAt: { gte: new Date("2026-11-04T10:00:00.000Z"), lt: new Date("2026-11-05T11:00:00.000Z") } },
+      }));
+    });
+
+    it("aggregates every monitored service when no service is given and uses 6h buckets for 7d", async () => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(now);
+      prismaMock.serviceHealthLog.findMany.mockResolvedValue([]);
+      const response = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?window=7d"));
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ service: null, window: "7d", bucketMinutes: 360 });
+      expect(response.body.buckets).toHaveLength(29);
+      expect(prismaMock.serviceHealthLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ serviceName: { in: ["auth-service", "gateway"] } }),
+      }));
+    });
+
+    it("rejects unknown windows and services with 400 without querying", async () => {
+      const badWindow = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?window=30d"));
+      expect(badWindow.status).toBe(400);
+      expect(badWindow.body.error).toBe("VALIDATION_ERROR");
+      const badService = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=payment-hack"));
+      expect(badService.status).toBe(400);
+      expect(badService.body.message).toBe("Unknown service");
+      const tooLong = await asAdmin(request(buildApp()).get(`/health-monitor/timeseries?service=${"x".repeat(101)}`));
+      expect(tooLong.status).toBe(400);
+      expect(prismaMock.serviceHealthLog.findMany).not.toHaveBeenCalled();
+    });
   });
 
   it("runs one poll on check-now and reports transitions", async () => {
