@@ -131,7 +131,7 @@ export default function ReportsScreen(): React.JSX.Element {
         <SafeAreaView style={styles.screen}>
           <View style={[styles.row, local.modalHeader, { paddingHorizontal: gutter - 8 }]}>
             <IconButton icon={ChevronLeft} size="lg" accessibilityLabel="Quay lại danh sách" onPress={() => setSelected(null)} />
-            <Text style={[styles.title, local.flex]} accessibilityRole="header" numberOfLines={1}>Chi tiết báo cáo</Text>
+            <Text style={[styles.headline, local.flex]} accessibilityRole="header" numberOfLines={1}>Chi tiết báo cáo</Text>
           </View>
           {selected ? <ReportDetail report={selected} onUpdated={onUpdated} padding={gutter} /> : null}
         </SafeAreaView>

@@ -157,7 +157,7 @@ export default function IngredientsScreen(): React.JSX.Element {
         <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
           <ScrollView contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
             <View style={[styles.spaceBetween, local.modalHeader]}>
-              <Text style={[styles.title, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa nguyên liệu" : "Thêm nguyên liệu"}</Text>
+              <Text style={[styles.headline, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa nguyên liệu" : "Thêm nguyên liệu"}</Text>
               <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />
             </View>
             {draft ? (

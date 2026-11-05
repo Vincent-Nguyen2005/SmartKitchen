@@ -1,12 +1,4 @@
-import { Platform } from "react-native";
-
 /** Axis helpers shared by BarChart and LineChart (owner: Huy). */
-
-/**
- * SVG <text> does not inherit the React Native font, and browsers fall back to a serif font.
- * On web use the same system stack as react-native-web; native already uses the system font.
- */
-export const chartFontFamily = Platform.OS === "web" ? 'system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' : undefined;
 
 export type Scale = { min: number; max: number; step: number; ticks: number[] };
 

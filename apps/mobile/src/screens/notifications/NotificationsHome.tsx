@@ -4,7 +4,7 @@ import { Bell, Settings, Tag } from "lucide-react-native";
 import NotificationListScreen from "./NotificationListScreen";
 import NotificationPreferencesScreen from "./NotificationPreferencesScreen";
 import PromotionsScreen from "./PromotionsScreen";
-import { Segmented, styles, useLayout } from "./ui";
+import { PageTitle, Segmented, styles, useLayout } from "./ui";
 
 type Section = "inbox" | "promotions" | "settings";
 
@@ -15,6 +15,7 @@ export default function NotificationsHome(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <View style={{ paddingHorizontal: gutter }}>
+        <PageTitle>Thông báo</PageTitle>
         <Segmented<Section>
           label="Mục thông báo"
           value={section}
