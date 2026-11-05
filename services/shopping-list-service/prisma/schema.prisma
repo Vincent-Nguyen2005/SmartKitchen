@@ -27,6 +27,8 @@ model ShoppingItem {
   quantity       Float        @default(1)
   unit           String       @default("PIECE")
   isPurchased    Boolean      @default(false)
+  inventoryAppliedAt DateTime?
+  inventoryItemId String?      @db.Uuid
   note           String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

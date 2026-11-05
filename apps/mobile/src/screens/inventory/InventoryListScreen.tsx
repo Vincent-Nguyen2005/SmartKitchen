@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,8 +10,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { FoodItem } from "./types";
-
-const API_BASE_URL = "http://localhost:4003";
+import { useSession } from "../../services/session";
+import { inventoryApi } from "./inventoryApi";
+import InventoryCapturePanel from "./InventoryCapturePanel";
 
 const categories = ["All", "FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
 
@@ -23,6 +23,7 @@ type Props = {
 export default function InventoryListScreen({
   onItemPress,
 }: Props): React.JSX.Element {
+  const { family, accessToken, ready } = useSession();
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,16 +31,18 @@ export default function InventoryListScreen({
   const [activeCategory, setActiveCategory] = useState("All");
 
   const loadItems = async () => {
+    if (!ready) return;
+    if (!family?.id || !accessToken) {
+      setItems([]);
+      setError("Đăng nhập và tạo hoặc tham gia gia đình để xem kho thực phẩm.");
+      setLoading(false);
+      return;
+    }
     try {
       setError(null);
       setLoading(true);
-      const res = await fetch(`${API_BASE_URL}/api/inventory/items?limit=50`);
-      const data = await res.json();
-      if (data.success) {
-        setItems(data.items);
-      } else {
-        setError(data.error || "Không tải được dữ liệu");
-      }
+      const data = await inventoryApi.list(accessToken, family.id);
+      setItems(data.items);
     } catch (err: any) {
       setError(err.message || "Không kết nối được API");
     } finally {
@@ -48,8 +51,8 @@ export default function InventoryListScreen({
   };
 
   useEffect(() => {
-    loadItems();
-  }, []);
+    void loadItems();
+  }, [family?.id, accessToken, ready]);
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -119,32 +122,27 @@ export default function InventoryListScreen({
         })}
       </ScrollView>
 
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#215B43" />
-          <Text style={styles.loadingText}>Đang tải kho...</Text>
-        </View>
-      ) : error ? (
-        <View style={styles.center}>
-          <Text style={styles.errorText}>⚠️ {error}</Text>
-          <Pressable onPress={loadItems} style={styles.retryBtn}>
-            <Text style={styles.retryText}>Thử lại</Text>
-          </Pressable>
-        </View>
-      ) : (
-        <FlatList
-          contentContainerStyle={styles.listContent}
-          data={filteredItems}
-          keyExtractor={(item) => item.id}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>Chưa có nguyên liệu nào.</Text>
-          }
-          ListHeaderComponent={
-            <Text style={styles.resultCount}>
-              {filteredItems.length} NGUYÊN LIỆU
-            </Text>
-          }
-          renderItem={({ item, index }) => {
+      <ScrollView style={styles.resultsScroller} contentContainerStyle={styles.listContent} keyboardShouldPersistTaps="handled">
+        <InventoryCapturePanel familyId={family?.id ?? null} accessToken={accessToken} onSaved={() => void loadItems()} />
+        {loading ? (
+          <View style={styles.center}>
+            <ActivityIndicator size="large" color="#215B43" />
+            <Text style={styles.loadingText}>Đang tải kho...</Text>
+          </View>
+        ) : error ? (
+          <View style={styles.center}>
+            <Text style={styles.errorText}>⚠️ {error}</Text>
+            <Pressable onPress={() => void loadItems()} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Thử lại</Text>
+            </Pressable>
+          </View>
+        ) : (
+          <>
+            <Text style={styles.resultCount}>{filteredItems.length} NGUYÊN LIỆU</Text>
+            {filteredItems.length === 0 && (
+              <Text style={styles.emptyText}>{family ? "Chưa có nguyên liệu nào." : "Tạo hoặc tham gia gia đình để bắt đầu quản lý kho."}</Text>
+            )}
+            {filteredItems.map((item, index) => {
             const isNearExpiry = item.status === "NEAR_EXPIRY";
             const isExpired = item.status === "EXPIRED";
             return (
@@ -191,9 +189,10 @@ export default function InventoryListScreen({
                 </View>
               </Pressable>
             );
-          }}
-        />
-      )}
+            })}
+          </>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -251,6 +250,7 @@ const styles = StyleSheet.create({
   categoryText: { color: "#4A5E51", fontSize: 13, fontWeight: "600" },
   categoryTextActive: { color: "#FFFFFF" },
   listContent: { paddingBottom: 28, paddingHorizontal: 22 },
+  resultsScroller: { flex: 1 },
   resultCount: {
     color: "#79857C",
     fontSize: 10,

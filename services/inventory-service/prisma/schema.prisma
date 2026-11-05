@@ -58,6 +58,7 @@ model FoodItem {
   expiryDate      DateTime?
   status          ItemStatus      @default(FRESH)
   imageUrl        String?
+  barcode         String?         @db.VarChar(32)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
@@ -78,9 +79,19 @@ model InventoryLog {
   newValue   Json?
   note       String?
   createdBy  String?  @db.Uuid
+  externalRef String? @unique @db.Uuid
   createdAt  DateTime @default(now())
 
   item       FoodItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
+}
+
+model PurchaseApplication {
+  externalPurchaseId String   @id @db.Uuid
+  familyId           String   @db.Uuid
+  itemId             String   @db.Uuid
+  createdAt          DateTime @default(now())
+
+  @@index([familyId, createdAt])
 }

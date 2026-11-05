@@ -45,9 +45,20 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"], interval: 5s, timeout: 5s, retries: 10 }
   inventory-service:
     build: ./services/inventory-service
-    environment: { PORT: 4003, DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db }
+    environment:
+      PORT: 4003
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@inventory-db:5432/inventory_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      FAMILY_SERVICE_URL: http://family-service:4002
+      PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
+      OPENFOODFACTS_USER_AGENT: "${OPENFOODFACTS_USER_AGENT:-SmartKitchen/1.0 (contact@example.com)}"
+      TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
+      TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
     ports: ["4003:4003"]
-    depends_on: { inventory-db: { condition: service_healthy } }
+    depends_on:
+      inventory-db: { condition: service_healthy }
+      family-service: { condition: service_healthy }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4003/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   nutrition-db:
     image: postgres:16-alpine
@@ -105,9 +116,19 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d shopping_list_db"], interval: 5s, timeout: 5s, retries: 10 }
   shopping-list-service:
     build: ./services/shopping-list-service
-    environment: { PORT: 4008, DATABASE_URL: postgresql://postgres:postgres@shopping-list-db:5432/shopping_list_db }
+    environment:
+      PORT: 4008
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@shopping-list-db:5432/shopping_list_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_API_URL: http://inventory-service:4003
+      PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
     ports: ["4008:4008"]
-    depends_on: { shopping-list-db: { condition: service_healthy } }
+    depends_on:
+      shopping-list-db: { condition: service_healthy }
+      family-service: { condition: service_healthy }
+      inventory-service: { condition: service_healthy }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4008/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   payment-db:
     image: postgres:16-alpine

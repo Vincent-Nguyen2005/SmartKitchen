@@ -19,6 +19,7 @@ export class ItemsService {
         storageLocation: data.storageLocation,
         expiryDate: data.expiryDate,
         imageUrl: data.imageUrl,
+        barcode: data.barcode,
       },
       include: { category: true },
     });
@@ -50,9 +51,9 @@ export class ItemsService {
     };
   }
 
-  static async getById(id: string) {
+  static async getById(id: string, familyId: string) {
     const item = await prisma.foodItem.findFirst({
-      where: { id, deletedAt: null },
+      where: { id, familyId, deletedAt: null },
       include: {
         category: true,
         logs: { orderBy: { createdAt: "desc" }, take: 10 },
@@ -62,8 +63,8 @@ export class ItemsService {
     return item;
   }
 
-  static async update(id: string, data: UpdateItemInput) {
-    await this.getById(id);
+  static async update(id: string, familyId: string, data: UpdateItemInput) {
+    await this.getById(id, familyId);
     return prisma.foodItem.update({
       where: { id },
       data,
@@ -71,8 +72,8 @@ export class ItemsService {
     });
   }
 
-  static async softDelete(id: string) {
-    await this.getById(id);
+  static async softDelete(id: string, familyId: string) {
+    await this.getById(id, familyId);
     return prisma.foodItem.update({
       where: { id },
       data: { deletedAt: new Date() },
