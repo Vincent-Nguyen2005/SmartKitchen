@@ -123,12 +123,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
       FAMILY_SERVICE_URL: http://family-service:4002
       INVENTORY_API_URL: http://inventory-service:4003
+      MENU_SERVICE_URL: http://menu-service:4007
       PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
     ports: ["4008:4008"]
     depends_on:
       shopping-list-db: { condition: service_healthy }
       family-service: { condition: service_healthy }
       inventory-service: { condition: service_healthy }
+      menu-service: { condition: service_healthy }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4008/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   payment-db:
     image: postgres:16-alpine

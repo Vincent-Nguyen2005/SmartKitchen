@@ -8,6 +8,7 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
     findUnique: vi.fn(),
     update: vi.fn(),
+    updateMany: vi.fn(),
   },
   inventoryLog: { create: vi.fn() },
   purchaseApplication: { findUnique: vi.fn(), create: vi.fn() },
@@ -20,6 +21,11 @@ import { ItemsService } from "./items.service";
 import { PurchasesService } from "./purchases.service";
 import { listItemsQuerySchema } from "../validators/items.validator";
 
+const itemTx = {
+  foodItem: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  inventoryLog: { create: vi.fn() },
+};
+
 const familyId = "11111111-1111-4111-8111-111111111111";
 const otherFamilyId = "22222222-2222-4222-8222-222222222222";
 const userId = "33333333-3333-4333-8333-333333333333";
@@ -27,7 +33,10 @@ const purchaseId = "44444444-4444-4444-8444-444444444444";
 const itemId = "55555555-5555-4555-8555-555555555555";
 
 describe("ItemsService", () => {
-  beforeEach(() => vi.resetAllMocks());
+  beforeEach(() => {
+    vi.resetAllMocks();
+    prismaMock.$transaction.mockImplementation((callback: (transaction: typeof itemTx) => Promise<unknown>) => callback(itemTx));
+  });
 
   it("creates a food item with the validated family and product fields", async () => {
     const input = {
@@ -61,6 +70,17 @@ describe("ItemsService", () => {
     }));
   });
 
+  it("reports an empty inventory as one valid empty page", async () => {
+    const query = listItemsQuerySchema.parse({ familyId, page: "1", limit: "100" });
+    prismaMock.foodItem.findMany.mockResolvedValue([]);
+    prismaMock.foodItem.count.mockResolvedValue(0);
+
+    await expect(ItemsService.list(query)).resolves.toMatchObject({
+      items: [],
+      pagination: { page: 1, limit: 100, total: 0, totalPages: 1 },
+    });
+  });
+
   it("looks up an item only inside the requested family and rejects missing items", async () => {
     prismaMock.foodItem.findFirst.mockResolvedValue(null);
 
@@ -72,14 +92,98 @@ describe("ItemsService", () => {
 
   it("checks family ownership before updating an item", async () => {
     const changes = { quantity: 4 };
-    prismaMock.foodItem.findFirst.mockResolvedValue({ id: itemId, familyId });
-    prismaMock.foodItem.update.mockResolvedValue({ id: itemId, quantity: 4 });
+    itemTx.foodItem.findFirst.mockResolvedValue({ id: itemId, familyId, quantity: 2, unit: "PIECE", status: "FRESH" });
+    itemTx.foodItem.update.mockResolvedValue({ id: itemId, quantity: 4, unit: "PIECE", status: "FRESH" });
 
-    await expect(ItemsService.update(itemId, familyId, changes)).resolves.toMatchObject({ quantity: 4 });
-    expect(prismaMock.foodItem.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+    await expect(ItemsService.update(itemId, familyId, changes, userId)).resolves.toMatchObject({ quantity: 4 });
+    expect(itemTx.foodItem.findFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: itemId, familyId, deletedAt: null },
     }));
-    expect(prismaMock.foodItem.update).toHaveBeenCalledWith({ where: { id: itemId }, data: changes, include: { category: true } });
+    expect(itemTx.foodItem.update).toHaveBeenCalledWith({ where: { id: itemId }, data: changes, include: { category: true } });
+    expect(itemTx.inventoryLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      itemId,
+      action: "MANUAL_ADJUSTMENT",
+      oldValue: { quantity: 2, unit: "PIECE", status: "FRESH" },
+      newValue: { quantity: 4, unit: "PIECE", status: "FRESH" },
+      createdBy: userId,
+    }) });
+    expect(itemTx.inventoryLog.create).not.toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "CONSUMPTION" }) }));
+  });
+
+  it("atomically decrements stock and records an explicit consumption delta", async () => {
+    const item = { id: itemId, familyId, quantity: 1.5, unit: "KILOGRAM", status: "FRESH" };
+    itemTx.foodItem.findFirst.mockResolvedValueOnce({ ...item, quantity: 2 });
+    itemTx.foodItem.findFirst.mockResolvedValueOnce(item);
+    itemTx.foodItem.updateMany.mockResolvedValue({ count: 1 });
+
+    await expect(ItemsService.consume(itemId, familyId, 0.5, userId)).resolves.toMatchObject({ quantity: 1.5 });
+    expect(itemTx.foodItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: itemId,
+        familyId,
+        deletedAt: null,
+        status: { notIn: ["EXPIRED", "DISCARDED", "CONSUMED"] },
+        quantity: { gte: 0.5 },
+      },
+      data: { quantity: { decrement: 0.5 } },
+    });
+    expect(itemTx.inventoryLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "CONSUMPTION",
+      oldValue: { quantity: 2, unit: "KILOGRAM", status: "FRESH" },
+      newValue: { quantity: 1.5, unit: "KILOGRAM", status: "FRESH" },
+      createdBy: userId,
+    }) });
+  });
+
+  it("logs status-only manual inventory updates for audit", async () => {
+    itemTx.foodItem.findFirst.mockResolvedValue({ id: itemId, familyId, quantity: 2, unit: "PIECE", status: "FRESH" });
+    itemTx.foodItem.update.mockResolvedValue({ id: itemId, quantity: 2, unit: "PIECE", status: "DISCARDED" });
+
+    await expect(ItemsService.update(itemId, familyId, { status: "DISCARDED" }, userId)).resolves.toMatchObject({ status: "DISCARDED" });
+    expect(itemTx.inventoryLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "MANUAL_ADJUSTMENT",
+      oldValue: { quantity: 2, unit: "PIECE", status: "FRESH" },
+      newValue: { quantity: 2, unit: "PIECE", status: "DISCARDED" },
+    }) });
+  });
+
+  it("restores a consumed item to fresh when stock is manually restored", async () => {
+    itemTx.foodItem.findFirst.mockResolvedValue({ id: itemId, familyId, quantity: 0, unit: "PIECE", status: "CONSUMED" });
+    itemTx.foodItem.update.mockResolvedValue({ id: itemId, quantity: 2, unit: "PIECE", status: "FRESH" });
+
+    await expect(ItemsService.update(itemId, familyId, { quantity: 2 }, userId)).resolves.toMatchObject({ quantity: 2, status: "FRESH" });
+    expect(itemTx.foodItem.update).toHaveBeenCalledWith({ where: { id: itemId }, data: { quantity: 2, status: "FRESH" }, include: { category: true } });
+    expect(itemTx.inventoryLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      action: "MANUAL_ADJUSTMENT",
+      oldValue: { quantity: 0, unit: "PIECE", status: "CONSUMED" },
+      newValue: { quantity: 2, unit: "PIECE", status: "FRESH" },
+    }) });
+  });
+
+  it("rejects a consume request when stock changed and no longer covers the amount", async () => {
+    itemTx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, familyId, quantity: 1, unit: "PIECE", status: "FRESH" });
+    itemTx.foodItem.updateMany.mockResolvedValue({ count: 0 });
+    itemTx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, familyId, quantity: 0.25, unit: "PIECE", status: "FRESH" });
+
+    await expect(ItemsService.consume(itemId, familyId, 0.5, userId)).rejects.toMatchObject({
+      statusCode: 409,
+      code: "INSUFFICIENT_STOCK",
+    });
+    expect(itemTx.inventoryLog.create).not.toHaveBeenCalled();
+  });
+
+  it("marks an item consumed when the atomic decrement reaches zero", async () => {
+    const current = { id: itemId, familyId, quantity: 0, unit: "PIECE", status: "FRESH" };
+    itemTx.foodItem.findFirst.mockResolvedValueOnce({ ...current, quantity: 1 });
+    itemTx.foodItem.findFirst.mockResolvedValueOnce(current);
+    itemTx.foodItem.updateMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 1 });
+
+    await expect(ItemsService.consume(itemId, familyId, 1, userId)).resolves.toMatchObject({ status: "CONSUMED", quantity: 0 });
+    expect(itemTx.foodItem.updateMany).toHaveBeenCalledTimes(2);
+    expect(itemTx.foodItem.updateMany).toHaveBeenLastCalledWith({
+      where: { id: itemId, familyId, deletedAt: null, quantity: 0, status: "FRESH" },
+      data: { status: "CONSUMED" },
+    });
   });
 
   it("soft-deletes an item without removing its record", async () => {

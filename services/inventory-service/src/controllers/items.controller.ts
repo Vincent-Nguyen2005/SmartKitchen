@@ -6,6 +6,7 @@ import {
   listItemsQuerySchema,
   itemScopeQuerySchema,
   catalogSearchQuerySchema,
+  consumeItemSchema,
 } from "../validators/items.validator";
 import { InventoryAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
@@ -74,7 +75,8 @@ export class ItemsController {
       const id = z.string().uuid().parse(req.params.id);
       const { familyId } = itemScopeQuerySchema.parse(req.query);
       await requireFamilyMembership(req as InventoryAuthRequest, familyId);
-      const item = await ItemsService.update(id, familyId, data);
+      const userId = (req as InventoryAuthRequest).authUser.userId;
+      const item = await ItemsService.update(id, familyId, data, userId);
       res.json({ success: true, data: item });
     } catch (err) {
       next(err);
@@ -88,6 +90,20 @@ export class ItemsController {
       await requireFamilyMembership(req as InventoryAuthRequest, familyId);
       await ItemsService.softDelete(id, familyId);
       res.json({ success: true, message: "Item deleted" });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async consume(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = z.string().uuid().parse(req.params.id);
+      const { familyId } = itemScopeQuerySchema.parse(req.query);
+      const { quantity } = consumeItemSchema.parse(req.body);
+      const auth = req as InventoryAuthRequest;
+      await requireFamilyMembership(auth, familyId);
+      const item = await ItemsService.consume(id, familyId, quantity, auth.authUser.userId);
+      res.json({ success: true, data: item });
     } catch (err) {
       next(err);
     }

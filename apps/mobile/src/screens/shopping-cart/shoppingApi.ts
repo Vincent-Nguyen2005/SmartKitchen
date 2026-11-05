@@ -18,11 +18,22 @@ export type ShoppingItem = {
   note?: string | null;
 };
 export type ShoppingList = { id: string; familyId: string; name: string; status: string; items: ShoppingItem[] };
-export type ShoppingSuggestion = { name: string; count: number; unit: ShoppingUnit };
+export type ShoppingSuggestion = {
+  name: string;
+  unit: ShoppingUnit;
+  suggestedQuantity: number;
+  consumedQuantity: number;
+  availableQuantity: number;
+  dailyConsumption: number;
+  periodDays: number;
+  historyDays: number;
+  consumptionEvents: number;
+  lastConsumedAt: string;
+};
 
 type ApiPayload<T> = { success?: boolean; data?: T; lists?: T; message?: string; code?: string; error?: string };
 
-async function request<T>(accessToken: string, path: string, method: "GET" | "POST" = "GET", body?: unknown): Promise<T> {
+async function request<T>(accessToken: string, path: string, method: RequestInit["method"] = "GET", body?: unknown): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15_000);
   let response: Response;
@@ -56,12 +67,20 @@ const familyQuery = (familyId: string) => `?familyId=${encodeURIComponent(family
 export const shoppingApi = {
   list: (token: string, familyId: string) => request<ShoppingList[]>(token, `/api/shopping-list/${familyQuery(familyId)}`),
   suggestions: (token: string, familyId: string) => request<ShoppingSuggestion[]>(token, `/api/shopping-list/suggestions${familyQuery(familyId)}`),
+  generateFromMenu: (token: string, familyId: string) =>
+    request<{ menuId: string; message: string; items: ShoppingItem[]; listId: string | null }>(token, "/api/shopping-list/generate", "POST", { familyId }),
   addItem: (token: string, input: { familyId: string; name: string; quantity: number; unit: ShoppingUnit }) =>
     request<ShoppingItem>(token, "/api/shopping-list/items", "POST", input),
+  updateItem: (token: string, familyId: string, itemId: string, changes: { quantity?: number; note?: string | null }) =>
+    request<ShoppingItem>(token, `/api/shopping-list/items/${encodeURIComponent(itemId)}${familyQuery(familyId)}`, "PATCH", changes),
+  deleteItem: (token: string, familyId: string, itemId: string) =>
+    request<void>(token, `/api/shopping-list/items/${encodeURIComponent(itemId)}${familyQuery(familyId)}`, "DELETE"),
   confirmPurchase: (token: string, familyId: string, itemId: string) =>
     request<{ item: ShoppingItem; inventoryItemId: string | null; alreadyApplied: boolean; alreadyPurchased: boolean }>(
       token,
       `/api/shopping-list/items/${encodeURIComponent(itemId)}/purchase${familyQuery(familyId)}`,
       "POST",
     ),
+  completeList: (token: string, familyId: string, listId: string) =>
+    request<ShoppingList>(token, `/api/shopping-list/${encodeURIComponent(listId)}/complete${familyQuery(familyId)}`, "PATCH"),
 };

@@ -7,14 +7,17 @@ const API_BASE_URL = (
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
+export type InventoryLocation = "FRIDGE" | "FREEZER" | "PANTRY" | "COUNTER";
 export type NewFoodItem = {
   familyId: string;
   name: string;
   quantity: number;
   unit: InventoryUnit;
-  storageLocation: "FRIDGE" | "FREEZER" | "PANTRY" | "COUNTER";
+  storageLocation: InventoryLocation;
   barcode?: string;
 };
+export type UpdateFoodItem = Partial<Omit<NewFoodItem, "familyId" | "expiryDate">> & { expiryDate?: string | null; status?: string };
+export type ExpiringInventoryItem = import("./types").FoodItem & { daysLeft: number };
 export type ProductCatalogResult = {
   barcode: string;
   name: string;
@@ -56,10 +59,41 @@ const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
 
 export const inventoryApi = {
-  list: (accessToken: string, familyId: string) =>
-    request<{ items: import("./types").FoodItem[] }>(accessToken, `/api/inventory/items${query({ familyId, limit: 100 })}`),
+  list: async (accessToken: string, familyId: string) => {
+    const first = await request<{ items: import("./types").FoodItem[]; pagination: { totalPages: number } }>(
+      accessToken,
+      `/api/inventory/items${query({ familyId, page: 1, limit: 100 })}`,
+    );
+    if (!Array.isArray(first.items) || !Number.isInteger(first.pagination?.totalPages) || first.pagination.totalPages < 1) {
+      throw new Error("Máy chủ trả về danh sách kho không hợp lệ. Hãy tải lại sau.");
+    }
+    if (first.pagination.totalPages > 100) {
+      throw new Error("Kho có quá nhiều trang để tải an toàn. Hãy thu hẹp kết quả rồi thử lại.");
+    }
+    const items = [...first.items];
+    const totalPages = first.pagination.totalPages;
+    for (let page = 2; page <= totalPages; page += 1) {
+      const next = await request<{ items: import("./types").FoodItem[] }>(
+        accessToken,
+        `/api/inventory/items${query({ familyId, page, limit: 100 })}`,
+      );
+      if (!Array.isArray(next.items)) throw new Error(`Trang ${page} của kho trả về dữ liệu không hợp lệ.`);
+      items.push(...next.items);
+    }
+    return { items };
+  },
   create: (accessToken: string, input: NewFoodItem) =>
     request<import("./types").FoodItem>(accessToken, "/api/inventory/items", { method: "POST", body: JSON.stringify(input) }),
+  update: (accessToken: string, familyId: string, id: string, input: UpdateFoodItem) =>
+    request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}${query({ familyId })}`, { method: "PUT", body: JSON.stringify(input) }),
+  remove: (accessToken: string, familyId: string, id: string) =>
+    request<{ message: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}${query({ familyId })}`, { method: "DELETE" }),
+  consume: (accessToken: string, familyId: string, id: string, quantity: number) =>
+    request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}/consume${query({ familyId })}`, { method: "POST", body: JSON.stringify({ quantity }) }),
+  expiring: (accessToken: string, familyId: string, days = 3) =>
+    request<{ items: ExpiringInventoryItem[]; count: number; thresholdDays: number }>(accessToken, `/api/inventory/alerts/expiring${query({ familyId, days })}`),
+  refreshAlerts: (accessToken: string, familyId: string, days = 3) =>
+    request<{ updatedCount: number }>(accessToken, `/api/inventory/alerts/refresh${query({ familyId, days })}`, { method: "POST" }),
   lookupBarcode: (accessToken: string, barcode: string) =>
     request<{ found: boolean; barcode: string; product: null | { barcode: string; name: string; brand?: string; packageQuantity?: string; imageUrl?: string }; source: string }>(
       accessToken,
