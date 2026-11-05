@@ -189,6 +189,7 @@ export default function MealDiaryScreen({
             foodName: foodName.trim(),
             calories: parsedCalories,
             quantity: 1,
+            unit: "serving",
             ...macros,
           },
         ],

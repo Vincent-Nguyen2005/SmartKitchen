@@ -14,6 +14,7 @@ WORKDIR /app
 RUN apk add --no-cache openssl
 COPY --from=build /app/package*.json ./
 RUN npm install --omit=dev
+COPY --from=build /app/node_modules/.prisma/client-meal-diary ./node_modules/.prisma/client-meal-diary
 COPY --from=build /app/dist ./dist
 EXPOSE 4005
 CMD ["npm", "start"]

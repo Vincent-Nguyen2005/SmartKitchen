@@ -16,32 +16,40 @@ enum MealType {
   SNACK
 }
 
+enum MealSource {
+  HOME
+  EATING_OUT
+  DELIVERY
+}
+
 model MealDiary {
-  id        String           @id @default(uuid()) @db.Uuid
-  userId    String           @db.Uuid
+  id        String          @id @default(uuid()) @db.Uuid
+  userId    String          @db.Uuid
   mealType  MealType
-  date      DateTime         @db.Date
+  source    MealSource      @default(HOME)
+  date      DateTime        @db.Date
+  loggedAt  DateTime        @default(now())
   notes     String?
   items     MealDiaryItem[]
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@index([userId, date])
 }
 
 model MealDiaryItem {
-  id          String     @id @default(uuid()) @db.Uuid
-  mealDiaryId String     @db.Uuid
-  mealDiary   MealDiary  @relation(fields: [mealDiaryId], references: [id], onDelete: Cascade)
+  id          String    @id @default(uuid()) @db.Uuid
+  mealDiaryId String    @db.Uuid
+  mealDiary   MealDiary @relation(fields: [mealDiaryId], references: [id], onDelete: Cascade)
   foodName    String
-  quantity    Int        @default(1)
-  unit        String
+  quantity    Int       @default(1)
+  unit        String    @default("serving")
   calories    Float
   protein     Float?
   carbs       Float?
   fat         Float?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([mealDiaryId])
 }

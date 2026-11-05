@@ -9,6 +9,7 @@ import {
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { calculateDailyCalories } from "../utils/nutrition-calculator";
+import { getUserId } from "../utils/auth";
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -20,17 +21,6 @@ const profileSchema = z.object({
   gender: z.nativeEnum(Gender),
   activityLevel: z.nativeEnum(ActivityLevel),
 });
-
-function getUserId(request: Request, response: Response): string | undefined {
-  const userId = request.header("X-User-Id");
-  if (!userId || !z.string().uuid().safeParse(userId).success) {
-    response
-      .status(401)
-      .json({ error: "A valid authenticated user is required." });
-    return undefined;
-  }
-  return userId;
-}
 
 function parseProfile(request: Request, response: Response) {
   const result = profileSchema.safeParse(request.body);

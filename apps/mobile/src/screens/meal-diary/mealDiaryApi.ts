@@ -46,6 +46,7 @@ export type MealLogInput = {
     carbs?: number;
     fat?: number;
     quantity: number;
+    unit?: string;
   }[];
 };
 
@@ -61,7 +62,7 @@ export class MealDiaryApiError extends Error {
 export function createMealDiaryApi(baseUrl: string, userId: string) {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/nutrition-profile${path}`,
+      `${baseUrl.replace(/\/$/, "")}/api/meal-diary${path}`,
       {
         ...init,
         headers: {
@@ -87,7 +88,14 @@ export function createMealDiaryApi(baseUrl: string, userId: string) {
     logMeal: (meal: MealLogInput) =>
       request<MealLog>("/meals/log", {
         method: "POST",
-        body: JSON.stringify(meal),
+        body: JSON.stringify({
+          ...meal,
+          date: meal.loggedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+          items: meal.items.map((item) => ({
+            ...item,
+            unit: item.unit ?? "serving",
+          })),
+        }),
       }),
     getCalorieGoal: async (): Promise<number | null> => {
       try {

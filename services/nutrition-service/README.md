@@ -37,6 +37,10 @@ The calculation uses Mifflin-St Jeor and the activity factors declared in `src/u
 
 The gateway exposes `GET /api/nutrition-profile/allergies` and `GET /api/nutrition-profile/health-conditions` for the available master data. `GET` and `POST /api/nutrition-profile/user/profile/health` read and replace the caller's saved selections. These user-specific requests require the same trusted `X-User-Id` UUID header.
 
+The health catalog migration adds common allergy and health-condition options.
+Recipe suggestions exclude only exact normalized matches against recipe
+`allergens` and `contraindications` metadata; recipes must carry reviewed tags.
+
 POST JSON body:
 
 ```json
@@ -59,3 +63,16 @@ Meal log POST JSON body:
   "items": [{ "foodName": "Rice", "calories": 200, "quantity": 1 }]
 }
 ```
+
+## Daily nutrition and suggestions
+
+`GET /api/nutrition/daily-stats?date=YYYY-MM-DD` reads totals from
+`meal-diary-service` and returns daily totals, profile-based targets, and
+completion percentages. Calories use profile TDEE; macro targets reuse the
+mobile app's 20% protein, 50% carbohydrate, 30% fat split.
+
+`GET /api/nutrition/suggestions` filters active recipes from `recipe-service`
+against the caller's selected allergies and health conditions, then ranks
+remaining recipes by closeness to one-third of the daily targets. Configure
+`MEAL_DIARY_SERVICE_URL` and `RECIPE_SERVICE_URL` for local runs; Docker Compose
+sets both service URLs.

@@ -13,8 +13,10 @@ import {
 } from "react-native";
 import {
   ActivityLevel,
+  createHealthPreferencesApi,
   createNutritionProfileApi,
   Gender,
+  HealthOption,
   NutritionApiError,
   NutritionProfileInput,
   NutritionProfileResult,
@@ -260,9 +262,167 @@ export default function NutritionProfileScreen({
               )}
             </>
           )}
+          <HealthPreferencesSection apiBaseUrl={apiBaseUrl} userId={userId} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function HealthPreferencesSection({
+  apiBaseUrl,
+  userId,
+}: Props): React.JSX.Element {
+  const api = createHealthPreferencesApi(apiBaseUrl, userId);
+  const [allergies, setAllergies] = useState<HealthOption[]>([]);
+  const [conditions, setConditions] = useState<HealthOption[]>([]);
+  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([api.getAllergies(), api.getConditions(), api.getSelection()])
+      .then(([allergyOptions, conditionOptions, selection]) => {
+        if (!active) return;
+        setAllergies(allergyOptions);
+        setConditions(conditionOptions);
+        setSelectedAllergies(selection.allergies.map(({ id }) => id));
+        setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+      })
+      .catch(() => {
+        if (active) setMessage("Không thể tải dị ứng và bệnh lý đã khai báo.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [apiBaseUrl, userId]);
+
+  const toggle = (
+    id: string,
+    selected: string[],
+    setSelected: React.Dispatch<React.SetStateAction<string[]>>,
+  ): void => {
+    setSelected(
+      selected.includes(id)
+        ? selected.filter((item) => item !== id)
+        : [...selected, id],
+    );
+    setMessage("");
+  };
+
+  const save = async (): Promise<void> => {
+    setSaving(true);
+    setMessage("");
+    try {
+      const selection = await api.saveSelection(
+        selectedAllergies,
+        selectedConditions,
+      );
+      setSelectedAllergies(selection.allergies.map(({ id }) => id));
+      setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+      setMessage("Đã lưu hồ sơ sức khỏe.");
+    } catch {
+      setMessage("Không thể lưu hồ sơ sức khỏe. Vui lòng thử lại.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <View style={styles.healthSection}>
+      <Text style={styles.sectionTitle}>Dị ứng và bệnh lý</Text>
+      <Text style={styles.healthNote}>
+        Các lựa chọn này được dùng để loại món có metadata trùng khớp khỏi gợi ý.
+      </Text>
+      {loading ? (
+        <ActivityIndicator color="#28735D" style={styles.healthLoader} />
+      ) : (
+        <>
+          <Text style={styles.healthGroupTitle}>Dị ứng</Text>
+          {allergies.length === 0 ? (
+            <Text style={styles.healthEmpty}>Chưa có danh mục dị ứng.</Text>
+          ) : (
+            allergies.map((option) => (
+              <HealthOptionButton
+                key={option.id}
+                option={option}
+                selected={selectedAllergies.includes(option.id)}
+                onPress={() =>
+                  toggle(option.id, selectedAllergies, setSelectedAllergies)
+                }
+              />
+            ))
+          )}
+          <Text style={styles.healthGroupTitle}>Bệnh lý / tình trạng sức khỏe</Text>
+          {conditions.length === 0 ? (
+            <Text style={styles.healthEmpty}>Chưa có danh mục bệnh lý.</Text>
+          ) : (
+            conditions.map((option) => (
+              <HealthOptionButton
+                key={option.id}
+                option={option}
+                selected={selectedConditions.includes(option.id)}
+                onPress={() =>
+                  toggle(option.id, selectedConditions, setSelectedConditions)
+                }
+              />
+            ))
+          )}
+          {!!message && (
+            <Text accessibilityRole="alert" style={styles.healthMessage}>
+              {message}
+            </Text>
+          )}
+          <Pressable
+            accessibilityRole="button"
+            disabled={saving}
+            onPress={() => void save()}
+            style={[styles.healthSave, saving && styles.disabled]}
+          >
+            {saving ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.healthSaveText}>Lưu hồ sơ sức khỏe</Text>
+            )}
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+function HealthOptionButton({
+  option,
+  selected,
+  onPress,
+}: {
+  option: HealthOption;
+  selected: boolean;
+  onPress: () => void;
+}): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selected }}
+      onPress={onPress}
+      style={[styles.healthOption, selected && styles.healthOptionSelected]}
+    >
+      <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+        {selected ? <Text style={styles.checkmark}>✓</Text> : null}
+      </View>
+      <View style={styles.healthOptionCopy}>
+        <Text style={styles.healthOptionName}>{option.name}</Text>
+        {option.description ? (
+          <Text style={styles.healthOptionDescription}>{option.description}</Text>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 
@@ -440,4 +600,59 @@ const styles = StyleSheet.create({
   calorie: { color: "#FFFFFF", fontSize: 32, fontWeight: "800", marginTop: 8 },
   kcal: { color: "#B9D1C3", fontSize: 15, fontWeight: "700" },
   resultNote: { color: "#D1E0D7", fontSize: 12, marginTop: 4 },
+  healthSection: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#E0E6E0",
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 22,
+    padding: 15,
+  },
+  healthNote: { color: "#65746C", fontSize: 12, lineHeight: 18, marginBottom: 8 },
+  healthLoader: { marginVertical: 18 },
+  healthGroupTitle: {
+    color: "#35463E",
+    fontSize: 13,
+    fontWeight: "800",
+    marginBottom: 7,
+    marginTop: 12,
+  },
+  healthEmpty: { color: "#738078", fontSize: 12, paddingVertical: 8 },
+  healthOption: {
+    alignItems: "center",
+    borderColor: "#E0E6E0",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 6,
+    minHeight: 46,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  healthOptionSelected: { backgroundColor: "#EAF3ED", borderColor: "#5D9A7B" },
+  checkbox: {
+    alignItems: "center",
+    borderColor: "#829188",
+    borderRadius: 4,
+    borderWidth: 1.5,
+    height: 19,
+    justifyContent: "center",
+    width: 19,
+  },
+  checkboxSelected: { backgroundColor: "#28735D", borderColor: "#28735D" },
+  checkmark: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", lineHeight: 15 },
+  healthOptionCopy: { flex: 1 },
+  healthOptionName: { color: "#263A31", fontSize: 13, fontWeight: "700" },
+  healthOptionDescription: { color: "#738078", fontSize: 11, marginTop: 3 },
+  healthMessage: { color: "#28735D", fontSize: 12, lineHeight: 18, marginTop: 8 },
+  healthSave: {
+    alignItems: "center",
+    backgroundColor: "#28735D",
+    borderRadius: 8,
+    justifyContent: "center",
+    marginTop: 12,
+    minHeight: 46,
+  },
+  healthSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
 });

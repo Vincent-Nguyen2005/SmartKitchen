@@ -3,6 +3,8 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import MealDiaryScreen from "./src/screens/meal-diary/MealDiaryScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import NutritionStatsScreen from "./src/screens/nutrition/NutritionStatsScreen";
+import SuggestionsScreen from "./src/screens/nutrition/SuggestionsScreen";
 
 const apiBaseUrl =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
@@ -21,7 +23,9 @@ export function resolveNutritionUserId(
 export default function App(): React.JSX.Element {
   const sessionUserId: string | undefined = undefined;
   const userId = resolveNutritionUserId(sessionUserId);
-  const [activeTab, setActiveTab] = useState<"diary" | "profile">("diary");
+  const [activeTab, setActiveTab] = useState<
+    "diary" | "stats" | "suggestions" | "profile"
+  >("diary");
 
   return (
     <SafeAreaProvider>
@@ -56,6 +60,39 @@ export default function App(): React.JSX.Element {
             </Pressable>
             <Pressable
               accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "stats" }}
+              onPress={() => setActiveTab("stats")}
+              style={[styles.tab, activeTab === "stats" && styles.activeTab]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "stats" && styles.activeTabText,
+                ]}
+              >
+                Thống kê
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityState={{ selected: activeTab === "suggestions" }}
+              onPress={() => setActiveTab("suggestions")}
+              style={[
+                styles.tab,
+                activeTab === "suggestions" && styles.activeTab,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.tabText,
+                  activeTab === "suggestions" && styles.activeTabText,
+                ]}
+              >
+                Gợi ý
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="tab"
               accessibilityState={{ selected: activeTab === "profile" }}
               onPress={() => setActiveTab("profile")}
               style={[styles.tab, activeTab === "profile" && styles.activeTab]}
@@ -73,6 +110,10 @@ export default function App(): React.JSX.Element {
           <View style={styles.screen}>
             {activeTab === "diary" ? (
               <MealDiaryScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+            ) : activeTab === "stats" ? (
+              <NutritionStatsScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+            ) : activeTab === "suggestions" ? (
+              <SuggestionsScreen apiBaseUrl={apiBaseUrl} userId={userId} />
             ) : (
               <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
             )}
