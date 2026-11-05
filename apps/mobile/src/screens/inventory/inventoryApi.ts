@@ -6,6 +6,7 @@ const API_BASE_URL = (
 ).replace(/\/+$/, "");
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
+export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
 export type NewFoodItem = {
   familyId: string;
   name: string;
@@ -69,10 +70,10 @@ export const inventoryApi = {
       accessToken,
       `/api/inventory/items/catalog/search${query({ q: queryText })}`,
     ),
-  recognizeReceipt: (accessToken: string, imageBase64: string) =>
+  recognizeReceipt: (accessToken: string, imageBase64: string, mimeType: ReceiptMimeType) =>
     request<{ rawText: string; items: Array<{ name: string; quantity: number; unit: InventoryUnit; sourceText: string }> }>(
       accessToken,
       "/api/inventory/receipts/ocr",
-      { method: "POST", body: JSON.stringify({ imageBase64, mimeType: "image/jpeg" }) },
+      { method: "POST", body: JSON.stringify({ imageBase64, mimeType }) },
     ),
 };

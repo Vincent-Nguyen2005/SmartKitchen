@@ -1,0 +1,63 @@
+PROMPT THỰC HIỆN SPRINT 3 — KHANH (SMARTKITCHEN)
+
+VAI TRÒ
+Bạn là kỹ sư full-stack phụ trách riêng các hạng mục của Khanh trong Sprint 3 của SmartKitchen. Hãy đọc repo và triển khai theo code, framework, quy ước và dữ liệu hiện có.
+
+NGUỒN YÊU CẦU
+- Lấy các story Sprint 3 của Khanh trong `TAILIEU/Architecture & Member Responsibility Mapping.txt` làm scope chuẩn: #16, #17, #32, #33, #47.
+- Trước khi sửa, kiểm tra `git status`, đọc README/schema/API của inventory-service, shopping-list-service và hai mobile screen tương ứng.
+- Repo đã có một phần chức năng. Tái sử dụng và mở rộng phần hiện tại; không scaffold lại hoặc ghi đè code người dùng.
+
+PHẠM VI ĐƯỢC SỬA
+- `services/inventory-service/`
+- `services/shopping-list-service/`
+- `apps/mobile/src/screens/inventory/`
+- `apps/mobile/src/screens/shopping-cart/`
+- Chỉ sửa package/config/docs dùng chung khi thật sự cần cho các tính năng trên. Không làm story thuộc Huy, Kazan, Hung hoặc Cuong; không sửa service/màn hình của họ.
+
+STORY CẦN HOÀN THÀNH
+
+1. #16 — Quét mã vạch để thêm thực phẩm
+- Tích hợp barcode scanner tương thích với phiên bản Expo/React Native đang dùng (ưu tiên ZXing nếu tương thích; kiểm tra package/config hiện tại trước khi thêm dependency).
+- Hỗ trợ quét trên nền tảng được dự án cấu hình; xử lý quyền camera, trạng thái đang quét và nút nhập mã thủ công khi thiết bị/thư viện không hỗ trợ.
+- Tra cứu mã vạch để điền tên/đơn vị/thông tin sản phẩm nếu có nguồn dữ liệu phù hợp. Mã không tìm thấy phải cho phép nhập tay.
+- Hiển thị bản xem trước có thể chỉnh sửa. Chỉ lưu vào inventory sau khi người dùng xác nhận; không tự tạo dữ liệu sai hoặc giả kết quả tra cứu.
+
+2. #17 — OCR hóa đơn siêu thị
+- Thêm luồng chọn/chụp ảnh hóa đơn và OCR bằng Tesseract.js hoặc giải pháp phù hợp với Expo hiện có.
+- Trích xuất các dòng hàng có thể nhận diện; cho phép người dùng sửa tên, số lượng và đơn vị trước khi lưu.
+- Xử lý ảnh không đọc được, quyền camera/thư viện ảnh bị từ chối và danh sách OCR rỗng. Không tự động thêm các kết quả OCR chưa được xác nhận.
+- Nếu xử lý OCR cần chạy phía server hoặc phụ thuộc thiết bị, giữ API key/secret ở server và ghi rõ cấu hình cần thiết.
+
+3. #32 — Luồng “đi mua” / lưu để tham khảo / xác nhận sau khi mua
+- Cho phép người dùng lưu món cần mua vào danh sách, xem lại trong shopping cart và xác nhận món đã mua.
+- Phân biệt rõ “để tham khảo”, “đã mua” và “đã thêm vào kho”; trạng thái phải theo API hiện có.
+- Có loading, lỗi, retry và cập nhật UI theo kết quả server; không báo hoàn tất trước khi API xác nhận.
+
+4. #33 — Tự cập nhật inventory sau khi xác nhận mua
+- Khi người dùng xác nhận đã mua, đồng bộ số lượng và đơn vị sang inventory-service.
+- Bảo đảm idempotency để retry hoặc gửi lại request không cộng trùng số lượng. Dùng một transaction hoặc idempotency key có lưu bền; không dựa riêng vào trạng thái UI.
+- Chỉ đánh dấu shopping item đã mua sau khi inventory cập nhật thành công. Nếu inventory lỗi, trả lỗi có thể retry và giữ trạng thái phù hợp.
+- Kiểm tra ownership/family scope ở mọi API. Danh tính user phải lấy từ JWT/gateway đã xác minh, không tin `userId`/role header do client tự gửi.
+- Nếu cần giao tiếp nội bộ giữa services, dùng secret từ environment, không mở endpoint nội bộ cho gateway/client và không commit secret.
+
+5. #47 — Thêm thực phẩm bằng giọng nói
+- Thêm nút bắt đầu/dừng nhận dạng giọng nói tiếng Việt (`vi-VN`) dùng API/thư viện tương thích với nền tảng hiện tại.
+- Chuyển kết quả thành bản nháp mặt hàng, cho phép chỉnh sửa và xác nhận thủ công trước khi lưu.
+- Xử lý quyền micro bị từ chối, thiết bị không hỗ trợ, không nhận diện được lời nói và lỗi mạng; luôn có luồng nhập tay thay thế.
+- Không ghi âm hoặc gửi audio đi nơi khác ngoài cấu hình đã được người dùng biết rõ.
+
+YÊU CẦU CHUNG
+- Tôn trọng phân quyền và ownership của Khanh; không sửa files bên ngoài scope nếu không cần thiết.
+- Giữ tương thích với schema/migrations hiện có và dữ liệu người dùng. Mọi thay đổi schema cần Prisma migration, client generation/deploy scripts và cập nhật cấu hình CI liên quan.
+- Validate input phía server bằng cơ chế hiện có; trả lỗi/status code rõ ràng; không ghi token, audio hoặc thông tin cá nhân nhạy cảm vào log.
+- Mobile phải dùng API base URL có thể cấu hình cho emulator/thiết bị thật, không hard-code localhost làm endpoint thiết bị.
+- Thêm/cập nhật README API và hướng dẫn cấu hình dependency/quyền thiết bị. Không ghi nhận tính năng là “đã xác minh” nếu chưa chạy thật.
+- Không reset database, xóa Docker volume, sửa hoặc hoàn nguyên thay đổi có sẵn của người dùng.
+
+TIÊU CHÍ CHẤP NHẬN
+- Mỗi phương thức nhập (barcode, OCR, giọng nói) có bước xem lại/sửa và xác nhận rõ ràng, có nhập tay dự phòng.
+- Xác nhận mua cập nhật inventory đúng family và chỉ cộng số lượng một lần dù request được gửi lại.
+- Nếu inventory chưa cập nhật được, shopping item không bị báo đã mua thành công và người dùng có thể thử lại.
+- Tài liệu nêu rõ dependency, cấu hình, nền tảng được hỗ trợ và giới hạn cần quyền camera/micro.
+- Kết thúc bằng tóm tắt từng story Khanh, các file chính đã sửa, cấu hình cần thiết và phần nào còn bị chặn bởi credential/thiết bị/nền tảng.

@@ -13,7 +13,7 @@ import {
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, Check, FileImage, Keyboard, Mic, Package, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
-import { inventoryApi, InventoryUnit, ProductCatalogResult } from "./inventoryApi";
+import { inventoryApi, InventoryUnit, ProductCatalogResult, ReceiptMimeType } from "./inventoryApi";
 
 type Mode = "manual" | "catalog" | "barcode" | "receipt" | "voice";
 type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void };
@@ -215,14 +215,27 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 });
       if (result.canceled) return;
-      const imageBase64 = result.assets[0]?.base64;
+      const asset = result.assets[0];
+      const imageBase64 = asset?.base64;
       if (!imageBase64) { setNote("Không đọc được dữ liệu ảnh. Hãy chọn ảnh khác hoặc nhập tay."); return; }
       if (imageBase64.length > 7_000_000) { setNote("Ảnh hóa đơn quá lớn. Hãy chọn ảnh nhỏ hơn 5 MB hoặc nhập tay."); return; }
+      const reportedMimeType = asset.mimeType?.toLowerCase();
+      const extension = (asset.fileName ?? asset.uri).split(/[?#]/)[0].match(/\.([^.]+)$/)?.[1]?.toLowerCase();
+      const extensionMimeType: Record<string, ReceiptMimeType> = {
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+      };
+      const mimeType = reportedMimeType
+        ? (["image/jpeg", "image/png", "image/webp"].includes(reportedMimeType) ? reportedMimeType as ReceiptMimeType : undefined)
+        : extension ? extensionMimeType[extension] : undefined;
+      if (!mimeType) { setNote("Ảnh cần ở định dạng JPEG, PNG hoặc WebP. Hãy chọn ảnh khác hoặc nhập tay."); return; }
       if (!accessToken) { setNote("Đăng nhập để xử lý hóa đơn."); return; }
       setBusy(true);
       setReceiptDrafts([]);
       setReceiptText("");
-      const recognized = await inventoryApi.recognizeReceipt(accessToken, imageBase64);
+      const recognized = await inventoryApi.recognizeReceipt(accessToken, imageBase64, mimeType);
       setReceiptText(recognized.rawText);
       setReceiptDrafts(recognized.items.map((item, index) => ({
         id: `${Date.now()}-${index}`,
