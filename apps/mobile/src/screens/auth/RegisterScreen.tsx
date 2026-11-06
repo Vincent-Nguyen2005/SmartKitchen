@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Eye, EyeOff } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
@@ -31,6 +32,7 @@ export default function RegisterScreen({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -96,23 +98,33 @@ export default function RegisterScreen({
               value={password}
             />
             <Pressable
+              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              accessibilityRole="button"
               onPress={() => setShowPassword((value) => !value)}
               style={styles.visibilityButton}
             >
-              <Text style={styles.visibilityText}>
-                {showPassword ? "Hide" : "Show"}
-              </Text>
+              {showPassword ? <EyeOff color="#2F6B5F" size={21} /> : <Eye color="#2F6B5F" size={21} />}
             </Pressable>
           </View>
-          <TextInput
-            autoCapitalize="none"
-            onChangeText={setConfirmPassword}
-            placeholder="Confirm password"
-            placeholderTextColor="#8B949E"
-            secureTextEntry={!showPassword}
-            style={styles.input}
-            value={confirmPassword}
-          />
+          <View style={styles.passwordRow}>
+            <TextInput
+              autoCapitalize="none"
+              onChangeText={setConfirmPassword}
+              placeholder="Confirm password"
+              placeholderTextColor="#8B949E"
+              secureTextEntry={!showConfirmPassword}
+              style={styles.passwordInput}
+              value={confirmPassword}
+            />
+            <Pressable
+              accessibilityLabel={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              accessibilityRole="button"
+              onPress={() => setShowConfirmPassword((value) => !value)}
+              style={styles.visibilityButton}
+            >
+              {showConfirmPassword ? <EyeOff color="#2F6B5F" size={21} /> : <Eye color="#2F6B5F" size={21} />}
+            </Pressable>
+          </View>
           <Pressable
             accessibilityRole="checkbox"
             accessibilityState={{ checked: agreed }}
@@ -183,7 +195,6 @@ const styles = StyleSheet.create({
   },
   passwordInput: { color: "#17211F", flex: 1, fontSize: 16, padding: 16 },
   visibilityButton: { padding: 16 },
-  visibilityText: { color: "#2F6B5F", fontWeight: "700" },
   terms: { alignItems: "center", flexDirection: "row", marginVertical: 8 },
   checkbox: {
     alignItems: "center",
