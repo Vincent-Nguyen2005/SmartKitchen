@@ -1,5 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { Archive, Bell, LogOut, Salad, Settings, ShoppingBasket, Users } from "lucide-react-native";
+import {
+  Archive,
+  Bell,
+  LogOut,
+  Salad,
+  Settings,
+  ShoppingBasket,
+  Users,
+} from "lucide-react-native";
 import { AppIcon, colors, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
@@ -23,7 +31,13 @@ import AdminHome from "./src/screens/admin/AdminHome";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
-type Tab = "inventory" | "shopping" | "nutrition" | "family" | "notifications" | "admin";
+type Tab =
+  | "inventory"
+  | "shopping"
+  | "nutrition"
+  | "family"
+  | "notifications"
+  | "admin";
 type AuthView = "login" | "register" | "otp";
 const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
@@ -70,7 +84,7 @@ function AppContent(): React.JSX.Element {
 
   if (!session.ready) {
     return (
-      <SafeAreaView style={styles.loading}>
+      <SafeAreaView style={styles.loading as any}>
         <ActivityIndicator color={colors.primary} size="large" />
       </SafeAreaView>
     );
@@ -79,11 +93,18 @@ function AppContent(): React.JSX.Element {
   if (session.restoreError) {
     return (
       <SafeAreaView style={styles.restoreError}>
-        <Text style={styles.noticeTitle}>Không thể khôi phục phiên đăng nhập</Text>
-        <Text style={styles.noticeMessage}>
-          Vui lòng kiểm tra kết nối mạng và thử lại. Bạn không cần đăng nhập lại.
+        <Text style={styles.noticeTitle}>
+          Không thể khôi phục phiên đăng nhập
         </Text>
-        <TouchableOpacity accessibilityRole="button" onPress={session.retryRestore} style={styles.retryButton}>
+        <Text style={styles.noticeMessage}>
+          Vui lòng kiểm tra kết nối mạng và thử lại. Bạn không cần đăng nhập
+          lại.
+        </Text>
+        <TouchableOpacity
+          accessibilityRole="button"
+          onPress={session.retryRestore}
+          style={styles.retryButton}
+        >
           <Text style={styles.retryText}>Thử lại</Text>
         </TouchableOpacity>
       </SafeAreaView>
@@ -127,52 +148,61 @@ function AppContent(): React.JSX.Element {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerText}>SmartKitchen</Text>
-        <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button" onPress={() => { void session.signOut(); }} style={styles.signOutButton}>
+        <TouchableOpacity
+          accessibilityLabel="Đăng xuất"
+          accessibilityRole="button"
+          onPress={() => {
+            void session.signOut();
+          }}
+          style={styles.signOutButton}
+        >
           <AppIcon icon={LogOut} size="sm" color={colors.surface} />
           <Text style={styles.signOutText}>Đăng xuất</Text>
         </TouchableOpacity>
       </View>
 
       <View style={styles.tabBar}>
-        {tabs.filter(({ key }) => key !== "admin" || isAdmin).map(({ key, label, icon: Icon }) => {
-          const active = tab === key;
-          return (
-            <TouchableOpacity
-              accessibilityLabel={label}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              key={key}
-              style={[styles.tab, active && styles.tabActive]}
-              onPress={() => setTab(key)}
-            >
-              <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-            </TouchableOpacity>
-          );
-        })}
+        {tabs
+          .filter(({ key }) => key !== "admin" || isAdmin)
+          .map(({ key, label, icon: Icon }) => {
+            const active = tab === key;
+            return (
+              <TouchableOpacity
+                accessibilityLabel={label}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                key={key}
+                style={[styles.tab, active && styles.tabActive]}
+                onPress={() => setTab(key)}
+              >
+                <AppIcon
+                  icon={Icon}
+                  size="md"
+                  color={active ? colors.primary : colors.muted}
+                />
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
       </View>
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
-        {tab === "inventory" && <InventoryScreen onOpenFamily={() => setTab("family")} />}
+        {tab === "inventory" && (
+          <InventoryScreen onOpenFamily={() => setTab("family")} />
+        )}
         {tab === "shopping" && <ShoppingCartScreen />}
         {tab === "family" && <FamilyScreenFlow />}
         {tab === "notifications" && <NotificationsHome />}
         {tab === "admin" && isAdmin && <AdminHome />}
-        {tab === "nutrition" &&
-          (userId ? (
-            <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-          ) : (
-            <View style={styles.center}>
-              <Text style={styles.noticeTitle}>
-                Thiếu thông tin người dùng
-              </Text>
-              <Text style={styles.noticeMessage}>
-                Không tìm thấy user ID. Hãy đặt EXPO_PUBLIC_USER_ID trong file
-                .env để chạy thử cục bộ.
-              </Text>
-            </View>
-          ))}
+        {tab === "nutrition" && (
+          <NutritionProfileScreen
+            apiBaseUrl={apiBaseUrl}
+            accessToken={session.accessToken ?? undefined}
+          />
+        )}
       </View>
     </SafeAreaView>
   );
@@ -191,13 +221,26 @@ export default function App(): React.JSX.Element {
 const styles = StyleSheet.create({
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
-  header: { alignItems: "center", backgroundColor: colors.primary, flexDirection: "row", justifyContent: "space-between", padding: spacing.md },
+  header: {
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    padding: spacing.md,
+  },
   headerText: { ...textStyles.subheading, color: colors.surface },
-  signOutButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  signOutButton: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    justifyContent: "center",
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.sm,
+  },
   signOutText: { ...textStyles.labelSmall, color: colors.surface },
   tabBar: {
     flexDirection: "row",
-    borderBottomWidth: 1,
+    borderBottomWidth: 1 as number,
     borderBottomColor: colors.border,
   },
   tab: {
@@ -215,11 +258,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 3,
     borderBottomColor: colors.primary,
   },
-  tabText: { ...textStyles.labelSmall, color: colors.muted, textAlign: "center" },
+  tabText: {
+    ...textStyles.labelSmall,
+    color: colors.muted,
+    textAlign: "center",
+  },
   tabTextActive: { color: colors.primary },
   content: { flex: 1 },
-  restoreError: { backgroundColor: colors.background, flex: 1, justifyContent: "center", padding: spacing.xl },
-  retryButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: colors.primary, borderRadius: 12, justifyContent: "center", marginTop: spacing.lg, minHeight: touchTarget, paddingHorizontal: spacing.xl },
+  restoreError: {
+    backgroundColor: colors.background,
+    flex: 1,
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  retryButton: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: "center",
+    marginTop: spacing.lg,
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.xl,
+  },
   retryText: { ...textStyles.label, color: colors.surface },
 
   // Styles cho phần thông báo thiếu user của Hùng
