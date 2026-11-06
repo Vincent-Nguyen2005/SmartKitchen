@@ -39,14 +39,24 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
-      select: { email: true, isVerified: true, passwordHash: true },
+      select: { id: true, email: true, isVerified: true, otpCode: true, otpExpiresAt: true },
     });
     if (existingUser && !existingUser.isVerified) {
-      const passwordMatches = existingUser.passwordHash.startsWith("$argon2")
-        ? await argon2.verify(existingUser.passwordHash, password)
-        : await bcrypt.compare(password, existingUser.passwordHash);
-      if (!passwordMatches) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
-      await this.resendOtp(existingUser.email);
+      const now = Date.now();
+      const hasRecentOtp = Boolean(existingUser.otpCode && existingUser.otpExpiresAt
+        && now < existingUser.otpExpiresAt.getTime() - OTP_TTL_MS + OTP_RESEND_COOLDOWN_MS);
+      const otpCode = hasRecentOtp ? existingUser.otpCode : this.generateOtp();
+      const updated = await this.prisma.user.updateMany({
+        where: { id: existingUser.id, isVerified: false },
+        data: {
+          passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+          ...(fullName !== undefined ? { fullName: fullName || null } : {}),
+          ...(!hasRecentOtp ? { otpCode, otpExpiresAt: new Date(now + OTP_TTL_MS) } : {}),
+        },
+      });
+      if (updated.count !== 1) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
+      // Keep the recently emailed code valid instead of sending another message during cooldown.
+      if (!hasRecentOtp && otpCode) await this.sendOtpEmail(existingUser.id, existingUser.email, otpCode);
       return { email: existingUser.email };
     }
     if (existingUser) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
