@@ -51,7 +51,7 @@ Source: Jira export of 2026-11-06. Line format: [plan #] (Jira key) Type: Jira s
 Jira assignees: Huy = Nguyen Van Huy, Kazan = Chau Y Kazan, Khanh = Hùng Khanh, Hung = Le Vu Hung, Cuong = Cường Nguyen.
 
 --- SPRINT 1: Infrastructure, Core Schemas & Base UI Framework ---
-Status as of 2026-11-06 (Jira export): 20 items - Done 20.
+Status as of 2026-11-06 (Jira export): 19 items - Done 19.
 
 Huy:
 [#1] (SCRUM-166) Task: Setup monorepo, Git workflow (branch strategy, PR template) (EPIC-01) [Done]
@@ -77,7 +77,7 @@ Hung:
 [#50] (SCRUM-180) Story: Mobile: Nutrition profile screen (EPIC-13/EPIC-05) [Done] (Jira sprints: Sprint 1, Sprint 2)
 
 Cuong:
-[#20] (SCRUM-181, SCRUM-240) Task: Design & implement PostgreSQL schema (Prisma) for Recipe Service (EPIC-07) [Done]
+[#20] (SCRUM-181) Task: Design & implement PostgreSQL schema (Prisma) for Recipe Service (EPIC-07) [Done]
 [#25] (SCRUM-182) Story: CRUD for recipes (EPIC-07) [Done]
 [#26] (SCRUM-183) Task: Build sample dish/ingredient database (EPIC-07) [Done]
 [#35] (SCRUM-184) Story: Mobile: Recipe screen UI base (EPIC-13/EPIC-07) [Done]
@@ -161,6 +161,7 @@ Huy:
 [#61] (SCRUM-249) Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12) [Done]
 [#65] (SCRUM-221) Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12) [Done]
 [#70] (SCRUM-222) Task: Prepare production deployment (self-hosted, Tailscale Funnel) (EPIC-01) [In Progress]
+[#70] (SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Idea]
 
 Huy - extra items, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
 [#61] (SCRUM-260) Task: Lucide icons and shared theme tokens for Notification & Admin screens - EPIC-13 [Done] (PR #17)
@@ -177,7 +178,6 @@ Huy - extra items, added after the original plan ("PR #n" is a GitHub pull reque
 (SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress]
 (SCRUM-265) Feature: Unify mobile UI with the shared theme (colors, typography, icons) - EPIC-13 [In Progress]
 (SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [To Do]
-(SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Idea]
 (SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [To Do]
 
 Kazan:
@@ -228,5 +228,6 @@ No assignee:
 
 4. TEAM DECISIONS RECORDED IN JIRA
 --------------------------------------------------------------------------------
-Production deployment: self-hosted with Tailscale Funnel (SCRUM-222), on Huy's PC (SCRUM-278).
+ADMIN sees only the Admin tab (role-based navigation; SCRUM-277 APIs by Kazan, SCRUM-283 UI by Huy).
+Production: self-hosted on Huy's PC with Docker Compose + Tailscale Funnel, cost 0 (SCRUM-222 prepare, SCRUM-278 execute); Render config kept only as an optional future path.
 deploy/render.yaml and docs/deploy/ in the repo still describe Render; they have not been updated for this decision.
