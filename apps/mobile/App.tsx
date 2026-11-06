@@ -12,6 +12,8 @@ const apiBaseUrl =
     ? "http://10.0.2.2:4000"
     : "http://localhost:4000");
 
+type AppProps = { accessToken?: string };
+
 export function resolveNutritionUserId(
   sessionUserId?: string | null,
 ): string | undefined {
@@ -20,7 +22,7 @@ export function resolveNutritionUserId(
   return userId || undefined;
 }
 
-export default function App(): React.JSX.Element {
+export default function App({ accessToken }: AppProps = {}): React.JSX.Element {
   const sessionUserId: string | undefined = undefined;
   const userId = resolveNutritionUserId(sessionUserId);
   const [activeTab, setActiveTab] = useState<
@@ -115,7 +117,10 @@ export default function App(): React.JSX.Element {
             ) : activeTab === "suggestions" ? (
               <SuggestionsScreen apiBaseUrl={apiBaseUrl} userId={userId} />
             ) : (
-              <NutritionProfileScreen apiBaseUrl={apiBaseUrl} userId={userId} />
+              <NutritionProfileScreen
+                apiBaseUrl={apiBaseUrl}
+                accessToken={accessToken}
+              />
             )}
           </View>
         </View>

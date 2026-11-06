@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from "react";
-import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -13,6 +12,23 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  X,
+} from "lucide-react-native";
+import {
+  AppIcon,
+  IconButton,
+  colors,
+  radius,
+  spacing,
+  textStyles,
+  touchTarget,
+} from "../../theme";
 import {
   createMealDiaryApi,
   DailyMealSummary,
@@ -221,7 +237,8 @@ export default function MealDiaryScreen({
           onPress={() => openForm()}
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
-          <Text style={styles.addButtonText}>+ Ghi bữa</Text>
+          <AppIcon icon={Plus} size="sm" color={colors.primaryText} />
+          <Text style={styles.addButtonText}>Ghi bữa</Text>
         </Pressable>
       </View>
 
@@ -229,37 +246,38 @@ export default function MealDiaryScreen({
         contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
-            colors={["#28735D"]}
+            colors={[colors.primary]}
             onRefresh={() => void loadDiary(selectedDate, true)}
             refreshing={refreshing}
-            tintColor="#28735D"
+            tintColor={colors.primary}
           />
         }
       >
         <View style={styles.dateBar}>
-          <Pressable
+          <IconButton
             accessibilityLabel="Ngày trước"
-            accessibilityRole="button"
             onPress={() => moveDate(-1)}
+            icon={ChevronLeft}
             style={styles.dateArrow}
-          >
-            <Text style={styles.dateArrowText}>‹</Text>
-          </Pressable>
+            color={colors.text}
+          />
           <View style={styles.dateCopy}>
-            <Text style={styles.dateLabel}>
-              {isToday ? "Hôm nay" : "Ngày đã chọn"}
-            </Text>
+            <View style={styles.dateLabelRow}>
+              <AppIcon icon={Calendar} size="sm" color={colors.muted} />
+              <Text style={styles.dateLabel}>
+                {isToday ? "Hôm nay" : "Ngày đã chọn"}
+              </Text>
+            </View>
             <Text style={styles.dateValue}>{formatDay(selectedDate)}</Text>
           </View>
-          <Pressable
+          <IconButton
             accessibilityLabel="Ngày tiếp theo"
-            accessibilityRole="button"
             disabled={isToday}
             onPress={() => moveDate(1)}
+            icon={ChevronRight}
             style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
-          >
-            <Text style={styles.dateArrowText}>›</Text>
-          </Pressable>
+            color={colors.text}
+          />
         </View>
 
         <View style={styles.summaryPanel}>
@@ -288,19 +306,19 @@ export default function MealDiaryScreen({
               label="Đạm"
               value={summary.protein}
               goal={proteinGoal}
-              color="#9ED5BD"
+              color={colors.success}
             />
             <MacroProgress
               label="Tinh bột"
               value={summary.carbs}
               goal={carbsGoal}
-              color="#F3C46B"
+              color={colors.warning}
             />
             <MacroProgress
               label="Chất béo"
               value={summary.fat}
               goal={fatGoal}
-              color="#F39A7A"
+              color={colors.danger}
             />
           </View>
           <Text style={styles.goalNote}>
@@ -317,7 +335,7 @@ export default function MealDiaryScreen({
 
         {loading ? (
           <ActivityIndicator
-            color="#28735D"
+            color={colors.primary}
             size="large"
             style={styles.loader}
           />
@@ -337,7 +355,7 @@ export default function MealDiaryScreen({
           </View>
         ) : meals.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyMark}>+</Text>
+            <AppIcon icon={Plus} size="lg" color={colors.primary} />
             <Text style={styles.emptyTitle}>Bắt đầu ghi nhật ký</Text>
             <Text style={styles.emptyCopy}>
               Món ăn đầu tiên trong ngày sẽ xuất hiện ở đây.
@@ -365,7 +383,8 @@ export default function MealDiaryScreen({
                     onPress={() => openForm(option.value)}
                     style={styles.sectionAdd}
                   >
-                    <Text style={styles.sectionAddText}>+ Thêm</Text>
+                    <AppIcon icon={Plus} size="sm" color={colors.primary} />
+                    <Text style={styles.sectionAddText}>Thêm</Text>
                   </Pressable>
                 </View>
                 {sectionMeals.length > 0 ? (
@@ -543,14 +562,13 @@ function MealFormModal({
                 <Text style={styles.modalEyebrow}>{dateLabel}</Text>
                 <Text style={styles.modalTitle}>Thêm món ăn</Text>
               </View>
-              <Pressable
+              <IconButton
                 accessibilityLabel="Đóng biểu mẫu"
-                accessibilityRole="button"
                 onPress={onClose}
+                icon={X}
                 style={styles.closeButton}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
+                color={colors.text}
+              />
             </View>
 
             <ScrollView
@@ -563,7 +581,7 @@ function MealFormModal({
                 autoCapitalize="sentences"
                 onChangeText={onFoodNameChange}
                 placeholder="Ví dụ: Cơm gà"
-                placeholderTextColor="#8A958E"
+                placeholderTextColor={colors.muted}
                 style={styles.textInput}
                 value={foodName}
               />
@@ -642,7 +660,7 @@ function MealFormModal({
                 ]}
               >
                 {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={colors.primaryText} />
                 ) : (
                   <Text style={styles.saveButtonText}>Lưu món ăn</Text>
                 )}
@@ -675,7 +693,7 @@ function NumberInput({
         keyboardType="decimal-pad"
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#8A958E"
+        placeholderTextColor={colors.muted}
         style={styles.numberText}
         value={value}
       />
@@ -708,285 +726,373 @@ function ChoiceChip({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: "#F4F7F2", flex: 1 },
+  safeArea: { backgroundColor: colors.background, flex: 1 },
   header: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: colors.surface,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    paddingBottom: 15,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
   },
-  headingCopy: { flex: 1, paddingRight: 8 },
-  eyebrow: { color: "#28735D", fontSize: 10, fontWeight: "800" },
-  title: { color: "#182A24", fontSize: 24, fontWeight: "800", marginTop: 4 },
+  headingCopy: { flex: 1, paddingRight: spacing.sm },
+  eyebrow: {
+    color: colors.primary,
+    ...textStyles.captionBold,
+  },
+  title: {
+    color: colors.text,
+    ...textStyles.headlineBold,
+    marginTop: spacing.xs,
+  },
   addButton: {
     alignItems: "center",
-    backgroundColor: "#28735D",
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
+    flexDirection: "row",
+    gap: spacing.xs,
     justifyContent: "center",
-    minHeight: 42,
-    paddingHorizontal: 14,
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.md,
   },
-  addButtonText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  addButtonText: {
+    color: colors.primaryText,
+    ...textStyles.captionBold,
+  },
   pressed: { opacity: 0.82 },
-  content: { paddingHorizontal: 18, paddingBottom: 32 },
+  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   dateBar: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 14,
-    marginTop: 15,
+    marginBottom: spacing.md,
+    marginTop: spacing.md,
   },
   dateArrow: {
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#DEE6DF",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    height: 40,
-    justifyContent: "center",
-    width: 40,
   },
-  dateArrowDisabled: { opacity: 0.35 },
-  dateArrowText: { color: "#263A31", fontSize: 28, lineHeight: 32 },
+  dateArrowDisabled: { opacity: 0.5 },
   dateCopy: { alignItems: "center", flex: 1 },
-  dateLabel: { color: "#718078", fontSize: 11, fontWeight: "700" },
-  dateValue: {
-    color: "#263A31",
-    fontSize: 14,
-    fontWeight: "800",
-    marginTop: 3,
+  dateLabelRow: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
+  dateLabel: {
+    color: colors.muted,
+    ...textStyles.captionSemibold,
   },
-  summaryPanel: { backgroundColor: "#183D32", borderRadius: 10, padding: 18 },
+  dateValue: {
+    color: colors.text,
+    ...textStyles.smallBold,
+    marginTop: spacing.xs,
+  },
+  summaryPanel: {
+    backgroundColor: colors.text,
+    borderRadius: radius.sm,
+    padding: spacing.lg,
+  },
   calorieHeading: {
     alignItems: "flex-end",
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  panelEyebrow: { color: "#B9D1C3", fontSize: 10, fontWeight: "800" },
+  panelEyebrow: {
+    color: colors.primarySoft,
+    ...textStyles.captionBold,
+  },
   calorieValue: {
-    color: "#FFFFFF",
-    fontSize: 31,
-    fontWeight: "800",
-    marginTop: 4,
+    color: colors.surface,
+    ...textStyles.headlineBold,
+    marginTop: spacing.xs,
   },
-  calorieUnit: { color: "#D2E0D7", fontSize: 14, fontWeight: "700" },
-  goalText: { color: "#D2E0D7", fontSize: 12, marginBottom: 5 },
+  calorieUnit: {
+    color: colors.primarySoft,
+    ...textStyles.smallSemibold,
+  },
+  goalText: {
+    color: colors.primarySoft,
+    ...textStyles.caption,
+    marginBottom: spacing.xs,
+  },
   calorieTrack: {
-    backgroundColor: "#46665A",
-    borderRadius: 4,
-    height: 7,
-    marginTop: 13,
+    backgroundColor: colors.muted,
+    borderRadius: radius.pill,
+    height: spacing.sm,
+    marginTop: spacing.md,
     overflow: "hidden",
   },
-  calorieFill: { backgroundColor: "#F3C46B", borderRadius: 4, height: "100%" },
-  macroRow: { flexDirection: "row", gap: 12, marginTop: 20 },
+  calorieFill: {
+    backgroundColor: colors.warning,
+    borderRadius: radius.pill,
+    height: "100%",
+  },
+  macroRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   macroItem: { flex: 1, minWidth: 0 },
-  macroLabel: { color: "#C2D6CA", fontSize: 11, fontWeight: "700" },
-  macroValue: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "800",
-    marginTop: 5,
+  macroLabel: {
+    color: colors.primarySoft,
+    ...textStyles.captionSemibold,
   },
-  macroGoal: { color: "#AFC5B8", fontSize: 10, fontWeight: "500" },
+  macroValue: {
+    color: colors.surface,
+    ...textStyles.captionBold,
+    marginTop: spacing.xs,
+  },
+  macroGoal: {
+    color: colors.border,
+    ...textStyles.captionMedium,
+  },
   macroTrack: {
-    backgroundColor: "#46665A",
-    borderRadius: 3,
-    height: 4,
-    marginTop: 7,
+    backgroundColor: colors.muted,
+    borderRadius: radius.pill,
+    height: spacing.xs,
+    marginTop: spacing.xs,
     overflow: "hidden",
   },
-  macroFill: { borderRadius: 3, height: "100%" },
-  goalNote: { color: "#AFC5B8", fontSize: 10, marginTop: 14 },
+  macroFill: { borderRadius: radius.pill, height: "100%" },
+  goalNote: {
+    color: colors.border,
+    ...textStyles.caption,
+    marginTop: spacing.md,
+  },
   mealHeading: {
     alignItems: "baseline",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 4,
-    marginTop: 23,
+    marginBottom: spacing.xs,
+    marginTop: spacing.xl,
   },
-  sectionTitle: { color: "#182A24", fontSize: 18, fontWeight: "800" },
-  mealCount: { color: "#7A8880", fontSize: 11 },
-  loader: { marginTop: 55 },
+  sectionTitle: {
+    color: colors.text,
+    ...textStyles.titleBold,
+  },
+  mealCount: { color: colors.muted, ...textStyles.caption },
+  loader: { marginTop: spacing.xl * 2 },
   emptyState: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E2E9E3",
-    borderRadius: 9,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginTop: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 28,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xl,
   },
-  emptyMark: { color: "#28735D", fontSize: 28, fontWeight: "500" },
   emptyTitle: {
-    color: "#263A31",
-    fontSize: 16,
-    fontWeight: "800",
-    marginTop: 8,
+    color: colors.text,
+    ...textStyles.subtitleBold,
+    marginTop: spacing.sm,
   },
   emptyCopy: {
-    color: "#718078",
-    fontSize: 13,
-    lineHeight: 19,
-    marginTop: 6,
+    color: colors.muted,
+    ...textStyles.caption,
+    marginTop: spacing.xs,
     textAlign: "center",
   },
   retryButton: {
     alignItems: "center",
-    backgroundColor: "#E6F0E9",
-    borderRadius: 7,
-    marginTop: 14,
-    minHeight: 40,
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.sm,
+    marginTop: spacing.md,
+    minHeight: touchTarget,
     justifyContent: "center",
-    paddingHorizontal: 16,
+    paddingHorizontal: spacing.lg,
   },
-  retryText: { color: "#205540", fontSize: 13, fontWeight: "800" },
-  mealSection: { marginTop: 18 },
+  retryText: {
+    color: colors.primary,
+    ...textStyles.captionBold,
+  },
+  mealSection: { marginTop: spacing.lg },
   sectionHeading: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 7,
+    marginBottom: spacing.sm,
   },
-  sectionName: { color: "#263A31", fontSize: 15, fontWeight: "800" },
-  sectionAdd: { paddingHorizontal: 7, paddingVertical: 5 },
-  sectionAddText: { color: "#28735D", fontSize: 12, fontWeight: "800" },
-  sectionEmpty: { color: "#89958E", fontSize: 12, paddingVertical: 9 },
+  sectionName: {
+    color: colors.text,
+    ...textStyles.bodyBold,
+  },
+  sectionAdd: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.sm,
+  },
+  sectionAddText: {
+    color: colors.primary,
+    ...textStyles.captionBold,
+  },
+  sectionEmpty: {
+    color: colors.muted,
+    ...textStyles.caption,
+    paddingVertical: spacing.sm,
+  },
   mealEntry: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E1E8E2",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    marginBottom: 8,
-    paddingHorizontal: 13,
-    paddingTop: 10,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
   },
   mealEntryTop: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingBottom: 8,
+    paddingBottom: spacing.sm,
   },
-  mealTime: { color: "#75837B", fontSize: 11, fontWeight: "700" },
-  sourceBadge: { borderRadius: 5, paddingHorizontal: 8, paddingVertical: 4 },
-  source_HOME: { backgroundColor: "#E5F2E9" },
-  source_EATING_OUT: { backgroundColor: "#FFF0D7" },
-  source_DELIVERY: { backgroundColor: "#FCE8E2" },
-  sourceText: { fontSize: 10, fontWeight: "800" },
-  sourceText_HOME: { color: "#28735D" },
-  sourceText_EATING_OUT: { color: "#976313" },
-  sourceText_DELIVERY: { color: "#A94E36" },
+  mealTime: {
+    color: colors.muted,
+    ...textStyles.captionSemibold,
+  },
+  sourceBadge: {
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  source_HOME: { backgroundColor: colors.successSoft },
+  source_EATING_OUT: { backgroundColor: colors.warningSoft },
+  source_DELIVERY: { backgroundColor: colors.dangerSoft },
+  sourceText: { ...textStyles.captionBold },
+  sourceText_HOME: { color: colors.success },
+  sourceText_EATING_OUT: { color: colors.warning },
+  sourceText_DELIVERY: { color: colors.danger },
   foodRow: {
     alignItems: "center",
-    borderTopColor: "#EDF1ED",
+    borderTopColor: colors.border,
     borderTopWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
-    minHeight: 54,
-    paddingVertical: 9,
+    minHeight: touchTarget,
+    paddingVertical: spacing.sm,
   },
-  foodCopy: { flex: 1, paddingRight: 10 },
-  foodName: { color: "#263A31", fontSize: 14, fontWeight: "700" },
-  foodDetails: { color: "#829087", fontSize: 10, marginTop: 4 },
-  foodCalories: { color: "#183D32", fontSize: 12, fontWeight: "800" },
+  foodCopy: { flex: 1, paddingRight: spacing.md },
+  foodName: {
+    color: colors.text,
+    ...textStyles.smallSemibold,
+  },
+  foodDetails: {
+    color: colors.muted,
+    ...textStyles.caption,
+    marginTop: spacing.xs,
+  },
+  foodCalories: {
+    color: colors.text,
+    ...textStyles.captionBold,
+  },
   modalScrim: {
-    backgroundColor: "rgba(12, 28, 21, 0.45)",
+    backgroundColor: colors.overlay,
     flex: 1,
     justifyContent: "flex-end",
   },
   modalKeyboard: { justifyContent: "flex-end", maxHeight: "94%" },
   modalSheet: {
-    backgroundColor: "#F7F9F6",
-    borderTopLeftRadius: 14,
-    borderTopRightRadius: 14,
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.md,
+    borderTopRightRadius: radius.md,
     maxHeight: "100%",
-    paddingTop: 20,
+    paddingTop: spacing.lg,
   },
   modalHeading: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.lg,
   },
-  modalEyebrow: { color: "#28735D", fontSize: 10, fontWeight: "800" },
+  modalEyebrow: {
+    color: colors.primary,
+    ...textStyles.captionBold,
+  },
   modalTitle: {
-    color: "#182A24",
-    fontSize: 22,
-    fontWeight: "800",
-    marginTop: 4,
+    color: colors.text,
+    ...textStyles.headlineBold,
+    marginTop: spacing.xs,
   },
   closeButton: {
-    alignItems: "center",
-    backgroundColor: "#E6ECE7",
-    borderRadius: 18,
-    height: 36,
-    justifyContent: "center",
-    width: 36,
+    backgroundColor: colors.border,
+    borderRadius: radius.pill,
   },
-  closeText: { color: "#40534A", fontSize: 24, lineHeight: 28 },
-  formContent: { paddingHorizontal: 20, paddingBottom: 28 },
+  formContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   fieldLabel: {
-    color: "#35463E",
-    fontSize: 12,
-    fontWeight: "800",
-    marginBottom: 7,
-    marginTop: 7,
+    color: colors.text,
+    ...textStyles.captionBold,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
   },
   textInput: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D8E1D9",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    color: "#182A24",
-    fontSize: 15,
-    minHeight: 48,
-    paddingHorizontal: 12,
+    color: colors.text,
+    ...textStyles.body,
+    minHeight: touchTarget + spacing.xs,
+    paddingHorizontal: spacing.md,
   },
   choiceRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 7,
-    marginBottom: 5,
+    gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
   choiceChip: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D8E1D9",
-    borderRadius: 7,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    minHeight: 38,
+    minHeight: touchTarget,
     justifyContent: "center",
-    paddingHorizontal: 11,
+    paddingHorizontal: spacing.md,
   },
-  choiceChipSelected: { backgroundColor: "#E5F1E9", borderColor: "#28735D" },
-  choiceText: { color: "#58685F", fontSize: 11, fontWeight: "700" },
-  choiceTextSelected: { color: "#205540" },
+  choiceChipSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  choiceText: {
+    color: colors.muted,
+    ...textStyles.captionSemibold,
+  },
+  choiceTextSelected: { color: colors.primary },
   numberInput: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D8E1D9",
-    borderRadius: 8,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
     flexDirection: "row",
-    minHeight: 48,
-    paddingHorizontal: 11,
+    minHeight: touchTarget + spacing.xs,
+    paddingHorizontal: spacing.md,
   },
-  numberText: { color: "#182A24", flex: 1, fontSize: 14, paddingVertical: 9 },
-  numberUnit: { color: "#718078", fontSize: 10, fontWeight: "700" },
-  macroInputs: { flexDirection: "row", gap: 7 },
-  formError: { color: "#B42318", fontSize: 12, lineHeight: 17, marginTop: 10 },
+  numberText: {
+    color: colors.text,
+    flex: 1,
+    ...textStyles.small,
+    paddingVertical: spacing.sm,
+  },
+  numberUnit: {
+    color: colors.muted,
+    ...textStyles.captionSemibold,
+  },
+  macroInputs: { flexDirection: "row", gap: spacing.sm },
+  formError: {
+    color: colors.danger,
+    ...textStyles.caption,
+    marginTop: spacing.md,
+  },
   saveButton: {
     alignItems: "center",
-    backgroundColor: "#28735D",
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.sm,
     justifyContent: "center",
-    marginTop: 18,
-    minHeight: 50,
+    marginTop: spacing.lg,
+    minHeight: touchTarget + spacing.sm,
   },
-  saveButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "800" },
+  saveButtonText: {
+    color: colors.primaryText,
+    ...textStyles.smallBold,
+  },
   disabled: { opacity: 0.58 },
 });

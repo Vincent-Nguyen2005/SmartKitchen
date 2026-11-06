@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,7 +23,7 @@ import {
   NutritionProfileResult,
 } from "./nutritionProfileApi";
 
-type Props = { apiBaseUrl: string; userId: string };
+type Props = { apiBaseUrl: string; accessToken?: string };
 
 const activityOptions: {
   value: ActivityLevel;
@@ -54,12 +55,18 @@ const activityOptions: {
 
 export default function NutritionProfileScreen({
   apiBaseUrl,
-  userId,
+  accessToken,
 }: Props): React.JSX.Element {
-  const api = createNutritionProfileApi(apiBaseUrl, userId);
+  const api = useMemo(
+    () =>
+      accessToken
+        ? createNutritionProfileApi(apiBaseUrl, accessToken)
+        : undefined,
+    [accessToken, apiBaseUrl],
+  );
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
-  const [age, setAge] = useState("");
+  const [birthYear, setBirthYear] = useState("");
   const [gender, setGender] = useState<Gender>("FEMALE");
   const [activityLevel, setActivityLevel] =
     useState<ActivityLevel>("SEDENTARY");
@@ -71,6 +78,14 @@ export default function NutritionProfileScreen({
 
   useEffect(() => {
     let active = true;
+    if (!api) {
+      setLoading(false);
+      setError("Vui lòng đăng nhập để tải hồ sơ dinh dưỡng.");
+      return () => {
+        active = false;
+      };
+    }
+
     setLoading(true);
     api
       .get()
@@ -78,12 +93,19 @@ export default function NutritionProfileScreen({
         if (!active) return;
         setHeight(String(data.profile.height));
         setWeight(String(data.profile.weight));
-        setAge(String(data.profile.age));
+        const profileBirthYear = data.profile.birthYear;
+        setBirthYear(
+          profileBirthYear === undefined ? "" : String(profileBirthYear),
+        );
         setGender(data.profile.gender);
         setActivityLevel(data.profile.activityLevel);
         setResult(data);
         setHasProfile(true);
-        setError("");
+        setError(
+          profileBirthYear === undefined && data.profile.age !== undefined
+            ? "Hồ sơ hiện chưa có năm sinh. Vui lòng nhập năm sinh trước khi lưu."
+            : "",
+        );
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -102,28 +124,39 @@ export default function NutritionProfileScreen({
     return () => {
       active = false;
     };
-  }, [apiBaseUrl, userId]);
+  }, [api, accessToken]);
 
   const save = async (): Promise<void> => {
-    const parsedHeight = Number(height);
-    const parsedWeight = Number(weight);
-    const parsedAge = Number(age);
+    if (!api) {
+      const message = "Vui lòng đăng nhập để lưu hồ sơ dinh dưỡng.";
+      setError(message);
+      Alert.alert("Cần đăng nhập", message);
+      return;
+    }
+
+    const parseNumber = (value: string): number =>
+      Number(value.trim().replace(",", "."));
+    const parsedHeight = parseNumber(height);
+    const parsedWeight = parseNumber(weight);
+    const parsedBirthYear = parseNumber(birthYear);
+    const currentYear = new Date().getFullYear();
     if (
       !Number.isFinite(parsedHeight) ||
       parsedHeight <= 0 ||
       !Number.isFinite(parsedWeight) ||
       parsedWeight <= 0 ||
-      !Number.isInteger(parsedAge) ||
-      parsedAge <= 0
+      !Number.isInteger(parsedBirthYear) ||
+      parsedBirthYear < currentYear - 130 ||
+      parsedBirthYear > currentYear
     ) {
-      setError("Nhập chiều cao, cân nặng và tuổi là các số dương hợp lệ.");
+      setError("Nhập chiều cao, cân nặng và năm sinh hợp lệ.");
       return;
     }
 
     const profile: NutritionProfileInput = {
       height: parsedHeight,
       weight: parsedWeight,
-      age: parsedAge,
+      birthYear: parsedBirthYear,
       gender,
       activityLevel,
     };
@@ -135,8 +168,38 @@ export default function NutritionProfileScreen({
         : await api.create(profile);
       setResult(data);
       setHasProfile(true);
-    } catch {
-      setError("Không thể lưu hồ sơ. Vui lòng kiểm tra kết nối và thử lại.");
+    } catch (saveError: unknown) {
+      const message =
+        saveError instanceof Error && saveError.message
+          ? saveError.message
+          : typeof saveError === "string" && saveError
+            ? saveError
+            : "Đã xảy ra lỗi không xác định.";
+      const responseData =
+        saveError instanceof NutritionApiError
+          ? saveError.responseData
+          : undefined;
+      const status =
+        saveError instanceof NutritionApiError ? saveError.status : undefined;
+      console.error("Failed to save nutrition profile.", {
+        status,
+        responseData,
+        message,
+      });
+
+      const responseDetails =
+        responseData === undefined
+          ? ""
+          : `\n${JSON.stringify(responseData, null, 2)}`;
+      const alertMessage = [
+        message || "Đã xảy ra lỗi không xác định.",
+        status === undefined ? "" : `(HTTP ${status})`,
+        responseDetails,
+      ]
+        .filter(Boolean)
+        .join(" ");
+      setError(`Không thể lưu hồ sơ. ${message}`);
+      Alert.alert("Không lưu được hồ sơ dinh dưỡng", alertMessage);
     } finally {
       setSaving(false);
     }
@@ -177,10 +240,10 @@ export default function NutritionProfileScreen({
                 />
               </View>
               <NumberField
-                label="Tuổi"
+                label="Năm sinh"
                 unit="năm"
-                value={age}
-                onChangeText={setAge}
+                value={birthYear}
+                onChangeText={setBirthYear}
               />
 
               <Text style={styles.sectionTitle}>Giới tính</Text>
@@ -232,12 +295,12 @@ export default function NutritionProfileScreen({
               )}
               <Pressable
                 accessibilityRole="button"
-                disabled={saving}
+                disabled={saving || !api}
                 onPress={save}
                 style={({ pressed }) => [
                   styles.saveButton,
                   pressed && styles.pressed,
-                  saving && styles.disabled,
+                  (saving || !api) && styles.disabled,
                 ]}
               >
                 {saving ? (
@@ -262,7 +325,12 @@ export default function NutritionProfileScreen({
               )}
             </>
           )}
-          <HealthPreferencesSection apiBaseUrl={apiBaseUrl} userId={userId} />
+          {accessToken ? (
+            <HealthPreferencesSection
+              apiBaseUrl={apiBaseUrl}
+              accessToken={accessToken}
+            />
+          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -271,9 +339,12 @@ export default function NutritionProfileScreen({
 
 function HealthPreferencesSection({
   apiBaseUrl,
-  userId,
-}: Props): React.JSX.Element {
-  const api = createHealthPreferencesApi(apiBaseUrl, userId);
+  accessToken,
+}: {
+  apiBaseUrl: string;
+  accessToken: string;
+}): React.JSX.Element {
+  const api = createHealthPreferencesApi(apiBaseUrl, accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
   const [conditions, setConditions] = useState<HealthOption[]>([]);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
@@ -301,7 +372,7 @@ function HealthPreferencesSection({
     return () => {
       active = false;
     };
-  }, [apiBaseUrl, userId]);
+  }, [apiBaseUrl, accessToken]);
 
   const toggle = (
     id: string,
