@@ -216,18 +216,6 @@ services:
       TRUST_PROXY: "false"
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
     ports: ["4000:4000"]
-    depends_on:
-      auth-service: { condition: service_started }
-      family-service: { condition: service_started }
-      inventory-service: { condition: service_started }
-      nutrition-service: { condition: service_started }
-      meal-diary-service: { condition: service_started }
-      recipe-service: { condition: service_started }
-      menu-service: { condition: service_started }
-      shopping-list-service: { condition: service_started }
-      payment-service: { condition: service_started }
-      notification-service: { condition: service_started }
-      admin-service: { condition: service_started }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
 volumes:
   auth-db-data:

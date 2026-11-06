@@ -180,10 +180,7 @@ console.log("\n# docker-compose healthchecks and gateway startup");
   check(localhostChecks.length === 0, `healthchecks use 127.0.0.1, not localhost${localhostChecks.length ? ` (found: ${localhostChecks.join(", ")})` : ""}`);
   // The gateway answers 503 per route and DEGRADED on /api/health, so one unhealthy backend must not block its start.
   const gatewayBlock = composeText.match(/^ {2}gateway:\n([\s\S]*?)(?=^ {2}[a-z][a-z0-9-]*:\n|^[a-z])/m)?.[1] ?? "";
-  const dependsOn = gatewayBlock.match(/^ {4}depends_on:\n((?: {6}.*\n)+)/m)?.[1] ?? "";
-  const blocking = [...dependsOn.matchAll(/^ {6}([a-z0-9-]+): \{ condition: service_healthy \}/gm)].map((match) => match[1]);
-  check(Boolean(dependsOn), "gateway declares depends_on for the backend services");
-  check(blocking.length === 0, `gateway depends_on uses service_started, not service_healthy${blocking.length ? ` (blocking: ${blocking.join(", ")})` : ""}`);
+  check(!/^ {4}depends_on:/m.test(gatewayBlock), "gateway has no depends_on, so it starts whatever the state of the backend");
 }
 
 // ---------- 7. UTF-8 without BOM ----------

@@ -2,7 +2,7 @@
 
 `services/notification-service`, port 4010, database `notification_db` (local port 5410). Owner: Huy.
 
-Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `67c16a9`).
+Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `ac3f750`).
 
 Stores in-app notifications, device push tokens, notification preferences, partner supermarkets and promotions; matches promotions to users and dispatches them (mock or Expo push).
 
