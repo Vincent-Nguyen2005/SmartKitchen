@@ -737,12 +737,12 @@ const styles = StyleSheet.create({
   },
   headingCopy: { flex: 1, paddingRight: spacing.sm },
   eyebrow: {
+    ...textStyles.caption,
     color: colors.primary,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   title: {
-    color: colors.text,
-    ...textStyles.headlineBold,
+    ...textStyles.heading,
     marginTop: spacing.xs,
   },
   addButton: {
@@ -756,8 +756,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   addButtonText: {
+    ...textStyles.caption,
     color: colors.primaryText,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   pressed: { opacity: 0.82 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
@@ -778,12 +779,13 @@ const styles = StyleSheet.create({
   dateCopy: { alignItems: "center", flex: 1 },
   dateLabelRow: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   dateLabel: {
+    ...textStyles.caption,
     color: colors.muted,
-    ...textStyles.captionSemibold,
+    fontWeight: "700",
   },
   dateValue: {
+    ...textStyles.labelSmall,
     color: colors.text,
-    ...textStyles.smallBold,
     marginTop: spacing.xs,
   },
   summaryPanel: {
@@ -797,21 +799,22 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   panelEyebrow: {
+    ...textStyles.caption,
     color: colors.primarySoft,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   calorieValue: {
+    ...textStyles.heading,
     color: colors.surface,
-    ...textStyles.headlineBold,
     marginTop: spacing.xs,
   },
   calorieUnit: {
+    ...textStyles.labelSmall,
     color: colors.primarySoft,
-    ...textStyles.smallSemibold,
   },
   goalText: {
-    color: colors.primarySoft,
     ...textStyles.caption,
+    color: colors.primarySoft,
     marginBottom: spacing.xs,
   },
   calorieTrack: {
@@ -829,17 +832,20 @@ const styles = StyleSheet.create({
   macroRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   macroItem: { flex: 1, minWidth: 0 },
   macroLabel: {
+    ...textStyles.caption,
     color: colors.primarySoft,
-    ...textStyles.captionSemibold,
+    fontWeight: "700",
   },
   macroValue: {
+    ...textStyles.caption,
     color: colors.surface,
-    ...textStyles.captionBold,
+    fontWeight: "700",
     marginTop: spacing.xs,
   },
   macroGoal: {
+    ...textStyles.caption,
     color: colors.border,
-    ...textStyles.captionMedium,
+    fontWeight: "500",
   },
   macroTrack: {
     backgroundColor: colors.muted,
@@ -850,8 +856,8 @@ const styles = StyleSheet.create({
   },
   macroFill: { borderRadius: radius.pill, height: "100%" },
   goalNote: {
-    color: colors.border,
     ...textStyles.caption,
+    color: colors.border,
     marginTop: spacing.md,
   },
   mealHeading: {
@@ -862,10 +868,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   sectionTitle: {
+    ...textStyles.heading,
     color: colors.text,
-    ...textStyles.titleBold,
   },
-  mealCount: { color: colors.muted, ...textStyles.caption },
+  mealCount: { ...textStyles.caption, color: colors.muted },
   loader: { marginTop: spacing.xl * 2 },
   emptyState: {
     alignItems: "center",
@@ -878,13 +884,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
   },
   emptyTitle: {
+    ...textStyles.subheading,
     color: colors.text,
-    ...textStyles.subtitleBold,
     marginTop: spacing.sm,
   },
   emptyCopy: {
-    color: colors.muted,
     ...textStyles.caption,
+    color: colors.muted,
     marginTop: spacing.xs,
     textAlign: "center",
   },
@@ -898,8 +904,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   retryText: {
+    ...textStyles.caption,
     color: colors.primary,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   mealSection: { marginTop: spacing.lg },
   sectionHeading: {
@@ -909,8 +916,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sectionName: {
+    ...textStyles.label,
     color: colors.text,
-    ...textStyles.bodyBold,
   },
   sectionAdd: {
     alignItems: "center",
@@ -920,12 +927,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   sectionAddText: {
+    ...textStyles.caption,
     color: colors.primary,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   sectionEmpty: {
-    color: colors.muted,
     ...textStyles.caption,
+    color: colors.muted,
     paddingVertical: spacing.sm,
   },
   mealEntry: {
@@ -944,8 +952,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   mealTime: {
+    ...textStyles.caption,
     color: colors.muted,
-    ...textStyles.captionSemibold,
+    fontWeight: "700",
   },
   sourceBadge: {
     borderRadius: radius.sm,
@@ -955,7 +964,7 @@ const styles = StyleSheet.create({
   source_HOME: { backgroundColor: colors.successSoft },
   source_EATING_OUT: { backgroundColor: colors.warningSoft },
   source_DELIVERY: { backgroundColor: colors.dangerSoft },
-  sourceText: { ...textStyles.captionBold },
+  sourceText: { ...textStyles.caption, fontWeight: "700" },
   sourceText_HOME: { color: colors.success },
   sourceText_EATING_OUT: { color: colors.warning },
   sourceText_DELIVERY: { color: colors.danger },
@@ -970,17 +979,18 @@ const styles = StyleSheet.create({
   },
   foodCopy: { flex: 1, paddingRight: spacing.md },
   foodName: {
+    ...textStyles.labelSmall,
     color: colors.text,
-    ...textStyles.smallSemibold,
   },
   foodDetails: {
-    color: colors.muted,
     ...textStyles.caption,
+    color: colors.muted,
     marginTop: spacing.xs,
   },
   foodCalories: {
+    ...textStyles.caption,
     color: colors.text,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   modalScrim: {
     backgroundColor: colors.overlay,
@@ -1003,12 +1013,13 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   modalEyebrow: {
+    ...textStyles.caption,
     color: colors.primary,
-    ...textStyles.captionBold,
+    fontWeight: "700",
   },
   modalTitle: {
+    ...textStyles.heading,
     color: colors.text,
-    ...textStyles.headlineBold,
     marginTop: spacing.xs,
   },
   closeButton: {
@@ -1017,8 +1028,9 @@ const styles = StyleSheet.create({
   },
   formContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   fieldLabel: {
+    ...textStyles.caption,
     color: colors.text,
-    ...textStyles.captionBold,
+    fontWeight: "700",
     marginBottom: spacing.sm,
     marginTop: spacing.sm,
   },
@@ -1027,8 +1039,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
-    color: colors.text,
     ...textStyles.body,
+    color: colors.text,
     minHeight: touchTarget + spacing.xs,
     paddingHorizontal: spacing.md,
   },
@@ -1052,8 +1064,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   choiceText: {
+    ...textStyles.caption,
     color: colors.muted,
-    ...textStyles.captionSemibold,
+    fontWeight: "700",
   },
   choiceTextSelected: { color: colors.primary },
   numberInput: {
@@ -1067,19 +1080,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   numberText: {
-    color: colors.text,
     flex: 1,
-    ...textStyles.small,
+    ...textStyles.bodySmall,
+    color: colors.text,
     paddingVertical: spacing.sm,
   },
   numberUnit: {
+    ...textStyles.caption,
     color: colors.muted,
-    ...textStyles.captionSemibold,
+    fontWeight: "700",
   },
   macroInputs: { flexDirection: "row", gap: spacing.sm },
   formError: {
-    color: colors.danger,
     ...textStyles.caption,
+    color: colors.danger,
     marginTop: spacing.md,
   },
   saveButton: {
@@ -1091,8 +1105,8 @@ const styles = StyleSheet.create({
     minHeight: touchTarget + spacing.sm,
   },
   saveButtonText: {
+    ...textStyles.labelSmall,
     color: colors.primaryText,
-    ...textStyles.smallBold,
   },
   disabled: { opacity: 0.58 },
 });
