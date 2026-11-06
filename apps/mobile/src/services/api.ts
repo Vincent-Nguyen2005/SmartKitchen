@@ -1,5 +1,16 @@
-const AUTH_BASE_URL = process.env.EXPO_PUBLIC_AUTH_API_URL ?? "http://localhost:4001/api/auth";
-const FAMILY_BASE_URL = process.env.EXPO_PUBLIC_FAMILY_API_URL ?? "http://localhost:4002/api/family";
+import { Platform } from "react-native";
+
+// Expo web on port 8081 and the gateway run on the same host during local development.
+const webDevGateway = Platform.OS === "web" && typeof window !== "undefined" && window.location.port === "8081"
+  ? `${window.location.protocol}//${window.location.hostname}:4000`
+  : undefined;
+const gatewayBaseUrl = (
+  (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
+  process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
+  (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
+).replace(/\/+$/, "");
+const AUTH_BASE_URL = `${gatewayBaseUrl}/api/auth`;
+const FAMILY_BASE_URL = `${gatewayBaseUrl}/api/families`;
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number, readonly details?: unknown, readonly code?: string) {
@@ -14,7 +25,13 @@ const request = async <T>(baseUrl: string, path: string, options: ApiRequestOpti
   const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const response = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "include" });
+  let response: Response;
+  try {
+    // Mobile stores the refresh token returned in the response body; cross-origin cookies are not needed.
+    response = await fetch(`${baseUrl}${path}`, { ...options, headers, credentials: "omit" });
+  } catch {
+    throw new ApiError("Không kết nối được máy chủ. Vui lòng kiểm tra mạng và địa chỉ API.", 0, undefined, "NETWORK_ERROR");
+  }
   if (response.status === 204) return undefined as T;
   const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
   if (!response.ok) {
