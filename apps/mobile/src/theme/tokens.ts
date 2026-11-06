@@ -21,6 +21,7 @@ export const colors = {
   overlay: "rgba(0, 0, 0, 0.3)",
 } as const;
 
+<<<<<<< HEAD
 /**
  * Chart palette. Series colours are distinguishable for common colour-vision deficiencies when paired
  * with the labels/legends the charts always show; status colours reuse `colors`.
@@ -41,6 +42,28 @@ export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
  */
 export const fontSize = { caption: 12, small: 14, body: 15, subtitle: 16, title: 18, headline: 22 } as const;
 
+=======
+/** 4-point spacing scale. */
+export const spacing = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
+
+export const fontSize = { caption: 12, small: 14, body: 15, subtitle: 16, title: 18, headline: 22 } as const;
+
+export const textStyles = {
+  caption: { fontSize: fontSize.caption },
+  captionMedium: { fontSize: fontSize.caption, fontWeight: "500" },
+  captionSemibold: { fontSize: fontSize.caption, fontWeight: "700" },
+  captionBold: { fontSize: fontSize.caption, fontWeight: "800" },
+  small: { fontSize: fontSize.small },
+  smallSemibold: { fontSize: fontSize.small, fontWeight: "700" },
+  smallBold: { fontSize: fontSize.small, fontWeight: "800" },
+  body: { fontSize: fontSize.body },
+  bodyBold: { fontSize: fontSize.body, fontWeight: "800" },
+  subtitleBold: { fontSize: fontSize.subtitle, fontWeight: "800" },
+  titleBold: { fontSize: fontSize.title, fontWeight: "800" },
+  headlineBold: { fontSize: fontSize.headline, fontWeight: "800" },
+} as const;
+
+>>>>>>> origin/merge-team-main
 export const radius = { sm: 10, md: 12, lg: 16, pill: 999 } as const;
 
 /** Minimum size of anything tappable (Apple HIG 44 pt, Material 48 dp lower bound used by the team). */

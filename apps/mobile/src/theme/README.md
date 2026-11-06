@@ -1,22 +1,35 @@
 # Theme
 
+<<<<<<< HEAD
 Owner: Huy. Responsibility: shared design tokens, the type scale and the icon wrapper for the mobile app.
 
 The palette is the one already used by the auth/family and notification/admin screens. Today only the notification and admin screens import the theme. Adoption by other members is optional and tracked in #71.
+=======
+Owner: Huy. Responsibility: shared design tokens and the icon wrapper for the mobile app.
+
+The palette is the one already used by the auth/family and notification/admin screens. In this PR only the notification and admin screens import it. Adoption by other members is optional and tracked in #71.
+>>>>>>> origin/merge-team-main
 
 ## Tokens (`tokens.ts`)
 
 | Export | Values |
 |---|---|
 | `colors` | `primary` #2F6B5F, `text` #182A24, `muted` #65746C, `border` #DCE3DE, `surface` #FFFFFF, `background` #F4F7F2, `danger` #B42318, `warning` #B54708, `success` #067647, plus `*Soft` backgrounds and `overlay` |
+<<<<<<< HEAD
 | `chartColors` | `series` (5 colours, first = primary), `grid`, `axis`, `label`; used by the admin charts (`screens/admin/charts/`) |
 | `spacing` | `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24 |
 | `fontSize` | **Deprecated**, use `typography` below. Kept unchanged (`caption` 12, `small` 14, `body` 15, `subtitle` 16, `title` 18, `headline` 22) so existing imports keep working |
+=======
+| `spacing` | `xs` 4, `sm` 8, `md` 12, `lg` 16, `xl` 24 |
+| `fontSize` | `caption` 12, `small` 14, `body` 15, `subtitle` 16, `title` 18, `headline` 22 |
+| `textStyles` | Shared typography presets combining the font-size scale and standard weights |
+>>>>>>> origin/merge-team-main
 | `radius` | `sm` 10, `md` 12, `lg` 16, `pill` 999 |
 | `touchTarget` | 44 (minimum size of anything tappable) |
 | `iconSize` / `iconStrokeWidth` | `sm` 16, `md` 20, `lg` 24, `xl` 40 / stroke 2 |
 | `breakpoints` | `wide` 720 (multi-column), `extraWide` 1100 (3 columns), `splitMinHeight` 500 (list + detail side by side only when also this tall) |
 
+<<<<<<< HEAD
 ## Typography (`typography.ts`, `AppText.tsx`)
 
 Agreed type scale (team decision, #71). System font only, no font files: iOS San Francisco (`"System"`), Android Roboto (`"sans-serif"`), web a `system-ui` stack so text never falls back to serif.
@@ -54,6 +67,8 @@ Rules:
 - Button and label text use `label` / `labelSmall` (weight 600).
 - Do not put `lineHeight` on `TextInput` (it can clip on Android); inputs use `typography.body.fontSize` and `fontFamily` only.
 
+=======
+>>>>>>> origin/merge-team-main
 ## Icons (`icons.tsx`)
 
 Icons come from `lucide-react-native` (pinned, uses `react-native-svg`). Import icons by name, never `import *`.

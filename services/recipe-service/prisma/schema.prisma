@@ -1,5 +1,11 @@
 generator client {
+<<<<<<< HEAD
   provider = "prisma-client-js"
+=======
+  provider      = "prisma-client-js"
+  output        = "../node_modules/.prisma/client-recipe"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+>>>>>>> origin/merge-team-main
 }
 
 datasource db {
@@ -7,9 +13,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho recipe-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+model Recipe {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String   @unique
+  description       String?
+  imageUrl          String?
+  ingredients       String[] @default([])
+  allergens         String[] @default([])
+  contraindications String[] @default([])
+  calories          Float
+  protein           Float
+  carbs             Float
+  fat               Float
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([isActive, name])
+}

@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 export type Gender = "MALE" | "FEMALE";
 export type ActivityLevel =
   | "SEDENTARY"
@@ -52,8 +53,21 @@ export class NutritionApiError extends Error {
   }
 }
 
+<<<<<<< HEAD
 function resolveApiBaseUrl(fallbackBaseUrl: string): string {
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || fallbackBaseUrl;
+=======
+declare const process: {
+  env?: Record<string, string | undefined>;
+};
+
+function resolveApiBaseUrl(fallbackBaseUrl: string): string {
+  const envUrl =
+    typeof process !== "undefined"
+      ? process.env?.EXPO_PUBLIC_API_BASE_URL
+      : undefined;
+  const baseUrl = envUrl || fallbackBaseUrl;
+>>>>>>> origin/merge-team-main
   return baseUrl.replace(/\/$/, "");
 }
 function createAuthHeaders(accessToken: string): Record<string, string> {

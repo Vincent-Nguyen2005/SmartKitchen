@@ -1,6 +1,7 @@
 name: CI
 
 on:
+<<<<<<< HEAD
   pull_request:
     branches: [main, develop]
   push:
@@ -16,11 +17,19 @@ permissions:
 jobs:
   lint-build:
     name: CI / lint-build (${{ matrix.package }})
+=======
+  push:
+  pull_request:
+
+jobs:
+  nutrition-service:
+>>>>>>> origin/merge-team-main
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
+<<<<<<< HEAD
           - package: gateway
             prisma_schema: ""
             run_tests: true
@@ -122,3 +131,28 @@ jobs:
         run: exit 1
       - name: CI passed
         run: echo "All workspace lint, build, test, mobile type-check and infrastructure checks passed."
+=======
+          - service: nutrition
+            package: nutrition-service
+            prisma_schema: prisma/schema.prisma
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/nutrition_db
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --no-frozen-lockfile --filter "${{ matrix.package }}"
+      - name: Validate Prisma schema
+        run: pnpm --filter "${{ matrix.package }}" exec prisma validate --schema "${{ matrix.prisma_schema }}"
+      - name: Generate Prisma Client
+        run: pnpm --filter "${{ matrix.package }}" run prisma:generate
+      - name: Lint
+        run: pnpm --filter "${{ matrix.package }}" run lint
+      - name: Build
+        run: pnpm --filter "${{ matrix.package }}" run build
+>>>>>>> origin/merge-team-main
