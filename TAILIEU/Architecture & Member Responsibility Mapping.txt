@@ -4,19 +4,19 @@ SMARTKITCHEN - EPIC BREAKDOWN & JIRA TASK ASSIGNMENT
 
 1. EPIC LIST
 --------------------------------------------------------------------------------
-EPIC-01: Gateway & Infra (Monorepo, Docker, CI/CD, API Gateway)
-EPIC-02: Auth Service (Authentication & Authorization)
-EPIC-03: Family Service (Family Groups, Members, Roles)
-EPIC-04: Inventory Service (Food Tracking, Expiration, Barcode/OCR/Voice)
-EPIC-05: Nutrition Service (Health Profile, BMR/TDEE, Allergies)
-EPIC-06: Meal Diary Service (Meal Logging, Daily Stats)
-EPIC-07: Recipe Service (Recipe CRUD, Master Food Database)
-EPIC-08: Menu Service (Auto Menu Generation, Dish Suggestions)
-EPIC-09: Shopping List Service (Shopping List, Demand Forecasting)
-EPIC-10: Payment Service (VNPay / MoMo Checkout Integration)
-EPIC-11: Notification Service (Supermarket Promotions, Push Alerts)
-EPIC-12: Admin Service (System Administration, Weights, Monitoring)
-EPIC-13: Frontend (Mobile App - React Native Expo)
+EPIC-01 (SCRUM-6): Gateway & Infra (Monorepo, Docker, CI/CD, API Gateway) [Idea]
+EPIC-02 (SCRUM-7): Auth Service (Authentication & Authorization) [Idea]
+EPIC-03 (SCRUM-8): Family Service (Family Groups, Members, Roles) [Idea]
+EPIC-04 (SCRUM-9): Inventory Service (Food Tracking, Expiration, Barcode/OCR/Voice) [Idea]
+EPIC-05 (SCRUM-10): Nutrition Service (Health Profile, BMR/TDEE, Allergies) [Idea]
+EPIC-06 (SCRUM-11): Meal Diary Service (Meal Logging, Daily Stats) [Idea]
+EPIC-07 (SCRUM-12): Recipe Service (Recipe CRUD, Master Food Database) [Idea]
+EPIC-08 (SCRUM-13): Menu Service (Auto Menu Generation, Dish Suggestions) [Idea]
+EPIC-09 (SCRUM-14): Shopping List Service (Shopping List, Demand Forecasting) [Idea]
+EPIC-10 (SCRUM-15): Payment Service (VNPay / MoMo Checkout Integration) [Idea]
+EPIC-11 (SCRUM-16): Notification Service (Supermarket Promotions, Push Alerts) [Idea]
+EPIC-12 (SCRUM-17): Admin Service (System Administration, Weights, Monitoring) [Idea]
+EPIC-13 (SCRUM-239): Frontend (Mobile App) - React Native Expo [Idea]
 
 
 2. MEMBER RESPONSIBILITY & DIRECTORY MAPPING
@@ -24,9 +24,9 @@ EPIC-13: Frontend (Mobile App - React Native Expo)
 Huy (Scrum Master):
   - Backend / Infra: apps/gateway/, docker-compose.yml, notification-service/, admin-service/
   - Mobile Directory: apps/mobile/src/screens/notifications/, apps/mobile/src/screens/admin/
-  - Shared Mobile: apps/mobile/src/theme/ (shared theme, other members adopt it via #71)
+  - Shared Mobile: apps/mobile/src/theme/ (shared theme, other members adopt it via SCRUM-266, SCRUM-267, SCRUM-268; feature SCRUM-265)
   - Infra & Docs: deploy/, docs/, scripts/check-infra.mjs
-  - App Shell: apps/mobile/App.tsx - Huy: app shell (header/tab bar, role-based navigation), TBD (team decision)
+  - App Shell: apps/mobile/App.tsx - Huy: app shell (header/tab bar, role-based navigation; SCRUM-269, SCRUM-283)
 
 Kazan:
   - Backend: auth-service/, family-service/
@@ -47,153 +47,186 @@ Cuong:
 
 3. DETAILED JIRA TASKS BY SPRINT
 --------------------------------------------------------------------------------
+Source: Jira export of 2026-11-06. Line format: [plan #] (Jira key) Type: Jira summary [Jira status]. Items with no plan number were not in the original plan.
+Jira assignees: Huy = Nguyen Van Huy, Kazan = Chau Y Kazan, Khanh = Hùng Khanh, Hung = Le Vu Hung, Cuong = Cường Nguyen.
 
 --- SPRINT 1: Infrastructure, Core Schemas & Base UI Framework ---
+Status as of 2026-11-06 (Jira export): 20 items - Done 20.
 
 Huy:
-[#1] Task: Setup monorepo, Git workflow (branch strategy, PR template) (EPIC-01)
-[#2] Task: Scaffold 11 services + gateway (EPIC-01)
-[#3] Task: Set up Docker Compose, verify all services respond on /health (EPIC-01)
+[#1] (SCRUM-166) Task: Setup monorepo, Git workflow (branch strategy, PR template) (EPIC-01) [Done]
+[#2] (SCRUM-167) Task: Scaffold 11 services + gateway (EPIC-01) [Done]
+[#3] (SCRUM-168) Task: Set up Docker Compose, verify all services respond on /health (EPIC-01) [Done]
 
 Kazan:
-[#6] Task: Design & implement PostgreSQL schema (Prisma) for Auth Service (EPIC-02)
-[#9] Story: Register an account with email/password (EPIC-02)
-[#10] Story: Log in / log out (JWT session) (EPIC-02)
-[#18] Story: Mobile: Login & Register screens (EPIC-13/EPIC-02)
+[#6] (SCRUM-169) Task: Design & implement PostgreSQL schema (Prisma) for Auth Service (EPIC-02) [Done]
+[#9] (SCRUM-170) Story: Register an account with email/password (EPIC-02) [Done]
+[#10] (SCRUM-171) Story: Log in / log out (JWT session) (EPIC-02) [Done]
+[#18] (SCRUM-172) Story: Mobile: Login & Register screens (EPIC-13/EPIC-02) [Done]
 
 Khanh:
-[#8] Task: Design & implement PostgreSQL schema (Prisma) for Inventory Service (EPIC-04)
-[#14] Story: Add/edit/delete food items in inventory (manual entry) (EPIC-04)
-[#15] Story: Alert for food items nearing expiration (EPIC-04)
-[#19] Story: Mobile: Inventory screen (EPIC-13/EPIC-04)
+[#8] (SCRUM-173) Task: Design & implement PostgreSQL schema (Prisma) for Inventory Service (EPIC-04) [Done]
+[#14] (SCRUM-174) Story: Add/edit/delete food items in inventory (manual entry) (EPIC-04) [Done]
+[#15] (SCRUM-175) Story: Alert for food items nearing expiration (EPIC-04) [Done]
+[#19] (SCRUM-176) Story: Mobile: Inventory screen (EPIC-13/EPIC-04) [Done]
 
 Hung:
-[#38] Task: Design & implement PostgreSQL schema (Prisma) for Nutrition Service (EPIC-05)
-[#41] Story: Personal nutrition profile (height, weight, age, activity level) (EPIC-05)
-[#42] Story: Calculate daily calorie needs (BMR/TDEE formula) (EPIC-05)
-[#50] Story: Mobile: Nutrition profile screen (EPIC-13/EPIC-05)
+[#38] (SCRUM-177) Task: Design & implement PostgreSQL schema (Prisma) for Nutrition Service (EPIC-05) [Done] (Jira sprints: Sprint 1, Sprint 2)
+[#41] (SCRUM-178) Story: Personal nutrition profile (height, weight, age, activity level) (EPIC-05) [Done] (Jira sprints: Sprint 1, Sprint 2)
+[#42] (SCRUM-179) Story: Calculate daily calorie needs (BMR/TDEE formula) (EPIC-05) [Done] (Jira sprints: Sprint 1, Sprint 2)
+[#50] (SCRUM-180) Story: Mobile: Nutrition profile screen (EPIC-13/EPIC-05) [Done] (Jira sprints: Sprint 1, Sprint 2)
 
 Cuong:
-[#20] Task: Design & implement PostgreSQL schema (Prisma) for Recipe Service (EPIC-07)
-[#25] Story: CRUD for recipes (EPIC-07)
-[#26] Task: Build sample dish/ingredient database (EPIC-07)
-[#35] Story: Mobile: Recipe screen UI base (EPIC-13/EPIC-07)
+[#20] (SCRUM-181, SCRUM-240) Task: Design & implement PostgreSQL schema (Prisma) for Recipe Service (EPIC-07) [Done]
+[#25] (SCRUM-182) Story: CRUD for recipes (EPIC-07) [Done]
+[#26] (SCRUM-183) Task: Build sample dish/ingredient database (EPIC-07) [Done]
+[#35] (SCRUM-184) Story: Mobile: Recipe screen UI base (EPIC-13/EPIC-07) [Done]
 
 
 --- SPRINT 2: Gateway Routing, Core Business Logic & Secondary Schemas ---
+Status as of 2026-11-06 (Jira export): 24 items - Done 21, To Do 3.
 
 Huy:
-[#4] Task: Set up CI (GitHub Actions): lint + build for each service on PR (EPIC-01)
-[#5] Task: Configure API Gateway routing for /api/* (EPIC-01)
-[#24] Task: Design & implement PostgreSQL schema (Prisma) for Notification Service (EPIC-11)
-[#40] Task: Design & implement PostgreSQL schema (Prisma) for Admin Service (EPIC-12)
+[#4] (SCRUM-185) Task: Set up CI (GitHub Actions): lint + build for each service on PR (EPIC-01) [Done]
+[#5] (SCRUM-186) Task: Configure API Gateway routing for /api/* (EPIC-01) [Done]
+[#24] (SCRUM-187) Task: Design & implement PostgreSQL schema (Prisma) for Notification Service (EPIC-11) [Done]
+[#40] (SCRUM-241) Task: Design & implement PostgreSQL schema (Prisma) for Admin Service (EPIC-12) [Done]
 
 Kazan:
-[#7] Task: Design & implement PostgreSQL schema (Prisma) for Family Service (EPIC-03)
-[#11] Story: Log in with Google OAuth (EPIC-02)
-[#12] Story: Create a family group (EPIC-03)
-[#13] Story: Invite / remove / assign member roles (Owner/Admin/Member) (EPIC-03)
+[#7] (SCRUM-242) Task: Design & implement PostgreSQL schema (Prisma) for Family Service (EPIC-03) [Done]
+[#11] (SCRUM-188) Story: Log in with Google OAuth (EPIC-02) [Done]
+[#12] (SCRUM-189) Story: Create a family group (EPIC-03) [Done]
+[#13] (SCRUM-190) Story: Invite / remove / assign member roles (Owner/Admin/Member) (EPIC-03) [Done]
+(SCRUM-252) Feature: (Test UI) Mobile: Family management screen (EPIC-13/EPIC-03) [Done]
 
 Khanh:
-[#22] Task: Design & implement PostgreSQL schema (Prisma) for Shopping List Service (EPIC-09)
-[#29] Story: Auto-generate shopping list when ingredients are missing (EPIC-09)
-[#30] Story: Forecast-based shopping suggestions from consumption trends (EPIC-09)
-[#36] Story: Mobile: Shopping cart screen (EPIC-13/EPIC-09)
+[#22] (SCRUM-191) Task: Design & implement PostgreSQL schema (Prisma) for Shopping List Service (EPIC-09) [Done]
+[#29] (SCRUM-192) Story: Auto-generate shopping list when ingredients are missing (EPIC-09) [Done]
+[#30] (SCRUM-193) Story: Forecast-based shopping suggestions from consumption trends (EPIC-09) [Done]
+[#36] (SCRUM-194) Story: Mobile: Shopping cart screen (EPIC-13/EPIC-09) [Done]
 
 Hung:
-[#39] Task: Design & implement PostgreSQL schema (Prisma) for Meal Diary Service (EPIC-06)
-[#43] Story: Declare health conditions/food allergies (EPIC-05)
-[#44] Story: Log meals (at home / eating out / delivery) (EPIC-06)
-[#51] Story: Mobile: Meal diary screen (EPIC-13/EPIC-06)
+[#39] (SCRUM-195) Task: Design & implement PostgreSQL schema (Prisma) for Meal Diary Service (EPIC-06) [Done]
+[#43] (SCRUM-196) Story: Declare health conditions/food allergies (EPIC-05) [Done]
+[#44] (SCRUM-197) Story: Log meals (at home / eating out / delivery) (EPIC-06) [Done]
+[#51] (SCRUM-198) Story: Mobile: Meal diary screen (EPIC-13/EPIC-06) [Done]
+Also in Sprint 2 in Jira (listed under Sprint 1): SCRUM-177, SCRUM-178, SCRUM-179, SCRUM-180
 
 Cuong:
-[#21] Task: Design & implement PostgreSQL schema (Prisma) for Menu Service (EPIC-08)
-[#27] Story: Generate menu by day/week/month (EPIC-08)
-[#28] Story: Auto-refresh menu when new food items are added to inventory (EPIC-08)
+[#21] (SCRUM-199) Task: Design & implement PostgreSQL schema (Prisma) for Menu Service (EPIC-08) [To Do]
+[#27] (SCRUM-200) Story: Generate menu by day/week/month (EPIC-08) [To Do]
+[#28] (SCRUM-201) Story: Auto-refresh menu when new food items are added to inventory (EPIC-08) [To Do]
 
 
 --- SPRINT 3: Advanced Integrations, Payments, Admin & Notification Logic ---
+Status as of 2026-11-06 (Jira export): 19 items - Done 14, Idea 5.
 
 Huy:
-[#34] Story: Promotion notifications from partner supermarkets (EPIC-11)
-[#48] Story: Admin: manage master ingredient database (EPIC-12)
-[#49] Story: Admin: configure weighting for the recommendation engine (EPIC-12)
-[#60] Task: Gateway performance optimization (caching, rate limiting) (EPIC-01)
-[#52] Task: Prepare End-to-end integration testing scenarios (Huy lead) (EPIC-01)
+[#34] (SCRUM-243) Story: Promotion notifications from partner supermarkets (EPIC-11) [Done]
+[#48] (SCRUM-244) Story: Admin: manage master ingredient database (EPIC-12) [Done]
+[#49] (SCRUM-245) Story: Admin: configure weighting for the recommendation engine (EPIC-12) [Done]
+[#60] (SCRUM-202) Task: Gateway performance optimization (caching, rate limiting) (EPIC-01) [Done]
+[#52] (SCRUM-203) Task: Prepare End-to-end integration testing scenarios (Huy lead) (EPIC-01) [Done]
 
 Kazan:
-[#18b] Story: Mobile: Family management screen (EPIC-13/EPIC-03)
-[#11b] Task: Implement JWT refresh tokens & security hardening for Auth Service (EPIC-02)
+[#18b] (SCRUM-205) Story: Mobile: Family management screen (EPIC-13/EPIC-03) [Done]
+[#11b] (SCRUM-206) Story: Implement JWT refresh tokens & security hardening for Auth Service (EPIC-02) [Done]
 
 Khanh:
-[#16] Story: Scan barcode to auto-add food items (ZXing) (EPIC-04)
-[#17] Story: Scan supermarket receipt (OCR - Tesseract.js) to add food items (EPIC-04)
-[#32] Story: "View to shop" flow: save for reference, confirm after purchase (EPIC-09)
-[#33] Story: Auto-update inventory after purchase confirmation (EPIC-04/09)
-[#47] Story: Add food items by voice (App Speech API) (EPIC-04)
+[#16] (SCRUM-208) Story: can barcode to auto-add food items (ZXing) (EPIC-04) [Done]
+[#17] (SCRUM-209) Story: Scan supermarket receipt (OCR - Tesseract.js) to add food items (EPIC-04) [Done]
+[#32] (SCRUM-210) Story: "View to shop" flow: save for reference, confirm after purchase (EPIC-09) [Done]
+[#33] (SCRUM-211) Story: Auto-update inventory after purchase confirmation (EPIC-04/09) [Done]
+[#47] (SCRUM-212) Story: Add food items by voice (App Speech API) (EPIC-04) [Done]
 
 Hung:
-[#45] Story: Daily nutrition stats from the meal diary (EPIC-06)
-[#46] Story: Personalized dish suggestions based on health conditions (EPIC-08)
+[#45] (SCRUM-213) Story: Daily nutrition stats from the meal diary (EPIC-06) [Done]
+[#46] (SCRUM-214) Story: Personalized dish suggestions based on health conditions (EPIC-08) [Done]
 
 Cuong:
-[#23] Task: Design & implement PostgreSQL schema (Prisma) for Payment Service (EPIC-10)
-[#31] Story: "Buy now" flow: place order + pay via VNPay/MoMo (EPIC-10)
-[#35b] Story: Mobile: Menu screen (EPIC-13/EPIC-08)
-[#37] Story: Mobile: Payment screen (EPIC-13/EPIC-10)
-[#27b] Task: Integrate Payment Service with Order/Menu flow (EPIC-10)
+[#23] (SCRUM-215) Task: Design & implement PostgreSQL schema (Prisma) for Payment Service (EPIC-10) [Idea]
+[#31] (SCRUM-217) Story: "Buy now" flow: place order + pay via VNPay/MoMo (EPIC-10) [Idea]
+[#35b] (SCRUM-218) Story: Mobile: Menu screen (EPIC-13/EPIC-08) [Idea]
+[#37] (SCRUM-219) Story: Mobile: Payment screen (EPIC-13/EPIC-10) [Idea]
+[#27b] (SCRUM-246) Story: Integrate Payment Service with Order/Menu flow (EPIC-10) [Idea]
 
 
 --- SPRINT 4: Testing, UI Optimization, Documentation & Production Deployment ---
+Status as of 2026-11-06 (Jira export): 45 items - Done 19, In Progress 4, To Do 6, Idea 16.
 
 Huy:
-[#58] Story: Admin: system health monitoring (EPIC-12)
-[#59] Story: Admin: handle account reports/complaints (EPIC-12)
-[#53] Task: Unit tests - Gateway, Infra, Notification & Admin Services (EPIC-01/11/12)
-[#61] Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12)
-[#65] Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12)
-[#70] Task: Deploy to production (Vercel/Railway/Render) (EPIC-01)
+[#58] (SCRUM-220) Story: Admin: system health monitoring (EPIC-12) [Done]
+[#59] (SCRUM-247) Story: Admin: handle account reports/complaints (EPIC-12) [Done]
+[#53] (SCRUM-248) Task: Unit tests - Gateway, Infra, Notification & Admin Services (EPIC-01/11/12) [Done]
+[#61] (SCRUM-249) Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12) [Done]
+[#65] (SCRUM-221) Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12) [Done]
+[#70] (SCRUM-222) Task: Prepare production deployment (self-hosted, Tailscale Funnel) (EPIC-01) [In Progress]
 
-Huy - extra items done, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
-[#61] Task: Shared theme + Lucide icons, apps/mobile/src/theme/ (EPIC-13, PR #17)
-[#71] Task: Typography scale, title 28, minimum 12 (EPIC-13, PR #22)
-[#59] Task: Gateway JWT verification and identity forwarding (EPIC-01, PR #12)
-Task: Admin dashboard with charts, GET /health-monitor/timeseries (EPIC-12, PR #20)
-Task: Notification identity hardening (EPIC-11, PR #14)
-Task: Docker npm-only builds, non-root containers (EPIC-01, PR #10)
-Task: Compose healthchecks on 127.0.0.1 (EPIC-01, PR #15, by Khanh)
-Task: Smoke tests read JWT_SECRET from the root .env (EPIC-01, PR #18)
-Task: Metro fix for pnpm isolated dependencies (EPIC-13, PR #13)
-Task: react-native-safe-area-context upgrade for Expo SDK 58 (EPIC-13, PR #19)
-
-Huy - pending (team decision):
-Task: Execute production deployment (Render); configuration is in deploy/ (EPIC-01, #70)
-Task: Role-based navigation for ADMIN (EPIC-13)
-
-Huy - pending, on branch fix/sprint-4-followups, not merged to main:
-Task: DB-unavailable 503 mapping for dropped connections, P1008/P1017/P2024; P1001/P1002/P2021 are already on main (EPIC-11/12)
-Task: Compose gateway startup, service_started instead of service_healthy (EPIC-01)
+Huy - extra items, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
+[#61] (SCRUM-260) Task: Lucide icons and shared theme tokens for Notification & Admin screens - EPIC-13 [Done] (PR #17)
+[#71] (SCRUM-263) Task: Shared typography scale (page title 28, minimum 12) - EPIC-13 [Done] (PR #22)
+[#59] (SCRUM-256) Task: Gateway: verify JWT access tokens and forward identity headers - EPIC-01 [Done] (PR #12)
+(SCRUM-262) Story: Admin dashboard: report statistics and system health charts - EPIC-12 [Done] (PR #20)
+(SCRUM-257) Task: Security: notification routes trusted client-supplied userId; promotion dispatch was unguarded - EPIC-11 [Done] (PR #14)
+(SCRUM-255) Task: Docker: npm-only builds and non-root runtime for Prisma services - EPIC-01 [Done] (PR #10)
+(SCRUM-259) Task: Smoke tests load JWT_SECRET from root .env - EPIC-01 [Done] (PR #18)
+(SCRUM-253) Task: Fix(mobile): Configure Metro bundler for pnpm isolated dependency resolution (EPIC - 1) [Done] (PR #13)
+(SCRUM-261) Task: Align react-native-safe-area-context with Expo SDK 58 - EPIC-13 [Done] (PR #19)
+(SCRUM-254) Task: Fix nutrition-service CI: dedicated Prisma client, pin Prisma 5.22.0 - EPIC-01 [Done]
+(SCRUM-264) Task: Admin card grids flicker on web (scrollbar layout loop) - EPIC-12 [Done]
+(SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress]
+(SCRUM-265) Feature: Unify mobile UI with the shared theme (colors, typography, icons) - EPIC-13 [In Progress]
+(SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [To Do]
+(SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Idea]
+(SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [To Do]
 
 Kazan:
-[#54] Task: Unit tests - Auth & Family Services (EPIC-02/03)
-[#61b] Task: Finalize responsive UI - Auth & Family screens (EPIC-02/03)
-[#66] Task: Write documentation - Auth & Family section (EPIC-02/03)
+[#54] (SCRUM-280) Task: Unit tests - Auth & Family Services (EPIC-02/03) [Idea]
+[#61b] (SCRUM-281) Task: Finalize responsive UI - Auth & Family screens (EPIC-02/03) [Idea]
+[#66] (SCRUM-282) Task: Write documentation - Auth & Family section (EPIC-02/03) [Idea]
+(SCRUM-266) Task: Migrate auth & family screens to shared theme - EPIC-13 [Idea]
+(SCRUM-271) Task: Mobile login bypasses the gateway (calls auth-service :4001 directly) - EPIC-02 [Idea]
+(SCRUM-272) Task: Session restore crashes on web (expo-secure-store not supported) - EPIC-13 [Idea]
+(SCRUM-277) Task: Admin families/users APIs (auth-service, family-service) - EPIC-12 [In Progress]
 
 Khanh:
-[#55] Task: Unit tests - Inventory & Shopping List Services (EPIC-04/09)
-[#62] Task: Finalize responsive UI - Inventory & Shopping List screens (EPIC-04/09)
-[#67] Task: Write documentation - Inventory & Shopping List section (EPIC-04/09)
+[#55] (SCRUM-223) Task: Unit tests - Inventory & Shopping List Services (EPIC-04/09) [Done]
+[#62] (SCRUM-250) Task: Finalize responsive UI - Inventory & Shopping List screens (EPIC-04/09) [Done]
+[#67] (SCRUM-251) Task: Write documentation - Inventory & Shopping List section (EPIC-04/09) [Done]
+(SCRUM-267) Task: Migrate inventory & shopping-cart screens to shared theme (9 and 7 font sizes below 12px) - EPIC-13 [Idea]
+(SCRUM-273) Task: inventory & shopping-list: dedicated Prisma clients, CI prisma_schema, remove BOM, NODE_ENV=production - EPIC-04/09 [Idea]
+(SCRUM-274) Task: Inventory: wrong “log in” message when logged in without a family; storage filter row overflows at 375px - EPIC-04 [Idea]
 
 Hung:
-[#56] Task: Unit tests - Nutrition & Meal Diary Services (EPIC-05/06)
-[#63] Task: Finalize responsive UI - Nutrition & Meal Diary screens (EPIC-05/06)
-[#68] Task: Write documentation - Nutrition & Meal Diary section (EPIC-05/06)
+[#56] (SCRUM-231) Task: Unit tests - Nutrition / Meal Diary (EPIC-05/06) [To Do]
+[#63] (SCRUM-232) Task: Finalize responsive UI - Nutrition/Meal Diary screens (EPIC-05/06) [To Do]
+[#68] (SCRUM-233) Task: Write documentation - Nutrition/Meal Diary section (EPIC-05/06) [To Do]
+(SCRUM-268) Task: Migrate nutrition screens to shared theme - EPIC-13 [Idea]
+(SCRUM-270) Task: Nutrition profile cannot be saved (wrong API path /api/nutrition-profile, X-User-Id header) - EPIC-05 [Idea]
 
 Cuong:
-[#57] Task: Unit tests - Recipe, Menu & Payment Services (EPIC-07/08/10)
-[#64] Task: Finalize responsive UI - Recipe, Menu & Payment screens (EPIC-07/08/10)
-[#69] Task: Write documentation - Recipe, Menu & Payment section (EPIC-07/08/10)
+[#57] (SCRUM-234) Task: Unit tests - Recipe, Menu & Payment Services (EPIC-07/08/10) [Idea]
+[#64] (SCRUM-279) Task: Finalize responsive UI - Recipe, Menu & Payment screens (EPIC-07/08/10) [To Do]
+[#69] (SCRUM-235) Task: Write documentation - Recipe, Menu & Payment section (EPIC-07/08/10) [Idea]
 
-Whole Team:
-[#52b] Task: Execute End-to-end integration testing (All join)
-[#71] Task: Buffer for fixing issues found before release (Whole team)
+Whole Team (no assignee in Jira):
+[#52b] (SCRUM-237) Task: Execute End-to-end integration testing (All join) [Idea]
+[#71] (SCRUM-238) Task: Buffer for fixing issues found before release (Whole team) [Idea]
+
+
+--- NO SPRINT IN JIRA ---
+
+Huy:
+(SCRUM-275) Task: Upgrade TypeScript 6 and @expo/dom-webview 58 (Expo SDK 58); require Node ≥ 22.13 [Idea]
+
+Kazan:
+(SCRUM-276) Story: Revoke access tokens on logout [Idea]
+
+No assignee:
+(SCRUM-4) Subtask: Subtask 2.1 [Idea]
+
+
+4. TEAM DECISIONS RECORDED IN JIRA
+--------------------------------------------------------------------------------
+Production deployment: self-hosted with Tailscale Funnel (SCRUM-222), on Huy's PC (SCRUM-278).
+deploy/render.yaml and docs/deploy/ in the repo still describe Render; they have not been updated for this decision.
