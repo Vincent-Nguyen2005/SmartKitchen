@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from ".prisma/client-auth";
 import healthRouter from "./routes/health.route";
 import createAuthRouter from "./routes/auth.routes";
+import { createAdminUsersRouter } from "./routes/admin-users.routes";
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use("/health", healthRouter);
 const authRouter = createAuthRouter(prisma);
 app.use("/api/auth", authRouter);
 app.use("/", authRouter);
+app.use("/internal/admin/users", createAdminUsersRouter(prisma));
 
 const PORT = process.env.PORT || 4001;
 const server = app.listen(PORT, () => {

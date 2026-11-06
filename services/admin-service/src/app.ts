@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import healthRouter from "./routes/health.route";
 import adminRouter from "./routes/admin.route";
+import directoryRouter from "./routes/directory.route";
 import { createHealthMonitorRouter } from "./routes/health-monitor.route";
 import { errorHandler } from "./middleware/error-handler";
 import { prisma as defaultPrisma } from "./lib/prisma";
@@ -44,8 +45,9 @@ export const createApp = (deps: AppDeps = {}): express.Express => {
     notifier: deps.notifier ?? createDefaultNotifier(),
     maxReportsPerHour: positiveInt(process.env.REPORT_RATE_LIMIT_PER_HOUR, 5),
   }));
-  // adminRouter applies requireAdmin to everything after its public routes, so mount it last.
+  // adminRouter serves public routes first, then enforces ADMIN before directory routes.
   app.use(adminRouter);
+  app.use(directoryRouter);
   app.use(errorHandler);
   return app;
 };

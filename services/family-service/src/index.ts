@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { PrismaClient } from ".prisma/client-family";
 import healthRouter from "./routes/health.route";
 import createFamilyRouter from "./routes/family.routes";
+import { createAdminFamiliesRouter } from "./routes/admin-families.routes";
 
 dotenv.config();
 
@@ -19,6 +20,7 @@ app.use(express.json());
 app.use("/health", healthRouter);
 
 app.use("/api/family", createFamilyRouter(prisma));
+app.use("/internal/admin/families", createAdminFamiliesRouter(prisma));
 
 const PORT = process.env.PORT || 4002;
 const server = app.listen(PORT, () => {
