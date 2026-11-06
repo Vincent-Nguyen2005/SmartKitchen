@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-recipe"
 }
 
 datasource db {
@@ -7,9 +8,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho recipe-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+model Recipe {
+  id                 String   @id @default(uuid())
+  name               String
+  description        String?
+  ingredients        String[]
+  mealTypes          String[] @default([])
+  dietaryTags        String[] @default([])
+  tags               String[] @default([])
+  preparationMinutes Int?
+  servings           Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([name])
+}
