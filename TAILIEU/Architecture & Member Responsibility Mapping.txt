@@ -24,6 +24,9 @@ EPIC-13: Frontend (Mobile App - React Native Expo)
 Huy (Scrum Master):
   - Backend / Infra: apps/gateway/, docker-compose.yml, notification-service/, admin-service/
   - Mobile Directory: apps/mobile/src/screens/notifications/, apps/mobile/src/screens/admin/
+  - Shared Mobile: apps/mobile/src/theme/ (shared theme, other members adopt it via #71)
+  - Infra & Docs: deploy/, docs/, scripts/check-infra.mjs
+  - App Shell: apps/mobile/App.tsx - Huy: app shell (header/tab bar, role-based navigation), TBD (team decision)
 
 Kazan:
   - Backend: auth-service/, family-service/
@@ -150,6 +153,26 @@ Huy:
 [#61] Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12)
 [#65] Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12)
 [#70] Task: Deploy to production (Vercel/Railway/Render) (EPIC-01)
+
+Huy - extra items done, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
+[#61] Task: Shared theme + Lucide icons, apps/mobile/src/theme/ (EPIC-13, PR #17)
+[#71] Task: Typography scale, title 28, minimum 12 (EPIC-13, PR #22)
+[#59] Task: Gateway JWT verification and identity forwarding (EPIC-01, PR #12)
+Task: Admin dashboard with charts, GET /health-monitor/timeseries (EPIC-12, PR #20)
+Task: Notification identity hardening (EPIC-11, PR #14)
+Task: Docker npm-only builds, non-root containers (EPIC-01, PR #10)
+Task: Compose healthchecks on 127.0.0.1 (EPIC-01, PR #15, by Khanh)
+Task: Smoke tests read JWT_SECRET from the root .env (EPIC-01, PR #18)
+Task: Metro fix for pnpm isolated dependencies (EPIC-13, PR #13)
+Task: react-native-safe-area-context upgrade for Expo SDK 58 (EPIC-13, PR #19)
+
+Huy - pending (team decision):
+Task: Execute production deployment (Render); configuration is in deploy/ (EPIC-01, #70)
+Task: Role-based navigation for ADMIN (EPIC-13)
+
+Huy - pending, on branch fix/sprint-4-followups, not merged to main:
+Task: DB-unavailable 503 mapping for dropped connections, P1008/P1017/P2024; P1001/P1002/P2021 are already on main (EPIC-11/12)
+Task: Compose gateway startup, service_started instead of service_healthy (EPIC-01)
 
 Kazan:
 [#54] Task: Unit tests - Auth & Family Services (EPIC-02/03)

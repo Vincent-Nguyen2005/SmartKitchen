@@ -2,9 +2,11 @@
 
 `services/admin-service`, port 4011, database `admin_db` (local port 5411). Owner: Huy.
 
-Last verified: 2026-11-04, commit `d792648`.
+Last verified: 2026-11-06, commit `2681574`.
 
 Health monitoring of all services (#58), account reports (#59), master ingredient catalog (#48) and recommendation weights (#49), with an audit log.
+
+The mobile admin dashboard ("Tổng quan", see the [admin screens README](../apps/mobile/src/screens/admin/README.md)) reads `GET /health-monitor/status`, `/health-monitor/summary`, `/health-monitor/timeseries` and `GET /reports/stats?window=`.
 
 ## Access control
 
@@ -101,4 +103,4 @@ Tables: `master_ingredients`, `recommendation_weights`, `recommendation_weight_h
 
 ## Tests
 
-`pnpm --filter admin-service test` (120 tests, 98.57 % line coverage at the last run).
+`pnpm --filter admin-service test` (131 tests, 98.7 % line coverage at the last run).
