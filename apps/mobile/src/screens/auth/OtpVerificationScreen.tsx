@@ -10,6 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { authErrorMessage } from "./authError";
 
 type Props = {
   email: string;
@@ -38,7 +39,7 @@ export default function OtpVerificationScreen({
 
   const verify = async (): Promise<void> => {
     if (!/^\d{6}$/.test(otpCode)) {
-      setError("Enter the 6-digit code from your email.");
+      setError("Vui lòng nhập mã 6 chữ số trong email.");
       return;
     }
     setError("");
@@ -46,7 +47,7 @@ export default function OtpVerificationScreen({
     try {
       await onVerify(otpCode);
     } catch (verificationError) {
-      setError(verificationError instanceof Error ? verificationError.message : "Unable to verify your account.");
+      setError(authErrorMessage(verificationError, "Không thể xác minh tài khoản. Vui lòng thử lại."));
     } finally {
       setLoading(false);
     }
@@ -59,7 +60,7 @@ export default function OtpVerificationScreen({
       await onResend();
       setCooldown(60);
     } catch (resendError) {
-      setError(resendError instanceof Error ? resendError.message : "Unable to resend the code.");
+      setError(authErrorMessage(resendError, "Không thể gửi lại mã. Vui lòng thử lại."));
     } finally {
       setResending(false);
     }
@@ -70,16 +71,16 @@ export default function OtpVerificationScreen({
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
         <View>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>Change email address</Text>
+            <Text style={styles.backText}>Đổi địa chỉ email</Text>
           </Pressable>
-          <Text style={styles.eyebrow}>EMAIL VERIFICATION</Text>
-          <Text style={styles.title}>Check your inbox</Text>
+          <Text style={styles.eyebrow}>XÁC MINH EMAIL</Text>
+          <Text style={styles.title}>Kiểm tra hộp thư</Text>
           <Text style={styles.subtitle}>
-            We sent a 6-digit verification code to{"\n"}
+            Chúng tôi đã gửi mã xác minh 6 chữ số tới{"\n"}
             <Text style={styles.email}>{email}</Text>
           </Text>
           <TextInput
-            accessibilityLabel="Six-digit email verification code"
+            accessibilityLabel="Mã xác minh email gồm 6 chữ số"
             autoComplete="one-time-code"
             autoFocus
             keyboardType="number-pad"
@@ -93,13 +94,13 @@ export default function OtpVerificationScreen({
           />
           {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <Pressable disabled={loading} onPress={() => { void verify(); }} style={styles.primaryButton}>
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Verify account</Text>}
+            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Xác minh tài khoản</Text>}
           </Pressable>
           <View style={styles.resendRow}>
-            <Text style={styles.resendLabel}>Didn't receive the email?</Text>
+            <Text style={styles.resendLabel}>Chưa nhận được email?</Text>
             <Pressable disabled={cooldown > 0 || resending} onPress={() => { void resend(); }}>
               <Text style={[styles.resendButton, (cooldown > 0 || resending) && styles.resendDisabled]}>
-                {resending ? "Sending..." : cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
+                {resending ? "Đang gửi..." : cooldown > 0 ? `Gửi lại sau ${cooldown} giây` : "Gửi lại mã"}
               </Text>
             </Pressable>
           </View>

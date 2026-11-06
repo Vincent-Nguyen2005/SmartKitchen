@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { authErrorMessage } from "./authError";
 
 type AuthNavigation = { navigate: (screen: "Login") => void };
 type Props = {
@@ -37,20 +38,20 @@ export default function RegisterScreen({
   const [loading, setLoading] = useState(false);
 
   const submit = async (): Promise<void> => {
-    if (fullName.trim().length < 2) return setError("Enter your full name.");
+    if (fullName.trim().length < 2) return setError("Vui lòng nhập họ tên ít nhất 2 ký tự.");
     if (!/^\S+@\S+\.\S+$/.test(email.trim()))
-      return setError("Enter a valid email address.");
-    if (password.length < 8)
-      return setError("Password must be at least 8 characters.");
+      return setError("Vui lòng nhập địa chỉ email hợp lệ.");
+    if (password.length < 8 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password))
+      return setError("Mật khẩu cần ít nhất 8 ký tự, gồm chữ hoa, chữ thường và số.");
     if (password !== confirmPassword)
-      return setError("Passwords do not match.");
-    if (!agreed) return setError("Agree to the terms to continue.");
+      return setError("Mật khẩu xác nhận không khớp.");
+    if (!agreed) return setError("Vui lòng đồng ý với điều khoản để tiếp tục.");
     setError("");
     setLoading(true);
     try {
       await onSubmit?.(fullName.trim(), email.trim().toLowerCase(), password);
     } catch (registrationError) {
-      setError(registrationError instanceof Error ? registrationError.message : "Unable to create your account. Please try again.");
+      setError(authErrorMessage(registrationError, "Không thể đăng ký. Vui lòng thử lại."));
     } finally {
       setLoading(false);
     }
@@ -64,15 +65,15 @@ export default function RegisterScreen({
       >
         <View>
           <Pressable onPress={() => navigation?.navigate("Login")}>
-            <Text style={styles.back}>Back to sign in</Text>
+            <Text style={styles.back}>Quay lại đăng nhập</Text>
           </Pressable>
-          <Text style={styles.title}>Create your account</Text>
+          <Text style={styles.title}>Tạo tài khoản</Text>
           <Text style={styles.subtitle}>
-            A better kitchen starts with everyone on the same page.
+            Cùng gia đình quản lý căn bếp dễ dàng hơn.
           </Text>
           <TextInput
             onChangeText={setFullName}
-            placeholder="Full name"
+            placeholder="Họ và tên"
             placeholderTextColor="#8B949E"
             style={styles.input}
             value={fullName}
@@ -82,7 +83,7 @@ export default function RegisterScreen({
             autoComplete="email"
             keyboardType="email-address"
             onChangeText={setEmail}
-            placeholder="Email address"
+            placeholder="Địa chỉ email"
             placeholderTextColor="#8B949E"
             style={styles.input}
             value={email}
@@ -91,14 +92,14 @@ export default function RegisterScreen({
             <TextInput
               autoCapitalize="none"
               onChangeText={setPassword}
-              placeholder="Password"
+              placeholder="Mật khẩu"
               placeholderTextColor="#8B949E"
               secureTextEntry={!showPassword}
               style={styles.passwordInput}
               value={password}
             />
             <Pressable
-              accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+              accessibilityLabel={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
               accessibilityRole="button"
               onPress={() => setShowPassword((value) => !value)}
               style={styles.visibilityButton}
@@ -110,14 +111,14 @@ export default function RegisterScreen({
             <TextInput
               autoCapitalize="none"
               onChangeText={setConfirmPassword}
-              placeholder="Confirm password"
+              placeholder="Xác nhận mật khẩu"
               placeholderTextColor="#8B949E"
               secureTextEntry={!showConfirmPassword}
               style={styles.passwordInput}
               value={confirmPassword}
             />
             <Pressable
-              accessibilityLabel={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+              accessibilityLabel={showConfirmPassword ? "Ẩn mật khẩu xác nhận" : "Hiện mật khẩu xác nhận"}
               accessibilityRole="button"
               onPress={() => setShowConfirmPassword((value) => !value)}
               style={styles.visibilityButton}
@@ -135,7 +136,7 @@ export default function RegisterScreen({
               {agreed && <Text style={styles.checkmark}>✓</Text>}
             </View>
             <Text style={styles.termsText}>
-              I agree to the Terms and Privacy Policy.
+              Tôi đồng ý với Điều khoản và Chính sách quyền riêng tư.
             </Text>
           </Pressable>
           {!!error && (
@@ -154,7 +155,7 @@ export default function RegisterScreen({
             {loading ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryButtonText}>Create account</Text>
+              <Text style={styles.primaryButtonText}>Đăng ký</Text>
             )}
           </Pressable>
         </View>
