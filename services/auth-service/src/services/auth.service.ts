@@ -39,9 +39,16 @@ export class AuthService {
     const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
-      select: { email: true, isVerified: true },
+      select: { email: true, isVerified: true, passwordHash: true },
     });
-    if (existingUser && !existingUser.isVerified) return { email: existingUser.email };
+    if (existingUser && !existingUser.isVerified) {
+      const passwordMatches = existingUser.passwordHash.startsWith("$argon2")
+        ? await argon2.verify(existingUser.passwordHash, password)
+        : await bcrypt.compare(password, existingUser.passwordHash);
+      if (!passwordMatches) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
+      await this.resendOtp(existingUser.email);
+      return { email: existingUser.email };
+    }
     if (existingUser) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
@@ -56,7 +63,7 @@ export class AuthService {
         otpExpiresAt: new Date(Date.now() + OTP_TTL_MS),
       },
     });
-    await this.sendOtpEmail(user.email, otpCode);
+    await this.sendOtpEmail(user.id, user.email, otpCode);
     return { email: user.email };
   }
 
@@ -104,7 +111,7 @@ export class AuthService {
       where: { id: user.id },
       data: { otpCode, otpExpiresAt: new Date(now + OTP_TTL_MS) },
     });
-    await this.sendOtpEmail(user.email, otpCode);
+    await this.sendOtpEmail(user.id, user.email, otpCode);
     return { email: user.email };
   }
 
@@ -216,10 +223,15 @@ export class AuthService {
     const suppliedBuffer = Buffer.from(supplied);
     return expectedBuffer.length === suppliedBuffer.length && timingSafeEqual(expectedBuffer, suppliedBuffer);
   }
-  private async sendOtpEmail(email: string, otpCode: string): Promise<void> {
+  private async sendOtpEmail(userId: string, email: string, otpCode: string): Promise<void> {
     try {
       await this.mailService.sendOtpEmail(email, otpCode);
     } catch (error) {
+      // A failed delivery must not impose a resend cooldown for a code the user never received.
+      await this.prisma.user.updateMany({
+        where: { id: userId, otpCode, isVerified: false },
+        data: { otpCode: null, otpExpiresAt: null },
+      }).catch((cleanupError) => console.error("[auth-service] failed to clear undelivered OTP", cleanupError));
       if (error instanceof MailServiceError) {
         throw new AuthServiceError(error.message, error.code);
       }
