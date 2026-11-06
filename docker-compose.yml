@@ -11,6 +11,7 @@ services:
       PORT: 4001
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
       CORS_ORIGIN: ${CORS_ORIGIN:-}
       SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
       SMTP_PORT: ${SMTP_PORT:-587}
@@ -33,6 +34,8 @@ services:
       PORT: 4002
       NODE_ENV: production
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
+      AUTH_SERVICE_URL: http://auth-service:4001
       DATABASE_URL: postgresql://postgres:postgres@family-db:5432/family_db
     ports: ["4002:4002"]
     depends_on: { family-db: { condition: service_healthy } }
@@ -152,7 +155,7 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"], interval: 5s, timeout: 5s, retries: 10 }
   notification-service:
     build: ./services/notification-service
-    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, INTERNAL_API_KEY: "${INTERNAL_API_KEY:-dev-only-internal-key-change-me}", PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
+    environment: { PORT: 4010, DATABASE_URL: postgresql://postgres:postgres@notification-db:5432/notification_db, PARTNER_API_KEY: replace-with-partner-key, INTERNAL_API_KEY: "${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}", PUSH_PROVIDER: mock, ENABLE_JOBS: "false", DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh }
     ports: ["4010:4010"]
     depends_on: { notification-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4010/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -182,10 +185,13 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:4010
       ADMIN_SERVICE_URL: http://admin-service:4011
       GATEWAY_URL: http://gateway:4000
-      INTERNAL_API_KEY: "${INTERNAL_API_KEY:-dev-only-internal-key-change-me}"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
       REPORT_RATE_LIMIT_PER_HOUR: ${REPORT_RATE_LIMIT_PER_HOUR:-5}
-    ports: ["4011:4011"]
-    depends_on: { admin-db: { condition: service_healthy } }
+    ports: ["127.0.0.1:4011:4011"]
+    depends_on:
+      admin-db: { condition: service_healthy }
+      auth-service: { condition: service_healthy }
+      family-service: { condition: service_healthy }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4011/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
   gateway:
     build: ./apps/gateway

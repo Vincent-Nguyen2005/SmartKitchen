@@ -37,7 +37,7 @@ const parseCompose = (text) => {
     if (service) { current = services[service[1]] = { ports: [], env: {} }; inEnvBlock = false; continue; }
     if (/^\S/.test(line)) { current = null; continue; }
     if (!current) continue;
-    const ports = line.match(/^ {4}ports:\s*\["(\d+):(\d+)"\]/);
+    const ports = line.match(/^ {4}ports:\s*\["(?:127\.0\.0\.1:)?(\d+):(\d+)"\]/);
     if (ports) current.ports.push({ host: Number(ports[1]), container: Number(ports[2]) });
     const inline = line.match(/^ {4}environment:\s*\{(.*)\}\s*$/);
     if (inline) { for (const pair of inline[1].split(/,\s*(?=[A-Z_]+:)/)) { const [key, ...rest] = pair.split(":"); current.env[key.trim()] = rest.join(":").trim().replace(/^"|"$/g, ""); } inEnvBlock = false; continue; }

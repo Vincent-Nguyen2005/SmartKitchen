@@ -17,6 +17,10 @@ beforeAll(async () => {
   const app = express();
   app.use((req, res) => {
     upstreamHits++;
+    if (req.originalUrl.startsWith("/users")) {
+      res.json({ path: req.originalUrl, role: req.headers["x-user-role"] ?? null, apiKey: req.headers["x-api-key"] ?? null });
+      return;
+    }
     res.json({ path: req.originalUrl, userId: req.headers["x-user-id"] ?? null, role: req.headers["x-user-role"] ?? null, authorization: req.headers.authorization ?? null });
   });
   upstream = await new Promise<Server>((resolve) => { const server = app.listen(0, () => resolve(server)); });
@@ -39,6 +43,13 @@ describe("gateway authentication end to end", () => {
     const response = await request(createApp({ jwtSecret: SECRET })).get("/api/admin/reports").set("authorization", bearer).set("x-user-role", "USER");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ path: "/reports", userId: "user-42", role: "ADMIN", authorization: bearer });
+  });
+
+  it("sends /api/admin/users to admin-service without forwarding a client API key", async () => {
+    const response = await request(createApp({ jwtSecret: SECRET })).get("/api/admin/users?page=2")
+      .set("authorization", `Bearer ${token("ADMIN")}`).set("x-api-key", "forged");
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ path: "/users?page=2", role: "ADMIN", apiKey: null });
   });
 
   it("does not let an anonymous caller forge the admin role", async () => {
@@ -80,6 +91,8 @@ describe("gateway authentication end to end", () => {
   it("matches internal paths per service prefix only", () => {
     expect(isInternalPath("/api/notifications/internal/notifications")).toBe(true);
     expect(isInternalPath("/api/admin/internal")).toBe(true);
+    expect(isInternalPath("/api/internal/admin/users")).toBe(true);
+    expect(isInternalPath("/internal/admin/users")).toBe(true);
     expect(isInternalPath("/api/notifications/notifications")).toBe(false);
     expect(isInternalPath("/api/recipes/internal-tips")).toBe(false);
   });
