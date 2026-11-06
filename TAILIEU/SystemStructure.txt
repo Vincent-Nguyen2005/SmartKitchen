@@ -1,6 +1,7 @@
 SmartKitchen/
 ├── apps/
 │   ├── mobile/          → React Native (Expo) frontend (Giao diện Mobile App)
+│   │   └── src/theme/   → Theme dùng chung (màu, typography, icon)
 │   └── gateway/         → API Gateway (Định tuyến request)
 ├── services/
 │   ├── auth-service/          → EPIC-02
@@ -16,4 +17,9 @@ SmartKitchen/
 │   └── admin-service/         → EPIC-12
 ├── packages/
 │   └── shared/          → Types/constants dùng chung
+├── deploy/              → Cấu hình production (render.yaml, env.production.example)
+├── docs/                → Tài liệu kỹ thuật (infra, gateway, notification, admin, deploy, e2e)
+├── scripts/
+│   └── check-infra.mjs  → Kiểm tra cấu hình repo (pnpm check:infra)
+├── .env.example         → Mẫu .env gốc cho docker compose (JWT_SECRET, ...)
 └── docker-compose.yml    → EPIC-01

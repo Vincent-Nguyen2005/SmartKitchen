@@ -1,6 +1,6 @@
 # Infrastructure
 
-Owner: Huy. Last verified: 2026-11-04, commit `d792648`.
+Owner: Huy. Last verified: 2026-11-06, commit `2681574`.
 
 ## Architecture
 
@@ -61,18 +61,24 @@ Local database credentials are `postgres` / `postgres` (local only). Host ports 
 
 ## Local setup
 
-1. Node 20, pnpm 9.15.4, Docker Desktop. `pnpm install` at the root.
+1. Node 20 (service images and CI), pnpm 9.15.4, Docker Desktop. `pnpm install` at the root. To run the mobile app locally use Node 22.13 or newer: Expo SDK 58 declares `^22.13.0 || ^24.3.0 || ^26.0.0 || >=27.0.0`, and the Expo CLI warns on older versions.
 2. Copy the root env file and set a secret **before** starting compose:
    ```powershell
    Copy-Item .env.example .env        # bash: cp .env.example .env
    # Generate 64 hex characters and paste them as JWT_SECRET in .env:
    -join (1..64 | % { [char]((48..57)+(97..102) | Get-Random) })   # bash: openssl rand -hex 32
    ```
-   Compose refuses to start without `JWT_SECRET`. `.env` is git-ignored; never commit it.
+   The root `.env` is required: compose refuses to start without `JWT_SECRET` and `PURCHASE_SYNC_API_KEY` (replace both placeholders from `.env.example`). `.env` is git-ignored; never commit it.
 3. `docker compose -p smartkitchen up -d --build`
 4. Check: `pnpm test:health` (12 endpoints), `pnpm test:routing`, `pnpm test:e2e-smoke`. The e2e smoke scripts sign a dev token with `JWT_SECRET`: from the environment if set, otherwise from the root `.env` (only that key is parsed, never printed). Without either they fail with "copy .env.example to .env and set JWT_SECRET". `pnpm test:prod-smoke` does not need `JWT_SECRET`.
 
 Notification and admin images run `prisma migrate deploy` on start. Seed admin data once: `pnpm --filter admin-service prisma:seed` with `DATABASE_URL` pointing at port 5411.
+
+### Startup order and healthchecks
+
+- Every service and the gateway have a healthcheck on `http://127.0.0.1:<port>/health`. Use `127.0.0.1`, not `localhost`, which can resolve to IPv6 `::1` in Alpine.
+- Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service.
+- The gateway `depends_on` all 11 services with `service_healthy`, so it starts last, and one unhealthy service stops it from starting. To start it anyway: `docker compose -p smartkitchen up -d --no-deps gateway`. Changing this to `service_started` is on the unmerged branch `fix/sprint-4-followups`.
 
 ## Scripts and CI
 
@@ -85,7 +91,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 | `pnpm test:e2e-smoke` (`:bash`) | E2E smoke through the gateway |
 | `pnpm test:prod-smoke` (`:bash`) | Smoke against a deployed gateway (`BASE_URL`) |
 
-`.github/workflows/ci.yml` runs on PRs to `main`/`develop` and pushes to `main`: a matrix per workspace (frozen install, Prisma generate, lint, build, tests with coverage where available), an `infra-check` job, and the aggregate `ci-success`, which is the required status check.
+`.github/workflows/ci.yml` runs on PRs to `main`/`develop` and pushes to `main`: a matrix per workspace (frozen install, Prisma generate, lint, build, tests with coverage where available), a `mobile-typecheck` job, an `infra-check` job, and the aggregate `ci-success`, which is the required status check.
 
 ## Troubleshooting
 
@@ -98,8 +104,8 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 | `401 UNAUTHORIZED` from the gateway with a valid-looking token | Gateway and auth-service use different `JWT_SECRET` | Set the same value in `.env` and recreate both containers |
 | E2E smoke: authenticated checks fail with `401` | A `JWT_SECRET` in your shell (it wins over `.env`) differs from the one the stack runs with | Unset it (`Remove-Item Env:JWT_SECRET` / `unset JWT_SECRET`) so the script reads `.env`, or recreate the stack from `.env` |
 | `bash: not found` / WSL error when running `pnpm test:*:bash` from PowerShell | `bash` resolves to WSL, which is not installed | Run the `.sh` scripts from Git Bash, or use the PowerShell variants |
-| inventory / shopping-list containers `unhealthy` while `/health` works from the host | Their healthcheck calls `localhost`, which resolves to IPv6 `::1` in Alpine while the app listens on IPv4 | Owner fix (Khanh): use `127.0.0.1` in the healthcheck, or let the app listen on all interfaces. Pre-existing on main |
-| Metro: `Unable to resolve "invariant"` when bundling the mobile app | `metro.config.js` disabled hierarchical lookup under pnpm's isolated layout | Fixed in `fix/mobile-metro` (pending PR) |
+| Gateway does not start: `dependency failed to start` | The gateway needs all 11 services healthy (see Startup order and healthchecks) | Fix or restart the unhealthy service (`docker compose -p smartkitchen ps`), or start the gateway with `--no-deps` |
+| Metro: `Unable to resolve "invariant"` when bundling the mobile app | `metro.config.js` disabled hierarchical lookup under pnpm's isolated layout | Fixed on main (PR #13): update your branch and run `pnpm install` |
 | Prisma client errors after switching branches | Stale generated client | `pnpm turbo run build --filter=<service>` (generates the client first) |
 
 ## Runbook
@@ -107,7 +113,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 ### Rotate `JWT_SECRET`
 
 1. Generate a new value (command above). Never write it into a committed file or a report.
-2. Update it in `.env` (local) or the Render env group `smartkitchen-jwt` (production). auth-service, family-service and the gateway must change at the same time.
+2. Update it in `.env` (local; compose passes it to auth-service, family-service, inventory-service, shopping-list-service and the gateway) or the Render env group `smartkitchen-jwt` (production). Every service using it must change at the same time.
 3. Restart those services. All existing access tokens become invalid, and users sign in again.
 
 ### Rotate `INTERNAL_API_KEY` / `PARTNER_API_KEY`

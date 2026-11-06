@@ -1,6 +1,6 @@
 # SmartKitchen documentation
 
-Last verified: 2026-11-04, on branch `feat/sprint-4-huy` at commit `d792648`.
+Last verified: 2026-11-06, on `main` at commit `2681574`.
 
 | Document | What it covers | Owner |
 |---|---|---|
@@ -12,6 +12,6 @@ Last verified: 2026-11-04, on branch `feat/sprint-4-huy` at commit `d792648`.
 | [deploy/checklist.md](deploy/checklist.md) | Production deploy checklist | Huy |
 | [e2e/README.md](e2e/README.md), [e2e/scenarios.md](e2e/scenarios.md) | E2E smoke run and scenario matrix | Huy (matrix rows by story owner) |
 
-Mobile screens owned by Huy are documented next to the code: [notifications](../apps/mobile/src/screens/notifications/README.md) and [admin](../apps/mobile/src/screens/admin/README.md).
+Mobile screens owned by Huy are documented next to the code: [notifications](../apps/mobile/src/screens/notifications/README.md) and [admin](../apps/mobile/src/screens/admin/README.md). The shared mobile theme (colours, typography, icons) is documented in [theme](../apps/mobile/src/theme/README.md).
 
 Other services (auth, family, inventory, nutrition, meal-diary, recipe, menu, shopping-list, payment) are documented by their owners in their own folders.
