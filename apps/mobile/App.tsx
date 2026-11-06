@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import React, { useEffect, useState } from "react";
 import {
   Archive,
@@ -31,15 +30,6 @@ import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import AdminHome from "./src/screens/admin/AdminHome";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
-=======
-import React, { useState } from "react";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
-import MealDiaryScreen from "./src/screens/meal-diary/MealDiaryScreen";
-import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
-import NutritionStatsScreen from "./src/screens/nutrition/NutritionStatsScreen";
-import SuggestionsScreen from "./src/screens/nutrition/SuggestionsScreen";
->>>>>>> origin/merge-team-main
 
 type Tab =
   | "inventory"
@@ -65,8 +55,6 @@ const apiBaseUrl =
     ? "http://10.0.2.2:4000"
     : "http://localhost:4000");
 
-type AppProps = { accessToken?: string };
-
 export function resolveNutritionUserId(
   sessionUserId?: string | null,
 ): string | undefined {
@@ -75,7 +63,6 @@ export function resolveNutritionUserId(
   return userId || undefined;
 }
 
-<<<<<<< HEAD
 function AppContent(): React.JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>("inventory");
@@ -156,14 +143,6 @@ function AppContent(): React.JSX.Element {
       />
     );
   }
-=======
-export default function App({ accessToken }: AppProps = {}): React.JSX.Element {
-  const sessionUserId: string | undefined = undefined;
-  const userId = resolveNutritionUserId(sessionUserId);
-  const [activeTab, setActiveTab] = useState<
-    "diary" | "stats" | "suggestions" | "profile"
-  >("diary");
->>>>>>> origin/merge-team-main
 
   return (
     <SafeAreaView style={styles.container}>
@@ -232,112 +211,14 @@ export default function App({ accessToken }: AppProps = {}): React.JSX.Element {
 export default function App(): React.JSX.Element {
   return (
     <SafeAreaProvider>
-<<<<<<< HEAD
       <SessionProvider>
         <AppContent />
       </SessionProvider>
-=======
-      {!userId ? (
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.notice}>
-            <Text style={styles.title}>Thiếu thông tin người dùng</Text>
-            <Text style={styles.message}>
-              Không tìm thấy user ID trong phiên đăng nhập hoặc cấu hình Expo.
-              Hãy đăng nhập hoặc đặt EXPO_PUBLIC_USER_ID trong file .env để chạy
-              thử cục bộ.
-            </Text>
-          </View>
-        </SafeAreaView>
-      ) : (
-        <View style={styles.app}>
-          <SafeAreaView edges={["top"]} style={styles.navigation}>
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === "diary" }}
-              onPress={() => setActiveTab("diary")}
-              style={[styles.tab, activeTab === "diary" && styles.activeTab]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "diary" && styles.activeTabText,
-                ]}
-              >
-                Nhật ký
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === "stats" }}
-              onPress={() => setActiveTab("stats")}
-              style={[styles.tab, activeTab === "stats" && styles.activeTab]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "stats" && styles.activeTabText,
-                ]}
-              >
-                Thống kê
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === "suggestions" }}
-              onPress={() => setActiveTab("suggestions")}
-              style={[
-                styles.tab,
-                activeTab === "suggestions" && styles.activeTab,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "suggestions" && styles.activeTabText,
-                ]}
-              >
-                Gợi ý
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="tab"
-              accessibilityState={{ selected: activeTab === "profile" }}
-              onPress={() => setActiveTab("profile")}
-              style={[styles.tab, activeTab === "profile" && styles.activeTab]}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  activeTab === "profile" && styles.activeTabText,
-                ]}
-              >
-                Hồ sơ
-              </Text>
-            </Pressable>
-          </SafeAreaView>
-          <View style={styles.screen}>
-            {activeTab === "diary" ? (
-              <MealDiaryScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-            ) : activeTab === "stats" ? (
-              <NutritionStatsScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-            ) : activeTab === "suggestions" ? (
-              <SuggestionsScreen apiBaseUrl={apiBaseUrl} userId={userId} />
-            ) : (
-              <NutritionProfileScreen
-                apiBaseUrl={apiBaseUrl}
-                accessToken={accessToken}
-              />
-            )}
-          </View>
-        </View>
-      )}
->>>>>>> origin/merge-team-main
     </SafeAreaProvider>
   );
 }
 
 const styles = StyleSheet.create({
-<<<<<<< HEAD
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
   header: {
@@ -415,31 +296,4 @@ const styles = StyleSheet.create({
     color: colors.muted,
     marginTop: spacing.sm,
   },
-=======
-  app: { backgroundColor: "#F4F7F2", flex: 1 },
-  navigation: {
-    backgroundColor: "#FFFFFF",
-    borderBottomColor: "#DCE5DD",
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    paddingHorizontal: 18,
-    paddingTop: 6,
-  },
-  tab: {
-    alignItems: "center",
-    borderBottomColor: "transparent",
-    borderBottomWidth: 3,
-    flex: 1,
-    justifyContent: "center",
-    minHeight: 46,
-  },
-  activeTab: { borderBottomColor: "#28735D" },
-  tabText: { color: "#77847D", fontSize: 14, fontWeight: "700" },
-  activeTabText: { color: "#183D32" },
-  screen: { flex: 1 },
-  safeArea: { backgroundColor: "#F4F7F2", flex: 1, justifyContent: "center" },
-  notice: { padding: 24 },
-  title: { color: "#182A24", fontSize: 22, fontWeight: "700" },
-  message: { color: "#65746C", fontSize: 15, lineHeight: 22, marginTop: 10 },
->>>>>>> origin/merge-team-main
 });

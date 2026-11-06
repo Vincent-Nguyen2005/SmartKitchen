@@ -3,7 +3,6 @@ import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
 import nutritionProfileRouter from "./routes/nutrition-profile.route";
-import nutritionRouter from "./controllers/nutrition.controller";
 
 dotenv.config();
 
@@ -13,7 +12,6 @@ app.use(express.json());
 
 app.use("/health", healthRouter);
 app.use("/api/nutrition-profile", nutritionProfileRouter);
-app.use("/api/nutrition", nutritionRouter);
 
 const PORT = process.env.PORT || 4004;
 app.listen(PORT, () => {

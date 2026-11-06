@@ -14,16 +14,9 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apk add --no-cache openssl
-<<<<<<< HEAD
 COPY --chown=node:node --from=build /app/package*.json ./
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
-=======
-COPY --from=build /app/package*.json ./
-RUN npm install --omit=dev
-COPY --from=build /app/node_modules/.prisma/client-nutrition ./node_modules/.prisma/client-nutrition
-COPY --from=build /app/dist ./dist
->>>>>>> origin/merge-team-main
 EXPOSE 4004
 USER node
 CMD ["npm", "start"]
