@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { PrismaClient, Role } from ".prisma/client-auth";
 import { z } from "zod";
 import { requireInternalKey } from "./internal-key";
+import { isDatabaseUnavailable } from "../database-error";
 
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -28,8 +29,10 @@ export const createAdminUsersRouter = (prisma: PrismaClient): Router => {
         select: { id: true, email: true, fullName: true },
       });
       res.json({ items: users.map((user) => ({ id: user.id, email: user.email, name: user.fullName })) });
-    } catch {
-      fail(res, 500, "INTERNAL_ERROR", "Unable to load user profiles");
+    } catch (error) {
+      console.error("[auth-service] admin user profiles failed", error);
+      const unavailable = isDatabaseUnavailable(error);
+      fail(res, unavailable ? 503 : 500, unavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR", unavailable ? "Auth database is unavailable" : "Unable to load user profiles");
     }
   });
 
@@ -62,8 +65,10 @@ export const createAdminUsersRouter = (prisma: PrismaClient): Router => {
         })),
         total, page, limit,
       });
-    } catch {
-      fail(res, 500, "INTERNAL_ERROR", "Unable to list users");
+    } catch (error) {
+      console.error("[auth-service] admin user list failed", error);
+      const unavailable = isDatabaseUnavailable(error);
+      fail(res, unavailable ? 503 : 500, unavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR", unavailable ? "Auth database is unavailable" : "Unable to list users");
     }
   });
   return router;

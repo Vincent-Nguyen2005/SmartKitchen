@@ -1,6 +1,7 @@
 import { FamilyRole, PrismaClient } from ".prisma/client-family";
 import { NextFunction, Request, Response } from "express";
 import { AuthenticatedRequest } from "../controllers/family.controller";
+import { isDatabaseUnavailable } from "../database-error";
 
 export const requireRole = (prisma: PrismaClient, allowedRoles: FamilyRole[]) =>
   (req: Request, res: Response, next: NextFunction): void => {
@@ -25,6 +26,10 @@ export const requireRole = (prisma: PrismaClient, allowedRoles: FamilyRole[]) =>
       next();
     }).catch((error: unknown) => {
       console.error("[family-service] authorization check failed", error);
+      if (isDatabaseUnavailable(error)) {
+        res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Family database is unavailable" });
+        return;
+      }
       res.status(500).json({ success: false, error: "An unexpected error occurred" });
     });
   };

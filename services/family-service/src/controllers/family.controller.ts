@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { FamilyRole } from ".prisma/client-family";
 import { z } from "zod";
 import { FamilyService, FamilyServiceError } from "../services/family.service";
+import { isDatabaseUnavailable } from "../database-error";
 
 export type AuthenticatedRequest = Request & { authUser: { userId: string; email?: string } };
 
@@ -143,6 +144,10 @@ export class FamilyController {
       return;
     }
     console.error("[family-service] request failed", error);
+    if (isDatabaseUnavailable(error)) {
+      res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Family database is unavailable" });
+      return;
+    }
     res.status(500).json({ success: false, error: "An unexpected error occurred" });
   }
 }

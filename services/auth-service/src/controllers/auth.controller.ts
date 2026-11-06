@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { z } from "zod";
 import { AuthService, AuthServiceError } from "../services/auth.service";
+import { isDatabaseUnavailable } from "../database-error";
 
 const credentialsSchema = z.object({
   email: z.string().trim().email(),
@@ -64,8 +65,7 @@ export class AuthController {
         this.respondAuthServiceError(res, error);
         return;
       }
-      console.error("[auth-service] registration failed", error);
-      res.status(500).json({ error: "Unable to register user" });
+      this.respondUnexpected(res, error, "Unable to register user");
     }
   };
 
@@ -86,8 +86,7 @@ export class AuthController {
         this.respondAuthServiceError(res, error);
         return;
       }
-      console.error("[auth-service] OTP verification failed", error);
-      res.status(500).json({ error: "Unable to verify the account" });
+      this.respondUnexpected(res, error, "Unable to verify the account");
     }
   };
 
@@ -105,8 +104,7 @@ export class AuthController {
         this.respondAuthServiceError(res, error);
         return;
       }
-      console.error("[auth-service] OTP resend failed", error);
-      res.status(500).json({ error: "Unable to resend the verification code" });
+      this.respondUnexpected(res, error, "Unable to resend the verification code");
     }
   };
 
@@ -132,7 +130,7 @@ export class AuthController {
         res.status(403).json({ error: "Verify your email address before signing in" });
         return;
       }
-      res.status(500).json({ error: "Unable to log in" });
+      this.respondUnexpected(res, error, "Unable to log in");
     }
   };
 
@@ -167,7 +165,8 @@ export class AuthController {
         return;
       }
       tokenInfo = parsedToken.data;
-    } catch {
+    } catch (error) {
+      console.error("[auth-service] Google token verification failed", error);
       res.status(502).json({ error: "Unable to verify Google token" });
       return;
     }
@@ -191,8 +190,8 @@ export class AuthController {
     try {
       const result = await this.authService.loginWithGoogle({ email: tokenInfo.email, fullName: tokenInfo.name, avatarUrl: tokenInfo.picture });
       this.sendAuthResult(req, res, result);
-    } catch {
-      res.status(500).json({ error: "Unable to complete Google sign-in" });
+    } catch (error) {
+      this.respondUnexpected(res, error, "Unable to complete Google sign-in");
     }
   };
 
@@ -202,8 +201,8 @@ export class AuthController {
       await this.authService.logout(refreshToken, this.getBearerToken(req));
       this.clearRefreshCookie(res);
       res.status(204).send();
-    } catch {
-      res.status(500).json({ error: "Unable to log out" });
+    } catch (error) {
+      this.respondUnexpected(res, error, "Unable to log out");
     }
   };
 
@@ -232,7 +231,7 @@ export class AuthController {
         res.status(403).json({ error: "Verify your email address before signing in" });
         return;
       }
-      res.status(500).json({ error: "Unable to refresh session" });
+      this.respondUnexpected(res, error, "Unable to refresh session");
     }
   };
 
@@ -243,16 +242,22 @@ export class AuthController {
       return;
     }
 
+    let payload;
     try {
-      const payload = this.authService.verifyAccessToken(token);
+      payload = this.authService.verifyAccessToken(token);
+    } catch {
+      res.status(401).json({ error: "Invalid or expired access token" });
+      return;
+    }
+    try {
       const user = await this.authService.getUser(payload.sub);
       if (!user) {
         res.status(401).json({ error: "User not found" });
         return;
       }
       res.json({ user });
-    } catch {
-      res.status(401).json({ error: "Invalid or expired access token" });
+    } catch (error) {
+      this.respondUnexpected(res, error, "Unable to load user");
     }
   };
 
@@ -299,6 +304,15 @@ export class AuthController {
 
   private isPrismaUniqueError(error: unknown): boolean {
     return typeof error === "object" && error !== null && "code" in error && error.code === "P2002";
+  }
+
+  private respondUnexpected(res: Response, error: unknown, message: string): void {
+    console.error("[auth-service] request failed", error);
+    if (isDatabaseUnavailable(error)) {
+      res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Auth database is unavailable" });
+      return;
+    }
+    res.status(500).json({ error: message });
   }
 
   private respondAuthServiceError(res: Response, error: AuthServiceError): void {
