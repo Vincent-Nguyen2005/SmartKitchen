@@ -2,7 +2,7 @@
 
 `services/admin-service`, port 4011, database `admin_db` (local port 5411). Owner: Huy.
 
-Last verified: 2026-11-06, commit `2681574`.
+Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `ac3f750`).
 
 Health monitoring of all services (#58), account reports (#59), master ingredient catalog (#48) and recommendation weights (#49), with an audit log.
 
@@ -79,7 +79,7 @@ stateDiagram-v2
 
 ## Errors
 
-`{ error, message, details? }`, never a stack trace: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`, `409 CONFLICT` / `INVALID_TRANSITION`, `429 RATE_LIMITED`, `503 DATABASE_UNAVAILABLE` (database unreachable or table missing: P1001, P1002, P2021), `500 INTERNAL_ERROR`.
+`{ error, message, details? }`, never a stack trace: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`, `403 FORBIDDEN`, `404 NOT_FOUND`, `409 CONFLICT` / `INVALID_TRANSITION`, `429 RATE_LIMITED`, `503 DATABASE_UNAVAILABLE` (database unreachable, connection dropped or timed out, pool exhausted, or table missing: Prisma P1001, P1002, P1008, P1017, P2021, P2024 and initialization errors; the service keeps running and recovers when the database is back), `500 INTERNAL_ERROR`.
 
 ## Environment
 
@@ -103,4 +103,4 @@ Tables: `master_ingredients`, `recommendation_weights`, `recommendation_weight_h
 
 ## Tests
 
-`pnpm --filter admin-service test` (131 tests, 98.7 % line coverage at the last run).
+`pnpm --filter admin-service test` (142 tests, 98 % line coverage at the last run).

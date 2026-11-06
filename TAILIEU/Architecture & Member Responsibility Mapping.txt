@@ -175,7 +175,7 @@ Huy - extra items, added after the original plan ("PR #n" is a GitHub pull reque
 (SCRUM-261) Task: Align react-native-safe-area-context with Expo SDK 58 - EPIC-13 [Done] (PR #19)
 (SCRUM-254) Task: Fix nutrition-service CI: dedicated Prisma client, pin Prisma 5.22.0 - EPIC-01 [Done]
 (SCRUM-264) Task: Admin card grids flicker on web (scrollbar layout loop) - EPIC-12 [Done]
-(SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress]
+(SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress] (503 for P1001/P1002/P1008/P1017/P2021/P2024, gateway startup: branch fix/sprint-4-followups-v2)
 (SCRUM-265) Feature: Unify mobile UI with the shared theme (colors, typography, icons) - EPIC-13 [In Progress]
 (SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [To Do]
 (SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [To Do]

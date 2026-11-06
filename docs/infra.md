@@ -1,6 +1,6 @@
 # Infrastructure
 
-Owner: Huy. Last verified: 2026-11-06, commit `2681574`.
+Owner: Huy. Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `ac3f750`).
 
 ## Architecture
 
@@ -77,8 +77,10 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 ### Startup order and healthchecks
 
 - Every service and the gateway have a healthcheck on `http://127.0.0.1:<port>/health`. Use `127.0.0.1`, not `localhost`, which can resolve to IPv6 `::1` in Alpine.
-- Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service.
-- The gateway `depends_on` all 11 services with `service_healthy`, so it starts last, and one unhealthy service stops it from starting. To start it anyway: `docker compose -p smartkitchen up -d --no-deps gateway`. Changing this to `service_started` is on the unmerged branch `fix/sprint-4-followups`.
+- Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service; admin-service also waits for auth-service and family-service.
+- The gateway has no `depends_on`: it starts on its own, whatever the state of the backend. A service that is stopped, unhealthy or not started yet answers `503 SERVICE_UNAVAILABLE` on its routes, and `/api/health` reports `DEGRADED`. Right after a fresh `up` this is normal until all services are up; use `up -d --wait` to wait for them.
+- `docker compose up gateway` now starts only the gateway. Use plain `up`, or name the services you want.
+- If family-service never becomes healthy on a fresh `up`, compose exits with `dependency failed to start`. The gateway and the services that don't depend on it keep running; inventory-service, shopping-list-service and admin-service stay `created`. In that state `/api/health` can also list healthy services as `DOWN` (seen with payment-service and notification-service), so check `docker compose ps` and the service's own route. Fix that service and run `up` again.
 
 ## Scripts and CI
 
@@ -86,7 +88,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 |---|---|
 | `pnpm lint` / `pnpm build` / `pnpm test` | Turbo across all workspaces |
 | `pnpm test:coverage` | Vitest coverage (v8) for gateway, notification, admin |
-| `pnpm check:infra` | Repo consistency: ports, compose, Dockerfiles, env examples, BOM, Prisma rules. `FAIL` for infra-owned problems, `WARN` for other owners' files |
+| `pnpm check:infra` | Repo consistency: ports, compose, Dockerfiles, env examples, BOM, Prisma rules. Also fails on a `localhost` healthcheck or any gateway `depends_on`. `FAIL` for infra-owned problems, `WARN` for other owners' files |
 | `pnpm test:health` / `test:routing` | Live health and routing checks |
 | `pnpm test:e2e-smoke` (`:bash`) | E2E smoke through the gateway |
 | `pnpm test:prod-smoke` (`:bash`) | Smoke against a deployed gateway (`BASE_URL`) |
@@ -99,12 +101,12 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 |---|---|---|
 | `port is already allocated` / `EADDRINUSE` | Another process or an old stack uses 40xx/54xx | `docker compose -p smartkitchen down`; find the process with `netstat -ano \| findstr :4000` (or `lsof -i :4000`) and stop it if it is yours |
 | `503 DATABASE_UNAVAILABLE`, logs show `P2021` (table does not exist) | Migrations not applied | Rebuild/restart the service (images migrate on start) or run `pnpm --filter <service> prisma:deploy` with its `DATABASE_URL` |
-| `503 DATABASE_UNAVAILABLE`, `P1001` | Database container down | `docker compose -p smartkitchen up -d <name>-db` |
+| `503 DATABASE_UNAVAILABLE`, logs show `P1001` / `P1017` / `P2024` | Database container down or restarting (`P1017`: connections in the pool were closed) | `docker compose -p smartkitchen up -d <name>-db`; the service keeps running and recovers by itself |
 | `429 RATE_LIMITED` during tests | Gateway limiter (100/min, auth 20/min) | Wait `retryAfterSeconds`, or raise `RATE_LIMIT_MAX` locally |
 | `401 UNAUTHORIZED` from the gateway with a valid-looking token | Gateway and auth-service use different `JWT_SECRET` | Set the same value in `.env` and recreate both containers |
 | E2E smoke: authenticated checks fail with `401` | A `JWT_SECRET` in your shell (it wins over `.env`) differs from the one the stack runs with | Unset it (`Remove-Item Env:JWT_SECRET` / `unset JWT_SECRET`) so the script reads `.env`, or recreate the stack from `.env` |
 | `bash: not found` / WSL error when running `pnpm test:*:bash` from PowerShell | `bash` resolves to WSL, which is not installed | Run the `.sh` scripts from Git Bash, or use the PowerShell variants |
-| Gateway does not start: `dependency failed to start` | The gateway needs all 11 services healthy (see Startup order and healthchecks) | Fix or restart the unhealthy service (`docker compose -p smartkitchen ps`), or start the gateway with `--no-deps` |
+| `docker compose up` exits with `dependency failed to start: ... is unhealthy`, some services stay `created` | A service others wait for is unhealthy (see Startup order and healthchecks). The gateway still runs, and `/api/health` reports `DEGRADED` | `docker compose -p smartkitchen ps`, check that service's logs, fix it and run `up` again |
 | Metro: `Unable to resolve "invariant"` when bundling the mobile app | `metro.config.js` disabled hierarchical lookup under pnpm's isolated layout | Fixed on main (PR #13): update your branch and run `pnpm install` |
 | Prisma client errors after switching branches | Stale generated client | `pnpm turbo run build --filter=<service>` (generates the client first) |
 
@@ -127,6 +129,6 @@ Update `INTERNAL_API_KEY` (Render env group `smartkitchen-internal`) for notific
 - [ ] Scripts: `prisma:generate`, `prisma:deploy`, `prisma:migrate`. Do **not** put `prisma generate` inside `build` (turbo runs `prisma:generate` before `build`).
 - [ ] Commit migrations; schema changes only through new migrations. No `migrate dev` / `db push` outside development.
 - [ ] Dockerfile: `node:20-alpine`, multi-stage, `NODE_ENV=production`, `USER node`, `CMD npx --no-install prisma migrate deploy && npm start`.
-- [ ] Compose: its own database with a healthcheck; the service `depends_on` it with `service_healthy`; a healthcheck on `/health` (prefer `127.0.0.1` over `localhost`, which can resolve to IPv6 in Alpine).
+- [ ] Compose: its own database with a `pg_isready` healthcheck; the service `depends_on` it with `service_healthy`; a service healthcheck on `http://127.0.0.1:<port>/health` (never `localhost`).
 - [ ] `.env.example` with placeholders only; fill in `prisma_schema` in the `ci.yml` matrix.
 - [ ] `pnpm check:infra` passes.

@@ -2,7 +2,7 @@
 
 `services/notification-service`, port 4010, database `notification_db` (local port 5410). Owner: Huy.
 
-Last verified: 2026-11-04, commit `d792648`.
+Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `ac3f750`).
 
 Stores in-app notifications, device push tokens, notification preferences, partner supermarkets and promotions; matches promotions to users and dispatches them (mock or Expo push).
 
@@ -61,7 +61,7 @@ With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) mat
 | 401 | `UNAUTHORIZED` | Missing `x-user-id`, or wrong / missing `x-api-key` |
 | 403 | `FORBIDDEN` | `userId` names another user, or dispatch without the `ADMIN` role |
 | 404 | `NOT_FOUND` | Unknown partner / record, or a record owned by another user |
-| 503 | `DATABASE_UNAVAILABLE` | Database down or table missing (P1001/P1002/P2021) |
+| 503 | `DATABASE_UNAVAILABLE` | Database unreachable, connection dropped or timed out, pool exhausted, or table missing (Prisma P1001, P1002, P1008, P1017, P2021, P2024, initialization errors). The service keeps running and recovers when the database is back |
 | 500 | `INTERNAL_ERROR` | Anything else |
 
 ## Environment
@@ -84,4 +84,4 @@ Tables: `notifications`, `device_tokens`, `notification_preferences`, `partner_s
 
 ## Tests
 
-`pnpm --filter notification-service test` (79 tests, 97.97 % line coverage at the last run), including IDOR attempts (user A on user B's inbox, preferences and tokens), missing identity and the dispatch role check.
+`pnpm --filter notification-service test` (89 tests, 97.99 % line coverage at the last run), including IDOR attempts (user A on user B's inbox, preferences and tokens), missing identity and the dispatch role check.
