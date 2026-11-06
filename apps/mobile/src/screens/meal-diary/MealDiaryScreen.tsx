@@ -737,21 +737,12 @@ const styles = StyleSheet.create({
   },
   headingCopy: { flex: 1, paddingRight: spacing.sm },
   eyebrow: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primary,
     fontWeight: "700",
   },
   title: {
     ...textStyles.heading,
-=======
-    color: colors.primary,
-    ...textStyles.captionBold,
-  },
-  title: {
-    color: colors.text,
-    ...textStyles.headlineBold,
->>>>>>> origin/merge-team-main
     marginTop: spacing.xs,
   },
   addButton: {
@@ -765,14 +756,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   addButtonText: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primaryText,
     fontWeight: "700",
-=======
-    color: colors.primaryText,
-    ...textStyles.captionBold,
->>>>>>> origin/merge-team-main
   },
   pressed: { opacity: 0.82 },
   content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
@@ -793,7 +779,6 @@ const styles = StyleSheet.create({
   dateCopy: { alignItems: "center", flex: 1 },
   dateLabelRow: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   dateLabel: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.muted,
     fontWeight: "700",
@@ -801,14 +786,6 @@ const styles = StyleSheet.create({
   dateValue: {
     ...textStyles.labelSmall,
     color: colors.text,
-=======
-    color: colors.muted,
-    ...textStyles.captionSemibold,
-  },
-  dateValue: {
-    color: colors.text,
-    ...textStyles.smallBold,
->>>>>>> origin/merge-team-main
     marginTop: spacing.xs,
   },
   summaryPanel: {
@@ -822,7 +799,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   panelEyebrow: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primarySoft,
     fontWeight: "700",
@@ -839,23 +815,6 @@ const styles = StyleSheet.create({
   goalText: {
     ...textStyles.caption,
     color: colors.primarySoft,
-=======
-    color: colors.primarySoft,
-    ...textStyles.captionBold,
-  },
-  calorieValue: {
-    color: colors.surface,
-    ...textStyles.headlineBold,
-    marginTop: spacing.xs,
-  },
-  calorieUnit: {
-    color: colors.primarySoft,
-    ...textStyles.smallSemibold,
-  },
-  goalText: {
-    color: colors.primarySoft,
-    ...textStyles.caption,
->>>>>>> origin/merge-team-main
     marginBottom: spacing.xs,
   },
   calorieTrack: {
@@ -873,7 +832,6 @@ const styles = StyleSheet.create({
   macroRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   macroItem: { flex: 1, minWidth: 0 },
   macroLabel: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primarySoft,
     fontWeight: "700",
@@ -888,19 +846,6 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.border,
     fontWeight: "500",
-=======
-    color: colors.primarySoft,
-    ...textStyles.captionSemibold,
-  },
-  macroValue: {
-    color: colors.surface,
-    ...textStyles.captionBold,
-    marginTop: spacing.xs,
-  },
-  macroGoal: {
-    color: colors.border,
-    ...textStyles.captionMedium,
->>>>>>> origin/merge-team-main
   },
   macroTrack: {
     backgroundColor: colors.muted,
@@ -911,13 +856,8 @@ const styles = StyleSheet.create({
   },
   macroFill: { borderRadius: radius.pill, height: "100%" },
   goalNote: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.border,
-=======
-    color: colors.border,
-    ...textStyles.caption,
->>>>>>> origin/merge-team-main
     marginTop: spacing.md,
   },
   mealHeading: {
@@ -928,17 +868,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.xl,
   },
   sectionTitle: {
-<<<<<<< HEAD
     ...textStyles.heading,
     color: colors.text,
   },
   mealCount: { ...textStyles.caption, color: colors.muted },
-=======
-    color: colors.text,
-    ...textStyles.titleBold,
-  },
-  mealCount: { color: colors.muted, ...textStyles.caption },
->>>>>>> origin/merge-team-main
   loader: { marginTop: spacing.xl * 2 },
   emptyState: {
     alignItems: "center",
@@ -951,7 +884,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl,
   },
   emptyTitle: {
-<<<<<<< HEAD
     ...textStyles.subheading,
     color: colors.text,
     marginTop: spacing.sm,
@@ -959,15 +891,6 @@ const styles = StyleSheet.create({
   emptyCopy: {
     ...textStyles.caption,
     color: colors.muted,
-=======
-    color: colors.text,
-    ...textStyles.subtitleBold,
-    marginTop: spacing.sm,
-  },
-  emptyCopy: {
-    color: colors.muted,
-    ...textStyles.caption,
->>>>>>> origin/merge-team-main
     marginTop: spacing.xs,
     textAlign: "center",
   },
@@ -981,14 +904,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   retryText: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primary,
     fontWeight: "700",
-=======
-    color: colors.primary,
-    ...textStyles.captionBold,
->>>>>>> origin/merge-team-main
   },
   mealSection: { marginTop: spacing.lg },
   sectionHeading: {
@@ -998,13 +916,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   sectionName: {
-<<<<<<< HEAD
     ...textStyles.label,
     color: colors.text,
-=======
-    color: colors.text,
-    ...textStyles.bodyBold,
->>>>>>> origin/merge-team-main
   },
   sectionAdd: {
     alignItems: "center",
@@ -1014,7 +927,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
   },
   sectionAddText: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primary,
     fontWeight: "700",
@@ -1022,14 +934,6 @@ const styles = StyleSheet.create({
   sectionEmpty: {
     ...textStyles.caption,
     color: colors.muted,
-=======
-    color: colors.primary,
-    ...textStyles.captionBold,
-  },
-  sectionEmpty: {
-    color: colors.muted,
-    ...textStyles.caption,
->>>>>>> origin/merge-team-main
     paddingVertical: spacing.sm,
   },
   mealEntry: {
@@ -1048,14 +952,9 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
   },
   mealTime: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.muted,
     fontWeight: "700",
-=======
-    color: colors.muted,
-    ...textStyles.captionSemibold,
->>>>>>> origin/merge-team-main
   },
   sourceBadge: {
     borderRadius: radius.sm,
@@ -1065,11 +964,7 @@ const styles = StyleSheet.create({
   source_HOME: { backgroundColor: colors.successSoft },
   source_EATING_OUT: { backgroundColor: colors.warningSoft },
   source_DELIVERY: { backgroundColor: colors.dangerSoft },
-<<<<<<< HEAD
   sourceText: { ...textStyles.caption, fontWeight: "700" },
-=======
-  sourceText: { ...textStyles.captionBold },
->>>>>>> origin/merge-team-main
   sourceText_HOME: { color: colors.success },
   sourceText_EATING_OUT: { color: colors.warning },
   sourceText_DELIVERY: { color: colors.danger },
@@ -1084,7 +979,6 @@ const styles = StyleSheet.create({
   },
   foodCopy: { flex: 1, paddingRight: spacing.md },
   foodName: {
-<<<<<<< HEAD
     ...textStyles.labelSmall,
     color: colors.text,
   },
@@ -1097,19 +991,6 @@ const styles = StyleSheet.create({
     ...textStyles.caption,
     color: colors.text,
     fontWeight: "700",
-=======
-    color: colors.text,
-    ...textStyles.smallSemibold,
-  },
-  foodDetails: {
-    color: colors.muted,
-    ...textStyles.caption,
-    marginTop: spacing.xs,
-  },
-  foodCalories: {
-    color: colors.text,
-    ...textStyles.captionBold,
->>>>>>> origin/merge-team-main
   },
   modalScrim: {
     backgroundColor: colors.overlay,
@@ -1132,7 +1013,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   modalEyebrow: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.primary,
     fontWeight: "700",
@@ -1140,14 +1020,6 @@ const styles = StyleSheet.create({
   modalTitle: {
     ...textStyles.heading,
     color: colors.text,
-=======
-    color: colors.primary,
-    ...textStyles.captionBold,
-  },
-  modalTitle: {
-    color: colors.text,
-    ...textStyles.headlineBold,
->>>>>>> origin/merge-team-main
     marginTop: spacing.xs,
   },
   closeButton: {
@@ -1156,14 +1028,9 @@ const styles = StyleSheet.create({
   },
   formContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
   fieldLabel: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.text,
     fontWeight: "700",
-=======
-    color: colors.text,
-    ...textStyles.captionBold,
->>>>>>> origin/merge-team-main
     marginBottom: spacing.sm,
     marginTop: spacing.sm,
   },
@@ -1172,13 +1039,8 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: radius.sm,
     borderWidth: 1,
-<<<<<<< HEAD
     ...textStyles.body,
     color: colors.text,
-=======
-    color: colors.text,
-    ...textStyles.body,
->>>>>>> origin/merge-team-main
     minHeight: touchTarget + spacing.xs,
     paddingHorizontal: spacing.md,
   },
@@ -1202,14 +1064,9 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   choiceText: {
-<<<<<<< HEAD
     ...textStyles.caption,
     color: colors.muted,
     fontWeight: "700",
-=======
-    color: colors.muted,
-    ...textStyles.captionSemibold,
->>>>>>> origin/merge-team-main
   },
   choiceTextSelected: { color: colors.primary },
   numberInput: {
@@ -1223,7 +1080,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   numberText: {
-<<<<<<< HEAD
     flex: 1,
     ...textStyles.bodySmall,
     color: colors.text,
@@ -1238,21 +1094,6 @@ const styles = StyleSheet.create({
   formError: {
     ...textStyles.caption,
     color: colors.danger,
-=======
-    color: colors.text,
-    flex: 1,
-    ...textStyles.small,
-    paddingVertical: spacing.sm,
-  },
-  numberUnit: {
-    color: colors.muted,
-    ...textStyles.captionSemibold,
-  },
-  macroInputs: { flexDirection: "row", gap: spacing.sm },
-  formError: {
-    color: colors.danger,
-    ...textStyles.caption,
->>>>>>> origin/merge-team-main
     marginTop: spacing.md,
   },
   saveButton: {
@@ -1264,13 +1105,8 @@ const styles = StyleSheet.create({
     minHeight: touchTarget + spacing.sm,
   },
   saveButtonText: {
-<<<<<<< HEAD
     ...textStyles.labelSmall,
     color: colors.primaryText,
-=======
-    color: colors.primaryText,
-    ...textStyles.smallBold,
->>>>>>> origin/merge-team-main
   },
   disabled: { opacity: 0.58 },
 });

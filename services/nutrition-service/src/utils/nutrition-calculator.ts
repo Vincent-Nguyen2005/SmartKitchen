@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import type { ActivityLevel, Gender } from ".prisma/client-nutrition";
-=======
-import type { ActivityLevel, Gender } from "../../node_modules/.prisma/client-nutrition";
->>>>>>> origin/merge-team-main
 
 export type NutritionMeasurements = {
   height: number;

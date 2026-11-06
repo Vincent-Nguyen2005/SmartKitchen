@@ -22,19 +22,6 @@ enum ActivityLevel {
   VERY_ACTIVE
 }
 
-enum MealType {
-  BREAKFAST
-  LUNCH
-  DINNER
-  SNACK
-}
-
-enum MealSource {
-  HOME
-  EATING_OUT
-  DELIVERY
-}
-
 model NutritionProfile {
   id            String        @id @default(uuid()) @db.Uuid
   // Auth owns users in a separate database; uniqueness provides the service-level 1:1 mapping.
@@ -46,62 +33,4 @@ model NutritionProfile {
   activityLevel ActivityLevel
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-}
-
-model Allergy {
-  id          String        @id @default(uuid()) @db.Uuid
-  name        String        @unique
-  description String?
-  createdAt   DateTime      @default(now())
-  users       UserAllergy[]
-}
-
-model HealthCondition {
-  id          String                     @id @default(uuid()) @db.Uuid
-  name        String                     @unique
-  description String?
-  createdAt   DateTime                   @default(now())
-  users       UserHealthCondition[]
-}
-
-model UserAllergy {
-  userId    String  @db.Uuid
-  allergyId String  @db.Uuid
-  allergy   Allergy @relation(fields: [allergyId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, allergyId])
-}
-
-model UserHealthCondition {
-  userId      String         @db.Uuid
-  conditionId String         @db.Uuid
-  condition   HealthCondition @relation(fields: [conditionId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, conditionId])
-}
-
-model MealLog {
-  id        String         @id @default(uuid()) @db.Uuid
-  userId    String         @db.Uuid
-  mealType  MealType
-  source    MealSource
-  loggedAt  DateTime       @default(now())
-  items     MealLogItem[]
-  createdAt DateTime       @default(now())
-
-  @@index([userId, loggedAt])
-}
-
-model MealLogItem {
-  id        String   @id @default(uuid()) @db.Uuid
-  mealLogId String   @db.Uuid
-  mealLog   MealLog  @relation(fields: [mealLogId], references: [id], onDelete: Cascade)
-  foodName  String
-  calories  Float
-  protein   Float?
-  carbs     Float?
-  fat       Float?
-  quantity  Int      @default(1)
-
-  @@index([mealLogId])
 }
