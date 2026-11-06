@@ -77,10 +77,11 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 ### Startup order and healthchecks
 
 - Every service and the gateway have a healthcheck on `http://127.0.0.1:<port>/health`. Use `127.0.0.1`, not `localhost`, which can resolve to IPv6 `::1` in Alpine.
-- Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service; admin-service also waits for auth-service and family-service.
+- Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service. admin-service waits only for its database, so the admin dashboard stays available during an outage.
 - The gateway has no `depends_on`: it starts on its own, whatever the state of the backend. A service that is stopped, unhealthy or not started yet answers `503 SERVICE_UNAVAILABLE` on its routes, and `/api/health` reports `DEGRADED`. Right after a fresh `up` this is normal until all services are up; use `up -d --wait` to wait for them.
 - `docker compose up gateway` now starts only the gateway. Use plain `up`, or name the services you want.
-- If family-service never becomes healthy on a fresh `up`, compose exits with `dependency failed to start`. The gateway and the services that don't depend on it keep running; inventory-service, shopping-list-service and admin-service stay `created`. In that state `/api/health` can also list healthy services as `DOWN` (seen with payment-service and notification-service), so check `docker compose ps` and the service's own route. Fix that service and run `up` again.
+- If family-service never becomes healthy on a fresh `up`, compose exits with `dependency failed to start`. The gateway and the services that don't depend on it keep running; inventory-service and shopping-list-service stay `created`. Fix that service and run `up` again.
+- The gateway image sets `UV_THREADPOOL_SIZE=32`. `dns.lookup` runs on that pool and libuv gives DNS at most half of it. With the default 4, two lookups for missing containers (about 2.3 s each) stall all others past the 2 s health check, so healthy services are reported `DOWN`. Keep half the pool at least as large as the number of gateway routes.
 
 ## Scripts and CI
 
