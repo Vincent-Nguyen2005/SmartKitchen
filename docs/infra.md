@@ -1,6 +1,6 @@
 # Infrastructure
 
-Owner: Huy. Last verified: 2026-11-06, commit `2681574`.
+Owner: Huy. Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `67c16a9`).
 
 ## Architecture
 
@@ -78,7 +78,8 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 
 - Every service and the gateway have a healthcheck on `http://127.0.0.1:<port>/health`. Use `127.0.0.1`, not `localhost`, which can resolve to IPv6 `::1` in Alpine.
 - Each service waits for its own database (`service_healthy`). inventory-service also waits for family-service; shopping-list-service also waits for family-service, inventory-service and menu-service.
-- The gateway `depends_on` all 11 services with `service_healthy`, so it starts last, and one unhealthy service stops it from starting. To start it anyway: `docker compose -p smartkitchen up -d --no-deps gateway`. Changing this to `service_started` is on the unmerged branch `fix/sprint-4-followups`.
+- The gateway `depends_on` all 11 services with `service_started`: it waits until their containers have started, not until they are healthy. If a service is stopped or unhealthy the gateway still runs, answers `503 SERVICE_UNAVAILABLE` for that service's routes, and `/api/health` reports `DEGRADED`.
+- Exception on a fresh `up`: inventory-service and shopping-list-service wait for the services above with `service_healthy`. If family-service never becomes healthy, compose exits with `dependency failed to start`, and those two and the gateway stay `created` (the same chain applies to inventory-service and menu-service). Fix that service and run `up` again.
 
 ## Scripts and CI
 
@@ -86,7 +87,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 |---|---|
 | `pnpm lint` / `pnpm build` / `pnpm test` | Turbo across all workspaces |
 | `pnpm test:coverage` | Vitest coverage (v8) for gateway, notification, admin |
-| `pnpm check:infra` | Repo consistency: ports, compose, Dockerfiles, env examples, BOM, Prisma rules. `FAIL` for infra-owned problems, `WARN` for other owners' files |
+| `pnpm check:infra` | Repo consistency: ports, compose, Dockerfiles, env examples, BOM, Prisma rules. Also fails on a `localhost` healthcheck or a gateway `depends_on` with `service_healthy`. `FAIL` for infra-owned problems, `WARN` for other owners' files |
 | `pnpm test:health` / `test:routing` | Live health and routing checks |
 | `pnpm test:e2e-smoke` (`:bash`) | E2E smoke through the gateway |
 | `pnpm test:prod-smoke` (`:bash`) | Smoke against a deployed gateway (`BASE_URL`) |
@@ -104,7 +105,7 @@ Notification and admin images run `prisma migrate deploy` on start. Seed admin d
 | `401 UNAUTHORIZED` from the gateway with a valid-looking token | Gateway and auth-service use different `JWT_SECRET` | Set the same value in `.env` and recreate both containers |
 | E2E smoke: authenticated checks fail with `401` | A `JWT_SECRET` in your shell (it wins over `.env`) differs from the one the stack runs with | Unset it (`Remove-Item Env:JWT_SECRET` / `unset JWT_SECRET`) so the script reads `.env`, or recreate the stack from `.env` |
 | `bash: not found` / WSL error when running `pnpm test:*:bash` from PowerShell | `bash` resolves to WSL, which is not installed | Run the `.sh` scripts from Git Bash, or use the PowerShell variants |
-| Gateway does not start: `dependency failed to start` | The gateway needs all 11 services healthy (see Startup order and healthchecks) | Fix or restart the unhealthy service (`docker compose -p smartkitchen ps`), or start the gateway with `--no-deps` |
+| `docker compose up` fails: `dependency failed to start: ... is unhealthy`, gateway stays `created` | family-service, inventory-service or menu-service is unhealthy; other services wait for them, and the gateway waits for those containers to start (see Startup order and healthchecks) | `docker compose -p smartkitchen ps`, check that service's logs, fix it and run `up` again |
 | Metro: `Unable to resolve "invariant"` when bundling the mobile app | `metro.config.js` disabled hierarchical lookup under pnpm's isolated layout | Fixed on main (PR #13): update your branch and run `pnpm install` |
 | Prisma client errors after switching branches | Stale generated client | `pnpm turbo run build --filter=<service>` (generates the client first) |
 

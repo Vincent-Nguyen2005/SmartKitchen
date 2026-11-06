@@ -165,14 +165,12 @@ Task: Compose healthchecks on 127.0.0.1 (EPIC-01, PR #15, by Khanh)
 Task: Smoke tests read JWT_SECRET from the root .env (EPIC-01, PR #18)
 Task: Metro fix for pnpm isolated dependencies (EPIC-13, PR #13)
 Task: react-native-safe-area-context upgrade for Expo SDK 58 (EPIC-13, PR #19)
+Task: DB-unavailable 503 mapping including dropped connections, P1001/P1002/P1008/P1017/P2021/P2024 (EPIC-11/12, branch fix/sprint-4-followups-v2)
+Task: Compose gateway startup, service_started instead of service_healthy (EPIC-01, branch fix/sprint-4-followups-v2)
 
 Huy - pending (team decision):
 Task: Execute production deployment (Render); configuration is in deploy/ (EPIC-01, #70)
 Task: Role-based navigation for ADMIN (EPIC-13)
-
-Huy - pending, on branch fix/sprint-4-followups, not merged to main:
-Task: DB-unavailable 503 mapping for dropped connections, P1008/P1017/P2024; P1001/P1002/P2021 are already on main (EPIC-11/12)
-Task: Compose gateway startup, service_started instead of service_healthy (EPIC-01)
 
 Kazan:
 [#54] Task: Unit tests - Auth & Family Services (EPIC-02/03)

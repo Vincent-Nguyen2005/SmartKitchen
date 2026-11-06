@@ -2,7 +2,7 @@
 
 `services/admin-service`, port 4011, database `admin_db` (local port 5411). Owner: Huy.
 
-Last verified: 2026-11-06, commit `2681574`.
+Last verified: 2026-11-06, branch `fix/sprint-4-followups-v2` (on top of main `67c16a9`).
 
 Health monitoring of all services (#58), account reports (#59), master ingredient catalog (#48) and recommendation weights (#49), with an audit log.
 
@@ -103,4 +103,4 @@ Tables: `master_ingredients`, `recommendation_weights`, `recommendation_weight_h
 
 ## Tests
 
-`pnpm --filter admin-service test` (131 tests, 98.7 % line coverage at the last run).
+`pnpm --filter admin-service test` (141 tests, 98.71 % line coverage at the last run).
