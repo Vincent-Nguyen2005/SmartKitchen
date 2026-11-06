@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { PrismaClient } from ".prisma/client-family";
 import { z } from "zod";
 import { requireInternalKey } from "./internal-key";
+import { isDatabaseUnavailable } from "../database-error";
 
 const listQuery = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -35,7 +36,8 @@ const lookupProfiles = async (ids: string[]): Promise<Map<string, Profile>> => {
     if (!response.ok) throw new Error(`Profile service returned ${response.status}`);
     const parsed = profileResult.parse(await response.json());
     return new Map(parsed.items.map((profile) => [profile.id, profile]));
-  } catch {
+  } catch (error) {
+    console.error("[family-service] auth profile lookup failed", error);
     throw new ProfileLookupError("Unable to load user profiles");
   }
 };
@@ -70,7 +72,10 @@ export const createAdminFamiliesRouter = (prisma: PrismaClient): Router => {
       });
     } catch (error) {
       const upstream = error instanceof ProfileLookupError;
-      fail(res, upstream ? 502 : 500, upstream ? "PROFILE_LOOKUP_FAILED" : "INTERNAL_ERROR", upstream ? "Unable to load owner profiles" : "Unable to list families");
+      if (!upstream) console.error("[family-service] admin family list failed", error);
+      const unavailable = upstream || isDatabaseUnavailable(error);
+      fail(res, unavailable ? 503 : 500, unavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
+        upstream ? "Unable to load owner profiles" : unavailable ? "Family database is unavailable" : "Unable to list families");
     }
   });
 
@@ -99,7 +104,10 @@ export const createAdminFamiliesRouter = (prisma: PrismaClient): Router => {
       });
     } catch (error) {
       const upstream = error instanceof ProfileLookupError;
-      fail(res, upstream ? 502 : 500, upstream ? "PROFILE_LOOKUP_FAILED" : "INTERNAL_ERROR", upstream ? "Unable to load member profiles" : "Unable to load family");
+      if (!upstream) console.error("[family-service] admin family detail failed", error);
+      const unavailable = upstream || isDatabaseUnavailable(error);
+      fail(res, unavailable ? 503 : 500, unavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
+        upstream ? "Unable to load member profiles" : unavailable ? "Family database is unavailable" : "Unable to load family");
     }
   });
   return router;

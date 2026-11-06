@@ -12,6 +12,7 @@ test("admin family APIs check role and return owner/member profiles", async () =
   const memberId = "44444444-4444-4444-4444-444444444444";
   const createdAt = new Date("2026-01-01");
   let listArgs: Record<string, unknown> | undefined;
+  let databaseDown = false;
   const prisma = {
     familyGroup: {
       findMany: async (args: Record<string, unknown>) => {
@@ -19,11 +20,17 @@ test("admin family APIs check role and return owner/member profiles", async () =
         return [{ id: familyId, name: "Home", ownerId, createdAt, _count: { members: 2 } }];
       },
       count: async () => 1,
-      findUnique: async () => ({ id: familyId, name: "Home", ownerId, createdAt,
+      findUnique: async () => {
+        if (databaseDown) throw Object.assign(new Error("Database unavailable"), { code: "P1001" });
+        return { id: familyId, name: "Home", ownerId, createdAt,
         members: [{ id: "membership-1", userId: ownerId, role: "OWNER" },
-          { id: "membership-2", userId: memberId, role: "MEMBER" }] }),
+          { id: "membership-2", userId: memberId, role: "MEMBER" }] };
+      },
     },
-    $transaction: async (operations: Promise<unknown>[]) => Promise.all(operations),
+    $transaction: async (operations: Promise<unknown>[]) => {
+      if (databaseDown) throw Object.assign(new Error("Database unavailable"), { code: "P1001" });
+      return Promise.all(operations);
+    },
   } as unknown as PrismaClient;
   let forwardedKey: string | undefined;
   let profileStatus = 200;
@@ -57,7 +64,9 @@ test("admin family APIs check role and return owner/member profiles", async () =
   const headers = { "x-api-key": process.env.INTERNAL_API_KEY };
   try {
     assert.equal((await fetch(base, { headers: { "x-api-key": "invalid" } })).status, 403);
+    assert.equal((await fetch(base)).status, 403);
     assert.equal((await fetch(`${base}?limit=101`, { headers })).status, 400);
+    assert.equal((await fetch(`${base}/not-a-uuid`, { headers })).status, 400);
     const list = await fetch(`${base}?page=2&limit=10&q=home`, { headers });
     assert.equal(list.status, 200);
     assert.deepEqual(await list.json(), { items: [{ id: familyId, name: "Home", memberCount: 2,
@@ -73,8 +82,18 @@ test("admin family APIs check role and return owner/member profiles", async () =
     ]);
     profileStatus = 503;
     const unavailable = await fetch(base, { headers });
-    assert.equal(unavailable.status, 502);
-    assert.deepEqual(await unavailable.json(), { error: "PROFILE_LOOKUP_FAILED", message: "Unable to load owner profiles" });
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(await unavailable.json(), { error: "SERVICE_UNAVAILABLE", message: "Unable to load owner profiles" });
+    const unavailableDetail = await fetch(`${base}/${familyId}`, { headers });
+    assert.equal(unavailableDetail.status, 503);
+    assert.deepEqual(await unavailableDetail.json(), { error: "SERVICE_UNAVAILABLE", message: "Unable to load member profiles" });
+    profileStatus = 200;
+    databaseDown = true;
+    const databaseList = await fetch(base, { headers });
+    assert.equal(databaseList.status, 503);
+    assert.deepEqual(await databaseList.json(), { error: "SERVICE_UNAVAILABLE", message: "Family database is unavailable" });
+    const databaseDetail = await fetch(`${base}/${familyId}`, { headers });
+    assert.equal(databaseDetail.status, 503);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await new Promise<void>((resolve) => profiles.close(() => resolve()));

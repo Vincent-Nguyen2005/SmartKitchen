@@ -5,6 +5,8 @@ import { PrismaClient } from ".prisma/client-auth";
 import healthRouter from "./routes/health.route";
 import createAuthRouter from "./routes/auth.routes";
 import { createAdminUsersRouter } from "./routes/admin-users.routes";
+import { isDatabaseUnavailable } from "./database-error";
+import type { ErrorRequestHandler } from "express";
 
 dotenv.config();
 
@@ -30,6 +32,17 @@ const authRouter = createAuthRouter(prisma);
 app.use("/api/auth", authRouter);
 app.use("/", authRouter);
 app.use("/internal/admin/users", createAdminUsersRouter(prisma));
+
+const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
+  console.error("[auth-service] unhandled request error", error);
+  if (res.headersSent) return;
+  if (isDatabaseUnavailable(error)) {
+    res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Auth database is unavailable" });
+    return;
+  }
+  res.status(500).json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred" });
+};
+app.use(handleError);
 
 const PORT = process.env.PORT || 4001;
 const server = app.listen(PORT, () => {

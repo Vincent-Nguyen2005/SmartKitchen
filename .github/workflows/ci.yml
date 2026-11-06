@@ -26,8 +26,10 @@ jobs:
             run_tests: true
           - package: auth-service
             prisma_schema: services/auth-service/prisma/schema.prisma
+            run_tests: true
           - package: family-service
             prisma_schema: services/family-service/prisma/schema.prisma
+            run_tests: true
           - package: inventory-service
             prisma_schema: services/inventory-service/prisma/schema.prisma
           - package: nutrition-service

@@ -5,6 +5,8 @@ import { PrismaClient } from ".prisma/client-family";
 import healthRouter from "./routes/health.route";
 import createFamilyRouter from "./routes/family.routes";
 import { createAdminFamiliesRouter } from "./routes/admin-families.routes";
+import { isDatabaseUnavailable } from "./database-error";
+import type { ErrorRequestHandler } from "express";
 
 dotenv.config();
 
@@ -19,8 +21,21 @@ app.use(express.json());
 
 app.use("/health", healthRouter);
 
-app.use("/api/family", createFamilyRouter(prisma));
 app.use("/internal/admin/families", createAdminFamiliesRouter(prisma));
+const familyRouter = createFamilyRouter(prisma);
+app.use("/api/family", familyRouter); // direct-service compatibility
+app.use("/", familyRouter); // gateway strips /api/families
+
+const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
+  console.error("[family-service] unhandled request error", error);
+  if (res.headersSent) return;
+  if (isDatabaseUnavailable(error)) {
+    res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Family database is unavailable" });
+    return;
+  }
+  res.status(500).json({ error: "INTERNAL_ERROR", message: "An unexpected error occurred" });
+};
+app.use(handleError);
 
 const PORT = process.env.PORT || 4002;
 const server = app.listen(PORT, () => {
