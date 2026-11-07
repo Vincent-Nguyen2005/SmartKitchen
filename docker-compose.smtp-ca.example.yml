@@ -1,0 +1,12 @@
+# Optional override for machines whose trusted antivirus/proxy CA intercepts SMTP TLS.
+# Use with: docker compose -f docker-compose.yml -f docker-compose.smtp-ca.example.yml up -d --no-deps auth-service
+# Set SMTP_CA_CERT_PATH in the root .env to a trusted PEM CA certificate on this machine.
+services:
+  auth-service:
+    environment:
+      NODE_EXTRA_CA_CERTS: /run/certs/smtp-root.pem
+    volumes:
+      - type: bind
+        source: ${SMTP_CA_CERT_PATH:?Set SMTP_CA_CERT_PATH to a trusted PEM CA certificate file}
+        target: /run/certs/smtp-root.pem
+        read_only: true
