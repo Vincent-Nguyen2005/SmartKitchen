@@ -1,0 +1,52 @@
+# Use only with docker-compose.yml on the shared host. Requires Docker Compose 2.24.4+.
+# Internal services stay on the Compose network; only the gateway is reachable by cloudflared.
+services:
+  auth-db:
+    ports: !override []
+  auth-service:
+    ports: !override []
+  family-db:
+    ports: !override []
+  family-service:
+    ports: !override []
+  inventory-db:
+    ports: !override []
+  inventory-service:
+    ports: !override []
+  nutrition-db:
+    ports: !override []
+  nutrition-service:
+    ports: !override []
+  meal-diary-db:
+    ports: !override []
+  meal-diary-service:
+    ports: !override []
+  recipe-db:
+    ports: !override []
+  recipe-service:
+    ports: !override []
+  menu-db:
+    ports: !override []
+  menu-service:
+    ports: !override []
+  shopping-list-db:
+    ports: !override []
+  shopping-list-service:
+    ports: !override []
+  payment-db:
+    ports: !override []
+  payment-service:
+    ports: !override []
+  notification-db:
+    ports: !override []
+  notification-service:
+    ports: !override []
+  admin-db:
+    ports: !override []
+  admin-service:
+    ports: !override []
+  gateway:
+    ports: !override ["127.0.0.1:4000:4000"]
+    environment:
+      TRUST_PROXY: "true"
+      CORS_ORIGINS: ${REMOTE_CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}

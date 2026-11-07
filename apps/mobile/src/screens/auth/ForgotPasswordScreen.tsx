@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { Eye, EyeOff } from "lucide-react-native";
+import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authApi } from "../../services/api";
+import { IconButton } from "../../theme";
 import { authErrorMessage } from "./authError";
 
 type Props = { onBack: () => void; onSuccess: () => void };
@@ -67,13 +68,11 @@ export default function ForgotPasswordScreen({ onBack, onSuccess }: Props): Reac
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
-        <Pressable accessibilityRole="button" onPress={onBack}><Text style={styles.link}>Quay lại đăng nhập</Text></Pressable>
+        <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại đăng nhập" onPress={onBack} color="#2F6B5F" />
         <Text style={styles.title}>Quên mật khẩu</Text>
-        <Text style={styles.hint}>{step === "request"
-          ? "Nhập email đã xác minh. Nếu tài khoản tồn tại, chúng tôi sẽ gửi mã đặt lại mật khẩu."
-          : step === "verify"
-            ? `Nhập mã 8 chữ số gửi tới ${email.trim().toLowerCase()}. Mã có hiệu lực 10 phút.`
-            : "Mã đã được xác minh. Hãy đặt mật khẩu mới trước khi mã hết hạn."}</Text>
+        {step !== "request" && <Text style={styles.hint}>{step === "verify"
+          ? `Nhập mã 8 chữ số gửi tới ${email.trim().toLowerCase()}. Mã có hiệu lực 10 phút.`
+          : "Mã đã được xác minh. Hãy đặt mật khẩu mới trước khi mã hết hạn."}</Text>}
         {step === "request" ? <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address"
           onChangeText={setEmail} placeholder="Địa chỉ email" style={styles.input} value={email} />
           : <Text style={styles.email}>{email.trim().toLowerCase()}</Text>}

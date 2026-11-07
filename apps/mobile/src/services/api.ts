@@ -5,8 +5,8 @@ const webDevGateway = Platform.OS === "web" && typeof window !== "undefined" && 
   ? `${window.location.protocol}//${window.location.hostname}:4000`
   : undefined;
 const gatewayBaseUrl = (
-  (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
   process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
+  (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
   (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
 ).replace(/\/+$/, "");
 const AUTH_BASE_URL = `${gatewayBaseUrl}/api/auth`;
