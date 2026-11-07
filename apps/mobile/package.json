@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "expo start",
+    "web": "expo start --web",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
