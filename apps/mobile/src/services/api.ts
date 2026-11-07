@@ -60,6 +60,9 @@ export const authApi = {
   requestPasswordReset: (email: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/request", {
     method: "POST", body: JSON.stringify({ email }),
   }),
+  verifyPasswordResetCode: (email: string, code: string) => request<{ verified: boolean }>(AUTH_BASE_URL, "/password-reset/verify", {
+    method: "POST", body: JSON.stringify({ email, code }),
+  }),
   confirmPasswordReset: (email: string, code: string, newPassword: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/confirm", {
     method: "POST", body: JSON.stringify({ email, code, newPassword }),
   }),

@@ -50,14 +50,16 @@ export class MailService {
     const port = Number(process.env.SMTP_PORT || 587);
     const user = process.env.SMTP_USER;
     const password = process.env.SMTP_PASS;
-    if (!user || !password || !Number.isInteger(port) || port < 1 || port > 65535) {
+    const isLocalMailpit = host === "mailpit";
+    if ((!isLocalMailpit && (!user || !password)) || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw new MailServiceError("Email delivery is not configured on the server.", "EMAIL_NOT_CONFIGURED");
     }
     this.transporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
-      auth: { user, pass: password },
+      ...(!isLocalMailpit && { auth: { user, pass: password } }),
+      ...(isLocalMailpit && { ignoreTLS: true }),
       tls: { minVersion: "TLSv1.2" },
     });
     return this.transporter;

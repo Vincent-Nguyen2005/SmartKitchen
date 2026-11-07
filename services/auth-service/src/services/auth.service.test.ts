@@ -172,6 +172,9 @@ test("password reset uses the registered email, stores only a hash, and revokes 
   assert.match(emails[0].code, /^\d{8}$/);
   assert.notEqual(user.resetCodeHash, emails[0].code);
   assert.ok(user.resetExpiresAt && user.resetExpiresAt > new Date());
+  await service.verifyPasswordResetCode(user.email, emails[0].code);
+  assert.equal(user.passwordHash, "old-hash");
+  assert.equal(user.resetCodeHash !== null, true);
   await service.confirmPasswordReset(user.email, emails[0].code, "NewPassword123");
   assert.equal(await bcrypt.compare("NewPassword123", user.passwordHash), true);
   assert.equal(user.resetCodeHash, null);
@@ -193,13 +196,21 @@ test("invalid reset codes are limited to five attempts", async () => {
   const { service, user, emails } = makeService();
   await service.requestPasswordReset(user.email);
   for (let attempt = 0; attempt < 5; attempt++) {
-    await assert.rejects(service.confirmPasswordReset(user.email, "00000000", "NewPassword123"),
+    await assert.rejects(service.verifyPasswordResetCode(user.email, "00000000"),
       (error: unknown) => error instanceof AuthServiceError && error.code === "INVALID_RESET_CODE");
   }
   assert.equal(user.resetAttempts, 5);
   await assert.rejects(service.confirmPasswordReset(user.email, emails[0].code, "NewPassword123"),
     (error: unknown) => error instanceof AuthServiceError && error.code === "INVALID_RESET_CODE");
   assert.equal(user.passwordHash, "old-hash");
+});
+
+test("verification cannot open password entry after the code expires", async () => {
+  const { service, user, emails } = makeService();
+  await service.requestPasswordReset(user.email);
+  user.resetExpiresAt = new Date(Date.now() - 1);
+  await assert.rejects(service.verifyPasswordResetCode(user.email, emails[0].code),
+    (error: unknown) => error instanceof AuthServiceError && error.code === "INVALID_RESET_CODE");
 });
 
 test("expired password reset codes cannot change the password", async () => {

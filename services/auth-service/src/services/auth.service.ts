@@ -161,7 +161,7 @@ export class AuthService {
     }
   }
 
-  async confirmPasswordReset(email: string, code: string, newPassword: string): Promise<void> {
+  async verifyPasswordResetCode(email: string, code: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
     if (!user?.isVerified || !user.resetCodeHash || !user.resetExpiresAt
       || user.resetExpiresAt <= new Date() || user.resetAttempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
@@ -175,6 +175,12 @@ export class AuthService {
       });
       throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
     }
+  }
+
+  async confirmPasswordReset(email: string, code: string, newPassword: string): Promise<void> {
+    await this.verifyPasswordResetCode(email, code);
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user) throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
     const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await this.prisma.$transaction(async (transaction) => {
       const changed = await transaction.user.updateMany({

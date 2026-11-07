@@ -68,12 +68,16 @@ test("password reset request is generic and confirmation validates code", async 
   let requested = "";
   const service = {
     requestPasswordReset: async (email: string) => { requested = email; },
+    verifyPasswordResetCode: async (_email: string, code: string) => {
+      if (code !== "12345678") throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
+    },
     confirmPasswordReset: async () => { throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE"); },
   } as unknown as AuthService;
   const controller = new AuthController(service);
   const app = express();
   app.use(express.json());
   app.post("/request", controller.requestPasswordReset);
+  app.post("/verify", controller.verifyPasswordResetCode);
   app.post("/confirm", controller.confirmPasswordReset);
   const server = app.listen(0, "127.0.0.1");
   await new Promise<void>((resolve) => server.once("listening", resolve));
@@ -84,6 +88,13 @@ test("password reset request is generic and confirmation validates code", async 
     const request = await fetch(`${base}/request`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: "MEMBER@example.com" }) });
     assert.equal(request.status, 202);
     assert.equal(requested, "MEMBER@example.com");
+    const verified = await fetch(`${base}/verify`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@example.com", code: "12345678" }) });
+    assert.equal(verified.status, 200);
+    assert.equal((await verified.json() as { data: { verified: boolean } }).data.verified, true);
+    const invalidCode = await fetch(`${base}/verify`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "member@example.com", code: "00000000" }) });
+    assert.equal(invalidCode.status, 400);
     const invalid = await fetch(`${base}/confirm`, { method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: "member@example.com", code: "12345678", newPassword: "NewPassword123" }) });
     assert.equal(invalid.status, 400);

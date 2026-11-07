@@ -14,6 +14,7 @@ const verifyOtpSchema = z.object({
 });
 const resendOtpSchema = z.object({ email: z.string().trim().email() });
 const resetRequestSchema = z.object({ email: z.string().trim().email() });
+const resetVerifySchema = z.object({ email: z.string().trim().email(), code: z.string().regex(/^\d{8}$/) });
 const resetConfirmSchema = z.object({
   email: z.string().trim().email(),
   code: z.string().regex(/^\d{8}$/),
@@ -129,6 +130,21 @@ export class AuthController {
     } catch (error) {
       if (error instanceof AuthServiceError) this.respondAuthServiceError(res, error);
       else this.respondUnexpected(res, error, "Unable to request password reset");
+    }
+  };
+
+  verifyPasswordResetCode = async (req: Request, res: Response): Promise<void> => {
+    const parsed = resetVerifySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid password reset code", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      await this.authService.verifyPasswordResetCode(parsed.data.email, parsed.data.code);
+      res.json({ success: true, data: { verified: true } });
+    } catch (error) {
+      if (error instanceof AuthServiceError) this.respondAuthServiceError(res, error);
+      else this.respondUnexpected(res, error, "Unable to verify password reset code");
     }
   };
 
