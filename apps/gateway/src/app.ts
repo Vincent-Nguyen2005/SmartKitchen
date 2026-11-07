@@ -41,6 +41,19 @@ const serviceHealth = async (route: (typeof gatewayRoutes)[number]): Promise<Ser
   }
 };
 
+const createServiceProxy = (route: (typeof gatewayRoutes)[number]) => createProxyMiddleware({
+  target: getTarget(route),
+  changeOrigin: true,
+  on: {
+    error: (_error, _request, response) => {
+      const proxyResponse = response as ProxyResponse;
+      if (!proxyResponse.headersSent) {
+        proxyResponse.status(503).json({ error: "SERVICE_UNAVAILABLE", service: route.serviceName });
+      }
+    },
+  },
+});
+
 type AppOptions = { jwtSecret?: string | null };
 
 export const createApp = (options: AppOptions = {}): express.Express => {
@@ -82,18 +95,11 @@ export const createApp = (options: AppOptions = {}): express.Express => {
   app.use(createAuthenticate(jwtSecret));
   app.use(responseCache);
   for (const route of gatewayRoutes) {
-    app.use(route.prefix, createProxyMiddleware({
-      target: getTarget(route),
-      changeOrigin: true,
-      on: {
-        error: (_error, _request, response) => {
-          const proxyResponse = response as ProxyResponse;
-          if (!proxyResponse.headersSent) {
-            proxyResponse.status(503).json({ error: "SERVICE_UNAVAILABLE", service: route.serviceName });
-          }
-        },
-      },
-    }));
+    app.use(route.prefix, createServiceProxy(route));
+  }
+  const menuRoute = gatewayRoutes.find((route) => route.prefix === "/api/menus");
+  if (menuRoute) {
+    app.use("/api/menu", createServiceProxy(menuRoute));
   }
 
   app.use("/api", (req, res) => {

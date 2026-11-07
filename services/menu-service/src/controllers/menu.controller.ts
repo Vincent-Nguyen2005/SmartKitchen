@@ -64,7 +64,11 @@ export async function generateMenuController(request: Request, response: Respons
     const userId = authenticatedUserId(request, response);
     if (!userId) return;
     const input = generateSchema.parse(request.body);
-    response.status(201).json(await generateMenu({ ...input, userId }));
+    response.status(201).json(await generateMenu({
+      ...input,
+      periodType: input.periodType || PeriodType.WEEK,
+      userId,
+    }));
   } catch (error) {
     console.error("Generate Menu Error:", error);
     handleError(error, response);
@@ -76,7 +80,10 @@ export async function createMenuController(request: Request, response: Response)
     const userId = authenticatedUserId(request, response);
     if (!userId) return;
     const input = createMenuSchema.parse(request.body);
-    response.status(201).json(await createManualMenu(userId, input));
+    response.status(201).json(await createManualMenu(userId, {
+      ...input,
+      title: String(input.title),
+    }));
   } catch (error) {
     handleError(error, response);
   }

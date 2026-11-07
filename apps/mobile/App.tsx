@@ -6,6 +6,7 @@ import {
   Salad,
   Settings,
   ShoppingBasket,
+  Utensils,
   Users,
 } from "lucide-react-native";
 import { AppIcon, colors, spacing, textStyles, touchTarget } from "./src/theme";
@@ -13,6 +14,7 @@ import {
   ActivityIndicator,
   View,
   Text,
+  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -28,12 +30,14 @@ import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScre
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import AdminHome from "./src/screens/admin/AdminHome";
+import MenuScreen from "./src/screens/menu/MenuScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
 type Tab =
   | "inventory"
   | "shopping"
+  | "menu"
   | "nutrition"
   | "family"
   | "notifications"
@@ -42,6 +46,7 @@ type AuthView = "login" | "register" | "otp";
 const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
+  { key: "menu", label: "Thực đơn", icon: Utensils },
   { key: "family", label: "Gia đình", icon: Users },
   { key: "nutrition", label: "Dinh dưỡng", icon: Salad },
   { key: "notifications", label: "Thông báo", icon: Bell },
@@ -161,7 +166,7 @@ function AppContent(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
-      <View style={styles.tabBar}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
         {tabs
           .filter(({ key }) => key !== "admin" || isAdmin)
           .map(({ key, label, icon: Icon }) => {
@@ -186,7 +191,7 @@ function AppContent(): React.JSX.Element {
               </TouchableOpacity>
             );
           })}
-      </View>
+      </ScrollView>
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
@@ -194,6 +199,7 @@ function AppContent(): React.JSX.Element {
           <InventoryScreen onOpenFamily={() => setTab("family")} />
         )}
         {tab === "shopping" && <ShoppingCartScreen />}
+        {tab === "menu" && <MenuScreen accessToken={session.accessToken} familyId={session.family?.id} />}
         {tab === "family" && <FamilyScreenFlow />}
         {tab === "notifications" && <NotificationsHome />}
         {tab === "admin" && isAdmin && <AdminHome />}
@@ -239,13 +245,16 @@ const styles = StyleSheet.create({
   },
   signOutText: { ...textStyles.labelSmall, color: colors.surface },
   tabBar: {
-    flexDirection: "row",
     borderBottomWidth: 1 as number,
     borderBottomColor: colors.border,
+    flexGrow: 0,
+  },
+  tabBarContent: {
+    flexDirection: "row",
   },
   tab: {
     alignItems: "center",
-    flex: 1,
+    width: 88,
     gap: spacing.xs,
     justifyContent: "center",
     minHeight: touchTarget + spacing.md,
