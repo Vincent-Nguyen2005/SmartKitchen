@@ -13,7 +13,7 @@ type SessionContextValue = {
   restoreError: boolean;
   retryRestore: () => void;
   signIn: (email: string, password: string) => Promise<void>;
-  register: (fullName: string, email: string, password: string) => Promise<void>;
+  register: (fullName: string, email: string, password: string) => Promise<{ otpSent: boolean; retryAfterSeconds: number }>;
   verifyOtp: (otpCode: string) => Promise<void>;
   resendOtp: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -71,13 +71,24 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
-    const result = await authApi.login(email, password);
-    await saveTokens(result.accessToken, result.refreshToken, result.user);
+    try {
+      const result = await authApi.login(email, password);
+      await saveTokens(result.accessToken, result.refreshToken, result.user);
+    } catch (error) {
+      if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
+        setPendingVerificationEmail(email.trim().toLowerCase());
+      }
+      throw error;
+    }
   }, [saveTokens]);
 
   const register = useCallback(async (fullName: string, email: string, password: string) => {
     const result = await authApi.register(email, password, fullName);
     setPendingVerificationEmail(result.email);
+    return {
+      otpSent: result.otpSent !== false,
+      retryAfterSeconds: Number.isFinite(result.retryAfterSeconds) ? result.retryAfterSeconds : 60,
+    };
   }, []);
 
   const verifyOtp = useCallback(async (otpCode: string) => {

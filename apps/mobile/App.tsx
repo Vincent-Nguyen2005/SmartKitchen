@@ -21,6 +21,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import LoginScreen from "./src/screens/auth/LoginScreen";
+import ForgotPasswordScreen from "./src/screens/auth/ForgotPasswordScreen";
 import OtpVerificationScreen from "./src/screens/auth/OtpVerificationScreen";
 import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
@@ -42,7 +43,7 @@ type Tab =
   | "family"
   | "notifications"
   | "admin";
-type AuthView = "login" | "register" | "otp";
+type AuthView = "login" | "register" | "otp" | "forgot";
 const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
@@ -72,6 +73,8 @@ function AppContent(): React.JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>("inventory");
   const [authView, setAuthView] = useState<AuthView>("login");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
   const isAdmin = session.user?.role === "ADMIN";
@@ -86,6 +89,12 @@ function AppContent(): React.JSX.Element {
   useEffect(() => {
     if (tab === "admin" && !isAdmin) setTab("inventory");
   }, [isAdmin, tab]);
+
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => setNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
 
   if (!session.ready) {
     return (
@@ -121,18 +130,36 @@ function AppContent(): React.JSX.Element {
       return (
         <OtpVerificationScreen
           email={session.pendingVerificationEmail}
-          onVerify={session.verifyOtp}
-          onResend={session.resendOtp}
-          onBack={() => setAuthView("register")}
+          notice={notice}
+          initialCooldownSeconds={otpInitialCooldown}
+          onVerify={async (code) => {
+            await session.verifyOtp(code);
+            setNotice("Xác minh thành công. Bạn đã đăng nhập.");
+          }}
+          onResend={async () => {
+            await session.resendOtp();
+            setNotice("Mã xác minh mới đã được gửi tới email đăng ký.");
+          }}
+          onBack={() => { setNotice(null); setAuthView("register"); }}
         />
       );
+    }
+    if (authView === "forgot") {
+      return <ForgotPasswordScreen onBack={() => setAuthView("login")} onSuccess={() => {
+        setNotice("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
+        setAuthView("login");
+      }} />;
     }
     if (authView === "register") {
       return (
         <RegisterScreen
           navigation={{ navigate: () => setAuthView("login") }}
           onSubmit={async (fullName, email, password) => {
-            await session.register(fullName, email, password);
+            const result = await session.register(fullName, email, password);
+            setOtpInitialCooldown(result.retryAfterSeconds);
+            setNotice(result.otpSent
+              ? "Đăng ký thành công. Mã xác minh đã được gửi tới email đăng ký."
+              : "Thông tin đã được cập nhật. Mã cũ vẫn có hiệu lực; hãy đợi hết thời gian chờ để gửi mã mới.");
             setAuthView("otp");
           }}
         />
@@ -141,10 +168,19 @@ function AppContent(): React.JSX.Element {
     return (
       <LoginScreen
         navigation={{
-          navigate: () => setAuthView("register"),
+          navigate: () => { setNotice(null); setAuthView("register"); },
         }}
-        onSubmit={session.signIn}
-        onVerificationRequired={() => setAuthView("otp")}
+        notice={notice}
+        onSubmit={async (email, password) => {
+          await session.signIn(email, password);
+          setNotice("Đăng nhập thành công.");
+        }}
+        onForgotPassword={() => { setNotice(null); setAuthView("forgot"); }}
+        onVerificationRequired={() => {
+          setOtpInitialCooldown(0);
+          setNotice("Tài khoản chưa xác minh. Vui lòng gửi lại mã nếu mã cũ đã hết hạn.");
+          setAuthView("otp");
+        }}
       />
     );
   }
@@ -166,6 +202,7 @@ function AppContent(): React.JSX.Element {
         </TouchableOpacity>
       </View>
 
+      {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
         {tabs
           .filter(({ key }) => key !== "admin" || isAdmin)
@@ -225,6 +262,7 @@ export default function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
+  authNotice: { backgroundColor: "#E8F4EE", color: "#20594F", padding: 12, textAlign: "center" },
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
   header: {

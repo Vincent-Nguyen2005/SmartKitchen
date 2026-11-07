@@ -19,12 +19,16 @@ type Props = {
   navigation?: AuthNavigation;
   onSubmit?: (email: string, password: string) => Promise<void>;
   onVerificationRequired?: () => void;
+  onForgotPassword?: () => void;
+  notice?: string | null;
 };
 
 export default function LoginScreen({
   navigation,
   onSubmit,
   onVerificationRequired,
+  onForgotPassword,
+  notice,
 }: Props): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -89,6 +93,10 @@ export default function LoginScreen({
               {showPassword ? <EyeOff color="#2F6B5F" size={21} /> : <Eye color="#2F6B5F" size={21} />}
             </Pressable>
           </View>
+          <Pressable accessibilityRole="button" onPress={onForgotPassword}>
+            <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
+          </Pressable>
+          {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
           {!!error && (
             <Text accessibilityRole="alert" style={styles.error}>
               {error}
@@ -124,6 +132,8 @@ export default function LoginScreen({
 }
 
 const styles = StyleSheet.create({
+  forgotPassword: { alignSelf: "flex-end", color: "#2F6B5F", fontSize: 14, fontWeight: "700", paddingVertical: 12 },
+  notice: { color: "#2F6B5F", fontSize: 14, marginVertical: 8 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1, justifyContent: "space-between", padding: 24 },
   kicker: {

@@ -14,6 +14,8 @@ import { authErrorMessage } from "./authError";
 
 type Props = {
   email: string;
+  notice?: string | null;
+  initialCooldownSeconds?: number;
   onVerify: (otpCode: string) => Promise<void>;
   onResend: () => Promise<void>;
   onBack: () => void;
@@ -21,6 +23,8 @@ type Props = {
 
 export default function OtpVerificationScreen({
   email,
+  notice,
+  initialCooldownSeconds = 60,
   onVerify,
   onResend,
   onBack,
@@ -29,7 +33,7 @@ export default function OtpVerificationScreen({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
-  const [cooldown, setCooldown] = useState(60);
+  const [cooldown, setCooldown] = useState(initialCooldownSeconds);
 
   useEffect(() => {
     if (cooldown <= 0) return undefined;
@@ -79,6 +83,7 @@ export default function OtpVerificationScreen({
             Chúng tôi đã gửi mã xác minh 6 chữ số tới{"\n"}
             <Text style={styles.email}>{email}</Text>
           </Text>
+          {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
           <TextInput
             accessibilityLabel="Mã xác minh email gồm 6 chữ số"
             autoComplete="one-time-code"
@@ -111,6 +116,7 @@ export default function OtpVerificationScreen({
 }
 
 const styles = StyleSheet.create({
+  notice: { color: "#2F6B5F", fontSize: 14, marginBottom: 12 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1, justifyContent: "center", padding: 24 },
   backButton: { alignSelf: "flex-start", marginBottom: 28 },

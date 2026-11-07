@@ -13,6 +13,15 @@ const verifyOtpSchema = z.object({
   otpCode: z.string().regex(/^\d{6}$/),
 });
 const resendOtpSchema = z.object({ email: z.string().trim().email() });
+const resetRequestSchema = z.object({ email: z.string().trim().email() });
+const resetConfirmSchema = z.object({
+  email: z.string().trim().email(),
+  code: z.string().regex(/^\d{8}$/),
+  newPassword: z.string().min(8).max(128).refine(
+    (password) => /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password),
+    "Password must include upper, lower, and numeric characters",
+  ),
+});
 
 const registerSchema = credentialsSchema.extend({
   fullName: z.string().trim().min(2).max(100).optional(),
@@ -108,6 +117,36 @@ export class AuthController {
     }
   };
 
+  requestPasswordReset = async (req: Request, res: Response): Promise<void> => {
+    const parsed = resetRequestSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid password reset request", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      await this.authService.requestPasswordReset(parsed.data.email);
+      res.status(202).json({ success: true, data: { message: "If this account exists, a reset code has been sent." } });
+    } catch (error) {
+      if (error instanceof AuthServiceError) this.respondAuthServiceError(res, error);
+      else this.respondUnexpected(res, error, "Unable to request password reset");
+    }
+  };
+
+  confirmPasswordReset = async (req: Request, res: Response): Promise<void> => {
+    const parsed = resetConfirmSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid password reset data", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      await this.authService.confirmPasswordReset(parsed.data.email, parsed.data.code, parsed.data.newPassword);
+      res.json({ success: true, data: { message: "Password updated. Please sign in." } });
+    } catch (error) {
+      if (error instanceof AuthServiceError) this.respondAuthServiceError(res, error);
+      else this.respondUnexpected(res, error, "Unable to reset password");
+    }
+  };
+
   login = async (req: Request, res: Response): Promise<void> => {
     const parsed = credentialsSchema.safeParse(req.body);
     if (!parsed.success) {
@@ -123,11 +162,11 @@ export class AuthController {
       this.sendAuthResult(req, res, result);
     } catch (error) {
       if (error instanceof Error && error.message === "INVALID_CREDENTIALS") {
-        res.status(401).json({ error: "Invalid email or password" });
+        res.status(401).json({ error: "Invalid email or password", code: "INVALID_CREDENTIALS" });
         return;
       }
       if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
-        res.status(403).json({ error: "Verify your email address before signing in" });
+        res.status(403).json({ error: "Verify your email address before signing in", code: "EMAIL_NOT_VERIFIED" });
         return;
       }
       this.respondUnexpected(res, error, "Unable to log in");
@@ -325,6 +364,7 @@ export class AuthController {
       ACCOUNT_NOT_FOUND: 404,
       ACCOUNT_ALREADY_VERIFIED: 409,
       OTP_RESEND_COOLDOWN: 429,
+      INVALID_RESET_CODE: 400,
     };
     const statusCode = statusByCode[error.code] ?? 500;
     if (error.code === "OTP_RESEND_COOLDOWN") {

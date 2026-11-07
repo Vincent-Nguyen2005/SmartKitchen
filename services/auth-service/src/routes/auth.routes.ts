@@ -10,6 +10,8 @@ export const createAuthRouter = (prisma: PrismaClient): Router => {
   router.post("/register", controller.register);
   router.post("/verify-otp", controller.verifyOtp);
   router.post("/resend-otp", controller.resendOtp);
+  router.post("/password-reset/request", controller.requestPasswordReset);
+  router.post("/password-reset/confirm", controller.confirmPasswordReset);
   router.post("/login", controller.login);
   router.post("/google", controller.google);
   router.post("/refresh", controller.refresh);

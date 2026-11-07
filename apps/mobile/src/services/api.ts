@@ -48,7 +48,7 @@ export const authApi = {
   login: (email: string, password: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/login", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password }),
   }),
-  register: (email: string, password: string, fullName?: string) => request<{ email: string; verificationRequired: boolean }>(AUTH_BASE_URL, "/register", {
+  register: (email: string, password: string, fullName?: string) => request<{ email: string; verificationRequired: boolean; otpSent: boolean; retryAfterSeconds: number }>(AUTH_BASE_URL, "/register", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password, fullName }),
   }),
   verifyOtp: (email: string, otpCode: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/verify-otp", {
@@ -56,6 +56,12 @@ export const authApi = {
   }),
   resendOtp: (email: string) => request<{ email: string }>(AUTH_BASE_URL, "/resend-otp", {
     method: "POST", body: JSON.stringify({ email }),
+  }),
+  requestPasswordReset: (email: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/request", {
+    method: "POST", body: JSON.stringify({ email }),
+  }),
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/confirm", {
+    method: "POST", body: JSON.stringify({ email, code, newPassword }),
   }),
   refresh: (refreshToken: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/refresh", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ refreshToken }),

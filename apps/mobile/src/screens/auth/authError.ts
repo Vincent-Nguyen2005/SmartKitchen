@@ -14,6 +14,7 @@ export function authErrorMessage(error: unknown, fallback: string): string {
     case "EMAIL_DELIVERY_FAILED": return "Không gửi được email xác minh. Vui lòng thử lại.";
     case "ACCOUNT_ALREADY_VERIFIED": return "Tài khoản đã xác minh. Vui lòng đăng nhập.";
     case "ACCOUNT_NOT_FOUND": return "Không tìm thấy tài khoản với email này.";
+    case "INVALID_RESET_CODE": return "Mã đặt lại mật khẩu không đúng, đã hết hạn hoặc đã thử quá nhiều lần.";
   }
   if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau.";
   if (error.status >= 500) return "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.";
