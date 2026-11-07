@@ -106,7 +106,7 @@ export default function NotificationListScreen(): React.JSX.Element {
           ListEmptyComponent={filter === "unread"
             ? <ScreenState empty emptyIcon={BellOff} emptyText="Không có thông báo chưa đọc." />
             : <ScreenState empty emptyIcon={Inbox} emptyText="Bạn chưa có thông báo nào." />}
-          ListFooterComponent={loadingMore ? <ScreenState loading /> : error ? <Text style={styles.errorText}>{error}</Text> : null}
+          ListFooterComponent={loadingMore ? <ScreenState loading /> : error ? <Text style={styles.errorText}>{error}</Text> : undefined}
           renderItem={({ item }) => {
             const unread = item.status !== "READ";
             return (
