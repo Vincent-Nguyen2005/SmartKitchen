@@ -7,9 +7,44 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho menu-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum PeriodType {
+  DAY
+  WEEK
+  MONTH
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+model Menu {
+  id         String     @id @default(uuid())
+  userId     String
+  title      String
+  periodType PeriodType @default(WEEK)
+  startDate  DateTime
+  endDate    DateTime
+  items      MenuItem[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([userId])
+}
+
+model MenuItem {
+  id        String   @id @default(uuid())
+  menuId    String
+  menu      Menu     @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  recipeId  String?
+  dishName  String
+  mealType  MealType @default(LUNCH)
+  dayOfWeek Int
+  calories  Float?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([menuId])
+}

@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "ts-node-dev --respawn src/index.ts",
+    "prebuild": "prisma generate",
     "build": "tsc",
     "start": "node dist/index.js",
-    "lint": "tsc --noEmit"
+    "prelint": "prisma generate",
+    "lint": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test dist/__tests__/menu.service.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",

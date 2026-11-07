@@ -79,6 +79,12 @@ describe("proxying", () => {
     expect(response.body.path).toBe("/items/42?x=1");
   });
 
+  it("forwards the singular menu API alias to menu-service", async () => {
+    const response = await request(createApp({ jwtSecret: null })).post("/api/menu/generate").send({ periodType: "DAY" });
+    expect(response.status).toBe(200);
+    expect(response.body.path).toBe("/generate");
+  });
+
   it("propagates an incoming x-request-id to the service and the response", async () => {
     const response = await request(createApp({ jwtSecret: null })).get("/api/menus/today").set("x-request-id", "req-123");
     expect(response.headers["x-request-id"]).toBe("req-123");
