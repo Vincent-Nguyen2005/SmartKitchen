@@ -16,13 +16,15 @@ Configure Gmail SMTP before running the service:
 
 Git does not include `.env` or SMTP App Passwords. Each developer running their **own backend** needs a root `.env` with `JWT_SECRET`, `INTERNAL_API_KEY`, `PURCHASE_SYNC_API_KEY`, `SMTP_USER`, and `SMTP_PASS`, plus a reachable database. Do not share an App Password in chat or commit it. `EMAIL_FROM` can be left empty; the service then sends from `SMTP_USER`. If mail delivery is not configured, registration returns `EMAIL_NOT_CONFIGURED` (503), not a working OTP.
 
-For team testing **without real email credentials**, copy the root `.env.example` to `.env` and set the required non-email secrets locally, then run:
+For team testing **without real email credentials**, run this from the repository root after `pnpm install`:
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.mailpit.yml up -d --build auth-db auth-service mailpit gateway
+pnpm dev:team:backend
 ```
 
-The local-only [Mailpit override](../../docker-compose.mailpit.yml) captures registration and reset codes at `http://127.0.0.1:8025`. Search by the address used during registration. These messages **do not reach Gmail or other real inboxes**. This mode is for development only. The Mailpit UI binds to loopback; never expose it publicly or use it for production verification. When using the normal Compose file without this override, valid SMTP credentials are still required.
+On a fresh clone, the command creates a Git-ignored root `.env` with unique random keys on **that machine**; it never overwrites an existing `.env`. It starts the local-only [Mailpit override](../../docker-compose.mailpit.yml), which captures registration and reset codes at `http://127.0.0.1:8025` on the backend computer. Search by the address used during registration. These messages **do not reach Gmail or other real inboxes**. This mode is for development only. The Mailpit UI binds to loopback; never expose it publicly or use it for production verification. When using the normal Compose file without this override, valid SMTP credentials are still required.
+
+Start the app with `pnpm --filter mobile exec expo start --web --port 8081`. The web app at `http://localhost:8081` calls the local gateway at port 4000. On a physical phone, set `EXPO_PUBLIC_API_BASE_URL=http://<backend-LAN-IP>:4000` in a Git-ignored `apps/mobile/.env.local` before starting Expo; `localhost` on the phone points to the phone, not the backend computer. Each developer's local Compose stack uses its own database, so accounts do not automatically appear on other machines.
 
 To use **one shared backend/database** instead, run the gateway and auth-service on a machine/server with SMTP configured, and point each teammate's mobile app at that gateway using `EXPO_PUBLIC_API_BASE_URL` (physical device: reachable LAN IP or HTTPS host, not `localhost`). All team members then register against the same database. The web development build on port 8081 uses its browser host on port 4000. Check `GET /health` on the gateway and auth-service before testing registration.
 

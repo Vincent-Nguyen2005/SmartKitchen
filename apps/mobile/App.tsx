@@ -138,7 +138,7 @@ function AppContent(): React.JSX.Element {
           }}
           onResend={async () => {
             await session.resendOtp();
-            setNotice("Mã xác minh mới đã được gửi tới email đăng ký.");
+            setNotice("Đã gửi mã mới.");
           }}
           onBack={() => { setNotice(null); setAuthView("register"); }}
         />
@@ -157,9 +157,7 @@ function AppContent(): React.JSX.Element {
           onSubmit={async (fullName, email, password) => {
             const result = await session.register(fullName, email, password);
             setOtpInitialCooldown(result.retryAfterSeconds);
-            setNotice(result.otpSent
-              ? "Đăng ký thành công. Mã xác minh đã được gửi tới email đăng ký."
-              : "Thông tin đã được cập nhật. Mã cũ vẫn có hiệu lực; hãy đợi hết thời gian chờ để gửi mã mới.");
+            setNotice(result.otpSent ? null : "Mã cũ vẫn dùng được. Chờ để gửi mã mới.");
             setAuthView("otp");
           }}
         />
@@ -178,7 +176,7 @@ function AppContent(): React.JSX.Element {
         onForgotPassword={() => { setNotice(null); setAuthView("forgot"); }}
         onVerificationRequired={() => {
           setOtpInitialCooldown(0);
-          setNotice("Tài khoản chưa xác minh. Vui lòng gửi lại mã nếu mã cũ đã hết hạn.");
+          setNotice("Chưa xác minh email. Gửi lại mã nếu cần.");
           setAuthView("otp");
         }}
       />

@@ -14,7 +14,11 @@ Install dependencies from the repository root:
 pnpm install
 ```
 
-Create the root `.env` **before** the first `docker compose up` (compose refuses to start without `JWT_SECRET`). `.env` is git-ignored; never commit it.
+### Test registration with the team
+
+For a fresh clone, run `pnpm dev:team:backend`. It creates local, Git-ignored keys and starts the gateway, auth database, auth-service, and Mailpit. Run `pnpm --filter mobile exec expo start --web --port 8081` for the app. Registration OTP appears at `http://127.0.0.1:8025` on the backend computer, **not in the recipient's real email inbox**. Each computer has a separate database. For real-inbox delivery and shared accounts, run one reachable backend with privately configured SMTP and point team apps to that gateway. See [auth-service setup](services/auth-service/README.md#team-registration-checklist).
+
+For the normal Compose mode, create the root `.env` **before** the first `docker compose up` (compose refuses to start without `JWT_SECRET`). The team-test command above creates this file automatically on a fresh clone. `.env` is git-ignored; never commit it.
 
 ```powershell
 Copy-Item .env.example .env          # bash: cp .env.example .env

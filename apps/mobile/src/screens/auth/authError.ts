@@ -10,7 +10,7 @@ export function authErrorMessage(error: unknown, fallback: string): string {
     case "INVALID_OTP": return "Mã xác minh không đúng.";
     case "OTP_EXPIRED": return "Mã xác minh đã hết hạn. Vui lòng gửi lại mã.";
     case "OTP_RESEND_COOLDOWN": return "Vui lòng đợi trước khi gửi lại mã.";
-    case "EMAIL_NOT_CONFIGURED": return "Máy chủ này chưa cấu hình gửi email. Nhóm phát triển có thể bật Mailpit để thử nghiệm, hoặc cấu hình SMTP để nhận mã trong hộp thư thật.";
+    case "EMAIL_NOT_CONFIGURED": return "Máy chủ chưa bật gửi mã OTP.";
     case "EMAIL_DELIVERY_FAILED": return "Không gửi được email xác minh. Vui lòng thử lại.";
     case "ACCOUNT_ALREADY_VERIFIED": return "Tài khoản đã xác minh. Vui lòng đăng nhập.";
     case "ACCOUNT_NOT_FOUND": return "Không tìm thấy tài khoản với email này.";

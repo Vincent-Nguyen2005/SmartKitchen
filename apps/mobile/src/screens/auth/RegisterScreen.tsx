@@ -65,12 +65,9 @@ export default function RegisterScreen({
       >
         <View>
           <Pressable onPress={() => navigation?.navigate("Login")}>
-            <Text style={styles.back}>Quay lại đăng nhập</Text>
+            <Text style={styles.back}>Đăng nhập</Text>
           </Pressable>
-          <Text style={styles.title}>Tạo tài khoản</Text>
-          <Text style={styles.subtitle}>
-            Cùng gia đình quản lý căn bếp dễ dàng hơn.
-          </Text>
+          <Text style={styles.title}>Đăng ký</Text>
           <TextInput
             onChangeText={setFullName}
             placeholder="Họ và tên"
@@ -83,7 +80,7 @@ export default function RegisterScreen({
             autoComplete="email"
             keyboardType="email-address"
             onChangeText={setEmail}
-            placeholder="Địa chỉ email"
+            placeholder="Email"
             placeholderTextColor="#8B949E"
             style={styles.input}
             value={email}
@@ -136,7 +133,7 @@ export default function RegisterScreen({
               {agreed && <Text style={styles.checkmark}>✓</Text>}
             </View>
             <Text style={styles.termsText}>
-              Tôi đồng ý với Điều khoản và Chính sách quyền riêng tư.
+              Tôi đồng ý với Điều khoản và Quyền riêng tư.
             </Text>
           </Pressable>
           {!!error && (
@@ -168,13 +165,7 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1, padding: 24 },
   back: { color: "#2F6B5F", fontSize: 14, fontWeight: "700", marginBottom: 28 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 8 },
-  subtitle: {
-    color: "#68736F",
-    fontSize: 16,
-    lineHeight: 24,
-    marginBottom: 24,
-  },
+  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 24 },
   input: {
     backgroundColor: "#FFFFFF",
     borderColor: "#DCE3DE",

@@ -75,12 +75,11 @@ export default function OtpVerificationScreen({
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
         <View>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>Đổi địa chỉ email</Text>
+            <Text style={styles.backText}>Đổi email</Text>
           </Pressable>
-          <Text style={styles.eyebrow}>XÁC MINH EMAIL</Text>
-          <Text style={styles.title}>Kiểm tra hộp thư</Text>
+          <Text style={styles.title}>Nhập mã OTP</Text>
           <Text style={styles.subtitle}>
-            Chúng tôi đã gửi mã xác minh 6 chữ số tới{"\n"}
+            Mã 6 số cho{"\n"}
             <Text style={styles.email}>{email}</Text>
           </Text>
           {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
@@ -99,10 +98,9 @@ export default function OtpVerificationScreen({
           />
           {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
           <Pressable disabled={loading} onPress={() => { void verify(); }} style={styles.primaryButton}>
-            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Xác minh tài khoản</Text>}
+            {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryButtonText}>Xác nhận</Text>}
           </Pressable>
           <View style={styles.resendRow}>
-            <Text style={styles.resendLabel}>Chưa nhận được email?</Text>
             <Pressable disabled={cooldown > 0 || resending} onPress={() => { void resend(); }}>
               <Text style={[styles.resendButton, (cooldown > 0 || resending) && styles.resendDisabled]}>
                 {resending ? "Đang gửi..." : cooldown > 0 ? `Gửi lại sau ${cooldown} giây` : "Gửi lại mã"}
@@ -121,7 +119,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: "center", padding: 24 },
   backButton: { alignSelf: "flex-start", marginBottom: 28 },
   backText: { color: "#2F6B5F", fontSize: 14, fontWeight: "700" },
-  eyebrow: { color: "#2F6B5F", fontSize: 12, fontWeight: "700", letterSpacing: 1.4, marginBottom: 10 },
   title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 8 },
   subtitle: { color: "#68736F", fontSize: 16, lineHeight: 24, marginBottom: 30 },
   email: { color: "#17211F", fontWeight: "700" },
@@ -130,7 +127,6 @@ const styles = StyleSheet.create({
   primaryButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 12, justifyContent: "center", minHeight: 54, marginTop: 14 },
   primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
   resendRow: { alignItems: "center", flexDirection: "row", justifyContent: "center", marginTop: 24 },
-  resendLabel: { color: "#68736F", fontSize: 14, marginRight: 6 },
   resendButton: { color: "#2F6B5F", fontSize: 14, fontWeight: "700" },
   resendDisabled: { color: "#8B949E" },
 });
