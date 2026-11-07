@@ -23,3 +23,5 @@ SmartKitchen/
 │   └── check-infra.mjs  → Kiểm tra cấu hình repo (pnpm check:infra)
 ├── .env.example         → Mẫu .env gốc cho docker compose (JWT_SECRET, ...)
 └── docker-compose.yml    → EPIC-01
+
+
