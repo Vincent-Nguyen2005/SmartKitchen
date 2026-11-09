@@ -12,6 +12,32 @@ Configure Gmail SMTP before running the service:
 2. Set `SMTP_PASS` to a Gmail App Password. Do not use or commit your regular Gmail password.
 3. For Docker Compose, set `SMTP_PASS` (and optionally the other `SMTP_*`/`EMAIL_FROM` values) in the repository-root `.env` file.
 
+### Team registration checklist
+
+Git does not include `.env` or SMTP App Passwords. Each developer running their **own backend** needs a root `.env` with `JWT_SECRET`, `INTERNAL_API_KEY`, `PURCHASE_SYNC_API_KEY`, `SMTP_USER`, and `SMTP_PASS`, plus a reachable database. Do not share an App Password in chat or commit it. `EMAIL_FROM` can be left empty; the service then sends from `SMTP_USER`. If mail delivery is not configured, registration returns `EMAIL_NOT_CONFIGURED` (503), not a working OTP.
+
+For team testing **without real email credentials**, run this from the repository root after `pnpm install`:
+
+```powershell
+pnpm dev:team:backend
+```
+
+On a fresh clone, the command creates a Git-ignored root `.env` with unique random keys on **that machine**; it never overwrites an existing `.env`. It starts the local-only [Mailpit override](../../docker-compose.mailpit.yml), which captures registration and reset codes at `http://127.0.0.1:8025` on the backend computer. Search by the address used during registration. These messages **do not reach Gmail or other real inboxes**. This mode is for development only. The Mailpit UI binds to loopback; never expose it publicly or use it for production verification. When using the normal Compose file without this override, valid SMTP credentials are still required.
+
+Start the app with `pnpm --filter mobile exec expo start --web --port 8081`. The web app at `http://localhost:8081` calls the local gateway at port 4000. On a physical phone, set `EXPO_PUBLIC_API_BASE_URL=http://<backend-LAN-IP>:4000` in a Git-ignored `apps/mobile/.env.local` before starting Expo; `localhost` on the phone points to the phone, not the backend computer. Each developer's local Compose stack uses its own database, so accounts do not automatically appear on other machines.
+
+To use **one shared backend/database** instead, run the gateway and auth-service on a machine/server with SMTP configured, and point each teammate's mobile app at that gateway using `EXPO_PUBLIC_API_BASE_URL` (physical device: reachable LAN IP or HTTPS host, not `localhost`). All team members then register against the same database. The web development build on port 8081 uses its browser host on port 4000. Check `GET /health` on the gateway and auth-service before testing registration.
+
+For OTP to arrive in each member's **real email inbox**, use that shared backend with an SMTP account configured privately on the server (or configure SMTP privately on each developer's machine). `EMAIL_FROM` is the sender; the recipient is always the email entered at registration. Do not put App Passwords, JWT secrets, or internal API keys in Git, even in a private repository: history, forks, and CI logs can preserve them. Rotate any credential already shared in chat or committed previously.
+
+An unverified address can register again with updated information after a failed delivery; if a code was sent within the last 60 seconds, the existing code remains valid and no duplicate email is sent. Registration returns `otpSent` and `retryAfterSeconds` so the app does not claim a new message was sent during cooldown. Use `POST /api/auth/resend-otp` after the cooldown. A verified address returns 409 and must sign in or use password reset. The OTP email goes to the **registration email**, not the SMTP sender address; check the exact spelling and Spam folder.
+
+### Password reset
+
+`POST /api/auth/password-reset/request` accepts `{ "email": "member@example.com" }` and returns the same generic 202 for unknown addresses and successfully processed verified accounts to avoid account enumeration (SMTP/database failures return 503). Verified accounts receive an 8-digit code at their registered email. The code expires in 10 minutes; repeat requests within 60 seconds do not send another email. `POST /api/auth/password-reset/confirm` accepts `{ "email": "member@example.com", "code": "12345678", "newPassword": "NewPassword123" }`. After five wrong attempts the code is unusable; a successful reset changes the password, consumes the code, and revokes stored sessions/refresh tokens. Previously issued access tokens may remain valid until their 15-minute expiry. Never log or return the code in an API response.
+
+The mobile flow calls `POST /api/auth/password-reset/verify` with `{ "email": "member@example.com", "code": "12345678" }` first. Only a valid unexpired code opens the new-password screen. The final confirm endpoint validates the code again before changing the password; the verify call alone never changes it. Wrong verification codes share the five-attempt limit.
+
 If SMTP fails with `self-signed certificate in certificate chain` on a machine where antivirus or a proxy inspects mail traffic, do **not** disable TLS verification. Confirm the certificate issuer and fingerprint against a CA already trusted by that machine. Export that CA as a PEM (Base-64 X.509) file outside Git, set `SMTP_CA_CERT_PATH` in the root `.env` to its absolute path, then start auth-service with the optional [SMTP CA Compose override](../../docker-compose.smtp-ca.example.yml):
 
 ```powershell

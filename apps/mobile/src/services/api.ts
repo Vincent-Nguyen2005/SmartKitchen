@@ -5,8 +5,8 @@ const webDevGateway = Platform.OS === "web" && typeof window !== "undefined" && 
   ? `${window.location.protocol}//${window.location.hostname}:4000`
   : undefined;
 const gatewayBaseUrl = (
-  (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
   process.env.EXPO_PUBLIC_API_BASE_URL?.trim() ||
+  (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
   (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
 ).replace(/\/+$/, "");
 const AUTH_BASE_URL = `${gatewayBaseUrl}/api/auth`;
@@ -48,7 +48,7 @@ export const authApi = {
   login: (email: string, password: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/login", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password }),
   }),
-  register: (email: string, password: string, fullName?: string) => request<{ email: string; verificationRequired: boolean }>(AUTH_BASE_URL, "/register", {
+  register: (email: string, password: string, fullName?: string) => request<{ email: string; verificationRequired: boolean; otpSent: boolean; retryAfterSeconds: number }>(AUTH_BASE_URL, "/register", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ email, password, fullName }),
   }),
   verifyOtp: (email: string, otpCode: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/verify-otp", {
@@ -56,6 +56,15 @@ export const authApi = {
   }),
   resendOtp: (email: string) => request<{ email: string }>(AUTH_BASE_URL, "/resend-otp", {
     method: "POST", body: JSON.stringify({ email }),
+  }),
+  requestPasswordReset: (email: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/request", {
+    method: "POST", body: JSON.stringify({ email }),
+  }),
+  verifyPasswordResetCode: (email: string, code: string) => request<{ verified: boolean }>(AUTH_BASE_URL, "/password-reset/verify", {
+    method: "POST", body: JSON.stringify({ email, code }),
+  }),
+  confirmPasswordReset: (email: string, code: string, newPassword: string) => request<{ message: string }>(AUTH_BASE_URL, "/password-reset/confirm", {
+    method: "POST", body: JSON.stringify({ email, code, newPassword }),
   }),
   refresh: (refreshToken: string) => request<{ accessToken: string; user: AuthUser; refreshToken?: string }>(AUTH_BASE_URL, "/refresh", {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ refreshToken }),

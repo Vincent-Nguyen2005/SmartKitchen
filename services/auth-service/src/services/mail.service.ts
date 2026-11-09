@@ -12,18 +12,35 @@ export class MailService {
 
   async sendOtpEmail(email: string, otpCode: string): Promise<void> {
     const transporter = this.getTransporter();
-    const sender = process.env.EMAIL_FROM || "SmartKitchen App <cykzan205@gmail.com>";
+    const sender = process.env.EMAIL_FROM || `SmartKitchen App <${process.env.SMTP_USER}>`;
     try {
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from: sender,
         to: email,
         subject: "Verify your SmartKitchen account",
         text: `Your SmartKitchen verification code is ${otpCode}. It expires in 5 minutes.`,
         html: this.renderOtpEmail(otpCode),
       });
+      if (!result.accepted?.length) throw new Error("SMTP rejected the recipient");
     } catch (error) {
       console.error("[auth-service] OTP email delivery failed", error);
       throw new MailServiceError("Unable to send the verification email. Please try again later.", "EMAIL_DELIVERY_FAILED");
+    }
+  }
+
+  async sendPasswordResetEmail(email: string, code: string): Promise<void> {
+    const transporter = this.getTransporter();
+    try {
+      const result = await transporter.sendMail({
+        from: process.env.EMAIL_FROM || `SmartKitchen App <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: "Đặt lại mật khẩu SmartKitchen",
+        text: `Mã đặt lại mật khẩu SmartKitchen của bạn là ${code}. Mã có hiệu lực trong 10 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.`,
+      });
+      if (!result.accepted?.length) throw new Error("SMTP rejected the recipient");
+    } catch (error) {
+      console.error("[auth-service] password reset email delivery failed", error);
+      throw new MailServiceError("Unable to send the password reset email. Please try again later.", "EMAIL_DELIVERY_FAILED");
     }
   }
 
@@ -33,14 +50,16 @@ export class MailService {
     const port = Number(process.env.SMTP_PORT || 587);
     const user = process.env.SMTP_USER;
     const password = process.env.SMTP_PASS;
-    if (!user || !password || !Number.isInteger(port) || port < 1 || port > 65535) {
+    const isLocalMailpit = host === "mailpit";
+    if ((!isLocalMailpit && (!user || !password)) || !Number.isInteger(port) || port < 1 || port > 65535) {
       throw new MailServiceError("Email delivery is not configured on the server.", "EMAIL_NOT_CONFIGURED");
     }
     this.transporter = nodemailer.createTransport({
       host,
       port,
       secure: port === 465,
-      auth: { user, pass: password },
+      ...(!isLocalMailpit && { auth: { user, pass: password } }),
+      ...(isLocalMailpit && { ignoreTLS: true }),
       tls: { minVersion: "TLSv1.2" },
     });
     return this.transporter;

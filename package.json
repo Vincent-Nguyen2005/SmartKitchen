@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "turbo dev --concurrency=20",
     "dev:mobile": "powershell -ExecutionPolicy Bypass -File ./dev-mobile.ps1",
+    "dev:team:backend": "node scripts/setup-team-env.mjs && docker compose -f docker-compose.yml -f docker-compose.mailpit.yml up -d --build auth-db auth-service mailpit gateway",
+    "test:team-env": "node --test scripts/setup-team-env.test.mjs",
     "build": "turbo build --concurrency=1",
     "lint": "turbo lint",
     "test": "turbo run test",

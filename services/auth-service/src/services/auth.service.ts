@@ -1,6 +1,6 @@
 import argon2 from "argon2";
 import bcrypt from "bcrypt";
-import { createHash, randomBytes, randomInt, timingSafeEqual } from "crypto";
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "crypto";
 import jwt from "jsonwebtoken";
 import { Prisma, PrismaClient, Role, User } from ".prisma/client-auth";
 import { MailService, MailServiceError } from "./mail.service";
@@ -9,6 +9,9 @@ const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
+const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
+const PASSWORD_RESET_MAX_ATTEMPTS = 5;
 const BCRYPT_ROUNDS = 12;
 
 export class AuthServiceError extends Error {
@@ -25,6 +28,7 @@ export type AuthResult = {
   refreshToken: string;
   user: PublicUser;
 };
+export type RegistrationResult = { email: string; otpSent: boolean; retryAfterSeconds: number };
 
 export type AccessTokenPayload = jwt.JwtPayload & { sub: string; email: string; role: Role };
 
@@ -35,7 +39,7 @@ export class AuthService {
     private readonly mailService = new MailService(),
   ) {}
 
-  async register(email: string, password: string, fullName?: string): Promise<{ email: string }> {
+  async register(email: string, password: string, fullName?: string): Promise<RegistrationResult> {
     const normalizedEmail = email.trim().toLowerCase();
     const existingUser = await this.prisma.user.findUnique({
       where: { email: normalizedEmail },
@@ -57,7 +61,10 @@ export class AuthService {
       if (updated.count !== 1) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
       // Keep the recently emailed code valid instead of sending another message during cooldown.
       if (!hasRecentOtp && otpCode) await this.sendOtpEmail(existingUser.id, existingUser.email, otpCode);
-      return { email: existingUser.email };
+      const retryAfterSeconds = hasRecentOtp && existingUser.otpExpiresAt
+        ? Math.max(1, Math.ceil((existingUser.otpExpiresAt.getTime() - OTP_TTL_MS + OTP_RESEND_COOLDOWN_MS - now) / 1000))
+        : 60;
+      return { email: existingUser.email, otpSent: !hasRecentOtp, retryAfterSeconds };
     }
     if (existingUser) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
 
@@ -74,7 +81,7 @@ export class AuthService {
       },
     });
     await this.sendOtpEmail(user.id, user.email, otpCode);
-    return { email: user.email };
+    return { email: user.email, otpSent: true, retryAfterSeconds: 60 };
   }
 
   async verifyOtp(
@@ -123,6 +130,67 @@ export class AuthService {
     });
     await this.sendOtpEmail(user.id, user.email, otpCode);
     return { email: user.email };
+  }
+
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    // Do not reveal whether an address has a verified account.
+    if (!user?.isVerified) return;
+    const now = Date.now();
+    if (user.resetRequestedAt && now - user.resetRequestedAt.getTime() < PASSWORD_RESET_COOLDOWN_MS) return;
+    const code = randomInt(10_000_000, 100_000_000).toString();
+    const codeHash = this.hashResetCode(user.id, code);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetCodeHash: codeHash,
+        resetExpiresAt: new Date(now + PASSWORD_RESET_TTL_MS),
+        resetRequestedAt: new Date(now),
+        resetAttempts: 0,
+      },
+    });
+    try {
+      await this.mailService.sendPasswordResetEmail(user.email, code);
+    } catch (error) {
+      await this.prisma.user.updateMany({
+        where: { id: user.id, resetCodeHash: codeHash },
+        data: { resetCodeHash: null, resetExpiresAt: null, resetRequestedAt: null },
+      }).catch((cleanupError) => console.error("[auth-service] failed to clear undelivered password reset", cleanupError));
+      if (error instanceof MailServiceError) throw new AuthServiceError(error.message, error.code);
+      throw error;
+    }
+  }
+
+  async verifyPasswordResetCode(email: string, code: string): Promise<void> {
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user?.isVerified || !user.resetCodeHash || !user.resetExpiresAt
+      || user.resetExpiresAt <= new Date() || user.resetAttempts >= PASSWORD_RESET_MAX_ATTEMPTS) {
+      throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
+    }
+    const candidate = this.hashResetCode(user.id, code);
+    if (!timingSafeEqual(Buffer.from(user.resetCodeHash, "hex"), Buffer.from(candidate, "hex"))) {
+      await this.prisma.user.updateMany({
+        where: { id: user.id, resetCodeHash: user.resetCodeHash, resetAttempts: { lt: PASSWORD_RESET_MAX_ATTEMPTS } },
+        data: { resetAttempts: { increment: 1 } },
+      });
+      throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
+    }
+  }
+
+  async confirmPasswordReset(email: string, code: string, newPassword: string): Promise<void> {
+    await this.verifyPasswordResetCode(email, code);
+    const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
+    if (!user) throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
+    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    await this.prisma.$transaction(async (transaction) => {
+      const changed = await transaction.user.updateMany({
+        where: { id: user.id, resetCodeHash: user.resetCodeHash, resetExpiresAt: { gt: new Date() }, resetAttempts: { lt: PASSWORD_RESET_MAX_ATTEMPTS } },
+        data: { passwordHash, resetCodeHash: null, resetExpiresAt: null, resetRequestedAt: null, resetAttempts: 0 },
+      });
+      if (changed.count !== 1) throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
+      await transaction.refreshToken.deleteMany({ where: { userId: user.id } });
+      await transaction.session.deleteMany({ where: { userId: user.id } });
+    });
   }
 
   async login(email: string, password: string, requestContext?: { ipAddress?: string; userAgent?: string }): Promise<AuthResult> {
@@ -222,6 +290,9 @@ export class AuthService {
   }
   private hashRefreshToken(token: string): string {
     return createHash("sha256").update(token).digest("hex");
+  }
+  private hashResetCode(userId: string, code: string): string {
+    return createHmac("sha256", this.jwtSecret).update(`${userId}:${code}`).digest("hex");
   }
 
   private generateOtp(): string {
