@@ -1,4 +1,5 @@
 import { MealType, PeriodType } from "@prisma/client";
+import axios from "axios";
 import { Request, Response } from "express";
 import { z } from "zod";
 import {
@@ -38,6 +39,12 @@ const createMenuSchema = z.object({
 const refreshSchema = z.object({
   inventoryItems: z.array(z.unknown()).min(1),
   recipes: z.array(z.unknown()).optional(),
+});
+
+const checkoutSchema = z.object({
+  orderId: z.string().trim().min(1).max(128),
+  amount: z.number().finite().int().positive().max(Number.MAX_SAFE_INTEGER / 100),
+  provider: z.enum(["VNPAY", "MOMO"]),
 });
 
 function authenticatedUserId(request: Request, response: Response): string | undefined {
@@ -137,5 +144,49 @@ export async function autoRefreshController(request: Request, response: Response
     response.json(await autoRefreshMenu(userId, input));
   } catch (error) {
     handleError(error, response);
+  }
+}
+
+export async function checkoutController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    const input = checkoutSchema.parse(request.body);
+    const paymentServiceUrl = (process.env.PAYMENT_SERVICE_URL || "http://localhost:4009").replace(/\/+$/, "");
+    const authorization = request.header("authorization");
+    const result = await axios.post<{
+      paymentId: string;
+      paymentUrl: string;
+      status: string;
+    }>(`${paymentServiceUrl}/api/payments/create`, {
+      orderId: input.orderId,
+      amount: input.amount,
+      provider: input.provider,
+    }, {
+      headers: authorization ? { Authorization: authorization } : {},
+      timeout: 10_000,
+    });
+    response.status(201).json({
+      order: { id: input.orderId },
+      paymentId: result.data.paymentId,
+      paymentUrl: result.data.paymentUrl,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      response.status(400).json({ error: "Invalid request", details: error.issues });
+      return;
+    }
+    if (axios.isAxiosError(error)) {
+      const status = error.response?.status;
+      console.error("[menu-service] payment-service checkout request failed:", error.message);
+      if (status && status < 500) {
+        response.status(status).json(error.response?.data ?? { error: "Payment request was rejected" });
+        return;
+      }
+      response.status(502).json({ error: "Payment service is unavailable" });
+      return;
+    }
+    console.error("[menu-service] checkout failed:", error);
+    response.status(500).json({ error: "Internal server error" });
   }
 }

@@ -13,6 +13,7 @@ app.use(express.json());
 app.use("/health", healthRouter);
 app.use("/api/menu", menuRouter);
 app.use("/api/menus", menuRouter);
+app.use("/", menuRouter);
 
 const PORT = process.env.PORT || 4007;
 app.listen(PORT, () => {

@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-payment"
 }
 
 datasource db {
@@ -7,9 +8,27 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho payment-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum PaymentProvider {
+  VNPAY
+  MOMO
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+model Payment {
+  id            String          @id @default(uuid())
+  orderId       String
+  userId        String
+  amount        Float
+  currency      String          @default("VND")
+  provider      PaymentProvider
+  status        PaymentStatus   @default(PENDING)
+  transactionId String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}

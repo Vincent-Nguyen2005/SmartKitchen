@@ -12,6 +12,9 @@
     "lint": {
       "dependsOn": ["^lint", "prisma:generate"]
     },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
     "prisma:generate": {
       "inputs": ["prisma/schema.prisma"]
     },
