@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
 import { WebView, type WebViewNavigation } from "react-native-webview";
-import { AppText, colors, spacing } from "../../theme";
+import { AppText, breakpoints, colors, spacing } from "../../theme";
 
 export type PaymentResult = "success" | "failed";
 
@@ -23,6 +23,8 @@ function paymentResultFromUrl(value: string): PaymentResult | null {
 }
 
 export default function PaymentScreen({ url, onComplete, onClose }: Props): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const isWide = width >= breakpoints.wide;
   const completed = useRef(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -53,7 +55,7 @@ export default function PaymentScreen({ url, onComplete, onClose }: Props): Reac
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, isWide && styles.containerWide]}>
       <View style={styles.header}>
         <AppText variant="heading">Thanh toán</AppText>
         <Pressable accessibilityRole="button" onPress={onClose} style={styles.closeButton}>
@@ -97,6 +99,7 @@ export default function PaymentScreen({ url, onComplete, onClose }: Props): Reac
 
 const styles = StyleSheet.create({
   container: { backgroundColor: colors.background, flex: 1 },
+  containerWide: { alignSelf: "center", maxWidth: breakpoints.extraWide, width: "100%" },
   header: {
     alignItems: "center",
     borderBottomColor: colors.border,

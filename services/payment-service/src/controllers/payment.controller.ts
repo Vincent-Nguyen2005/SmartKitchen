@@ -4,6 +4,7 @@ import type { Request, Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import type { AuthenticatedPaymentRequest } from "../middleware/auth.middleware";
+import type { PrismaClient } from "../../node_modules/.prisma/client-payment";
 
 export interface CreatePaymentDTO {
   orderId: string;
@@ -11,11 +12,27 @@ export interface CreatePaymentDTO {
   provider: PaymentProvider;
 }
 
-const createPaymentSchema = z.object({
+export const createPaymentSchema = z.object({
   orderId: z.string().trim().min(1).max(128),
   amount: z.number().finite().int().positive().max(Number.MAX_SAFE_INTEGER / 100),
   provider: z.nativeEnum(PaymentProvider),
 });
+
+export function createPaymentRecord(
+  input: CreatePaymentDTO,
+  userId: string,
+  client: PrismaClient = prisma,
+) {
+  return client.payment.create({
+    data: {
+      orderId: input.orderId,
+      userId,
+      amount: input.amount,
+      provider: input.provider,
+      status: PaymentStatus.PENDING,
+    },
+  });
+}
 
 class PaymentRequestError extends Error {
   constructor(message: string, readonly statusCode: number) {
@@ -82,7 +99,7 @@ function sortedQueryString(parameters: StringParams): string {
     .join("&");
 }
 
-function createVnpayUrl(
+export function createVnpayUrl(
   paymentId: string,
   amount: number,
   request: Request,
@@ -158,10 +175,11 @@ function momoCreateSignature(data: {
   return hmac(process.env.MOMO_SECRET_KEY || "", signData, "sha256");
 }
 
-async function createMomoUrl(
+export async function createMomoUrl(
   paymentId: string,
   amount: number,
   request: Request,
+  fetcher: typeof fetch = fetch,
 ): Promise<string> {
   const partnerCode = process.env.MOMO_PARTNER_CODE?.trim();
   const accessKey = process.env.MOMO_ACCESS_KEY?.trim();
@@ -189,7 +207,7 @@ async function createMomoUrl(
   const timeout = setTimeout(() => controller.abort(), 10_000);
   let response: globalThis.Response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetcher(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...payload, signature }),
@@ -357,15 +375,7 @@ export async function createPayment(
     } else if (!process.env.MOMO_PARTNER_CODE || !process.env.MOMO_ACCESS_KEY || !process.env.MOMO_SECRET_KEY) {
       throw new PaymentRequestError("MoMo credentials are not configured", 503);
     }
-    const payment = await prisma.payment.create({
-      data: {
-        orderId: input.orderId,
-        userId,
-        amount: input.amount,
-        provider: input.provider,
-        status: PaymentStatus.PENDING,
-      },
-    });
+    const payment = await createPaymentRecord(input, userId);
 
     try {
       const paymentUrl = input.provider === PaymentProvider.VNPAY

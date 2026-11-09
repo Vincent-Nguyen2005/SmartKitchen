@@ -10,6 +10,7 @@
     "prelint": "prisma generate",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
+    "test": "pnpm run build && node --test dist/__tests__/payment.controller.test.js",
     "db:push": "prisma db push",
     "db:generate": "prisma generate"
   },
