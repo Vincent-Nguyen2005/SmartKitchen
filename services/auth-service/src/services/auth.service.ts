@@ -4,6 +4,7 @@ import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 
 import jwt from "jsonwebtoken";
 import { Prisma, PrismaClient, Role, User } from ".prisma/client-auth";
 import { MailService, MailServiceError } from "./mail.service";
+import { hashPassword } from "./password";
 
 const ACCESS_TOKEN_TTL = "15m";
 const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -12,7 +13,6 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
 const PASSWORD_RESET_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_MAX_ATTEMPTS = 5;
-const BCRYPT_ROUNDS = 12;
 
 export class AuthServiceError extends Error {
   constructor(message: string, readonly code: string) {
@@ -53,7 +53,7 @@ export class AuthService {
       const updated = await this.prisma.user.updateMany({
         where: { id: existingUser.id, isVerified: false },
         data: {
-          passwordHash: await bcrypt.hash(password, BCRYPT_ROUNDS),
+          passwordHash: await hashPassword(password),
           ...(fullName !== undefined ? { fullName: fullName || null } : {}),
           ...(!hasRecentOtp ? { otpCode, otpExpiresAt: new Date(now + OTP_TTL_MS) } : {}),
         },
@@ -68,7 +68,7 @@ export class AuthService {
     }
     if (existingUser) throw new AuthServiceError("Email is already registered", "EMAIL_ALREADY_REGISTERED");
 
-    const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(password);
     const otpCode = this.generateOtp();
     const user = await this.prisma.user.create({
       data: {
@@ -181,7 +181,7 @@ export class AuthService {
     await this.verifyPasswordResetCode(email, code);
     const user = await this.prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
     if (!user) throw new AuthServiceError("Invalid or expired password reset code", "INVALID_RESET_CODE");
-    const passwordHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
+    const passwordHash = await hashPassword(newPassword);
     await this.prisma.$transaction(async (transaction) => {
       const changed = await transaction.user.updateMany({
         where: { id: user.id, resetCodeHash: user.resetCodeHash, resetExpiresAt: { gt: new Date() }, resetAttempts: { lt: PASSWORD_RESET_MAX_ATTEMPTS } },

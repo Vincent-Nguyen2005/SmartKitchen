@@ -18,6 +18,8 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       EMAIL_FROM: ${EMAIL_FROM:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
       DATABASE_URL: postgresql://postgres:postgres@auth-db:5432/auth_db
     ports: ["4001:4001"]
     depends_on: { auth-db: { condition: service_healthy } }
