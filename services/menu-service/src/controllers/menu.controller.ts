@@ -12,7 +12,7 @@ import {
   MenuServiceError,
 } from "../services/menu.service";
 
-const generateSchema = z.object({
+export const generateSchema = z.object({
   periodType: z.nativeEnum(PeriodType).default(PeriodType.WEEK),
   startDate: z.coerce.date(),
   endDate: z.coerce.date(),
@@ -22,7 +22,7 @@ const generateSchema = z.object({
   recipes: z.array(z.unknown()).optional(),
 });
 
-const createMenuSchema = z.object({
+export const createMenuSchema = z.object({
   title: z.string().trim().min(1).max(120),
   periodType: z.nativeEnum(PeriodType).default(PeriodType.WEEK),
   startDate: z.coerce.date(),
@@ -36,12 +36,12 @@ const createMenuSchema = z.object({
   })).default([]),
 });
 
-const refreshSchema = z.object({
+export const refreshSchema = z.object({
   inventoryItems: z.array(z.unknown()).min(1),
   recipes: z.array(z.unknown()).optional(),
 });
 
-const checkoutSchema = z.object({
+export const checkoutSchema = z.object({
   orderId: z.string().trim().min(1).max(128),
   amount: z.number().finite().int().positive().max(Number.MAX_SAFE_INTEGER / 100),
   provider: z.enum(["VNPAY", "MOMO"]),

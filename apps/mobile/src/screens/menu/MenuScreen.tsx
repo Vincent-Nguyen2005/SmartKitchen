@@ -5,9 +5,10 @@ import {
   ScrollView,
   StyleSheet,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { CalendarDays, RefreshCw, Sparkles } from "lucide-react-native";
-import { AppIcon, AppText, colors, radius, spacing, touchTarget } from "../../theme";
+import { AppIcon, AppText, breakpoints, colors, radius, spacing, touchTarget } from "../../theme";
 import { inventoryApi } from "../inventory/inventoryApi";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 
@@ -79,6 +80,9 @@ function dayOfWeek(date = new Date()): number {
 }
 
 export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: Props): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  const isWide = width >= breakpoints.wide;
+  const horizontalPadding = width < 360 ? spacing.sm : isWide ? spacing.xl : spacing.lg;
   const [period, setPeriod] = useState<PeriodType>("DAY");
   const [menus, setMenus] = useState<MenuRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -202,9 +206,9 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
     );
   } else {
     scheduleContent = (
-      <View style={styles.mealList}>
+      <View style={[styles.mealList, isWide && period !== "DAY" && styles.mealListWide]}>
         {groupedItems.map(([weekday, weekdayItems]) => (
-          <View key={weekday}>
+          <View key={weekday} style={[styles.weekdayGroup, isWide && period !== "DAY" && styles.weekdayGroupWide]}>
             {period !== "DAY" && (
               <AppText variant="label" style={styles.weekdayHeading}>{weekdayLabels[weekday - 1]}</AppText>
             )}
@@ -227,7 +231,7 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.content}>
+    <ScrollView contentContainerStyle={[styles.content, { maxWidth: isWide ? breakpoints.extraWide : undefined, paddingHorizontal: horizontalPadding }]}>
       <View style={styles.headingRow}>
         <View style={styles.headingIcon}>
           <AppIcon icon={CalendarDays} size="md" color={colors.primary} />
@@ -285,7 +289,7 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
         <AppText variant="bodySmall" color={colors.muted}>
           Đơn hàng giả · {mockOrder.amount.toLocaleString("vi-VN")} VND
         </AppText>
-        <View style={styles.checkoutActions}>
+        <View style={[styles.checkoutActions, width < 380 && styles.checkoutActionsCompact]}>
           {(["VNPAY", "MOMO"] as const).map((provider) => (
             <Pressable
               accessibilityRole="button"
@@ -323,7 +327,7 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
 }
 
 const styles = StyleSheet.create({
-  content: { backgroundColor: colors.background, flexGrow: 1, padding: spacing.lg, paddingBottom: spacing.xl },
+  content: { alignSelf: "center", backgroundColor: colors.background, flexGrow: 1, paddingBottom: spacing.xl, paddingTop: spacing.lg, width: "100%" },
   headingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, marginBottom: spacing.xl },
   headingIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.md, height: 48, justifyContent: "center", width: 48 },
   headingText: { flex: 1, gap: spacing.xs },
@@ -333,6 +337,7 @@ const styles = StyleSheet.create({
   actions: { gap: spacing.sm, marginBottom: spacing.lg },
   checkoutCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md },
   checkoutActions: { flexDirection: "row", gap: spacing.sm },
+  checkoutActionsCompact: { flexDirection: "column" },
   checkoutButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flex: 1, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.sm },
   primaryAction: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.md },
   secondaryAction: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.md },
@@ -343,6 +348,9 @@ const styles = StyleSheet.create({
   loading: { alignItems: "center", flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xl },
   emptyState: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.xl },
   mealList: { paddingBottom: spacing.md },
+  mealListWide: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  weekdayGroup: { width: "100%" },
+  weekdayGroupWide: { width: "48%" },
   weekdayHeading: { paddingBottom: spacing.xs, paddingTop: spacing.md },
   mealRow: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 68, paddingVertical: spacing.sm },
   mealMarker: { backgroundColor: colors.primary, borderRadius: radius.pill, height: 8, width: 8 },

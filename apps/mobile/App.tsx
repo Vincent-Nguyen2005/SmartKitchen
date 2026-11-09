@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   Archive,
   Bell,
+  BookOpen,
   LogOut,
   Salad,
   Settings,
@@ -9,7 +10,7 @@ import {
   Utensils,
   Users,
 } from "lucide-react-native";
-import { AppIcon, colors, spacing, textStyles, touchTarget } from "./src/theme";
+import { AppIcon, breakpoints, colors, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
   View,
@@ -18,6 +19,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Platform,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import LoginScreen from "./src/screens/auth/LoginScreen";
@@ -32,6 +34,7 @@ import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
+import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -40,6 +43,7 @@ type Tab =
   | "inventory"
   | "shopping"
   | "menu"
+  | "recipes"
   | "nutrition"
   | "family"
   | "notifications"
@@ -49,6 +53,7 @@ const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
   { key: "menu", label: "Thực đơn", icon: Utensils },
+  { key: "recipes", label: "Công thức", icon: BookOpen },
   { key: "family", label: "Gia đình", icon: Users },
   { key: "nutrition", label: "Dinh dưỡng", icon: Salad },
   { key: "notifications", label: "Thông báo", icon: Bell },
@@ -72,6 +77,7 @@ export function resolveNutritionUserId(
 
 function AppContent(): React.JSX.Element {
   const session = useSession();
+  const { width } = useWindowDimensions();
   const [tab, setTab] = useState<Tab>("inventory");
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -80,6 +86,10 @@ function AppContent(): React.JSX.Element {
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
   const isAdmin = session.user?.role === "ADMIN";
+  const visibleTabs = tabs.filter(({ key }) => key !== "admin" || isAdmin);
+  const tabWidth = width >= breakpoints.wide
+    ? Math.min(140, width / visibleTabs.length)
+    : width < 360 ? 72 : 88;
 
   // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
   useEffect(() => {
@@ -203,10 +213,8 @@ function AppContent(): React.JSX.Element {
       </View>
 
       {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={styles.tabBarContent}>
-        {tabs
-          .filter(({ key }) => key !== "admin" || isAdmin)
-          .map(({ key, label, icon: Icon }) => {
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
+        {visibleTabs.map(({ key, label, icon: Icon }) => {
             const active = tab === key;
             return (
               <TouchableOpacity
@@ -214,7 +222,7 @@ function AppContent(): React.JSX.Element {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
                 key={key}
-                style={[styles.tab, active && styles.tabActive]}
+                style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
                 onPress={() => setTab(key)}
               >
                 <AppIcon
@@ -244,6 +252,9 @@ function AppContent(): React.JSX.Element {
         ) : null}
         {!paymentUrl && tab === "inventory" && (
           <InventoryScreen onOpenFamily={() => setTab("family")} />
+        )}
+        {!paymentUrl && tab === "recipes" && (
+          <RecipeScreen accessToken={session.accessToken} />
         )}
         {!paymentUrl && tab === "shopping" && <ShoppingCartScreen />}
         {!paymentUrl && tab === "menu" && (
@@ -306,9 +317,12 @@ const styles = StyleSheet.create({
   tabBarContent: {
     flexDirection: "row",
   },
+  tabBarContentWide: {
+    alignSelf: "center",
+    width: "100%",
+  },
   tab: {
     alignItems: "center",
-    width: 88,
     gap: spacing.xs,
     justifyContent: "center",
     minHeight: touchTarget + spacing.md,
