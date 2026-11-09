@@ -4,6 +4,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { authErrorMessage } from "./authError";
+import { colors, typography } from "../../theme";
 
 type Props = {
   email: string;
@@ -73,6 +75,7 @@ export default function OtpVerificationScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           <Pressable onPress={onBack} style={styles.backButton}>
             <Text style={styles.backText}>Đổi email</Text>
@@ -108,25 +111,27 @@ export default function OtpVerificationScreen({
             </Pressable>
           </View>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  notice: { color: "#2F6B5F", fontSize: 14, marginBottom: 12 },
+  notice: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, marginBottom: 12 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
-  container: { flex: 1, justifyContent: "center", padding: 24 },
+  container: { flex: 1 },
+  content: { alignSelf: "center", flexGrow: 1, justifyContent: "center", maxWidth: 560, padding: 24, width: "100%" },
   backButton: { alignSelf: "flex-start", marginBottom: 28 },
-  backText: { color: "#2F6B5F", fontSize: 14, fontWeight: "700" },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 8 },
-  subtitle: { color: "#68736F", fontSize: 16, lineHeight: 24, marginBottom: 30 },
+  backText: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 8 },
+  subtitle: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 24, marginBottom: 30 },
   email: { color: "#17211F", fontWeight: "700" },
-  codeInput: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, color: "#17211F", fontSize: 26, fontWeight: "700", letterSpacing: 14, marginBottom: 12, padding: 18, textAlign: "center" },
-  error: { color: "#B42318", fontSize: 13, marginVertical: 8 },
+  codeInput: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, color: "#17211F", fontSize: typography.heading.fontSize, fontWeight: "700", letterSpacing: 14, marginBottom: 12, padding: 18, textAlign: "center" },
+  error: { color: "#B42318", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
   primaryButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 12, justifyContent: "center", minHeight: 54, marginTop: 14 },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryButtonText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
   resendRow: { alignItems: "center", flexDirection: "row", justifyContent: "center", marginTop: 24 },
-  resendButton: { color: "#2F6B5F", fontSize: 14, fontWeight: "700" },
+  resendButton: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   resendDisabled: { color: "#8B949E" },
 });

@@ -6,12 +6,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
 import { authErrorMessage } from "./authError";
+import { colors, typography } from "../../theme";
 
 type AuthNavigation = { navigate: (screen: "Login") => void };
 type Props = {
@@ -63,6 +65,7 @@ export default function RegisterScreen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           <Pressable onPress={() => navigation?.navigate("Login")}>
             <Text style={styles.back}>Đăng nhập</Text>
@@ -156,6 +159,7 @@ export default function RegisterScreen({
             )}
           </Pressable>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -163,16 +167,17 @@ export default function RegisterScreen({
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
-  container: { flex: 1, padding: 24 },
-  back: { color: "#2F6B5F", fontSize: 14, fontWeight: "700", marginBottom: 28 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 24 },
+  container: { flex: 1 },
+  content: { alignSelf: "center", flexGrow: 1, maxWidth: 560, padding: 24, width: "100%" },
+  back: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", marginBottom: 28 },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 24 },
   input: {
     backgroundColor: "#FFFFFF",
     borderColor: "#DCE3DE",
     borderRadius: 12,
     borderWidth: 1,
     color: "#17211F",
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     marginBottom: 12,
     padding: 16,
   },
@@ -185,7 +190,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: 12,
   },
-  passwordInput: { color: "#17211F", flex: 1, fontSize: 16, padding: 16 },
+  passwordInput: { color: "#17211F", flex: 1, fontSize: typography.body.fontSize, padding: 16 },
   visibilityButton: { padding: 16 },
   terms: { alignItems: "center", flexDirection: "row", marginVertical: 8 },
   checkbox: {
@@ -199,9 +204,9 @@ const styles = StyleSheet.create({
     width: 22,
   },
   checkboxChecked: { backgroundColor: "#2F6B5F", borderColor: "#2F6B5F" },
-  checkmark: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
-  termsText: { color: "#68736F", flex: 1, fontSize: 13 },
-  error: { color: "#B42318", fontSize: 13, marginVertical: 8 },
+  checkmark: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
+  termsText: { color: "#68736F", flex: 1, fontSize: typography.bodySmall.fontSize },
+  error: { color: "#B42318", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
   primaryButton: {
     alignItems: "center",
     backgroundColor: "#2F6B5F",
@@ -210,6 +215,6 @@ const styles = StyleSheet.create({
     minHeight: 54,
     marginTop: 14,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryButtonText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
   pressed: { opacity: 0.8 },
 });

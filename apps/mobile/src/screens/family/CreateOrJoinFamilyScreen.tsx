@@ -1,5 +1,7 @@
 import React, { useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowLeft } from "lucide-react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { AppIcon, colors, typography } from "../../theme";
 
 type Mode = "create" | "join";
 type Props = {
@@ -32,8 +34,9 @@ export default function CreateOrJoinFamilyScreen({ onCreate, onJoin, onBack }: P
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
-          {!!onBack && <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.link}>‹  Back</Text></Pressable>}
+          {!!onBack && <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Quay lại</Text></Pressable>}
           <Text style={styles.eyebrow}>FAMILY SETUP</Text>
           <Text style={styles.title}>Make it a shared space</Text>
           <Text style={styles.subtitle}>Bring your household together to plan, shop, and cook.</Text>
@@ -57,6 +60,7 @@ export default function CreateOrJoinFamilyScreen({ onCreate, onJoin, onBack }: P
             </Pressable>
           </View>
         </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -64,23 +68,24 @@ export default function CreateOrJoinFamilyScreen({ onCreate, onJoin, onBack }: P
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F7F8F4", flex: 1 },
-  container: { flex: 1, padding: 24 },
-  backButton: { alignSelf: "flex-start", marginBottom: 28, paddingVertical: 6 },
-  link: { color: "#2F6B5F", fontSize: 15, fontWeight: "700" },
-  eyebrow: { color: "#2F6B5F", fontSize: 12, fontWeight: "700", letterSpacing: 1.3 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginTop: 9 },
-  subtitle: { color: "#68736F", fontSize: 15, lineHeight: 23, marginTop: 8 },
+  container: { flex: 1 },
+  content: { alignSelf: "center", flexGrow: 1, maxWidth: 560, padding: 24, width: "100%" },
+  backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 28, minHeight: 44 },
+  link: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
+  eyebrow: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.3 },
+  title: { ...typography.pageTitle, color: colors.text, marginTop: 9 },
+  subtitle: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 23, marginTop: 8 },
   tabs: { backgroundColor: "#E9EDE9", borderRadius: 12, flexDirection: "row", marginTop: 28, padding: 4 },
   tab: { alignItems: "center", borderRadius: 9, flex: 1, justifyContent: "center", minHeight: 42 },
   activeTab: { backgroundColor: "#FFFFFF", shadowColor: "#17211F", shadowOpacity: 0.08, shadowRadius: 4, elevation: 1 },
-  tabText: { color: "#68736F", fontSize: 13, fontWeight: "600" },
+  tabText: { color: "#68736F", fontSize: typography.bodySmall.fontSize, fontWeight: "600" },
   activeTabText: { color: "#2F6B5F" },
   formCard: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, marginTop: 16, padding: 20 },
-  label: { color: "#17211F", fontSize: 15, fontWeight: "700", marginBottom: 11 },
-  input: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 11, borderWidth: 1, color: "#17211F", fontSize: 16, padding: 15 },
-  helper: { color: "#7A8580", fontSize: 13, lineHeight: 19, marginTop: 9 },
-  error: { color: "#B42318", fontSize: 13, marginTop: 12 },
+  label: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "700", marginBottom: 11 },
+  input: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 11, borderWidth: 1, color: "#17211F", fontSize: typography.body.fontSize, padding: 15 },
+  helper: { color: "#7A8580", fontSize: typography.bodySmall.fontSize, lineHeight: 19, marginTop: 9 },
+  error: { color: "#B42318", fontSize: typography.bodySmall.fontSize, marginTop: 12 },
   primaryButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 12, justifyContent: "center", marginTop: 22, minHeight: 52 },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  primaryButtonText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
   pressed: { opacity: 0.82 },
 });
