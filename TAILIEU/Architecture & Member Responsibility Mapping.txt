@@ -153,6 +153,7 @@ Cuong:
 
 --- SPRINT 4: Testing, UI Optimization, Documentation & Production Deployment ---
 Status as of 2026-11-06 (Jira export): 46 items - Done 20, In Progress 4, To Do 6, Idea 16.
+Kazan's Sprint 4 statuses below were updated from merged code on main on 2026-11-09; the Jira export counts above are historical. Kazan will synchronize these Done statuses in Jira.
 
 Huy:
 [#58] (SCRUM-220) Story: Admin: system health monitoring (EPIC-12) [Done]
@@ -181,13 +182,13 @@ Huy - extra items, added after the original plan ("PR #n" is a GitHub pull reque
 (SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [To Do]
 
 Kazan:
-[#54] (SCRUM-280) Task: Unit tests - Auth & Family Services (EPIC-02/03) [Idea]
-[#61b] (SCRUM-281) Task: Finalize responsive UI - Auth & Family screens (EPIC-02/03) [Idea]
-[#66] (SCRUM-282) Task: Write documentation - Auth & Family section (EPIC-02/03) [Idea]
-(SCRUM-266) Task: Migrate auth & family screens to shared theme - EPIC-13 [Idea]
-(SCRUM-271) Task: Mobile login bypasses the gateway (calls auth-service :4001 directly) - EPIC-02 [Idea]
-(SCRUM-272) Task: Session restore crashes on web (expo-secure-store not supported) - EPIC-13 [Idea]
-(SCRUM-277) Task: Admin families/users APIs (auth-service, family-service) - EPIC-12 [In Progress]
+[#54] (SCRUM-280) Task: Unit tests - Auth & Family Services (EPIC-02/03) [Done] (tests and CI on main)
+[#61b] (SCRUM-281) Task: Finalize responsive UI - Auth & Family screens (EPIC-02/03) [Done] (PR #40)
+[#66] (SCRUM-282) Task: Write documentation - Auth & Family section (EPIC-02/03) [Done] (PR #40)
+(SCRUM-266) Task: Migrate auth & family screens to shared theme - EPIC-13 [Done] (PR #40)
+(SCRUM-271) Task: Mobile login bypasses the gateway (calls auth-service :4001 directly) - EPIC-02 [Done] (gateway-based auth client on main)
+(SCRUM-272) Task: Session restore crashes on web (expo-secure-store not supported) - EPIC-13 [Done] (web-safe session storage on main)
+(SCRUM-277) Task: Admin families/users APIs (auth-service, family-service) - EPIC-12 [Done] (PR #27; review fixes PR #32)
 
 Khanh:
 [#55] (SCRUM-223) Task: Unit tests - Inventory & Shopping List Services (EPIC-04/09) [Done]
