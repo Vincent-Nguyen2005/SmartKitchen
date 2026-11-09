@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { ArrowLeft } from "lucide-react-native";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { ApiFamilySettings } from "../../services/api";
+import { AppIcon, colors, typography } from "../../theme";
 
 type Props = {
   settings: ApiFamilySettings | null;
@@ -60,7 +62,7 @@ export default function FamilySettingsScreen({ settings, onSave, onBack }: Props
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.link}>‹  Family</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Gia đình</Text></Pressable>
         <Text style={styles.eyebrow}>HOUSEHOLD PREFERENCES</Text>
         <Text style={styles.title}>Family settings</Text>
         <Text style={styles.subtitle}>Set shared food preferences, a household budget, and family rules.</Text>
@@ -122,20 +124,20 @@ export default function FamilySettingsScreen({ settings, onSave, onBack }: Props
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F7F8F4", flex: 1 },
-  content: { padding: 24, paddingBottom: 40 },
-  backButton: { alignSelf: "flex-start", marginBottom: 24, paddingVertical: 6 },
-  link: { color: "#2F6B5F", fontSize: 15, fontWeight: "700" },
-  eyebrow: { color: "#2F6B5F", fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginTop: 8 },
-  subtitle: { color: "#68736F", fontSize: 15, lineHeight: 22, marginBottom: 22, marginTop: 8 },
+  content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 40, width: "100%" },
+  backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 24, minHeight: 44 },
+  link: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
+  eyebrow: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.2 },
+  title: { ...typography.pageTitle, color: colors.text, marginTop: 8 },
+  subtitle: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 22, marginBottom: 22, marginTop: 8 },
   error: { backgroundColor: "#FEE4E2", borderRadius: 10, color: "#B42318", marginBottom: 14, padding: 12 },
   success: { backgroundColor: "#E4F0E9", borderRadius: 10, color: "#2F6B5F", marginBottom: 14, padding: 12 },
   card: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, padding: 18 },
-  label: { color: "#17211F", fontSize: 14, fontWeight: "700", marginBottom: 6, marginTop: 16 },
-  hint: { color: "#7A8580", fontSize: 12, lineHeight: 18, marginBottom: 8 },
-  input: { borderColor: "#D7E0D9", borderRadius: 10, borderWidth: 1, color: "#17211F", fontSize: 15, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10 },
+  label: { color: "#17211F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", marginBottom: 6, marginTop: 16 },
+  hint: { color: "#7A8580", fontSize: typography.caption.fontSize, lineHeight: 18, marginBottom: 8 },
+  input: { borderColor: "#D7E0D9", borderRadius: 10, borderWidth: 1, color: "#17211F", fontSize: typography.body.fontSize, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10 },
   multiline: { minHeight: 88, textAlignVertical: "top" },
   saveButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 12, justifyContent: "center", marginTop: 20, minHeight: 50 },
   disabled: { opacity: 0.65 },
-  saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "700" },
+  saveText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
 });

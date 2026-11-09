@@ -8,6 +8,7 @@ Last verified: 2026-11-06, on `main` at commit `2681574`.
 | [gateway.md](gateway.md) | Routing, JWT authentication, header trust model, rate limiting, caching, errors | Huy |
 | [notification-service.md](notification-service.md) | Notifications, promotions, preferences, device tokens, internal API | Huy |
 | [admin-service.md](admin-service.md) | Health monitor, account reports, master ingredients, recommendation weights | Huy |
+| [auth-family.md](auth-family.md) | Registration, session restore, family permissions, tests and deployment checks | Kazan |
 | [deploy/decision.md](deploy/decision.md) | Hosting decision (Render), staged plan, budget options | Huy |
 | [deploy/checklist.md](deploy/checklist.md) | Production deploy checklist | Huy |
 | [e2e/README.md](e2e/README.md), [e2e/scenarios.md](e2e/scenarios.md) | E2E smoke run and scenario matrix | Huy (matrix rows by story owner) |

@@ -1,9 +1,9 @@
 import React, { useState } from "react";
-import { ChevronLeft, Eye, EyeOff } from "lucide-react-native";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authApi } from "../../services/api";
-import { IconButton } from "../../theme";
+import { AppIcon, colors, typography } from "../../theme";
 import { authErrorMessage } from "./authError";
 
 type Props = { onBack: () => void; onSuccess: () => void };
@@ -68,7 +68,11 @@ export default function ForgotPasswordScreen({ onBack, onSuccess }: Props): Reac
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
-        <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại đăng nhập" onPress={onBack} color="#2F6B5F" />
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đăng nhập" onPress={onBack} style={styles.backButton}>
+          <AppIcon icon={ArrowLeft} color="#2F6B5F" />
+          <Text style={styles.backText}>Quay lại</Text>
+        </Pressable>
         <Text style={styles.title}>Quên mật khẩu</Text>
         {step !== "request" && <Text style={styles.hint}>{step === "verify"
           ? `Nhập mã 8 chữ số gửi tới ${email.trim().toLowerCase()}. Mã có hiệu lực 10 phút.`
@@ -103,6 +107,7 @@ export default function ForgotPasswordScreen({ onBack, onSuccess }: Props): Reac
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => { void (step === "request" ? requestCode() : step === "verify" ? verifyCode() : confirm()); }} style={styles.button}>
           {busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.buttonText}>{step === "request" ? "Gửi mã đặt lại" : step === "verify" ? "Xác minh mã" : "Đổi mật khẩu"}</Text>}
         </Pressable>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -110,16 +115,19 @@ export default function ForgotPasswordScreen({ onBack, onSuccess }: Props): Reac
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
-  container: { flex: 1, padding: 24 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginBottom: 12, marginTop: 30 },
-  hint: { color: "#68736F", fontSize: 15, lineHeight: 23, marginBottom: 24 },
-  email: { color: "#2F6B5F", fontSize: 15, fontWeight: "600", marginBottom: 16 },
-  input: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, color: "#17211F", fontSize: 16, marginBottom: 12, padding: 16 },
+  container: { flex: 1 },
+  content: { alignSelf: "center", flexGrow: 1, maxWidth: 560, padding: 24, width: "100%" },
+  backButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 8, minHeight: 44, paddingHorizontal: 12 },
+  backText: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 12, marginTop: 30 },
+  hint: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 23, marginBottom: 24 },
+  email: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "600", marginBottom: 16 },
+  input: { backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, color: "#17211F", fontSize: typography.body.fontSize, marginBottom: 12, padding: 16 },
   passwordRow: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, flexDirection: "row", marginBottom: 12, paddingRight: 16 },
-  passwordInput: { color: "#17211F", flex: 1, fontSize: 16, padding: 16 },
-  link: { color: "#2F6B5F", fontSize: 14, fontWeight: "700", paddingVertical: 8 },
-  error: { color: "#B42318", fontSize: 13, marginVertical: 8 },
-  feedback: { color: "#2F6B5F", fontSize: 13, marginVertical: 8 },
+  passwordInput: { color: "#17211F", flex: 1, fontSize: typography.body.fontSize, padding: 16 },
+  link: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", paddingVertical: 8 },
+  error: { color: "#B42318", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
+  feedback: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
   button: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 12, justifyContent: "center", minHeight: 54, marginTop: 18 },
-  buttonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  buttonText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
 });
