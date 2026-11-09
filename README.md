@@ -18,6 +18,12 @@ pnpm install
 
 For a fresh clone, run `pnpm dev:team:backend`. It creates local, Git-ignored keys and starts the gateway, auth database, auth-service, and Mailpit. Run `pnpm --filter mobile exec expo start --web --port 8081` for the app. Registration OTP appears at `http://127.0.0.1:8025` on the backend computer, **not in the recipient's real email inbox**. Each computer has a separate database. For real-inbox delivery and shared accounts, run one reachable backend with privately configured SMTP and point team apps to that gateway. See [auth-service setup](services/auth-service/README.md#team-registration-checklist).
 
+### Shared backend for real-email OTP (team testing)
+
+Use **one** backend and database on the host computer; each teammate runs only the Expo app against the same gateway URL. The host keeps SMTP credentials in its ignored root `.env` (never in Git or a chat message). Start the host with `docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d --build auth-service family-service gateway`. This overlay removes published database and service ports and binds the gateway to `127.0.0.1:4000`. Check `http://127.0.0.1:4000/health`, then expose **only the gateway** through a tunnel. The tunnel and host Docker containers must remain running while teammates test.
+
+Each teammate puts the current tunnel URL in their ignored `apps/mobile/.env.local` as `EXPO_PUBLIC_API_BASE_URL=https://<gateway-tunnel-url>`, then restarts Expo with `pnpm --filter mobile exec expo start --web --clear --port 8081`. A restarted Quick Tunnel gets a new URL, so the host must share the new URL and everyone must update their local file. After pulling changes, run `pnpm install`. For prerequisites, tunnel setup, CORS, SMTP troubleshooting, and security limits, follow the [shared-host guide](docs/deploy/shared-host.md). This is for internal testing, not production hosting.
+
 For the normal Compose mode, create the root `.env` **before** the first `docker compose up` (compose refuses to start without `JWT_SECRET`). The team-test command above creates this file automatically on a fresh clone. `.env` is git-ignored; never commit it.
 
 ```powershell
