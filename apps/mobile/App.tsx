@@ -32,6 +32,7 @@ import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
+import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
@@ -73,6 +74,7 @@ function AppContent(): React.JSX.Element {
   const session = useSession();
   const [tab, setTab] = useState<Tab>("inventory");
   const [authView, setAuthView] = useState<AuthView>("login");
+  const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
@@ -230,15 +232,31 @@ function AppContent(): React.JSX.Element {
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
-        {tab === "inventory" && (
+        {paymentUrl ? (
+          <PaymentScreen
+            url={paymentUrl}
+            onClose={() => setPaymentUrl(null)}
+            onComplete={(_result: PaymentResult) => {
+              setPaymentUrl(null);
+              setTab("inventory");
+            }}
+          />
+        ) : null}
+        {!paymentUrl && tab === "inventory" && (
           <InventoryScreen onOpenFamily={() => setTab("family")} />
         )}
-        {tab === "shopping" && <ShoppingCartScreen />}
-        {tab === "menu" && <MenuScreen accessToken={session.accessToken} familyId={session.family?.id} />}
-        {tab === "family" && <FamilyScreenFlow />}
-        {tab === "notifications" && <NotificationsHome />}
-        {tab === "admin" && isAdmin && <AdminHome />}
-        {tab === "nutrition" && (
+        {!paymentUrl && tab === "shopping" && <ShoppingCartScreen />}
+        {!paymentUrl && tab === "menu" && (
+          <MenuScreen
+            accessToken={session.accessToken}
+            familyId={session.family?.id}
+            onPaymentStarted={setPaymentUrl}
+          />
+        )}
+        {!paymentUrl && tab === "family" && <FamilyScreenFlow />}
+        {!paymentUrl && tab === "notifications" && <NotificationsHome />}
+        {!paymentUrl && tab === "admin" && isAdmin && <AdminHome />}
+        {!paymentUrl && tab === "nutrition" && (
           <NutritionProfileScreen
             apiBaseUrl={apiBaseUrl}
             accessToken={session.accessToken ?? undefined}

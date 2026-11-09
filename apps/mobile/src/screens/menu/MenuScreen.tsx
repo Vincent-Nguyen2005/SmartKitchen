@@ -28,7 +28,15 @@ type MenuRecord = {
   endDate: string;
   items: MenuItem[];
 };
-type Props = Readonly<{ accessToken: string | null; familyId?: string | null }>;
+type PaymentProvider = "VNPAY" | "MOMO";
+type CheckoutResponse = { paymentUrl: string; paymentId: string; order: { id: string } };
+type Props = Readonly<{
+  accessToken: string | null;
+  familyId?: string | null;
+  onPaymentStarted: (paymentUrl: string) => void;
+}>;
+
+const mockOrder = { orderId: "mock-order-123", amount: 50_000 };
 
 const periods: Array<{ value: PeriodType; label: string }> = [
   { value: "DAY", label: "Theo ngày" },
@@ -70,11 +78,12 @@ function dayOfWeek(date = new Date()): number {
   return ((date.getUTCDay() + 6) % 7) + 1;
 }
 
-export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.Element {
+export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: Props): React.JSX.Element {
   const [period, setPeriod] = useState<PeriodType>("DAY");
   const [menus, setMenus] = useState<MenuRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"generate" | "refresh" | null>(null);
+  const [checkoutProvider, setCheckoutProvider] = useState<PaymentProvider | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const api = createGatewayClient(accessToken);
@@ -140,6 +149,25 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
       setError(errorMessage(requestError));
     } finally {
       setBusy(null);
+    }
+  };
+
+  const checkout = async (provider: PaymentProvider): Promise<void> => {
+    if (!accessToken || busy || checkoutProvider) return;
+    setCheckoutProvider(provider);
+    setError("");
+    setNotice("");
+    try {
+      const result = await api.post<CheckoutResponse>("/api/menu/checkout", {
+        ...mockOrder,
+        provider,
+      });
+      if (!result.paymentUrl) throw new Error("Payment service did not return a payment URL");
+      setCheckoutProvider(null);
+      onPaymentStarted(result.paymentUrl);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setCheckoutProvider(null);
     }
   };
 
@@ -252,6 +280,33 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
         </Pressable>
       </View>
 
+      <View style={styles.checkoutCard}>
+        <AppText variant="label">Thanh toán thử nghiệm</AppText>
+        <AppText variant="bodySmall" color={colors.muted}>
+          Đơn hàng giả · {mockOrder.amount.toLocaleString("vi-VN")} VND
+        </AppText>
+        <View style={styles.checkoutActions}>
+          {(["VNPAY", "MOMO"] as const).map((provider) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ busy: checkoutProvider === provider, disabled: !accessToken || busy !== null || checkoutProvider !== null }}
+              disabled={!accessToken || busy !== null || checkoutProvider !== null}
+              key={provider}
+              onPress={() => void checkout(provider)}
+              style={[styles.checkoutButton, (!accessToken || busy !== null || checkoutProvider !== null) && styles.disabled]}
+            >
+              {checkoutProvider === provider ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <AppText variant="labelSmall" color={colors.surface}>
+                  Thanh toán {provider === "VNPAY" ? "VNPay" : "MoMo"}
+                </AppText>
+              )}
+            </Pressable>
+          ))}
+        </View>
+      </View>
+
       {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger} style={styles.message}>{error}</AppText>}
       {!!notice && <AppText accessibilityRole="status" variant="bodySmall" color={colors.success} style={styles.message}>{notice}</AppText>}
 
@@ -276,6 +331,9 @@ const styles = StyleSheet.create({
   periodTab: { alignItems: "center", borderRadius: radius.sm, flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },
   periodTabSelected: { backgroundColor: colors.primary },
   actions: { gap: spacing.sm, marginBottom: spacing.lg },
+  checkoutCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md },
+  checkoutActions: { flexDirection: "row", gap: spacing.sm },
+  checkoutButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flex: 1, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.sm },
   primaryAction: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.md },
   secondaryAction: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 4, paddingHorizontal: spacing.md },
   disabled: { opacity: 0.55 },

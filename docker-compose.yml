@@ -107,7 +107,10 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d menu_db"], interval: 5s, timeout: 5s, retries: 10 }
   menu-service:
     build: ./services/menu-service
-    environment: { PORT: 4007, DATABASE_URL: postgresql://postgres:postgres@menu-db:5432/menu_db }
+    environment:
+      PORT: 4007
+      DATABASE_URL: postgres://postgres:postgres@menu-db:5432/menu_db
+      PAYMENT_SERVICE_URL: http://payment-service:4009
     ports: ["4007:4007"]
     depends_on: { menu-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -143,7 +146,19 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"], interval: 5s, timeout: 5s, retries: 10 }
   payment-service:
     build: ./services/payment-service
-    environment: { PORT: 4009, DATABASE_URL: postgresql://postgres:postgres@payment-db:5432/payment_db }
+    environment:
+      PORT: 4009
+      DATABASE_URL: postgres://postgres:postgres@payment-db:5432/payment_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
+      PAYMENT_PUBLIC_BASE_URL: ${PAYMENT_PUBLIC_BASE_URL:-http://localhost:4000}
+      PAYMENT_APP_RETURN_URL: ${PAYMENT_APP_RETURN_URL:-smartkitchen://payment-result}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
+      MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}
+      MOMO_SECRET_KEY: ${MOMO_SECRET_KEY:-}
+      MOMO_CREATE_URL: ${MOMO_CREATE_URL:-https://test-payment.momo.vn/v2/gateway/api/create}
     ports: ["4009:4009"]
     depends_on: { payment-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4009/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
