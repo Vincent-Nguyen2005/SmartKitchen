@@ -13,6 +13,17 @@ import { createAuthenticate, resolveJwtSecret } from "./middleware/authenticate"
 
 const serviceHealthTimeoutMs = 2000;
 
+const isLocalExpoOrigin = (origin: string): boolean => {
+  try {
+    const url = new URL(origin);
+    return url.origin === origin && url.protocol === "http:" &&
+      (url.hostname === "localhost" || url.hostname === "127.0.0.1") &&
+      Number(url.port) >= 8081;
+  } catch {
+    return false;
+  }
+};
+
 type ServiceStatus = "UP" | "DOWN";
 
 type ProxyResponse = Response & { statusCode?: number };
@@ -61,9 +72,24 @@ export const createApp = (options: AppOptions = {}): express.Express => {
   const jwtSecret = options.jwtSecret === undefined ? resolveJwtSecret() : options.jwtSecret;
   app.set("trust proxy", performanceConfig.trustProxy);
   const origins = (process.env.CORS_ORIGINS || "*").split(",").map((origin) => origin.trim());
+  const isAllowedOrigin = (origin: string): boolean =>
+    origins.includes("*") || origins.includes(origin) || isLocalExpoOrigin(origin);
 
   app.use(helmet());
-  app.use(cors({ origin: origins.includes("*") ? true : origins }));
+  app.use((req, res, next) => {
+    const origin = req.header("origin");
+    if (origin && !isAllowedOrigin(origin)) {
+      res.status(403).json({ error: "CORS_ORIGIN_DENIED", message: "Origin not allowed" });
+      return;
+    }
+    next();
+  });
+  app.use(cors({
+    origin: (origin, callback) => {
+      callback(null, Boolean(origin && isAllowedOrigin(origin)));
+    },
+    optionsSuccessStatus: 204,
+  }));
   app.use(requestId);
   app.use(morgan("combined"));
   app.use(compression());
