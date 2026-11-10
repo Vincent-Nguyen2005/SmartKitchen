@@ -53,6 +53,7 @@ export const createGatewayClient = (accessToken: string | null, timeoutMs = DEFA
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const headers: Record<string, string> = { Accept: "application/json" };
+    if (GATEWAY_BASE_URL.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
     if (body !== undefined) headers["Content-Type"] = "application/json";
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     let response: Response;
