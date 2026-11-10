@@ -43,7 +43,7 @@ export function LineChart({ series, xLabels, accessibilityLabel, height = 190, d
     <View style={{ gap: spacing.sm }}>
       <View onLayout={onLayout} accessible accessibilityRole="image" accessibilityLabel={accessibilityLabel} style={{ height, width: "100%" }}>
         {width > 0 ? (
-          <Svg width={width} height={height} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+          <Svg width={width} height={height}>
             {scale.ticks.map((tick) => (
               <G key={tick}>
                 <Line x1={axisWidth} x2={width} y1={y(tick)} y2={y(tick)} stroke={chartColors.grid} strokeWidth={1} />
@@ -67,7 +67,7 @@ export function LineChart({ series, xLabels, accessibilityLabel, height = 190, d
                 && typeof item.values[index - 1] !== "number" && typeof item.values[index + 1] !== "number" ? index : -1).filter((index) => index >= 0);
               return (
                 <G key={item.label}>
-                  {d ? <Path d={d} stroke={color} strokeWidth={2} fill="none" strokeDasharray={item.dashed ? "5,4" : undefined} strokeLinejoin="round" strokeLinecap="round" /> : null}
+                  {d ? <Path d={d} stroke={color} strokeWidth={2} fill="none" strokeDasharray={item.dashed ? [5, 4] : undefined} strokeLinejoin="round" strokeLinecap="round" /> : null}
                   {isolated.map((index) => <Circle key={index} cx={x(index)} cy={y(item.values[index] as number)} r={3} fill={color} />)}
                 </G>
               );
