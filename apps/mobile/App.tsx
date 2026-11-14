@@ -86,7 +86,10 @@ function AppContent(): React.JSX.Element {
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
   const isAdmin = session.user?.role === "ADMIN";
-  const visibleTabs = tabs.filter(({ key }) => key !== "admin" || isAdmin);
+  // SCRUM-283: ADMIN accounts see only the admin tab; everyone else sees every tab except admin.
+  const visibleTabs = tabs.filter(({ key }) => (key === "admin") === isAdmin);
+  // Derived (not synced in an effect) so no other tab renders for a frame after the role changes.
+  const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const tabWidth = width >= breakpoints.wide
     ? Math.min(140, width / visibleTabs.length)
     : width < 360 ? 72 : 88;
@@ -96,11 +99,6 @@ function AppContent(): React.JSX.Element {
     if (!session.user || !session.accessToken) return;
     void registerDeviceToken(createGatewayClient(session.accessToken));
   }, [session.user?.id, session.accessToken]);
-
-  // Leave the admin tab if the signed-in user is not an admin (e.g. after switching accounts).
-  useEffect(() => {
-    if (tab === "admin" && !isAdmin) setTab("inventory");
-  }, [isAdmin, tab]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -215,7 +213,7 @@ function AppContent(): React.JSX.Element {
       {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
         {visibleTabs.map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
+            const active = activeTab === key;
             return (
               <TouchableOpacity
                 accessibilityLabel={label}
@@ -250,24 +248,24 @@ function AppContent(): React.JSX.Element {
             }}
           />
         ) : null}
-        {!paymentUrl && tab === "inventory" && (
+        {!paymentUrl && activeTab === "inventory" && (
           <InventoryScreen onOpenFamily={() => setTab("family")} />
         )}
-        {!paymentUrl && tab === "recipes" && (
+        {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && tab === "shopping" && <ShoppingCartScreen />}
-        {!paymentUrl && tab === "menu" && (
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen />}
+        {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
             familyId={session.family?.id}
             onPaymentStarted={setPaymentUrl}
           />
         )}
-        {!paymentUrl && tab === "family" && <FamilyScreenFlow />}
-        {!paymentUrl && tab === "notifications" && <NotificationsHome />}
-        {!paymentUrl && tab === "admin" && isAdmin && <AdminHome />}
-        {!paymentUrl && tab === "nutrition" && (
+        {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
+        {!paymentUrl && activeTab === "notifications" && <NotificationsHome />}
+        {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
+        {!paymentUrl && activeTab === "nutrition" && (
           <NutritionProfileScreen
             apiBaseUrl={apiBaseUrl}
             accessToken={session.accessToken ?? undefined}
