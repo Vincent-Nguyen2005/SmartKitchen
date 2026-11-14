@@ -63,7 +63,7 @@ const defaultLogger = (event: string, details: Record<string, unknown>): void =>
 
 export const createHealthMonitor = (options: MonitorOptions) => {
   const fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
-  const timeoutMs = options.timeoutMs ?? 2000;
+  const timeoutMs = options.timeoutMs ?? 3000;
   const degradedThresholdMs = options.degradedThresholdMs ?? 1000;
   const logger = options.logger ?? defaultLogger;
   const clock = options.clock ?? (() => new Date());
