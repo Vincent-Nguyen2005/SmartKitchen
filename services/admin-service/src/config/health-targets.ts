@@ -34,7 +34,8 @@ const positiveNumber = (value: string | undefined, fallback: number, min = 1): n
 export const healthMonitorConfig = (env: NodeJS.ProcessEnv = process.env) => ({
   jobsEnabled: env.ENABLE_JOBS !== "false",
   pollIntervalSeconds: positiveNumber(env.HEALTH_POLL_INTERVAL_SECONDS, 60, 5),
-  timeoutMs: positiveNumber(env.HEALTH_CHECK_TIMEOUT_MS, 2000, 100),
+  // 3s: a 2s budget flagged healthy-but-busy services DOWN while 12 probes run in parallel.
+  timeoutMs: positiveNumber(env.HEALTH_CHECK_TIMEOUT_MS, 3000, 100),
   degradedThresholdMs: positiveNumber(env.HEALTH_DEGRADED_THRESHOLD_MS, 1000, 1),
   retentionDays: positiveNumber(env.HEALTH_LOG_RETENTION_DAYS, 14, 1),
 });
