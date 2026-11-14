@@ -5,7 +5,7 @@ import {
 } from "lucide-react-native";
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { colors, MultiDropdown, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
+import { colors, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { AppIcon, AppText, spacing, typography, type LucideIcon } from "../../theme";
 import { fetchUsers, MAX_PAGE_SIZE, type AdminUser } from "./directoryApi";
 import { needsAttention, severityOf, type ServiceStatus } from "./healthTriage";
@@ -52,8 +52,6 @@ export default function DashboardScreen({ onOpenReports }: DashboardScreenProps)
   const { gutter, isWide } = useLayout();
   const kpiGrid = useGridCell(isWide ? 4 : 2);
   const statGrid = useGridCell(isWide ? 3 : 1);
-  // Empty = all monitored services; the service cards count only the selected services.
-  const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [status, setStatus] = useState<Section<StatusResponse>>(empty);
   const [summary, setSummary] = useState<Section<SummaryResponse>>(empty);
   const [stats, setStats] = useState<Section<StatsResponse>>(empty);
@@ -91,8 +89,7 @@ export default function DashboardScreen({ onOpenReports }: DashboardScreenProps)
     return <ScreenState error={status.error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />;
   }
 
-  const allServices = status.data?.services ?? [];
-  const services = selectedServices.length ? allServices.filter((item) => selectedServices.includes(item.serviceName)) : allServices;
+  const services = status.data?.services ?? [];
   const p95ByName = new Map((summary.data?.services ?? []).map((item) => [item.serviceName, item.p95ResponseTimeMs]));
   const counts = { UP: 0, DEGRADED: 0, DOWN: 0, NONE: 0 };
   for (const item of services) counts[item.status ?? "NONE"] += 1;
@@ -130,16 +127,6 @@ export default function DashboardScreen({ onOpenReports }: DashboardScreenProps)
       contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
     >
-      <View style={styles.row}>
-        <MultiDropdown
-          label="Dịch vụ"
-          value={selectedServices}
-          onChange={setSelectedServices}
-          countLabel={(count) => `${count} dịch vụ`}
-          options={allServices.map((item) => ({ value: item.serviceName, label: shortName(item.serviceName) }))}
-        />
-      </View>
-
       <View style={[styles.wrapRow, { gap: kpiGrid.gap }]} onLayout={kpiGrid.onLayout}>
         {kpis.map((kpi) => (
           <View key={kpi.label} style={[styles.card, local.kpi, { width: kpiGrid.cellWidth ?? "100%" }]} accessible accessibilityLabel={kpi.error ? `${kpi.label}: lỗi tải dữ liệu` : `${kpi.label}: ${kpi.value}. ${kpi.detail}`}>
