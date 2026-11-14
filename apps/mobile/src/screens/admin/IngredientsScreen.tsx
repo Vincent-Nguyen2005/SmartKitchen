@@ -5,7 +5,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Badge, Button, colors, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { DateField, toDisplayDate } from "./DateField";
 
 type Ingredient = {
   id: string;
@@ -24,11 +25,31 @@ type Ingredient = {
 };
 type SavedIngredient = Ingredient & { promotionSync?: "synced" | "failed" | "none" };
 
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string; imageUrl: string; discountPercent: string; promoEndDate: string };
-const emptyDraft: Draft = { name: "", category: "", defaultUnit: "g", shelfLifeDays: "", caloriesPer100g: "", allergenTags: "", imageUrl: "", discountPercent: "", promoEndDate: "" };
+/**
+ * Units: the codes shopping-list-service and inventory-service accept (Unit enum), with Vietnamese labels.
+ * admin-service stores defaultUnit as free text, so older values (e.g. "g") are kept and shown as they are.
+ */
+const UNIT_OPTIONS: { value: string; label: string }[] = [
+  { value: "GRAM", label: "g" }, { value: "KILOGRAM", label: "kg" }, { value: "MILLILITER", label: "ml" },
+  { value: "LITER", label: "lít" }, { value: "PIECE", label: "cái / quả" }, { value: "PACK", label: "gói / bó" },
+  { value: "BOTTLE", label: "chai" }, { value: "CAN", label: "lon" }, { value: "BOX", label: "hộp" },
+];
+const DEFAULT_UNIT = "GRAM";
+const unitLabel = (value: string): string => UNIT_OPTIONS.find((option) => option.value === value)?.label ?? value;
+const unitOptionsFor = (current: string) =>
+  UNIT_OPTIONS.some((option) => option.value === current) || !current.trim() ? UNIT_OPTIONS : [...UNIT_OPTIONS, { value: current, label: `${current} (giá trị cũ)` }];
+const SHELF_LIFE_PICKS = ["3", "7", "14", "30", "90"];
+/** Stored as plain lowercase Vietnamese strings in allergenTags (same free-string array as before). */
+const ALLERGENS = ["đậu phộng", "hạt cây", "sữa", "trứng", "hải sản", "cá", "đậu nành", "gluten", "mè"];
+const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+// Allergens field hidden from the form: no service reads allergens yet (data, API and stored values kept).
+const SHOW_ALLERGENS = false;
+
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string };
+const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "" };
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
-  shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: item.allergenTags.join(", "),
+  shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
 });
 const DEFAULT_PROMO_DAYS = 7;
@@ -49,6 +70,11 @@ const dateError = (text: string): string | null => {
   if (!text.trim()) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text.trim()) || Number.isNaN(Date.parse(text.trim()))) return "Nhập ngày dạng YYYY-MM-DD.";
   return text.trim() < dayFromToday(0) ? "Ngày phải từ hôm nay trở đi." : null;
+};
+/** Adds `tag` (trimmed) unless it is empty or already there (case-insensitive). */
+const withTag = (tags: string[], tag: string): string[] => {
+  const cleaned = tags.map((entry) => entry.trim()).filter(Boolean);
+  return !tag.trim() || cleaned.some((entry) => sameTag(entry, tag)) ? cleaned : [...cleaned, tag.trim()];
 };
 const imageUrlError = (text: string): string | null =>
   !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https:// và là địa chỉ công khai.";
@@ -110,14 +136,16 @@ export default function IngredientsScreen(): React.JSX.Element {
     const shelfLife = optionalNumber(draft.shelfLifeDays);
     if (!draft.name.trim() || !draft.category.trim() || !draft.defaultUnit.trim()) return setFormError("Tên, nhóm và đơn vị là bắt buộc.");
     if (calories !== null && (Number.isNaN(calories) || calories < 0)) return setFormError("Calo phải là số không âm.");
-    if (shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 0)) return setFormError("Hạn dùng phải là số ngày nguyên không âm.");
+    if (shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 1 || shelfLife > 3650)) return setFormError("Hạn dùng là số ngày nguyên từ 1 đến 3650.");
     const promoProblem = imageUrlError(draft.imageUrl) ?? percentError(draft.discountPercent) ?? dateError(draft.promoEndDate);
     if (promoProblem) return setFormError(promoProblem);
     const discount = draft.discountPercent.trim() ? Number(draft.discountPercent.trim()) : null;
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
       caloriesPer100g: calories, shelfLifeDays: shelfLife,
-      allergenTags: draft.allergenTags.split(",").map((tag) => tag.trim()).filter(Boolean),
+      // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
+      // (partial update) and a new ingredient gets the server default []. A typed "Khác" value is saved when shown.
+      ...(SHOW_ALLERGENS ? { allergenTags: withTag(draft.allergenTags, draft.otherAllergen) } : {}),
       // null clears the value; an empty end date with a discount means "today + 7 days" on the server.
       imageUrl: draft.imageUrl.trim() || null,
       discountPercent: discount,
@@ -219,7 +247,7 @@ export default function IngredientsScreen(): React.JSX.Element {
               <RemoteImage uri={item.imageUrl} size={48} />
               <View style={[local.flex, local.rowText]}>
                 <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.muted}>{item.category} · {item.defaultUnit}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}</Text>
+                <Text style={styles.muted}>{item.category} · {unitLabel(item.defaultUnit)}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}</Text>
                 {item.discountPercent !== null ? (
                   <Badge label={`Đang khuyến mãi ${item.discountPercent}%`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />
                 ) : null}
@@ -245,10 +273,24 @@ export default function IngredientsScreen(): React.JSX.Element {
               <>
                 <Field label="Tên *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} />
                 <Field label="Nhóm *" placeholder="rau củ, thịt, ..." value={draft.category} onChangeText={(category) => setDraft({ ...draft, category })} />
-                <Field label="Đơn vị mặc định *" value={draft.defaultUnit} onChangeText={(defaultUnit) => setDraft({ ...draft, defaultUnit })} />
+                <View style={local.formBlock}>
+                  <AppText variant="bodySmall" color={colors.muted}>Đơn vị mặc định *</AppText>
+                  <View style={styles.row}>
+                    <Dropdown<string> label="Đơn vị" value={draft.defaultUnit} options={unitOptionsFor(draft.defaultUnit)} onChange={(defaultUnit) => setDraft({ ...draft, defaultUnit })} />
+                  </View>
+                </View>
                 <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
-                <Field label="Hạn dùng (ngày)" keyboardType="number-pad" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })} />
-                <Field label="Dị ứng (phân cách bằng dấu phẩy)" value={draft.allergenTags} onChangeText={(allergenTags) => setDraft({ ...draft, allergenTags })} />
+                <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
+                <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}
+                  options={SHELF_LIFE_PICKS.map((days) => ({ value: days, label: `${days} ngày` }))} />
+                {SHOW_ALLERGENS ? (
+                  <AllergenPicker
+                    value={draft.allergenTags}
+                    other={draft.otherAllergen}
+                    onChange={(allergenTags) => setDraft({ ...draft, allergenTags })}
+                    onOtherChange={(otherAllergen) => setDraft({ ...draft, otherAllergen })}
+                  />
+                ) : null}
 
                 <Field
                   label="Dán link ảnh (https://...)"
@@ -271,16 +313,15 @@ export default function IngredientsScreen(): React.JSX.Element {
                 <Field label="% giảm giá (1-100)" keyboardType="number-pad" placeholder="Để trống nếu không khuyến mãi" value={draft.discountPercent} onChangeText={(discountPercent) => setDraft({ ...draft, discountPercent })} />
                 {percentError(draft.discountPercent) ? <AppText variant="caption" color={colors.danger}>{percentError(draft.discountPercent)}</AppText> : null}
 
-                <Field
-                  label="Giảm đến ngày (YYYY-MM-DD)"
+                <DateField
+                  label="Giảm đến ngày"
                   value={draft.promoEndDate}
-                  onChangeText={(promoEndDate) => setDraft({ ...draft, promoEndDate })}
-                  placeholder={`Mặc định: ${dayFromToday(DEFAULT_PROMO_DAYS)}`}
-                  autoCorrect={false}
+                  onChange={(promoEndDate) => setDraft({ ...draft, promoEndDate })}
+                  minDate={dayFromToday(0)}
+                  suggestedDate={dayFromToday(DEFAULT_PROMO_DAYS)}
+                  emptyHint={`Mặc định: hôm nay + ${DEFAULT_PROMO_DAYS} ngày (${toDisplayDate(dayFromToday(DEFAULT_PROMO_DAYS))}). Chỉ dùng khi có % giảm giá.`}
                 />
-                {dateError(draft.promoEndDate)
-                  ? <AppText variant="caption" color={colors.danger}>{dateError(draft.promoEndDate)}</AppText>
-                  : <AppText variant="caption">Để trống: khuyến mãi kéo dài {DEFAULT_PROMO_DAYS} ngày (đến {dayFromToday(DEFAULT_PROMO_DAYS)}). Chỉ dùng khi có % giảm giá.</AppText>}
+                {dateError(draft.promoEndDate) ? <AppText variant="caption" color={colors.danger}>{dateError(draft.promoEndDate)}</AppText> : null}
               </>
             ) : null}
             {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
@@ -295,7 +336,50 @@ export default function IngredientsScreen(): React.JSX.Element {
   );
 }
 
+type AllergenPickerProps = { value: string[]; other: string; onChange: (tags: string[]) => void; onOtherChange: (text: string) => void };
+
+/**
+ * "Chất gây dị ứng": fixed chips plus any stored value outside the list (kept selectable), and a "Khác"
+ * input for anything else. Values are stored exactly as shown (same string array as before).
+ */
+function AllergenPicker({ value, other, onChange, onOtherChange }: AllergenPickerProps): React.JSX.Element {
+  const extras = value.filter((tag) => !ALLERGENS.some((known) => sameTag(known, tag)));
+  const toggle = (tag: string) => onChange(value.some((entry) => sameTag(entry, tag)) ? value.filter((entry) => !sameTag(entry, tag)) : [...value, tag]);
+  return (
+    <View style={local.formBlock}>
+      <AppText variant="bodySmall" color={colors.muted}>Chất gây dị ứng</AppText>
+      <View style={styles.wrapRow} accessibilityLabel="Chất gây dị ứng">
+        {[...ALLERGENS, ...extras].map((tag) => {
+          const selected = value.some((entry) => sameTag(entry, tag));
+          return (
+            <Pressable
+              key={tag}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: selected }}
+              accessibilityLabel={tag}
+              onPress={() => toggle(tag)}
+              style={({ pressed }) => [styles.segment, selected && styles.segmentSelected, pressed && !selected && styles.segmentPressed]}
+            >
+              <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{tag}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      <View style={[styles.row, local.otherRow]}>
+        <View style={local.flex}>
+          <Field label="Khác" placeholder="Ví dụ: tôm" value={other} onChangeText={onOtherChange} onSubmitEditing={() => { onChange(withTag(value, other)); onOtherChange(""); }} />
+        </View>
+        <Button label="Thêm" variant="secondary" disabled={!other.trim()} onPress={() => { onChange(withTag(value, other)); onOtherChange(""); }} style={local.otherButton} />
+      </View>
+      <AppText variant="caption">Dùng để cảnh báo người dùng bị dị ứng</AppText>
+    </View>
+  );
+}
+
 const local = StyleSheet.create({
+  formBlock: { gap: 4, marginBottom: 10 },
+  otherRow: { alignItems: "flex-end" },
+  otherButton: { marginBottom: 10 },
   toolbar: { alignItems: "flex-end", paddingTop: 8 },
   search: { flexBasis: 200, flexGrow: 1 },
   addButton: { marginBottom: 10 },
