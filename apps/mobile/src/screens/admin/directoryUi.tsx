@@ -1,9 +1,9 @@
 import React from "react";
-import { StyleSheet, View } from "react-native";
-import { ArrowLeft } from "lucide-react-native";
-import { AppText, colors, IconButton, radius, spacing, touchTarget } from "../../theme";
+import { Pressable, StyleSheet, View } from "react-native";
+import { ArrowLeft, ChevronRight, House } from "lucide-react-native";
+import { AppIcon, AppText, colors, IconButton, radius, spacing, touchTarget } from "../../theme";
 import { Badge } from "../notifications/ui";
-import { displayName, initial, userRoleBadge, type AdminUser } from "./directoryApi";
+import { displayName, initial, userRoleBadge, type AdminFamilySummary, type AdminUser } from "./directoryApi";
 
 type AvatarProps = { name: string | null; email: string | null };
 
@@ -34,6 +34,28 @@ export function UserRow({ user }: UserRowProps): React.JSX.Element {
   );
 }
 
+type FamilyRowProps = { family: AdminFamilySummary; onPress: () => void };
+
+/** One family: house icon, name (body 16), member count (caption 12); opens the family detail. */
+export function FamilyRow({ family, onPress }: FamilyRowProps): React.JSX.Element {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${family.name}, ${family.memberCount} thành viên`}
+      accessibilityHint="Mở chi tiết gia đình"
+      onPress={onPress}
+      style={({ pressed }) => [local.row, pressed && local.pressed]}
+    >
+      <AppIcon icon={House} size="md" color={colors.primary} />
+      <View style={local.text}>
+        <AppText variant="body" numberOfLines={1}>{family.name}</AppText>
+        <AppText variant="caption">{family.memberCount} thành viên</AppText>
+      </View>
+      <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+    </Pressable>
+  );
+}
+
 type ScreenHeaderProps = { title: string; onBack: () => void };
 
 /** Back button + screen title (heading 22) for screens pushed on the admin stack. */
@@ -61,5 +83,6 @@ const local = StyleSheet.create({
   },
   header: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingVertical: spacing.sm },
+  pressed: { backgroundColor: colors.primarySoft },
   text: { flex: 1, minWidth: 0 },
 });

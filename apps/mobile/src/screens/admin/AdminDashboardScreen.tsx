@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { Activity, ChevronRight, House, Users, type LucideIcon } from "lucide-react-native";
-import { AppIcon, AppText, colors, spacing, touchTarget } from "../../theme";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { Activity, House, Users, type LucideIcon } from "lucide-react-native";
+import { AppIcon, AppText, colors, spacing } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { Button, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { fetchFamilies, fetchUsers, type AdminFamilySummary, type AdminUser } from "./directoryApi";
-import { directoryStyles, UserRow } from "./directoryUi";
+import { directoryStyles, FamilyRow, UserRow } from "./directoryUi";
 
 type Overall = "UP" | "DEGRADED" | "DOWN" | "UNKNOWN";
 type StatusResponse = { overall: Overall };
 type Section<T> = { data: T | null; error: string | null };
 
-const RECENT_COUNT = 10;
+// The dashboard only previews the newest rows; "Xem tất cả" opens the full lists.
+const RECENT_COUNT = 5;
 const overallText: Record<Overall, string> = { UP: "Hoạt động", DEGRADED: "Chậm", DOWN: "Ngừng", UNKNOWN: "Chưa rõ" };
 const overallColor: Record<Overall, string> = { UP: colors.success, DEGRADED: colors.warning, DOWN: colors.danger, UNKNOWN: colors.muted };
 
@@ -22,13 +23,14 @@ const toSection = <T,>(result: PromiseSettledResult<T>): Section<T> =>
 
 export interface AdminDashboardScreenProps {
   onOpenUsers: () => void;
+  onOpenFamilies: () => void;
   onOpenFamily: (family: AdminFamilySummary) => void;
 }
 
 type Recent<T> = { items: T[]; total: number };
 
 /** Admin landing page (SCRUM-283): totals, system status, recent users and families. */
-export default function AdminDashboardScreen({ onOpenUsers, onOpenFamily }: AdminDashboardScreenProps): React.JSX.Element {
+export default function AdminDashboardScreen({ onOpenUsers, onOpenFamilies, onOpenFamily }: AdminDashboardScreenProps): React.JSX.Element {
   const { api } = useGatewayApi();
   const { gutter, isWide } = useLayout();
   const cardGrid = useGridCell(isWide ? 3 : 1);
@@ -70,6 +72,8 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamily }: Admi
     return <ScreenState error={users.error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />;
   }
 
+  const recentUsers = (users.data?.items ?? []).slice(0, RECENT_COUNT);
+  const recentFamilies = (families.data?.items ?? []).slice(0, RECENT_COUNT);
   const overall: Overall = status.data?.overall ?? "UNKNOWN";
   const cards: { key: string; label: string; value: string; icon: LucideIcon; color: string; error: string | null }[] = [
     { key: "users", label: "Tổng người dùng", value: String(users.data?.total ?? "–"), icon: Users, color: colors.primary, error: users.error },
@@ -109,53 +113,42 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamily }: Admi
             <Button label="Xem tất cả" variant="secondary" onPress={onOpenUsers} />
           </View>
           {users.error ? <ScreenState error={users.error} onRetry={() => void load()} /> : (
-            <FlatList
-              data={users.data?.items ?? []}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <UserRow user={item} />}
-              ItemSeparatorComponent={() => <View style={directoryStyles.separator} />}
-              ListEmptyComponent={<AppText variant="caption">Chưa có người dùng</AppText>}
-              scrollEnabled={false}
-            />
+            <View>
+              {recentUsers.length === 0 ? <AppText variant="caption">Chưa có người dùng</AppText> : recentUsers.map((user, index) => (
+                <View key={user.id}>
+                  {index > 0 ? <View style={directoryStyles.separator} /> : null}
+                  <UserRow user={user} />
+                </View>
+              ))}
+            </View>
           )}
         </View>
 
         <View style={[styles.card, local.listCard, { width: listGrid.cellWidth ?? "100%" }]}>
           <AppText variant="subheading" accessibilityRole="header">Gia đình gần đây</AppText>
           {families.error ? <ScreenState error={families.error} onRetry={() => void load()} /> : (
-            <FlatList
-              data={families.data?.items ?? []}
-              keyExtractor={(item) => item.id}
-              renderItem={({ item }) => <FamilyRow family={item} onPress={() => onOpenFamily(item)} />}
-              ItemSeparatorComponent={() => <View style={directoryStyles.separator} />}
-              ListEmptyComponent={<AppText variant="caption">Chưa có gia đình</AppText>}
-              scrollEnabled={false}
-            />
+            <View>
+              {recentFamilies.length === 0 ? <AppText variant="caption">Chưa có gia đình</AppText> : recentFamilies.map((family, index) => (
+                <View key={family.id}>
+                  {index > 0 ? <View style={directoryStyles.separator} /> : null}
+                  <FamilyRow family={family} onPress={() => onOpenFamily(family)} />
+                </View>
+              ))}
+            </View>
           )}
+          <AppText
+            variant="caption"
+            color={colors.primary}
+            accessibilityRole="link"
+            accessibilityLabel="Xem tất cả gia đình"
+            onPress={onOpenFamilies}
+            style={local.link}
+          >
+            Xem tất cả →
+          </AppText>
         </View>
       </View>
     </ScrollView>
-  );
-}
-
-type FamilyRowProps = { family: AdminFamilySummary; onPress: () => void };
-
-function FamilyRow({ family, onPress }: FamilyRowProps): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${family.name}, ${family.memberCount} thành viên`}
-      accessibilityHint="Mở chi tiết gia đình"
-      onPress={onPress}
-      style={({ pressed }) => [local.familyRow, pressed && local.pressed]}
-    >
-      <AppIcon icon={House} size="md" color={colors.primary} />
-      <View style={local.flex}>
-        <AppText variant="body" numberOfLines={1}>{family.name}</AppText>
-        <AppText variant="caption">{family.memberCount} thành viên</AppText>
-      </View>
-      <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-    </Pressable>
   );
 }
 
@@ -165,6 +158,6 @@ const local = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
   lists: { alignItems: "flex-start" },
   listCard: { gap: spacing.sm },
-  familyRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingVertical: spacing.sm },
-  pressed: { backgroundColor: colors.primarySoft },
+  // Caption text with a 44 dp touch target.
+  link: { alignSelf: "flex-start", minHeight: 44, paddingVertical: spacing.md },
 });
