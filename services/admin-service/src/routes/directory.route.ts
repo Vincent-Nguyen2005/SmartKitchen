@@ -10,14 +10,22 @@ const proxy = async (base: string, path: string, query: string, res: Response): 
     res.status(503).json({ error: "INTERNAL_NOT_CONFIGURED", message: "Internal API key is not configured" });
     return;
   }
+  let response: Awaited<ReturnType<typeof fetch>>;
   try {
-    const response = await fetch(`${base.replace(/\/$/, "")}${path}${query}`, {
+    response = await fetch(`${base.replace(/\/$/, "")}${path}${query}`, {
       headers: { "x-api-key": key }, signal: AbortSignal.timeout(5000),
     });
+  } catch {
+    // No HTTP response at all (ECONNREFUSED, ETIMEDOUT, DNS, abort): upstream unreachable.
+    res.status(503).json({ error: "UPSTREAM_UNAVAILABLE", message: "Directory service unavailable" });
+    return;
+  }
+  try {
     const body = await response.json();
     res.status(response.status).json(body);
   } catch {
-    res.status(502).json({ error: "UPSTREAM_UNAVAILABLE", message: "Directory service unavailable" });
+    // Got a response, but not a usable one.
+    res.status(502).json({ error: "UPSTREAM_BAD_RESPONSE", message: "Directory service returned an invalid response" });
   }
 };
 

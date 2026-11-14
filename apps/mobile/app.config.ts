@@ -27,6 +27,7 @@ const config: ExpoConfig = {
       speechRecognitionPermission: "SmartKitchen dùng nhận dạng giọng nói trên thiết bị để tạo bản nháp thực phẩm.",
       androidSpeechServicePackages: ["com.google.android.googlequicksearchbox"],
     }],
+    "@react-native-community/datetimepicker",
   ],
 };
 

@@ -6,6 +6,7 @@ import healthRouter from "./routes/health.route";
 import createAuthRouter from "./routes/auth.routes";
 import { createAdminUsersRouter } from "./routes/admin-users.routes";
 import { isDatabaseUnavailable } from "./database-error";
+import { seedAdmin } from "./seed-admin";
 import type { ErrorRequestHandler } from "express";
 
 dotenv.config();
@@ -45,12 +46,26 @@ const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
 app.use(handleError);
 
 const PORT = process.env.PORT || 4001;
-const server = app.listen(PORT, () => {
-  console.log(`[auth-service] dang chay tai http://localhost:${PORT}`);
-});
+let server: ReturnType<typeof app.listen> | undefined;
+const start = async (): Promise<void> => {
+  try {
+    await prisma.$connect();
+    const result = await seedAdmin(prisma);
+    if (result === "skipped") console.warn("[auth-service] admin seed skipped: ADMIN_EMAIL or ADMIN_PASSWORD is missing");
+    else console.log(`[auth-service] admin seed: ${result}`);
+    server = app.listen(PORT, () => {
+      console.log(`[auth-service] dang chay tai http://localhost:${PORT}`);
+    });
+  } catch (error) {
+    console.error("[auth-service] startup failed", error);
+    await prisma.$disconnect();
+    process.exitCode = 1;
+  }
+};
+void start();
 
 const shutdown = async (): Promise<void> => {
-  server.close();
+  server?.close();
   await prisma.$disconnect();
 };
 

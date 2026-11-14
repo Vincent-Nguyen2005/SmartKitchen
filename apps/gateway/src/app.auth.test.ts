@@ -10,6 +10,7 @@ import { clearResponseCache } from "./middleware/cache";
 const SECRET = "gateway-test-secret";
 let upstream: Server;
 let upstreamHits = 0;
+let upstreamSawApiKey = false;
 const envKeys = ["NOTIFICATION_SERVICE_URL", "ADMIN_SERVICE_URL"];
 const savedEnv: Record<string, string | undefined> = {};
 
@@ -17,6 +18,7 @@ beforeAll(async () => {
   const app = express();
   app.use((req, res) => {
     upstreamHits++;
+    if (req.headers["x-api-key"] !== undefined) upstreamSawApiKey = true;
     if (req.originalUrl.startsWith("/users")) {
       res.json({ path: req.originalUrl, role: req.headers["x-user-role"] ?? null, apiKey: req.headers["x-api-key"] ?? null });
       return;
@@ -33,7 +35,7 @@ afterAll(async () => {
   await new Promise((resolve) => upstream.close(resolve));
 });
 
-beforeEach(() => { clearResponseCache(); upstreamHits = 0; });
+beforeEach(() => { clearResponseCache(); upstreamHits = 0; upstreamSawApiKey = false; });
 
 const token = (role = "USER") => jwt.sign({ email: "u@example.com", role }, SECRET, { subject: "user-42", expiresIn: "15m" });
 
@@ -50,6 +52,14 @@ describe("gateway authentication end to end", () => {
       .set("authorization", `Bearer ${token("ADMIN")}`).set("x-api-key", "forged");
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ path: "/users?page=2", role: "ADMIN", apiKey: null });
+  });
+
+  it("strips a client-sent x-api-key on every public route (partner ingestion is not reachable)", async () => {
+    const response = await request(createApp({ jwtSecret: SECRET })).post("/api/notifications/partners")
+      .set("x-api-key", "partner-key-guess").send({ name: "fake partner" });
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ path: "/partners" });
+    expect(upstreamSawApiKey).toBe(false);
   });
 
   it("does not let an anonymous caller forge the admin role", async () => {

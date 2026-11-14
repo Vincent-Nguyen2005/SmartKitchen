@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from "react-native";
 import { useSession } from "../../services/session";
+import { typography } from "../../theme";
 import CreateOrJoinFamilyScreen from "./CreateOrJoinFamilyScreen";
 import FamilyOverviewScreen from "./FamilyOverviewScreen";
 import ManageMembersScreen from "./ManageMembersScreen";
@@ -66,5 +67,5 @@ export default function FamilyScreenFlow(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   loading: { alignItems: "center", backgroundColor: "#F7F8F4", flex: 1, justifyContent: "center" },
-  message: { color: "#68736F", fontSize: 15 },
+  message: { color: "#68736F", fontSize: typography.body.fontSize },
 });

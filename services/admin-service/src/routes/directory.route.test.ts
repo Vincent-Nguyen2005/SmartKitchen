@@ -31,7 +31,7 @@ it("only routes ADMIN requests to internal services with the API key", async () 
   process.env.FAMILY_SERVICE_URL = target;
   const app = express().use(directoryRouter);
   try {
-    expect((await request(app).get("/users")).status).toBe(403);
+    expect((await request(app).get("/users")).status).toBe(401);
     expect((await request(app).get("/users").set({ "x-user-role": "USER", "x-user-id": "user-1" })).status).toBe(403);
     const headers = { "x-user-role": "ADMIN", "x-user-id": "admin-1" };
     expect((await request(app).get("/users?page=2").set(headers)).status).toBe(200);
@@ -42,6 +42,35 @@ it("only routes ADMIN requests to internal services with the API key", async () 
       { path: "/internal/admin/families?limit=10", key: process.env.INTERNAL_API_KEY },
       { path: "/internal/admin/families/abc", key: process.env.INTERNAL_API_KEY },
     ]);
+  } finally {
+    await new Promise<void>((resolve) => upstream.close(() => resolve()));
+  }
+});
+
+const adminHeaders = { "x-user-role": "ADMIN", "x-user-id": "admin-1" };
+
+it("answers 503 when the upstream refuses the connection (ECONNREFUSED)", async () => {
+  // Bind then close a port so nothing is listening on it.
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const port = (probe.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  process.env.INTERNAL_API_KEY = "test-internal-key-with-more-than-32-characters";
+  process.env.AUTH_SERVICE_URL = `http://127.0.0.1:${port}`;
+  const response = await request(express().use(directoryRouter)).get("/users").set(adminHeaders);
+  expect(response.status).toBe(503);
+  expect(response.body.error).toBe("UPSTREAM_UNAVAILABLE");
+});
+
+it("answers 502 when the upstream responds with a non-JSON body", async () => {
+  const upstream = createServer((_req, res) => { res.statusCode = 500; res.end("<html>oops</html>"); });
+  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+  process.env.INTERNAL_API_KEY = "test-internal-key-with-more-than-32-characters";
+  process.env.FAMILY_SERVICE_URL = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+  try {
+    const response = await request(express().use(directoryRouter)).get("/families").set(adminHeaders);
+    expect(response.status).toBe(502);
+    expect(response.body.error).toBe("UPSTREAM_BAD_RESPONSE");
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
   }

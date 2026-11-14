@@ -26,6 +26,8 @@ Paths are as seen by the service; through the gateway prefix them with `/api/not
 | `POST /partners` | `x-api-key: PARTNER_API_KEY` | Upsert a partner supermarket by name |
 | `POST /partners/:partnerId/promotions` | `x-api-key: PARTNER_API_KEY` | Upsert 1–500 promotions by title (transaction) |
 | `POST /internal/notifications` | `x-api-key: INTERNAL_API_KEY` | Create an in-app notification (used by admin-service). Not routable through the gateway |
+| `PUT /internal/promotions/:externalId` | `x-api-key: INTERNAL_API_KEY` | Create or update (idempotent by `externalId`) an active promotion; creates the partner (default "SmartKitchen") on first use. Used by admin-service for discounted ingredients (`admin-ingredient:<id>`). Not routable through the gateway |
+| `POST /internal/promotions/:externalId/deactivate` | `x-api-key: INTERNAL_API_KEY` | Set that promotion `isActive=false` (unknown ids: no-op). Not routable through the gateway |
 
 Lists return `{ items, page, limit, total }` (`limit` max 100, default 20).
 
@@ -80,7 +82,7 @@ With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) mat
 
 ## Database
 
-Tables: `notifications`, `device_tokens`, `notification_preferences`, `partner_supermarkets`, `promotions`. Prisma 5.22.0 with a dedicated client output. The Docker image runs `prisma migrate deploy` on start. Schema changes only through new migrations.
+Tables: `notifications`, `device_tokens`, `notification_preferences`, `partner_supermarkets`, `promotions` (`externalId`, unique and nullable, identifies promotions synced from other services). Prisma 5.22.0 with a dedicated client output. The Docker image runs `prisma migrate deploy` on start. Schema changes only through new migrations.
 
 ## Tests
 

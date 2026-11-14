@@ -42,6 +42,12 @@ model MasterIngredient {
   fatPer100g      Float?
   allergenTags    String[]
   isActive        Boolean  @default(true)
+  /// Pasted https image link (never fetched by the server).
+  imageUrl        String?
+  /// 1-100; null = no promotion. A value creates/updates the user promotion in notification-service.
+  discountPercent Int?
+  /// Last day of the promotion (Asia/Ho_Chi_Minh calendar day).
+  promoEndDate    DateTime? @db.Date
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 

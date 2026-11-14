@@ -2,6 +2,10 @@
 
 Owner: Kazan. Responsibility: authentication, authorization, and account identity APIs.
 
+## One-time admin seed
+
+On the shared host, set `ADMIN_EMAIL` and `ADMIN_PASSWORD` in the Git-ignored root `.env`, then start auth-service with `docker compose -f docker-compose.yml -f docker-compose.remote.yml up -d --build auth-service`. The service seeds a verified `ADMIN` account before listening, using the same bcrypt hash as password registration. If the email already exists, the seed leaves its role and password unchanged; missing variables skip the seed and log a warning. Never put the actual password in `.env.example`, Git, or service logs. Because an initial password shared in chat is exposed, rotate it after first login.
+
 ## Email verification
 
 New password-based registrations remain inactive until the user verifies the 6-digit code emailed to them. Codes expire after 5 minutes, and resend requests have a 60-second cooldown.

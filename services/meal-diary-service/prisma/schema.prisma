@@ -1,5 +1,7 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  output        = "../node_modules/.prisma/client-meal-diary"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -7,9 +9,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// TODO: khai bao model rieng cho meal-diary-service
-// Vi du:
-// model Example {
-//   id        String   @id @default(uuid())
-//   createdAt DateTime @default(now())
-// }
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum MealSource {
+  HOME
+  EATING_OUT
+  DELIVERY
+}
+
+model MealDiary {
+  id        String          @id @default(uuid()) @db.Uuid
+  userId    String          @db.Uuid
+  mealType  MealType
+  source    MealSource      @default(HOME)
+  date      DateTime        @db.Date
+  loggedAt  DateTime        @default(now())
+  notes     String?
+  items     MealDiaryItem[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@index([userId, date])
+}
+
+model MealDiaryItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  mealDiaryId String    @db.Uuid
+  mealDiary   MealDiary @relation(fields: [mealDiaryId], references: [id], onDelete: Cascade)
+  foodName    String
+  quantity    Int       @default(1)
+  unit        String    @default("serving")
+  calories    Float
+  protein     Float?
+  carbs       Float?
+  fat         Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([mealDiaryId])
+}

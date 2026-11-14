@@ -23,8 +23,8 @@ describe("resolveHealthTargets", () => {
 });
 
 describe("healthMonitorConfig", () => {
-  it("defaults to a 60s poll, 2s timeout and 14 days retention with jobs enabled", () => {
-    expect(healthMonitorConfig({})).toEqual({ jobsEnabled: true, pollIntervalSeconds: 60, timeoutMs: 2000, degradedThresholdMs: 1000, retentionDays: 14 });
+  it("defaults to a 60s poll, 3s timeout and 14 days retention with jobs enabled", () => {
+    expect(healthMonitorConfig({})).toEqual({ jobsEnabled: true, pollIntervalSeconds: 60, timeoutMs: 3000, degradedThresholdMs: 1000, retentionDays: 14 });
   });
 
   it("disables jobs only when ENABLE_JOBS is exactly false and rejects invalid numbers", () => {

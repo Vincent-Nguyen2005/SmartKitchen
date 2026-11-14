@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { ArrowLeft } from "lucide-react-native";
 import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { FamilyMemberSummary, FamilyRole } from "./FamilyOverviewScreen";
+import { AppIcon, colors, typography } from "../../theme";
 
 type Props = {
   members: FamilyMemberSummary[];
@@ -63,7 +65,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        {!!onBack && <Pressable onPress={onBack} style={styles.backButton}><Text style={styles.link}>‹  Family</Text></Pressable>}
+        {!!onBack && <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Gia đình</Text></Pressable>}
         <Text style={styles.eyebrow}>HOUSEHOLD ACCESS</Text>
         <Text style={styles.title}>Manage members</Text>
         <Text style={styles.subtitle}>Choose who can help manage your shared family space.</Text>
@@ -128,48 +130,48 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F7F8F4", flex: 1 },
-  content: { padding: 24, paddingBottom: 40 },
-  backButton: { alignSelf: "flex-start", marginBottom: 24, paddingVertical: 6 },
-  link: { color: "#2F6B5F", fontSize: 15, fontWeight: "700" },
-  eyebrow: { color: "#2F6B5F", fontSize: 12, fontWeight: "700", letterSpacing: 1.2 },
-  title: { color: "#17211F", fontSize: 30, fontWeight: "700", marginTop: 8 },
-  subtitle: { color: "#68736F", fontSize: 15, lineHeight: 22, marginBottom: 22, marginTop: 8 },
+  content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 40, width: "100%" },
+  backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 24, minHeight: 44 },
+  link: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
+  eyebrow: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.2 },
+  title: { ...typography.pageTitle, color: colors.text, marginTop: 8 },
+  subtitle: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 22, marginBottom: 22, marginTop: 8 },
   error: { backgroundColor: "#FEE4E2", borderRadius: 10, color: "#B42318", marginBottom: 14, padding: 12 },
   card: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, paddingHorizontal: 16 },
   member: { paddingBottom: 16, paddingTop: 16 },
   divider: { borderTopColor: "#EDF0ED", borderTopWidth: 1 },
   memberTop: { alignItems: "center", flexDirection: "row" },
   avatar: { alignItems: "center", backgroundColor: "#E4F0E9", borderRadius: 20, height: 40, justifyContent: "center", marginRight: 12, width: 40 },
-  avatarText: { color: "#2F6B5F", fontSize: 16, fontWeight: "700" },
+  avatarText: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
   memberInfo: { flex: 1 },
-  memberName: { color: "#17211F", fontSize: 15, fontWeight: "600", marginBottom: 6 },
+  memberName: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "600", marginBottom: 6 },
   badge: { alignSelf: "flex-start", backgroundColor: "#EFF2EF", borderRadius: 16, paddingHorizontal: 9, paddingVertical: 4 },
   ownerBadge: { backgroundColor: "#FFF2CC" },
-  badgeText: { color: "#56635C", fontSize: 11, fontWeight: "700" },
+  badgeText: { ...typography.caption, color: "#56635C", fontWeight: "700" },
   ownerText: { color: "#8A5A00" },
   actions: { flexDirection: "row", gap: 9, marginLeft: 52, marginTop: 13 },
   secondaryButton: { borderColor: "#C8DAD0", borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
-  secondaryText: { color: "#2F6B5F", fontSize: 12, fontWeight: "700" },
+  secondaryText: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700" },
   removeButton: { borderColor: "#F2C6C3", borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
-  removeText: { color: "#B42318", fontSize: 12, fontWeight: "700" },
+  removeText: { color: "#B42318", fontSize: typography.caption.fontSize, fontWeight: "700" },
   transferButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 11, borderWidth: 1, marginTop: 18, minHeight: 48, justifyContent: "center" },
-  transferText: { color: "#B42318", fontSize: 14, fontWeight: "700" },
-  note: { color: "#7A8580", fontSize: 13, lineHeight: 19, marginTop: 16 },
+  transferText: { color: "#B42318", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
+  note: { color: "#7A8580", fontSize: typography.bodySmall.fontSize, lineHeight: 19, marginTop: 16 },
   modalBackdrop: { alignItems: "center", backgroundColor: "rgba(0,0,0,0.45)", flex: 1, justifyContent: "center", padding: 24 },
   modalCard: { backgroundColor: "#FFFFFF", borderRadius: 18, maxHeight: "80%", padding: 20, width: "100%" },
-  modalTitle: { color: "#17211F", fontSize: 20, fontWeight: "700" },
-  modalCopy: { color: "#68736F", fontSize: 14, lineHeight: 20, marginTop: 8 },
+  modalTitle: { color: "#17211F", fontSize: typography.subheading.fontSize, fontWeight: "700" },
+  modalCopy: { color: "#68736F", fontSize: typography.bodySmall.fontSize, lineHeight: 20, marginTop: 8 },
   modalList: { marginTop: 12 },
   targetRow: { alignItems: "center", borderTopColor: "#EDF0ED", borderTopWidth: 1, flexDirection: "row", minHeight: 58, paddingVertical: 10 },
   radio: { borderColor: "#9AA69F", borderRadius: 9, borderWidth: 1.5, height: 18, marginRight: 12, width: 18 },
   radioSelected: { backgroundColor: "#2F6B5F", borderColor: "#2F6B5F" },
   targetInfo: { flex: 1 },
-  targetName: { color: "#17211F", fontSize: 14, fontWeight: "600" },
-  targetRole: { color: "#7A8580", fontSize: 12, marginTop: 3 },
+  targetName: { color: "#17211F", fontSize: typography.bodySmall.fontSize, fontWeight: "600" },
+  targetRole: { color: "#7A8580", fontSize: typography.caption.fontSize, marginTop: 3 },
   modalActions: { flexDirection: "row", gap: 10, justifyContent: "flex-end", marginTop: 16 },
   cancelButton: { borderColor: "#D7E0D9", borderRadius: 9, borderWidth: 1, justifyContent: "center", paddingHorizontal: 16, minHeight: 42 },
-  cancelText: { color: "#56635C", fontSize: 13, fontWeight: "700" },
+  cancelText: { color: "#56635C", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   confirmButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 9, justifyContent: "center", minHeight: 42, minWidth: 88, paddingHorizontal: 16 },
-  confirmText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700" },
+  confirmText: { color: "#FFFFFF", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   disabled: { opacity: 0.55 },
 });

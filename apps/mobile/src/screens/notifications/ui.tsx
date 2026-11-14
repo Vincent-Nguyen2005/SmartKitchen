@@ -1,18 +1,22 @@
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   type LayoutChangeEvent,
+  Modal,
   Pressable,
+  ScrollView,
   type StyleProp,
   StyleSheet,
   Text,
   TextInput,
   type TextInputProps,
+  TouchableOpacity,
   useWindowDimensions,
   View,
   type ViewStyle,
 } from "react-native";
-import { CircleExclamationPoint, Inbox, RefreshCw } from "lucide-react-native";
+import { Check, ChevronDown, CircleExclamationPoint, ImageOff, Inbox, RefreshCw, Square, SquareCheck } from "lucide-react-native";
 import { AppIcon, breakpoints, colors, radius, spacing, textStyles, touchTarget, typography, type LucideIcon } from "../../theme";
 
 /** Shared UI for the notification and admin screens (owner: Huy). Tokens live in src/theme. */
@@ -149,6 +153,238 @@ export function Segmented<T extends string>({ value, options, onChange, label }:
   );
 }
 
+type DropdownOption<T extends string> = { value: NoInfer<T>; label: string };
+
+type PillProps = { text: string; active: boolean; accessibilityLabel: string; onPress: () => void };
+
+/** Dropdown trigger: same pill as a Segmented chip; filled (selected style) when a filter is applied. */
+function DropdownPill({ text, active, accessibilityLabel, onPress }: PillProps): React.JSX.Element {
+  const color = active ? colors.primaryText : colors.text;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint="Mở danh sách lựa chọn"
+      onPress={onPress}
+      style={({ pressed }) => [styles.segment, active && styles.segmentSelected, pressed && !active && styles.segmentPressed]}
+    >
+      <Text style={[styles.segmentText, active && styles.segmentTextSelected]} numberOfLines={1}>{text}</Text>
+      <AppIcon icon={ChevronDown} size="sm" color={color} />
+    </Pressable>
+  );
+}
+
+type SheetProps = { title: string; visible: boolean; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode };
+
+/** Centered option sheet over a dimmed backdrop; tapping the backdrop closes it. */
+function OptionSheet({ title, visible, onClose, children, footer }: SheetProps): React.JSX.Element {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} accessibilityLabel="Đóng danh sách" accessibilityRole="button">
+        {/* Inner Pressable swallows taps so they do not reach the backdrop. */}
+        <Pressable style={styles.sheet} onPress={() => undefined} accessible={false}>
+          <Text style={[styles.title, styles.sheetTitle]} accessibilityRole="header">{title}</Text>
+          <ScrollView style={styles.sheetList}>{children}</ScrollView>
+          {footer}
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
+type OptionRowProps = { label: string; selected: boolean; multi?: boolean; onPress: () => void };
+
+function OptionRow({ label, selected, multi, onPress }: OptionRowProps): React.JSX.Element {
+  const icon = multi ? (selected ? SquareCheck : Square) : Check;
+  return (
+    <Pressable
+      accessibilityRole={multi ? "checkbox" : "radio"}
+      accessibilityState={multi ? { checked: selected } : { selected }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [styles.optionRow, pressed && styles.segmentPressed]}
+    >
+      {multi || selected ? <AppIcon icon={icon} size="sm" color={selected ? colors.primary : colors.muted} /> : <View style={styles.optionIconSpacer} />}
+      <Text style={[styles.body, selected && styles.optionTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+type DropdownProps<T extends string> = {
+  /** Shown before the value in the pill ("Trạng thái: Mới") and as the sheet title. */
+  label: string;
+  value: NoInfer<T>;
+  options: DropdownOption<T>[];
+  onChange: (value: T) => void;
+  /** The "no filter" value; the pill is filled whenever another value is selected. */
+  neutralValue?: NoInfer<T>;
+};
+
+/** Single-choice filter: a pill showing the current choice, opening a sheet of options. */
+export function Dropdown<T extends string>({ label, value, options, onChange, neutralValue }: DropdownProps<T>): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const current = options.find((option) => option.value === value)?.label ?? "";
+  return (
+    <>
+      <DropdownPill text={`${label}: ${current}`} active={neutralValue !== undefined && value !== neutralValue} accessibilityLabel={`${label}: ${current}`} onPress={() => setOpen(true)} />
+      <OptionSheet title={label} visible={open} onClose={() => setOpen(false)}>
+        {options.map((option) => (
+          <OptionRow key={option.value} label={option.label} selected={option.value === value} onPress={() => { setOpen(false); onChange(option.value); }} />
+        ))}
+      </OptionSheet>
+    </>
+  );
+}
+
+type MultiDropdownProps = {
+  label: string;
+  /** Empty array = everything ("Tất cả"). */
+  value: string[];
+  options: DropdownOption<string>[];
+  onChange: (value: string[]) => void;
+  /** Label for "n items selected", e.g. (n) => `${n} dịch vụ`. */
+  countLabel: (count: number) => string;
+  allLabel?: string;
+};
+
+/**
+ * Multi-choice filter. The pill reads "<label>: Tất cả", the single selected name, or countLabel(n).
+ * Changes are applied with "Áp dụng" so the caller reloads once, not on every tick.
+ */
+export function MultiDropdown({ label, value, options, onChange, countLabel, allLabel = "Tất cả" }: MultiDropdownProps): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<string[]>(value);
+  const summary = value.length === 0 ? allLabel
+    : value.length === 1 ? options.find((option) => option.value === value[0])?.label ?? value[0]
+      : countLabel(value.length);
+  const toggle = (item: string) => setDraft((current) => (current.includes(item) ? current.filter((entry) => entry !== item) : [...current, item]));
+  const apply = () => {
+    setOpen(false);
+    // Picking every option is the same as "Tất cả".
+    onChange(draft.length === options.length ? [] : options.map((option) => option.value).filter((item) => draft.includes(item)));
+  };
+  return (
+    <>
+      <DropdownPill text={`${label}: ${summary}`} active={value.length > 0} accessibilityLabel={`${label}: ${summary}`} onPress={() => { setDraft(value); setOpen(true); }} />
+      <OptionSheet
+        title={label}
+        visible={open}
+        onClose={() => setOpen(false)}
+        footer={(
+          <View style={[styles.wrapRow, styles.sheetFooter]}>
+            <Button variant="secondary" label="Hủy" onPress={() => setOpen(false)} />
+            <Button label="Áp dụng" onPress={apply} />
+          </View>
+        )}
+      >
+        <OptionRow multi label={allLabel} selected={draft.length === 0} onPress={() => setDraft([])} />
+        {options.map((option) => (
+          <OptionRow multi key={option.value} label={option.label} selected={draft.includes(option.value)} onPress={() => toggle(option.value)} />
+        ))}
+      </OptionSheet>
+    </>
+  );
+}
+
+/** At most `size` consecutive page numbers, centred on `current` where possible (7 of 20 -> 5..9). */
+export const pageWindow = (current: number, totalPages: number, size = 5): number[] => {
+  const start = Math.max(1, Math.min(current - Math.floor(size / 2), totalPages - size + 1));
+  const end = Math.min(totalPages, start + size - 1);
+  return Array.from({ length: Math.max(0, end - start + 1) }, (_, index) => start + index);
+};
+
+type PaginationProps = { page: number; totalPages: number; onChange: (page: number) => void; disabled?: boolean };
+
+/** "← Trước 1 2 3 4 5 Sau →" bar in the chip style; the current page is filled. Renders nothing for one page. */
+export function Pagination({ page, totalPages, onChange, disabled }: PaginationProps): React.JSX.Element | null {
+  if (totalPages <= 1) return null;
+  const step = (label: string, target: number, a11y: string) => {
+    const inactive = disabled || target < 1 || target > totalPages;
+    return (
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        accessibilityState={{ disabled: inactive }}
+        disabled={inactive}
+        onPress={() => onChange(target)}
+        style={[styles.pageButton, inactive && styles.disabled]}
+      >
+        <Text style={styles.segmentText}>{label}</Text>
+      </TouchableOpacity>
+    );
+  };
+  return (
+    <View style={styles.pagination} accessibilityLabel={`Trang ${page} trên ${totalPages}`}>
+      {step("← Trước", page - 1, "Trang trước")}
+      {pageWindow(page, totalPages).map((number) => {
+        const current = number === page;
+        return (
+          <TouchableOpacity
+            key={number}
+            accessibilityRole="button"
+            accessibilityLabel={`Trang ${number}`}
+            accessibilityState={{ selected: current, disabled }}
+            disabled={disabled || current}
+            onPress={() => onChange(number)}
+            style={[styles.pageButton, current && styles.segmentSelected]}
+          >
+            <Text style={[styles.segmentText, current && styles.segmentTextSelected]}>{number}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      {step("Sau →", page + 1, "Trang sau")}
+    </View>
+  );
+}
+
+/**
+ * Client-side check for a pasted image link, used only to decide whether to show a live preview.
+ * The server (admin-service) applies the full rules; this mirrors the obvious ones.
+ */
+export const looksLikeImageUrl = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("https://") || trimmed.length > 2048) return false;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    return Boolean(host) && host !== "localhost" && !/^(10|127)\./.test(host) && !/^192\.168\./.test(host) && !/^172\.(1[6-9]|2\d|3[01])\./.test(host) && host !== "[::1]";
+  } catch {
+    return false;
+  }
+};
+
+type RemoteImageProps = {
+  uri: string | null | undefined;
+  size: number;
+  /** Spoken label; omit for decorative thumbnails next to a visible name. */
+  accessibilityLabel?: string;
+  onLoadError?: () => void;
+  onLoad?: () => void;
+};
+
+/** Image from a pasted https link, or a neutral placeholder when there is none or it fails to load. */
+export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad }: RemoteImageProps): React.JSX.Element {
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const box = { width: size, height: size };
+  if (!uri || failedUri === uri) {
+    return (
+      <View style={[styles.imagePlaceholder, box]} accessible={Boolean(accessibilityLabel)} accessibilityLabel={accessibilityLabel ? `${accessibilityLabel} (không có ảnh)` : undefined}>
+        <AppIcon icon={ImageOff} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={[styles.image, box]}
+      resizeMode="cover"
+      accessible={Boolean(accessibilityLabel)}
+      accessibilityLabel={accessibilityLabel}
+      onLoad={onLoad}
+      onError={() => { setFailedUri(uri); onLoadError?.(); }}
+    />
+  );
+}
+
 type FieldProps = TextInputProps & { label: string; icon?: LucideIcon };
 
 /** Labelled text input; `icon` adds a decorative leading icon (e.g. Search). */
@@ -228,6 +464,21 @@ export const styles = StyleSheet.create({
   segmentPressed: { backgroundColor: colors.primarySoft },
   segmentText: { ...typography.bodySmall, color: colors.text },
   segmentTextSelected: { ...typography.labelSmall, color: colors.primaryText },
+  // Remote images
+  image: { backgroundColor: colors.background, borderRadius: radius.sm },
+  imagePlaceholder: { alignItems: "center", backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, justifyContent: "center" },
+  // Pagination
+  pagination: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, justifyContent: "center", paddingVertical: spacing.sm },
+  pageButton: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, minWidth: 36, paddingHorizontal: 10 },
+  // Dropdown sheet
+  sheetBackdrop: { alignItems: "center", backgroundColor: colors.overlay, flex: 1, justifyContent: "center", padding: spacing.lg },
+  sheet: { backgroundColor: colors.surface, borderRadius: radius.lg, maxHeight: "80%", maxWidth: 380, padding: spacing.lg, width: "100%" },
+  sheetTitle: { marginBottom: spacing.sm },
+  sheetList: { flexGrow: 0 },
+  sheetFooter: { justifyContent: "flex-end", marginTop: spacing.md },
+  optionRow: { alignItems: "center", borderRadius: radius.sm, flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  optionIconSpacer: { width: 16 },
+  optionTextSelected: { color: colors.primary, fontWeight: "600" },
   // Fields
   field: { gap: spacing.xs, marginBottom: 10 },
   fieldLabel: { ...typography.bodySmall, color: colors.muted },

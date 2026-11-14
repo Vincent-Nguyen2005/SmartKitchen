@@ -23,6 +23,7 @@ export type ApiRequestOptions = Omit<RequestInit, "headers"> & { headers?: Recor
 
 const request = async <T>(baseUrl: string, path: string, options: ApiRequestOptions = {}, accessToken?: string): Promise<T> => {
   const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
+  if (baseUrl.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
   if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
   if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
   let response: Response;

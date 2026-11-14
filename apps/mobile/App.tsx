@@ -10,7 +10,7 @@ import {
   Utensils,
   Users,
 } from "lucide-react-native";
-import { AppIcon, breakpoints, colors, spacing, textStyles, touchTarget } from "./src/theme";
+import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
   View,
@@ -86,7 +86,10 @@ function AppContent(): React.JSX.Element {
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
   const isAdmin = session.user?.role === "ADMIN";
-  const visibleTabs = tabs.filter(({ key }) => key !== "admin" || isAdmin);
+  // SCRUM-283: ADMIN accounts see only the admin tab; everyone else sees every tab except admin.
+  const visibleTabs = tabs.filter(({ key }) => (key === "admin") === isAdmin);
+  // Derived (not synced in an effect) so no other tab renders for a frame after the role changes.
+  const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const tabWidth = width >= breakpoints.wide
     ? Math.min(140, width / visibleTabs.length)
     : width < 360 ? 72 : 88;
@@ -96,11 +99,6 @@ function AppContent(): React.JSX.Element {
     if (!session.user || !session.accessToken) return;
     void registerDeviceToken(createGatewayClient(session.accessToken));
   }, [session.user?.id, session.accessToken]);
-
-  // Leave the admin tab if the signed-in user is not an admin (e.g. after switching accounts).
-  useEffect(() => {
-    if (tab === "admin" && !isAdmin) setTab("inventory");
-  }, [isAdmin, tab]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -195,48 +193,55 @@ function AppContent(): React.JSX.Element {
     );
   }
 
+  const signOut = () => {
+    void session.signOut();
+  };
+  const renderTab = ({ key, label, icon: Icon }: (typeof tabs)[number]) => {
+    const active = activeTab === key;
+    return (
+      <TouchableOpacity
+        accessibilityLabel={label}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        key={key}
+        style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
+        onPress={() => setTab(key)}
+      >
+        <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
+        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>SmartKitchen</Text>
-        <TouchableOpacity
-          accessibilityLabel="Đăng xuất"
-          accessibilityRole="button"
-          onPress={() => {
-            void session.signOut();
-          }}
-          style={styles.signOutButton}
-        >
-          <AppIcon icon={LogOut} size="sm" color={colors.surface} />
-          <Text style={styles.signOutText}>Đăng xuất</Text>
-        </TouchableOpacity>
-      </View>
+      {/* ADMIN accounts get no coloured header: the screen starts with the tab row, logout sits on its right. */}
+      {!isAdmin && (
+        <View style={styles.header}>
+          <Text style={styles.headerText}>SmartKitchen</Text>
+          <TouchableOpacity
+            accessibilityLabel="Đăng xuất"
+            accessibilityRole="button"
+            onPress={signOut}
+            style={styles.signOutButton}
+          >
+            <AppIcon icon={LogOut} size="sm" color={colors.surface} />
+            <Text style={styles.signOutText}>Đăng xuất</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
-        {visibleTabs.map(({ key, label, icon: Icon }) => {
-            const active = tab === key;
-            return (
-              <TouchableOpacity
-                accessibilityLabel={label}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                key={key}
-                style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
-                onPress={() => setTab(key)}
-              >
-                <AppIcon
-                  icon={Icon}
-                  size="md"
-                  color={active ? colors.primary : colors.muted}
-                />
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-      </ScrollView>
+      {isAdmin ? (
+        <View style={[styles.tabBar, styles.adminTabRow]}>
+          {visibleTabs.map(renderTab)}
+          <IconButton icon={LogOut} size="md" color={colors.text} accessibilityLabel="Đăng xuất" onPress={signOut} />
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
+          {visibleTabs.map(renderTab)}
+        </ScrollView>
+      )}
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
@@ -250,24 +255,24 @@ function AppContent(): React.JSX.Element {
             }}
           />
         ) : null}
-        {!paymentUrl && tab === "inventory" && (
+        {!paymentUrl && activeTab === "inventory" && (
           <InventoryScreen onOpenFamily={() => setTab("family")} />
         )}
-        {!paymentUrl && tab === "recipes" && (
+        {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && tab === "shopping" && <ShoppingCartScreen />}
-        {!paymentUrl && tab === "menu" && (
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen />}
+        {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
             familyId={session.family?.id}
             onPaymentStarted={setPaymentUrl}
           />
         )}
-        {!paymentUrl && tab === "family" && <FamilyScreenFlow />}
-        {!paymentUrl && tab === "notifications" && <NotificationsHome />}
-        {!paymentUrl && tab === "admin" && isAdmin && <AdminHome />}
-        {!paymentUrl && tab === "nutrition" && (
+        {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
+        {!paymentUrl && activeTab === "notifications" && <NotificationsHome />}
+        {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
+        {!paymentUrl && activeTab === "nutrition" && (
           <NutritionProfileScreen
             apiBaseUrl={apiBaseUrl}
             accessToken={session.accessToken ?? undefined}
@@ -313,6 +318,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1 as number,
     borderBottomColor: colors.border,
     flexGrow: 0,
+  },
+  adminTabRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingRight: spacing.sm,
   },
   tabBarContent: {
     flexDirection: "row",

@@ -5,7 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, IconButton, type LucideIcon } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Badge, Button, colors, Field, ScreenState, Segmented, styles, useLayout } from "../notifications/ui";
+import { Badge, Button, colors, Dropdown, Field, ScreenState, styles, useLayout } from "../notifications/ui";
 
 type ReportStatus = "OPEN" | "IN_REVIEW" | "RESOLVED" | "REJECTED";
 type Category = "ABUSE" | "SPAM" | "BUG" | "OTHER";
@@ -73,11 +73,12 @@ export default function ReportsScreen(): React.JSX.Element {
   // Filters are the list header, so on short screens (phones in landscape) they scroll away with the list.
   // While loading or after an error the list is empty and shows the state instead (same requests as before).
   const showState = loading || Boolean(error && items.length === 0);
+  // One toolbar line: status + category dropdowns (same filters as before, default status "Mới").
   const filters = (
-    <View>
-      <Segmented<StatusFilter> label="Lọc theo trạng thái" value={status} onChange={setStatus}
-        options={[{ value: "OPEN", label: "Mới" }, { value: "IN_REVIEW", label: "Đang xem xét" }, { value: "RESOLVED", label: "Đã xử lý" }, { value: "REJECTED", label: "Từ chối" }, { value: "ALL", label: "Tất cả" }]} />
-      <Segmented<CategoryFilter> label="Lọc theo loại" value={category} onChange={setCategory}
+    <View style={[styles.wrapRow, local.toolbar]}>
+      <Dropdown<StatusFilter> label="Trạng thái" value={status} onChange={setStatus} neutralValue="ALL"
+        options={[{ value: "ALL", label: "Tất cả" }, { value: "OPEN", label: "Mới" }, { value: "IN_REVIEW", label: "Đang xem xét" }, { value: "RESOLVED", label: "Đã xử lý" }, { value: "REJECTED", label: "Từ chối" }]} />
+      <Dropdown<CategoryFilter> label="Loại" value={category} onChange={setCategory} neutralValue="ALL"
         options={[{ value: "ALL", label: "Mọi loại" }, { value: "ABUSE", label: "Lạm dụng" }, { value: "SPAM", label: "Spam" }, { value: "BUG", label: "Lỗi" }, { value: "OTHER", label: "Khác" }]} />
     </View>
   );
@@ -203,6 +204,7 @@ function ReportDetail({ report, onUpdated, padding }: { report: Report; onUpdate
 
 const local = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 },
+  toolbar: { paddingVertical: 8 },
   listContent: { gap: 10, paddingBottom: 24 },
   card: { gap: 6 },
   selected: { borderColor: colors.primary, borderWidth: 2 },

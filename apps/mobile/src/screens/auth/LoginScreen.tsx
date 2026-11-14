@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -13,6 +14,7 @@ import {
 import { ApiError } from "../../services/api";
 import { authErrorMessage } from "./authError";
 import { Eye, EyeOff } from "lucide-react-native";
+import { colors, typography } from "../../theme";
 
 type AuthNavigation = { navigate: (screen: "Register") => void };
 type Props = {
@@ -58,6 +60,7 @@ export default function LoginScreen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           <Text style={styles.kicker}>SMARTKITCHEN</Text>
           <Text style={styles.title}>Chào mừng trở lại</Text>
@@ -126,27 +129,29 @@ export default function LoginScreen({
             <Text style={styles.link}>Đăng ký</Text>
           </Text>
         </Pressable>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  forgotPassword: { alignSelf: "flex-end", color: "#2F6B5F", fontSize: 14, fontWeight: "700", paddingVertical: 12 },
-  notice: { color: "#2F6B5F", fontSize: 14, marginVertical: 8 },
+  forgotPassword: { alignSelf: "flex-end", color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", paddingVertical: 12 },
+  notice: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
-  container: { flex: 1, justifyContent: "space-between", padding: 24 },
+  container: { flex: 1 },
+  content: { flexGrow: 1, justifyContent: "space-between", maxWidth: 560, padding: 24, width: "100%", alignSelf: "center" },
   kicker: {
     color: "#2F6B5F",
-    fontSize: 12,
+    fontSize: typography.caption.fontSize,
     fontWeight: "700",
     letterSpacing: 1.5,
     marginBottom: 18,
   },
-  title: { color: "#17211F", fontSize: 34, fontWeight: "700", marginBottom: 8 },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 8 },
   subtitle: {
     color: "#68736F",
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     lineHeight: 24,
     marginBottom: 28,
   },
@@ -156,7 +161,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     color: "#17211F",
-    fontSize: 16,
+    fontSize: typography.body.fontSize,
     marginBottom: 14,
     padding: 16,
   },
@@ -169,10 +174,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginBottom: 8,
   },
-  passwordInput: { color: "#17211F", flex: 1, fontSize: 16, padding: 16 },
+  passwordInput: { color: "#17211F", flex: 1, fontSize: typography.body.fontSize, padding: 16 },
   visibilityButton: { paddingHorizontal: 16, paddingVertical: 16 },
   visibilityText: { color: "#2F6B5F", fontWeight: "700" },
-  error: { color: "#B42318", fontSize: 13, marginBottom: 12 },
+  error: { color: "#B42318", fontSize: typography.bodySmall.fontSize, marginBottom: 12 },
   primaryButton: {
     alignItems: "center",
     backgroundColor: "#2F6B5F",
@@ -181,9 +186,9 @@ const styles = StyleSheet.create({
     minHeight: 54,
     marginTop: 10,
   },
-  primaryButtonText: { color: "#FFFFFF", fontSize: 16, fontWeight: "700" },
+  primaryButtonText: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
   pressed: { opacity: 0.8 },
   link: { color: "#2F6B5F", fontWeight: "700" },
   footer: { alignItems: "center", paddingVertical: 12 },
-  footerText: { color: "#68736F", fontSize: 14 },
+  footerText: { color: "#68736F", fontSize: typography.bodySmall.fontSize },
 });
