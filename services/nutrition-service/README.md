@@ -32,3 +32,9 @@ POST/PUT JSON body:
 ```
 
 The calculation uses Mifflin-St Jeor and the activity factors declared in `src/utils/nutrition-calculator.ts`. Input measurements must be positive and within the API's sanity bounds.
+
+## Docker: environment, migrations, existing databases
+
+- Environment: `PORT`, `DATABASE_URL`; `MEAL_DIARY_SERVICE_URL` (daily stats) and `RECIPE_SERVICE_URL` (suggestions).
+- The container runs `prisma migrate deploy` before starting node (the Prisma 5.22.0 CLI ships in the image). If a migration fails the container exits non-zero.
+- Existing database that already has the tables but no `_prisma_migrations` (error `P3005`): baseline once with `docker compose -p smartkitchen run --rm --no-deps --entrypoint sh nutrition-service -c "npx --no-install prisma migrate resolve --applied 20261002000000_add_nutrition_profile"`, then start the service again. Details: [docs/deploy/self-host.md](../../docs/deploy/self-host.md).

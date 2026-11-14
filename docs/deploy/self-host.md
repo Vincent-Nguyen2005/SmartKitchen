@@ -118,6 +118,25 @@ Lỗi thường gặp:
 
 > **Không bao giờ chạy `docker compose ... down -v`**: cờ `-v` xóa toàn bộ volume database.
 
+## Nutrition và meal-diary: biến môi trường, migration, baseline
+
+- **Biến môi trường:** `nutrition-service` cần `MEAL_DIARY_SERVICE_URL=http://meal-diary-service:4005` (thống kê theo ngày) và `RECIPE_SERVICE_URL=http://recipe-service:4006` (gợi ý món); cả `docker-compose.yml` và `docker-compose.prod.yml` đã khai báo sẵn. `meal-diary-service` dùng database riêng `meal-diary-db` (`DATABASE_URL`).
+- **Migration khi khởi động:** hai service này chạy `prisma migrate deploy` rồi mới start (giống auth, family, admin, notification, inventory, shopping-list). Migrate lỗi thì container dừng (exit khác 0) và không phục vụ request; xem log bằng `docker compose -p smartkitchen logs <service>`.
+- **Database cũ chưa có lịch sử migration (lỗi `P3005: The database schema is not empty`):** xảy ra khi bảng đã được tạo trước đó (ví dụ `NutritionProfile` có sẵn) nhưng chưa có bảng `_prisma_migrations`. Kiểm tra:
+
+  ```bash
+  docker compose -p smartkitchen exec nutrition-db psql -U postgres -d nutrition_db -c "\dt"
+  ```
+
+  Nếu có `NutritionProfile` mà không có `_prisma_migrations`, đánh dấu migration đầu tiên là đã áp dụng (chỉ một lần, không đổi dữ liệu), rồi khởi động lại:
+
+  ```bash
+  docker compose -p smartkitchen run --rm --no-deps --entrypoint sh nutrition-service -c "npx --no-install prisma migrate resolve --applied 20261002000000_add_nutrition_profile"
+  docker compose -p smartkitchen up -d nutrition-service
+  ```
+
+  Với stack self-host thêm `-f docker-compose.prod.yml` vào mỗi lệnh. Tương tự cho `meal-diary-service` (`meal_diary_db`, migration `20261104120000_create_meal_diary`) nếu bảng `MealDiary` đã được tạo tay. Sao lưu database trước khi chạy.
+
 ## Giới hạn và an toàn
 
 - Funnel là đường truy cập **công khai**: ai biết URL đều gọi được API. Chỉ dùng dữ liệu thử nghiệm và đảm bảo secret trong `.env` là ngẫu nhiên.

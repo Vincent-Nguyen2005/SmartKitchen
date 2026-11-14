@@ -73,7 +73,8 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d nutrition_db"], interval: 5s, timeout: 5s, retries: 10 }
   nutrition-service:
     build: ./services/nutrition-service
-    environment: { PORT: 4004, DATABASE_URL: postgresql://postgres:postgres@nutrition-db:5432/nutrition_db }
+    # Daily stats read meal-diary-service; suggestions read recipe-service (request time only, no depends_on).
+    environment: { PORT: 4004, DATABASE_URL: postgresql://postgres:postgres@nutrition-db:5432/nutrition_db, MEAL_DIARY_SERVICE_URL: http://meal-diary-service:4005, RECIPE_SERVICE_URL: http://recipe-service:4006 }
     ports: ["4004:4004"]
     depends_on: { nutrition-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4004/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
