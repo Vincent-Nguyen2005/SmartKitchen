@@ -6,6 +6,7 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 
 - The "Quản trị" tab is rendered only when `useSession().user.role === "ADMIN"` (see `App.tsx`). `AdminHome` repeats the check and shows "Không có quyền truy cập" otherwise.
 - ADMIN accounts see **only** the "Quản trị" tab (SCRUM-283); all other tabs are hidden for them, and non-admins never see it.
+- For ADMIN accounts `App.tsx` also hides the green "SmartKitchen" header; logout is the icon at the right end of the tab row (non-admins keep the header with "Đăng xuất").
 - This is a UI guard only. The real check is on the server: the gateway sets `x-user-role` from the verified access token and admin-service requires `ADMIN` on every admin endpoint.
 
 ## Screens
