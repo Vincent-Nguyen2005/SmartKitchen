@@ -10,6 +10,7 @@ import {
   Text,
   TextInput,
   type TextInputProps,
+  TouchableOpacity,
   useWindowDimensions,
   View,
   type ViewStyle,
@@ -284,6 +285,57 @@ export function MultiDropdown({ label, value, options, onChange, countLabel, all
   );
 }
 
+/** At most `size` consecutive page numbers, centred on `current` where possible (7 of 20 -> 5..9). */
+export const pageWindow = (current: number, totalPages: number, size = 5): number[] => {
+  const start = Math.max(1, Math.min(current - Math.floor(size / 2), totalPages - size + 1));
+  const end = Math.min(totalPages, start + size - 1);
+  return Array.from({ length: Math.max(0, end - start + 1) }, (_, index) => start + index);
+};
+
+type PaginationProps = { page: number; totalPages: number; onChange: (page: number) => void; disabled?: boolean };
+
+/** "← Trước 1 2 3 4 5 Sau →" bar in the chip style; the current page is filled. Renders nothing for one page. */
+export function Pagination({ page, totalPages, onChange, disabled }: PaginationProps): React.JSX.Element | null {
+  if (totalPages <= 1) return null;
+  const step = (label: string, target: number, a11y: string) => {
+    const inactive = disabled || target < 1 || target > totalPages;
+    return (
+      <TouchableOpacity
+        accessibilityRole="button"
+        accessibilityLabel={a11y}
+        accessibilityState={{ disabled: inactive }}
+        disabled={inactive}
+        onPress={() => onChange(target)}
+        style={[styles.pageButton, inactive && styles.disabled]}
+      >
+        <Text style={styles.segmentText}>{label}</Text>
+      </TouchableOpacity>
+    );
+  };
+  return (
+    <View style={styles.pagination} accessibilityLabel={`Trang ${page} trên ${totalPages}`}>
+      {step("← Trước", page - 1, "Trang trước")}
+      {pageWindow(page, totalPages).map((number) => {
+        const current = number === page;
+        return (
+          <TouchableOpacity
+            key={number}
+            accessibilityRole="button"
+            accessibilityLabel={`Trang ${number}`}
+            accessibilityState={{ selected: current, disabled }}
+            disabled={disabled || current}
+            onPress={() => onChange(number)}
+            style={[styles.pageButton, current && styles.segmentSelected]}
+          >
+            <Text style={[styles.segmentText, current && styles.segmentTextSelected]}>{number}</Text>
+          </TouchableOpacity>
+        );
+      })}
+      {step("Sau →", page + 1, "Trang sau")}
+    </View>
+  );
+}
+
 type FieldProps = TextInputProps & { label: string; icon?: LucideIcon };
 
 /** Labelled text input; `icon` adds a decorative leading icon (e.g. Search). */
@@ -363,6 +415,9 @@ export const styles = StyleSheet.create({
   segmentPressed: { backgroundColor: colors.primarySoft },
   segmentText: { ...typography.bodySmall, color: colors.text },
   segmentTextSelected: { ...typography.labelSmall, color: colors.primaryText },
+  // Pagination
+  pagination: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, justifyContent: "center", paddingVertical: spacing.sm },
+  pageButton: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, minWidth: 36, paddingHorizontal: 10 },
   // Dropdown sheet
   sheetBackdrop: { alignItems: "center", backgroundColor: colors.overlay, flex: 1, justifyContent: "center", padding: spacing.lg },
   sheet: { backgroundColor: colors.surface, borderRadius: radius.lg, maxHeight: "80%", maxWidth: 380, padding: spacing.lg, width: "100%" },

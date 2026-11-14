@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BackHandler, Text, View } from "react-native";
-import { Activity, Carrot, ChartColumn, Flag, LayoutDashboard, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
+import { Carrot, ChartColumn, Flag, LayoutDashboard, ShieldExclamationPoint, SlidersHorizontal } from "lucide-react-native";
 import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, PageTitle, Segmented, styles, useLayout } from "../notifications/ui";
@@ -11,10 +11,10 @@ import AdminUsersScreen from "./AdminUsersScreen";
 import DashboardScreen from "./DashboardScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import ReportsScreen from "./ReportsScreen";
-import SystemHealthScreen from "./SystemHealthScreen";
 import WeightsScreen from "./WeightsScreen";
 
-type Section = "dashboard" | "overview" | "ingredients" | "weights" | "health" | "reports";
+// "Hệ thống" was removed from the tabs; SystemHealthScreen.tsx is kept but no longer rendered.
+type Section = "dashboard" | "overview" | "ingredients" | "weights" | "reports";
 
 /**
  * Screens pushed over the sectioned home (the empty stack). Back pops one level, so a family opened
@@ -77,7 +77,6 @@ export default function AdminHome(): React.JSX.Element {
             { value: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
             { value: "overview", label: "Thống kê", icon: ChartColumn },
             { value: "reports", label: "Báo cáo", icon: Flag },
-            { value: "health", label: "Hệ thống", icon: Activity },
             { value: "ingredients", label: "Nguyên liệu", icon: Carrot },
             { value: "weights", label: "Trọng số", icon: SlidersHorizontal },
           ]}
@@ -93,10 +92,9 @@ export default function AdminHome(): React.JSX.Element {
         )}
         {section === "overview" && (
           // Báo cáo mounts fresh on the "Mới" filter, so opening it from here shows pending reports.
-          <DashboardScreen onOpenReports={() => setSection("reports")} onOpenHealth={() => setSection("health")} />
+          <DashboardScreen onOpenReports={() => setSection("reports")} />
         )}
         {section === "reports" && <ReportsScreen />}
-        {section === "health" && <SystemHealthScreen />}
         {section === "ingredients" && <IngredientsScreen />}
         {section === "weights" && <WeightsScreen />}
       </View>
