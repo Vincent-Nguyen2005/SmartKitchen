@@ -113,6 +113,9 @@ export default function IngredientsScreen(): React.JSX.Element {
   // away with the list. While loading or after an error the list shows the state instead (same requests).
   const showState = loading || Boolean(error && items.length === 0);
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  // Hide the filter chips only when the whole catalog is empty ("Tất cả", no search, 0 items). A search or
+  // "Đang dùng" with no results keeps them, otherwise there would be no way back to "Tất cả".
+  const catalogEmpty = total === 0 && !term && active === "all";
   const goToPage = (nextPage: number) => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
     void load(nextPage);
@@ -120,11 +123,13 @@ export default function IngredientsScreen(): React.JSX.Element {
   const toolbar = (
     <View>
       <View style={[styles.wrapRow, local.toolbar]}>
-        <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Không dấu cũng được" value={search} onChangeText={setSearch} autoCorrect={false} /></View>
+        <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Nhập tên nguyên liệu..." value={search} onChangeText={setSearch} autoCorrect={false} /></View>
         <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(emptyDraft); }} style={local.addButton} />
       </View>
-      <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
-        options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
+      {catalogEmpty ? null : (
+        <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
+          options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
+      )}
       {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
