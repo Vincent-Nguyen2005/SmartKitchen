@@ -17,6 +17,7 @@ RUN apk add --no-cache openssl
 COPY --chown=node:node --from=build /app/package*.json ./
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/prisma ./prisma
 EXPOSE 4006
 USER node
-CMD ["npm", "start"]
+CMD ["sh", "-c", "npx --no-install prisma migrate deploy && npm start"]
