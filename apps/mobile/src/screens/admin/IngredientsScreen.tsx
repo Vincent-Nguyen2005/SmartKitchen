@@ -42,6 +42,8 @@ const SHELF_LIFE_PICKS = ["3", "7", "14", "30", "90"];
 /** Stored as plain lowercase Vietnamese strings in allergenTags (same free-string array as before). */
 const ALLERGENS = ["đậu phộng", "hạt cây", "sữa", "trứng", "hải sản", "cá", "đậu nành", "gluten", "mè"];
 const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+// Allergens field hidden from the form: no service reads allergens yet (data, API and stored values kept).
+const SHOW_ALLERGENS = false;
 
 type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string };
 const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "" };
@@ -141,8 +143,9 @@ export default function IngredientsScreen(): React.JSX.Element {
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
       caloriesPer100g: calories, shelfLifeDays: shelfLife,
-      // A typed "Khác" value that was not added with the button is still saved.
-      allergenTags: withTag(draft.allergenTags, draft.otherAllergen),
+      // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
+      // (partial update) and a new ingredient gets the server default []. A typed "Khác" value is saved when shown.
+      ...(SHOW_ALLERGENS ? { allergenTags: withTag(draft.allergenTags, draft.otherAllergen) } : {}),
       // null clears the value; an empty end date with a discount means "today + 7 days" on the server.
       imageUrl: draft.imageUrl.trim() || null,
       discountPercent: discount,
@@ -280,12 +283,14 @@ export default function IngredientsScreen(): React.JSX.Element {
                 <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
                 <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}
                   options={SHELF_LIFE_PICKS.map((days) => ({ value: days, label: `${days} ngày` }))} />
-                <AllergenPicker
-                  value={draft.allergenTags}
-                  other={draft.otherAllergen}
-                  onChange={(allergenTags) => setDraft({ ...draft, allergenTags })}
-                  onOtherChange={(otherAllergen) => setDraft({ ...draft, otherAllergen })}
-                />
+                {SHOW_ALLERGENS ? (
+                  <AllergenPicker
+                    value={draft.allergenTags}
+                    other={draft.otherAllergen}
+                    onChange={(allergenTags) => setDraft({ ...draft, allergenTags })}
+                    onOtherChange={(otherAllergen) => setDraft({ ...draft, otherAllergen })}
+                  />
+                ) : null}
 
                 <Field
                   label="Dán link ảnh (https://...)"
