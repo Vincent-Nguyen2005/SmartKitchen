@@ -66,6 +66,42 @@ describe("ingredient promotion fields", () => {
     expect(syncMock).toHaveBeenCalledWith(expect.objectContaining({ discountPercent: 30 }), true);
   });
 
+  it("returns the promotion fields in the list so the edit form can prefill them", async () => {
+    const row = { ...stored, imageUrl: "https://cdn.example.com/a.jpg", discountPercent: 25, promoEndDate: day(addDays(vnToday(), 4)) };
+    prismaMock.masterIngredient.findMany.mockResolvedValue([row]);
+    prismaMock.masterIngredient.count.mockResolvedValue(1);
+    const response = await admin(request(app).get("/ingredients"));
+    expect(response.body.items[0]).toMatchObject({ imageUrl: row.imageUrl, discountPercent: 25, promoEndDate: row.promoEndDate.toISOString() });
+  });
+
+  it("editing only the image link keeps the discount and end date and re-syncs the promotion", async () => {
+    const endDay = addDays(vnToday(), 5);
+    prismaMock.masterIngredient.findUnique.mockResolvedValue({ ...stored, imageUrl: "https://cdn.example.com/old.jpg", discountPercent: 20, promoEndDate: day(endDay) });
+    const response = await admin(request(app).put("/ingredients/i1")).send({ imageUrl: "https://cdn.example.com/new.jpg" });
+    expect(response.status).toBe(200);
+    expect(prismaMock.masterIngredient.update.mock.calls[0][0].data).toMatchObject({ imageUrl: "https://cdn.example.com/new.jpg", discountPercent: 20, promoEndDate: day(endDay) });
+    expect(syncMock).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: "https://cdn.example.com/new.jpg", discountPercent: 20 }), true);
+  });
+
+  it("editing only the end date stores it and re-syncs the promotion", async () => {
+    const newEnd = addDays(vnToday(), 20);
+    prismaMock.masterIngredient.findUnique.mockResolvedValue({ ...stored, discountPercent: 20, promoEndDate: day(addDays(vnToday(), 5)) });
+    await admin(request(app).put("/ingredients/i1")).send({ promoEndDate: newEnd });
+    expect(prismaMock.masterIngredient.update.mock.calls[0][0].data.promoEndDate).toEqual(day(newEnd));
+    expect(syncMock).toHaveBeenCalledWith(expect.objectContaining({ promoEndDate: day(newEnd) }), true);
+  });
+
+  it("removing the image link keeps the promotion but without an image", async () => {
+    prismaMock.masterIngredient.findUnique.mockResolvedValue({ ...stored, imageUrl: "https://cdn.example.com/a.jpg", discountPercent: 20, promoEndDate: day(addDays(vnToday(), 5)) });
+    await admin(request(app).put("/ingredients/i1")).send({ imageUrl: "" });
+    expect(syncMock).toHaveBeenCalledWith(expect.objectContaining({ imageUrl: null, discountPercent: 20 }), true);
+  });
+
+  it("caps shelf life at 3650 days", async () => {
+    expect((await admin(request(app).post("/ingredients")).send({ ...base, shelfLifeDays: 3651 })).status).toBe(400);
+    expect((await admin(request(app).post("/ingredients")).send({ ...base, shelfLifeDays: 3650 })).status).toBe(201);
+  });
+
   it("clearing the discount clears the end date and deactivates the promotion", async () => {
     prismaMock.masterIngredient.findUnique.mockResolvedValue({ ...stored, discountPercent: 10, promoEndDate: day(addDays(vnToday(), 5)) });
     await admin(request(app).put("/ingredients/i1")).send({ discountPercent: null });
