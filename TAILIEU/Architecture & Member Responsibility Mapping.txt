@@ -154,7 +154,7 @@ Cuong:
 --- SPRINT 4: Testing, UI Optimization, Documentation & Production Deployment ---
 Status as of 2026-11-06 (Jira export): 46 items - Done 20, In Progress 4, To Do 6, Idea 16.
 Kazan's Sprint 4 statuses below were updated from merged code on main on 2026-11-09; the Jira export counts above are historical. Kazan will synchronize these Done statuses in Jira.
-Huy's Sprint 4 statuses below were updated from merged code on main on 2026-11-14 (PRs #43-#49); Huy will synchronize them in Jira.
+Huy's Sprint 4 statuses below were updated from merged code on main on 2026-11-14 (PRs #43-#50, #54 and later merges into main); Huy still needs to synchronize them in Jira.
 
 Huy:
 [#58] (SCRUM-220) Story: Admin: system health monitoring (EPIC-12) [Done]
@@ -179,11 +179,15 @@ Huy - extra items, added after the original plan ("PR #n" is a GitHub pull reque
 (SCRUM-264) Task: Admin card grids flicker on web (scrollbar layout loop) - EPIC-12 [Done]
 (SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress] (503 for P1001/P1002/P1008/P1017/P2021/P2024, gateway startup: branch fix/sprint-4-followups-v2)
 (SCRUM-265) Feature: Unify mobile UI with the shared theme (colors, typography, icons) - EPIC-13 [In Progress]
-(SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [To Do]
+(SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [Done] (code on main - PR merged Sprint 4; PR #50: no green header for ADMIN, logout icon in the tab row; tab labels 14px)
 (SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [Done] (code on main — PR merged Sprint 4; PR #45, AdminFamiliesScreen PR #47)
 (no Jira key) Task: Gateway admin hardening: normalize request paths before the internal-path check (percent-encoding, dot segments, backslash, double slash, case); admin-service 401 without token, 503 when the directory upstream is unreachable - EPIC-01/12 [Done] (code on main — PR merged Sprint 4; PR #43)
 (no Jira key) Task: admin-service health probe timeout raised from 2s to 3s - EPIC-12 [Done] (code on main — PR merged Sprint 4; PR #44)
-Admin UI Sprint 4 — Done (branches merged, see PR history): filter chips to dropdowns in Thống kê/Báo cáo (PR #46); dashboard lists capped at 5 rows + AdminUsersScreen/AdminFamiliesScreen full lists (PR #47); Thống kê stat cards, collapsed healthy services, Nguyên liệu filters (PR #48); Hệ thống tab removed, Nguyên liệu 10 per page (PR #49). Not merged yet: fix/admin-header-cleanup (no green header for ADMIN, logout icon in the tab row).
+Admin UI Sprint 4 — Done (branches merged, see PR history): filter chips to dropdowns in Thống kê/Báo cáo (PR #46); dashboard lists capped at 5 rows + AdminUsersScreen/AdminFamiliesScreen full lists (PR #47); Thống kê stat cards, collapsed healthy services, Nguyên liệu filters (PR #48); Hệ thống tab removed, Nguyên liệu 10 per page (PR #49). Also merged: no green header for ADMIN, logout icon in the tab row (PR #50); service dropdown removed from Thống kê, Nguyên liệu search placeholder and chips hidden while the catalog is empty (merged into main, PR number not visible).
+(no Jira key) Task: Admin ingredients: image link + discount % create a user promotion (Khuyến mãi tab); "Mua" adds the item to the family shopping list (related: SCRUM-243, SCRUM-244) - EPIC-11/12 [Done] (code on main - PR merged Sprint 4; merged into main, PR number not visible)
+(no Jira key) Task: Admin ingredient form: unit dropdown, shelf life in days with quick picks, date picker for the promotion end date (web + native iOS/Android), edit-flow tests - EPIC-12 [Done] (code on main - PR merged Sprint 4; PR #54)
+Note: Tab Trọng số is hidden: no service reads the weights yet (code and tables kept).
+Note: Allergens field hidden in the admin form: no service reads it yet (data, API and stored values kept).
 
 Kazan:
 [#54] (SCRUM-280) Task: Unit tests - Auth & Family Services (EPIC-02/03) [Done] (tests and CI on main)
@@ -193,6 +197,7 @@ Kazan:
 (SCRUM-271) Task: Mobile login bypasses the gateway (calls auth-service :4001 directly) - EPIC-02 [Done] (gateway-based auth client on main)
 (SCRUM-272) Task: Session restore crashes on web (expo-secure-store not supported) - EPIC-13 [Done] (web-safe session storage on main)
 (SCRUM-277) Task: Admin families/users APIs (auth-service, family-service) - EPIC-12 [Done] (PR #27; review fixes PR #32)
+Follow-up suggestion (from Huy, optional): add a createdAfter filter to the auth-service admin user list so "Người dùng mới (7 ngày)" no longer has to count the newest 100 users.
 
 Khanh:
 [#55] (SCRUM-223) Task: Unit tests - Inventory & Shopping List Services (EPIC-04/09) [Done]
@@ -202,6 +207,7 @@ Khanh:
 (SCRUM-267) Task: Migrate inventory & shopping-cart screens to shared theme (9 and 7 font sizes below 12px) - EPIC-13 [Idea]
 (SCRUM-273) Task: inventory & shopping-list: dedicated Prisma clients, CI prisma_schema, remove BOM, NODE_ENV=production - EPIC-04/09 [Idea]
 (SCRUM-274) Task: Inventory: wrong “log in” message when logged in without a family; storage filter row overflows at 375px - EPIC-04 [Idea]
+Follow-up suggestion (from Huy, optional): show promotion labels in Đi chợ for shopping-list items by calling GET /api/notifications/promotions?keyword=<item>.
 
 Hung:
 [#56] (SCRUM-231) Task: Unit tests - Nutrition / Meal Diary (EPIC-05/06) [To Do]
@@ -209,6 +215,7 @@ Hung:
 [#68] (SCRUM-233) Task: Write documentation - Nutrition/Meal Diary section (EPIC-05/06) [To Do]
 (SCRUM-268) Task: Migrate nutrition screens to shared theme - EPIC-13 [Idea]
 (SCRUM-270) Task: Nutrition profile cannot be saved (wrong API path /api/nutrition-profile, X-User-Id header) - EPIC-05 [Idea]
+Follow-up suggestion (from Huy): warn users about allergens only if/when ingredient allergens are used (the field exists in admin-service but is unused today).
 
 Cuong:
 [#57] (SCRUM-234) Task: Unit tests - Recipe, Menu & Payment Services (EPIC-07/08/10) [Idea]
@@ -236,4 +243,4 @@ No assignee:
 --------------------------------------------------------------------------------
 ADMIN sees only the Admin tab (role-based navigation; SCRUM-277 APIs by Kazan, SCRUM-283 UI by Huy).
 Production: self-hosted on Huy's PC with Docker Compose + Tailscale Funnel, cost 0 (SCRUM-222 prepare, SCRUM-278 execute); Render config kept only as an optional future path.
-deploy/render.yaml and docs/deploy/ in the repo still describe Render; they have not been updated for this decision.
+The self-host guide is docs/deploy/self-host.md (with docker-compose.prod.yml and scripts/self-host-start.sh); deploy/render.yaml and the other docs/deploy/ pages still describe the optional Render path.
