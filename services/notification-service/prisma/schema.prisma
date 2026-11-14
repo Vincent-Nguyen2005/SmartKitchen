@@ -108,6 +108,9 @@ model Promotion {
   startsAt        DateTime
   endsAt          DateTime
   isActive        Boolean            @default(true)
+  /// Stable id of the source record for promotions created by other services
+  /// (e.g. "admin-ingredient:<id>"); null for partner-ingested promotions.
+  externalId      String?            @unique
   partner         PartnerSupermarket @relation(fields: [partnerId], references: [id], onDelete: Cascade)
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   type LayoutChangeEvent,
   Modal,
   Pressable,
@@ -15,7 +16,7 @@ import {
   View,
   type ViewStyle,
 } from "react-native";
-import { Check, ChevronDown, CircleExclamationPoint, Inbox, RefreshCw, Square, SquareCheck } from "lucide-react-native";
+import { Check, ChevronDown, CircleExclamationPoint, ImageOff, Inbox, RefreshCw, Square, SquareCheck } from "lucide-react-native";
 import { AppIcon, breakpoints, colors, radius, spacing, textStyles, touchTarget, typography, type LucideIcon } from "../../theme";
 
 /** Shared UI for the notification and admin screens (owner: Huy). Tokens live in src/theme. */
@@ -336,6 +337,54 @@ export function Pagination({ page, totalPages, onChange, disabled }: PaginationP
   );
 }
 
+/**
+ * Client-side check for a pasted image link, used only to decide whether to show a live preview.
+ * The server (admin-service) applies the full rules; this mirrors the obvious ones.
+ */
+export const looksLikeImageUrl = (value: string): boolean => {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("https://") || trimmed.length > 2048) return false;
+  try {
+    const host = new URL(trimmed).hostname.toLowerCase();
+    return Boolean(host) && host !== "localhost" && !/^(10|127)\./.test(host) && !/^192\.168\./.test(host) && !/^172\.(1[6-9]|2\d|3[01])\./.test(host) && host !== "[::1]";
+  } catch {
+    return false;
+  }
+};
+
+type RemoteImageProps = {
+  uri: string | null | undefined;
+  size: number;
+  /** Spoken label; omit for decorative thumbnails next to a visible name. */
+  accessibilityLabel?: string;
+  onLoadError?: () => void;
+  onLoad?: () => void;
+};
+
+/** Image from a pasted https link, or a neutral placeholder when there is none or it fails to load. */
+export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad }: RemoteImageProps): React.JSX.Element {
+  const [failedUri, setFailedUri] = useState<string | null>(null);
+  const box = { width: size, height: size };
+  if (!uri || failedUri === uri) {
+    return (
+      <View style={[styles.imagePlaceholder, box]} accessible={Boolean(accessibilityLabel)} accessibilityLabel={accessibilityLabel ? `${accessibilityLabel} (không có ảnh)` : undefined}>
+        <AppIcon icon={ImageOff} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
+      </View>
+    );
+  }
+  return (
+    <Image
+      source={{ uri }}
+      style={[styles.image, box]}
+      resizeMode="cover"
+      accessible={Boolean(accessibilityLabel)}
+      accessibilityLabel={accessibilityLabel}
+      onLoad={onLoad}
+      onError={() => { setFailedUri(uri); onLoadError?.(); }}
+    />
+  );
+}
+
 type FieldProps = TextInputProps & { label: string; icon?: LucideIcon };
 
 /** Labelled text input; `icon` adds a decorative leading icon (e.g. Search). */
@@ -415,6 +464,9 @@ export const styles = StyleSheet.create({
   segmentPressed: { backgroundColor: colors.primarySoft },
   segmentText: { ...typography.bodySmall, color: colors.text },
   segmentTextSelected: { ...typography.labelSmall, color: colors.primaryText },
+  // Remote images
+  image: { backgroundColor: colors.background, borderRadius: radius.sm },
+  imagePlaceholder: { alignItems: "center", backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, justifyContent: "center" },
   // Pagination
   pagination: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, justifyContent: "center", paddingVertical: spacing.sm },
   pageButton: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, minWidth: 36, paddingHorizontal: 10 },

@@ -164,7 +164,9 @@ export const createApp = (options: AppOptions = {}): express.Express => {
       return;
     }
     if (INTERNAL_PATH.test(path)) { res.status(404).json({ error: "ROUTE_NOT_FOUND", path: req.originalUrl }); return; }
-    if (/^\/api\/admin(?:\/|$)/.test(path)) delete req.headers["x-api-key"];
+    // Service API keys (partner ingestion, internal calls) are never accepted from public clients:
+    // strip a client-sent x-api-key on every proxied route, not only /api/admin.
+    delete req.headers["x-api-key"];
     next();
   });
   // Strips client-supplied x-user-id/x-user-role, then sets them only from a verified access token.
