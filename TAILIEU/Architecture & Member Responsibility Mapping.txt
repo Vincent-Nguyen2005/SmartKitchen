@@ -163,7 +163,7 @@ Huy:
 [#61] (SCRUM-249) Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12) [Done]
 [#65] (SCRUM-221) Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12) [Done]
 [#70] (SCRUM-222) Task: Prepare production deployment (self-hosted, Tailscale Funnel) (EPIC-01) [Done] (code on main — PR merged Sprint 4; docker-compose.prod.yml, scripts/self-host-start.sh/.ps1, docs/deploy/self-host.md, .env.example; merged with PR #43)
-[#70] (SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Idea]
+[#70] (SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Done] (code on main — PR merged Sprint 4 (docker-compose.prod.yml, scripts/self-host-start.sh, docs/deploy/self-host.md, .env.example))
 
 Huy - extra items, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
 [#61] (SCRUM-260) Task: Lucide icons and shared theme tokens for Notification & Admin screens - EPIC-13 [Done] (PR #17)
