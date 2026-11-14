@@ -5,14 +5,18 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 ## Access
 
 - The "Quản trị" tab is rendered only when `useSession().user.role === "ADMIN"` (see `App.tsx`). `AdminHome` repeats the check and shows "Không có quyền truy cập" otherwise.
+- ADMIN accounts see **only** the "Quản trị" tab (SCRUM-283); all other tabs are hidden for them, and non-admins never see it.
 - This is a UI guard only. The real check is on the server: the gateway sets `x-user-role` from the verified access token and admin-service requires `ADMIN` on every admin endpoint.
 
 ## Screens
 
 | File | What it does | API (through the gateway) |
 |---|---|---|
-| `AdminHome.tsx` | Tổng quan (default) / Báo cáo / Hệ thống / Nguyên liệu / Trọng số | — |
-| `DashboardScreen.tsx` | Overview for 24h or 7d: KPI cards (overall status, services up / slow / down, open reports, reports resolved in the window), bar charts of reports by status and by category, line charts of response time (average + p95) and uptime over time with a service picker, horizontal bar chart of uptime per service (worst first). Each card has its own loading / empty / error state; pull-to-refresh | `GET /api/admin/health-monitor/status`, `/summary?window=`, `/timeseries?service=&window=`, `GET /api/admin/reports/stats?window=` |
+| `AdminHome.tsx` | Tổng quan (default) / Thống kê / Báo cáo / Hệ thống / Nguyên liệu / Trọng số; small state-based stack that pushes Người dùng and family detail over the dashboard (Android back pops) | — |
+| `AdminDashboardScreen.tsx` | "Tổng quan": cards for total users, total families and system status; 10 newest users (name, email, role badge) and 10 newest families (name, member count) side by side on tablets, stacked on phones; "Xem tất cả" opens Người dùng, a family row opens its detail; pull-to-refresh | `GET /api/admin/users?limit=10`, `GET /api/admin/families?limit=10`, `GET /api/admin/health-monitor/status` |
+| `AdminUsersScreen.tsx` | Newest 100 users with client-side search by name or email, pull-to-refresh, "Chưa có người dùng" empty state | `GET /api/admin/users?limit=100` |
+| `AdminFamilyDetailScreen.tsx` | Family name, creation date, owner email, members (name, role in family; joined date once family-service returns `joinedAt`) | `GET /api/admin/families/:id` |
+| `DashboardScreen.tsx` | "Thống kê": overview for 24h or 7d: KPI cards (overall status, services up / slow / down, open reports, reports resolved in the window), bar charts of reports by status and by category, line charts of response time (average + p95) and uptime over time with a service picker, horizontal bar chart of uptime per service (worst first). Each card has its own loading / empty / error state; pull-to-refresh | `GET /api/admin/health-monitor/status`, `/summary?window=`, `/timeseries?service=&window=`, `GET /api/admin/reports/stats?window=` |
 | `ReportsScreen.tsx` | Account reports: status + category filters, paging, detail (side panel on tablets, full-screen on phones), allowed transitions only, note required to resolve/reject, 409 conflict message | `GET /api/admin/reports`, `PATCH /api/admin/reports/:id/status` |
 | `SystemHealthScreen.tsx` | Overall + per-service status (colour + text), uptime / avg / p95 for 24h or 7d, "Kiểm tra ngay", pull-to-refresh | `GET /api/admin/health-monitor/status`, `/summary`, `POST /check-now` |
 | `IngredientsScreen.tsx` | Master ingredients: debounced search, active/hidden filter, create/edit form, soft delete (switch), duplicate-name message | `/api/admin/ingredients` |
@@ -28,7 +32,7 @@ Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIco
 
 Preparation: stack running, signed in as a user whose role is `ADMIN` in auth_db (and a normal user for steps 1–2).
 
-1. **Role gating:** as a normal user the admin tab is not visible. Promote the account to ADMIN and sign in again → the tab appears.
+1. **Role gating:** as a normal user the admin tab is not visible. Promote the account to ADMIN and sign in again → only the "Quản trị" tab is shown (Kho, Đi chợ, Thực đơn, … are hidden). Sign out and back in as a normal user → the normal tabs return.
 2. **Server enforcement:** with a normal user's token, `GET /api/admin/reports` returns 403 (also covered by `pnpm test:e2e-smoke`).
 3. **Reports:** file a report as a normal user (`POST /api/admin/reports`) → it appears under "Mới". Open it → "Đang xem xét" → "Đã xử lý" without a note shows the note error; with a note it succeeds and the reporter gets an in-app notification. A closed report shows no buttons.
 4. **Report conflict:** open the same report on two devices, resolve on one, then try on the other → conflict message.
@@ -37,6 +41,7 @@ Preparation: stack running, signed in as a user whose role is `ADMIN` in auth_db
 7. **Weights:** change a value and save → the version increases. Edit the same weight from another device first → saving here shows the conflict message and reloads the new value. A value of `1.5` shows the range error.
 8. **Responsive:** on a tablet (width ≥ 720 and height ≥ 500) reports show list + detail side by side; on a phone, also in landscape, the detail opens full screen with a back button. Health, ingredient and weight cards use 2–3 columns on wide screens and a lone last card keeps the column width. Native builds are portrait-locked by `app.config.ts`, so check landscape on web or a tablet.
 9. **Errors:** stop admin-service → each screen shows the error state with "Thử lại".
-10. **Dashboard:** open "Quản trị" → "Tổng quan" is shown first. KPI numbers match the other tabs (open reports = "Mới" in Báo cáo; services match Hệ thống). Switch 24 giờ / 7 ngày → "Đã xử lý (…)" and all charts reload. Pick a service in "Theo thời gian" → both line charts show only that service; gaps appear where no sample was taken. Resolve a report → pull to refresh → "Đã xử lý" and the status chart update.
-11. **Dashboard states:** a fresh stack (no samples yet) shows the empty state in the time and per-service charts; stop admin-service → the dashboard shows one error with "Thử lại"; with admin-service running but a slow / failing request, only that card shows its error.
-12. **Dashboard accessibility:** with TalkBack / VoiceOver each chart is read as one summary sentence; KPI cards read label, value and detail.
+10. **Directory:** "Tổng quan" shows the user / family totals and up to 10 recent rows each. "Xem tất cả" → Người dùng; type part of a name or email → the list filters; pull down → it reloads. Back. Tap a family → its detail with members; back (or Android back) returns to the dashboard.
+11. **Statistics:** open "Thống kê". KPI numbers match the other tabs (open reports = "Mới" in Báo cáo; services match Hệ thống). Switch 24 giờ / 7 ngày → "Đã xử lý (…)" and all charts reload. Pick a service in "Theo thời gian" → both line charts show only that service; gaps appear where no sample was taken. Resolve a report → pull to refresh → "Đã xử lý" and the status chart update.
+12. **Statistics states:** a fresh stack (no samples yet) shows the empty state in the time and per-service charts; stop admin-service → the dashboard shows one error with "Thử lại"; with admin-service running but a slow / failing request, only that card shows its error.
+13. **Statistics accessibility:** with TalkBack / VoiceOver each chart is read as one summary sentence; KPI cards read label, value and detail.
