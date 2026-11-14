@@ -17,7 +17,8 @@ const historyQuery = z.object({
 
 const summaryQuery = z.object({ window: z.enum(["24h", "7d"]).default("24h") });
 const timeseriesQuery = z.object({
-  service: z.string().trim().min(1).max(100).optional(),
+  // One service name, or several separated by commas ("auth-service,gateway").
+  service: z.string().trim().min(1).max(1000).optional(),
   window: z.enum(["24h", "7d"]).default("24h"),
 });
 
@@ -66,21 +67,24 @@ export const createHealthMonitorRouter = (prisma: MonitorPrisma, monitor: Health
     return response.json({ window, from, to, overall: overallStatus(services.map((service) => service.lastStatus)), services });
   });
 
-  // Bucketed uptime / response times for one service, or all configured services when `service` is omitted.
+  // Bucketed uptime / response times aggregated over the selected services (comma-separated `service`),
+  // or over all configured services when `service` is omitted.
   router.get("/timeseries", async (request, response) => {
     const parsed = timeseriesQuery.safeParse(request.query);
     if (!parsed.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "window must be 24h or 7d", details: parsed.error.flatten() });
     const { service, window } = parsed.data;
-    if (service && !serviceNames.includes(service)) {
+    const selected = service ? [...new Set(service.split(",").map((name) => name.trim()).filter(Boolean))] : [];
+    if (service && (selected.length === 0 || selected.some((name) => !serviceNames.includes(name)))) {
       return response.status(400).json({ error: "VALIDATION_ERROR", message: "Unknown service", details: { service: ["Must be one of the monitored services"] } });
     }
     const { from, to, bucketMs, count } = timeseriesRange(window, new Date());
     const samples = await prisma.serviceHealthLog.findMany({
-      where: { serviceName: service ?? { in: serviceNames }, checkedAt: { gte: from, lt: to } },
+      where: { serviceName: { in: selected.length ? selected : serviceNames }, checkedAt: { gte: from, lt: to } },
       select: { serviceName: true, status: true, responseTimeMs: true, checkedAt: true },
     });
     return response.json({
-      service: service ?? null,
+      service: selected.length === 1 ? selected[0] : null,
+      services: selected.length ? selected : null,
       window,
       bucketMinutes: bucketMs / 60_000,
       from,
