@@ -24,6 +24,10 @@ Use **one** backend and database on the host computer; each teammate runs only t
 
 Each teammate puts the current tunnel URL in their ignored `apps/mobile/.env.local` as `EXPO_PUBLIC_API_BASE_URL=https://<gateway-tunnel-url>`, then restarts Expo with `pnpm --filter mobile exec expo start --web --clear --port 8081`. A restarted Quick Tunnel gets a new URL, so the host must share the new URL and everyone must update their local file. After pulling changes, run `pnpm install`. For prerequisites, tunnel setup, CORS, SMTP troubleshooting, and security limits, follow the [shared-host guide](docs/deploy/shared-host.md). This is for internal testing, not production hosting.
 
+### Self-host the full stack (Tailscale Funnel)
+
+To run all 23 containers from pre-built images on one always-on PC with a stable HTTPS URL, use `docker-compose.prod.yml` with `scripts/self-host-start.sh` (or `.ps1`) and expose the gateway through Tailscale Funnel. Follow the [self-host guide](docs/deploy/self-host.md).
+
 For the normal Compose mode, create the root `.env` **before** the first `docker compose up` (compose refuses to start without `JWT_SECRET`). The team-test command above creates this file automatically on a fresh clone. `.env` is git-ignored; never commit it.
 
 ```powershell

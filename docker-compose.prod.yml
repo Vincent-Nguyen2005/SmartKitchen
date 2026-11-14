@@ -1,0 +1,285 @@
+# SmartKitchen self-host stack (SCRUM-278). Standalone: do NOT combine with docker-compose.yml.
+#   docker compose -p smartkitchen -f docker-compose.prod.yml up -d      (or scripts/self-host-start.sh)
+# Guide: docs/deploy/self-host.md
+#
+# - Same 23 services as docker-compose.yml, but from pre-built images (no `build:`).
+#   Images: ${IMAGE_REGISTRY}/<service>:${IMAGE_TAG}; defaults are placeholders until CI publishes them.
+# - Every value that is a secret comes from ./.env (see .env.example); nothing secret is written here.
+# - Only the gateway publishes a port, and only on 127.0.0.1:4000. Public HTTPS (port 443) is provided by
+#   Tailscale Funnel running on the HOST, not in this file:
+#     tailscale funnel --bg --https=443 http://127.0.0.1:4000
+# - Healthchecks use wget (busybox, present in the alpine images; curl is not installed there).
+#   start_period/start_interval need Docker Engine 25+ (Docker Desktop 4.27+).
+
+x-app: &app
+  restart: unless-stopped
+
+x-db: &db
+  image: postgres:16-alpine
+  restart: unless-stopped
+
+services:
+  auth-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: auth_db }
+    volumes: [auth-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  auth-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/auth-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4001
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@auth-db:5432/auth_db
+    depends_on: { auth-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4001/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  family-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: family_db }
+    volumes: [family-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d family_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  family-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/family-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4002
+      NODE_ENV: production
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      AUTH_SERVICE_URL: http://auth-service:4001
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@family-db:5432/family_db
+    depends_on: { family-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4002/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  inventory-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: inventory_db }
+    volumes: [inventory-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d inventory_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  inventory-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/inventory-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4003
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@inventory-db:5432/inventory_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      FAMILY_SERVICE_URL: http://family-service:4002
+      PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in .env}
+      OPENFOODFACTS_USER_AGENT: "${OPENFOODFACTS_USER_AGENT:-SmartKitchen/1.0 (contact@example.com)}"
+      TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
+      TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
+    depends_on:
+      inventory-db: { condition: service_healthy }
+      family-service: { condition: service_healthy }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4003/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  nutrition-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: nutrition_db }
+    volumes: [nutrition-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d nutrition_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  nutrition-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/nutrition-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4004
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@nutrition-db:5432/nutrition_db
+    depends_on: { nutrition-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4004/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  meal-diary-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: meal_diary_db }
+    volumes: [meal-diary-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d meal_diary_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  meal-diary-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/meal-diary-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4005
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@meal-diary-db:5432/meal_diary_db
+    depends_on: { meal-diary-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4005/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  recipe-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: recipe_db }
+    volumes: [recipe-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d recipe_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  recipe-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/recipe-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4006
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@recipe-db:5432/recipe_db
+    depends_on: { recipe-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4006/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  menu-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: menu_db }
+    volumes: [menu-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d menu_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  menu-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/menu-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4007
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@menu-db:5432/menu_db
+      PAYMENT_SERVICE_URL: http://payment-service:4009
+    depends_on: { menu-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4007/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  shopping-list-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: shopping_list_db }
+    volumes: [shopping-list-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d shopping_list_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  shopping-list-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/shopping-list-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4008
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@shopping-list-db:5432/shopping_list_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_API_URL: http://inventory-service:4003
+      MENU_SERVICE_URL: http://menu-service:4007
+      PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in .env}
+    depends_on:
+      shopping-list-db: { condition: service_healthy }
+      family-service: { condition: service_healthy }
+      inventory-service: { condition: service_healthy }
+      menu-service: { condition: service_healthy }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4008/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  payment-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: payment_db }
+    volumes: [payment-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d payment_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  payment-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/payment-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4009
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@payment-db:5432/payment_db
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+      # Must be the public Funnel URL (https://<machine>.<tailnet>.ts.net) so VNPAY/MoMo can call back.
+      PAYMENT_PUBLIC_BASE_URL: ${PAYMENT_PUBLIC_BASE_URL:?Set PAYMENT_PUBLIC_BASE_URL in .env (your Funnel URL)}
+      PAYMENT_APP_RETURN_URL: ${PAYMENT_APP_RETURN_URL:-smartkitchen://payment-result}
+      VNPAY_TMN_CODE: ${VNPAY_TMN_CODE:-}
+      VNPAY_HASH_SECRET: ${VNPAY_HASH_SECRET:-}
+      VNPAY_PAYMENT_URL: ${VNPAY_PAYMENT_URL:-https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+      MOMO_PARTNER_CODE: ${MOMO_PARTNER_CODE:-}
+      MOMO_ACCESS_KEY: ${MOMO_ACCESS_KEY:-}
+      MOMO_SECRET_KEY: ${MOMO_SECRET_KEY:-}
+      MOMO_CREATE_URL: ${MOMO_CREATE_URL:-https://test-payment.momo.vn/v2/gateway/api/create}
+    depends_on: { payment-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4009/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  notification-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: notification_db }
+    volumes: [notification-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d notification_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  notification-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/notification-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4010
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@notification-db:5432/notification_db
+      PARTNER_API_KEY: ${PARTNER_API_KEY:?Set PARTNER_API_KEY in .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      PUSH_PROVIDER: ${PUSH_PROVIDER:-mock}
+      ENABLE_JOBS: ${NOTIFICATION_ENABLE_JOBS:-false}
+      DEFAULT_TIMEZONE: Asia/Ho_Chi_Minh
+    depends_on: { notification-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4010/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  admin-db:
+    <<: *db
+    environment: { POSTGRES_USER: postgres, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}", POSTGRES_DB: admin_db }
+    volumes: [admin-db-data:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d admin_db"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+  admin-service:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/admin-service:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4011
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@admin-db:5432/admin_db
+      ENABLE_JOBS: "true"
+      HEALTH_POLL_INTERVAL_SECONDS: ${HEALTH_POLL_INTERVAL_SECONDS:-60}
+      HEALTH_LOG_RETENTION_DAYS: 14
+      AUTH_SERVICE_URL: http://auth-service:4001
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4003
+      NUTRITION_SERVICE_URL: http://nutrition-service:4004
+      MEAL_DIARY_SERVICE_URL: http://meal-diary-service:4005
+      RECIPE_SERVICE_URL: http://recipe-service:4006
+      MENU_SERVICE_URL: http://menu-service:4007
+      SHOPPING_LIST_SERVICE_URL: http://shopping-list-service:4008
+      PAYMENT_SERVICE_URL: http://payment-service:4009
+      NOTIFICATION_SERVICE_URL: http://notification-service:4010
+      ADMIN_SERVICE_URL: http://admin-service:4011
+      GATEWAY_URL: http://gateway:4000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
+      REPORT_RATE_LIMIT_PER_HOUR: ${REPORT_RATE_LIMIT_PER_HOUR:-5}
+    depends_on: { admin-db: { condition: service_healthy } }
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4011/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 60s, start_interval: 5s }
+
+  gateway:
+    <<: *app
+    image: ${IMAGE_REGISTRY:-ghcr.io/vincent-nguyen2005/smartkitchen}/gateway:${IMAGE_TAG:-latest}
+    environment:
+      PORT: 4000
+      AUTH_SERVICE_URL: http://auth-service:4001
+      FAMILY_SERVICE_URL: http://family-service:4002
+      INVENTORY_SERVICE_URL: http://inventory-service:4003
+      NUTRITION_SERVICE_URL: http://nutrition-service:4004
+      MEAL_DIARY_SERVICE_URL: http://meal-diary-service:4005
+      RECIPE_SERVICE_URL: http://recipe-service:4006
+      MENU_SERVICE_URL: http://menu-service:4007
+      SHOPPING_LIST_SERVICE_URL: http://shopping-list-service:4008
+      PAYMENT_SERVICE_URL: http://payment-service:4009
+      NOTIFICATION_SERVICE_URL: http://notification-service:4010
+      ADMIN_SERVICE_URL: http://admin-service:4011
+      RATE_LIMIT_WINDOW_MS: 60000
+      RATE_LIMIT_MAX: 100
+      AUTH_RATE_LIMIT_MAX: 20
+      CACHE_TTL_SECONDS: 30
+      CACHE_MAX_ITEMS: 100
+      # Behind Tailscale Funnel: trust X-Forwarded-For so rate limits apply per client, not per proxy.
+      TRUST_PROXY: "true"
+      # Browser origins allowed to call the API (native apps send no Origin). Never "*" on the Internet.
+      CORS_ORIGINS: ${REMOTE_CORS_ORIGINS:-http://localhost:8081,http://127.0.0.1:8081}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env}
+    # Loopback only: Tailscale Funnel on the host forwards public :443 here. Never publish 0.0.0.0:4000.
+    ports: ["127.0.0.1:4000:4000"]
+    healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4000/health || exit 1"], interval: 30s, timeout: 5s, retries: 3, start_period: 30s, start_interval: 5s }
+
+volumes:
+  auth-db-data:
+  family-db-data:
+  inventory-db-data:
+  nutrition-db-data:
+  meal-diary-db-data:
+  recipe-db-data:
+  menu-db-data:
+  shopping-list-db-data:
+  payment-db-data:
+  notification-db-data:
+  admin-db-data:
