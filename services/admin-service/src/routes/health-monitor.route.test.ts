@@ -111,13 +111,13 @@ describe("health monitor routes", () => {
       ]);
       const response = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=gateway"));
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({ service: "gateway", window: "24h", bucketMinutes: 60, from: "2026-11-04T10:00:00.000Z", to: "2026-11-05T11:00:00.000Z" });
+      expect(response.body).toMatchObject({ service: "gateway", services: ["gateway"], window: "24h", bucketMinutes: 60, from: "2026-11-04T10:00:00.000Z", to: "2026-11-05T11:00:00.000Z" });
       expect(response.body.buckets).toHaveLength(25);
       expect(response.body.buckets[24]).toMatchObject({ start: "2026-11-05T10:00:00.000Z", samples: 2, uptimePercent: 50, avgResponseTimeMs: 10, p95ResponseTimeMs: 10 });
       expect(response.body.buckets[23]).toMatchObject({ samples: 1, uptimePercent: 100, avgResponseTimeMs: 30 });
       expect(response.body.buckets[0]).toMatchObject({ samples: 0, uptimePercent: null });
       expect(prismaMock.serviceHealthLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: { serviceName: "gateway", checkedAt: { gte: new Date("2026-11-04T10:00:00.000Z"), lt: new Date("2026-11-05T11:00:00.000Z") } },
+        where: { serviceName: { in: ["gateway"] }, checkedAt: { gte: new Date("2026-11-04T10:00:00.000Z"), lt: new Date("2026-11-05T11:00:00.000Z") } },
       }));
     });
 
@@ -127,11 +127,29 @@ describe("health monitor routes", () => {
       prismaMock.serviceHealthLog.findMany.mockResolvedValue([]);
       const response = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?window=7d"));
       expect(response.status).toBe(200);
-      expect(response.body).toMatchObject({ service: null, window: "7d", bucketMinutes: 360 });
+      expect(response.body).toMatchObject({ service: null, services: null, window: "7d", bucketMinutes: 360 });
       expect(response.body.buckets).toHaveLength(29);
       expect(prismaMock.serviceHealthLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
         where: expect.objectContaining({ serviceName: { in: ["auth-service", "gateway"] } }),
       }));
+    });
+
+    it("aggregates a comma-separated list of services (duplicates and spaces ignored)", async () => {
+      prismaMock.serviceHealthLog.findMany.mockResolvedValue([]);
+      const response = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=auth-service,%20gateway,auth-service"));
+      expect(response.status).toBe(200);
+      expect(response.body).toMatchObject({ service: null, services: ["auth-service", "gateway"] });
+      expect(prismaMock.serviceHealthLog.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({ serviceName: { in: ["auth-service", "gateway"] } }),
+      }));
+    });
+
+    it("rejects a list containing an unknown service or only commas", async () => {
+      const mixed = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=gateway,payment-hack"));
+      expect(mixed.status).toBe(400);
+      expect(mixed.body.message).toBe("Unknown service");
+      expect((await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=,,"))).status).toBe(400);
+      expect(prismaMock.serviceHealthLog.findMany).not.toHaveBeenCalled();
     });
 
     it("rejects unknown windows and services with 400 without querying", async () => {
@@ -141,7 +159,7 @@ describe("health monitor routes", () => {
       const badService = await asAdmin(request(buildApp()).get("/health-monitor/timeseries?service=payment-hack"));
       expect(badService.status).toBe(400);
       expect(badService.body.message).toBe("Unknown service");
-      const tooLong = await asAdmin(request(buildApp()).get(`/health-monitor/timeseries?service=${"x".repeat(101)}`));
+      const tooLong = await asAdmin(request(buildApp()).get(`/health-monitor/timeseries?service=${"x".repeat(1001)}`));
       expect(tooLong.status).toBe(400);
       expect(prismaMock.serviceHealthLog.findMany).not.toHaveBeenCalled();
     });

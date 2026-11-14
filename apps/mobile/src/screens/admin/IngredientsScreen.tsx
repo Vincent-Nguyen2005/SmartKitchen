@@ -129,7 +129,11 @@ export default function IngredientsScreen(): React.JSX.Element {
         onEndReached={() => { if (!showState && items.length < total) void load(page + 1); }}
         ListEmptyComponent={showState
           ? <ScreenState loading={loading} error={error} onRetry={() => void load(1)} />
-          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText="Không tìm thấy nguyên liệu." />}
+          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "true"
+            ? "Không tìm thấy nguyên liệu."
+            // This is admin-service's master catalog (master_ingredients), not the items users add to their
+            // inventory (inventory-service), so it stays empty until an admin adds or imports ingredients.
+            : "Danh mục nguyên liệu chuẩn chưa có mục nào. Nguyên liệu người dùng thêm vào kho được lưu riêng và không hiện ở đây — bấm “Thêm nguyên liệu” để tạo danh mục."} />}
         ListHeaderComponent={toolbar}
         renderItem={({ item }) => (
           <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>

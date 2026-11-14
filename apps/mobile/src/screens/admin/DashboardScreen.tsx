@@ -5,7 +5,7 @@ import {
 } from "lucide-react-native";
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { colors, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { colors, MultiDropdown, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { AppIcon, chartColors, spacing, typography, type LucideIcon } from "../../theme";
 import { BarChart, formatNumber, LineChart } from "./charts";
 
@@ -48,7 +48,9 @@ export default function DashboardScreen(): React.JSX.Element {
   const kpiGrid = useGridCell(isWide ? 4 : 2);
   const chartGrid = useGridCell(isWide ? 2 : 1);
   const [window, setWindow] = useState<Window>("24h");
-  const [service, setService] = useState<string>("ALL");
+  // Empty = all monitored services; the time charts aggregate the selected services.
+  const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  const servicesParam = selectedServices.join(",");
   const [status, setStatus] = useState<Section<StatusResponse>>(empty);
   const [summary, setSummary] = useState<Section<SummaryResponse>>(empty);
   const [stats, setStats] = useState<Section<StatsResponse>>(empty);
@@ -78,14 +80,14 @@ export default function DashboardScreen(): React.JSX.Element {
     const id = ++seriesRequest.current;
     setSeriesLoading(true);
     try {
-      const result = await api.get<TimeseriesResponse>(`/api/admin/health-monitor/timeseries${query({ window, service: service === "ALL" ? undefined : service })}`);
+      const result = await api.get<TimeseriesResponse>(`/api/admin/health-monitor/timeseries${query({ window, service: servicesParam || undefined })}`);
       if (id === seriesRequest.current) setSeries({ data: result, error: null });
     } catch (caught) {
       if (id === seriesRequest.current) setSeries({ data: null, error: errorMessage(caught) });
     } finally {
       if (id === seriesRequest.current) setSeriesLoading(false);
     }
-  }, [api, service, window]);
+  }, [api, servicesParam, window]);
 
   useEffect(() => { setLoading(true); void loadOverview().finally(() => setLoading(false)); }, [loadOverview]);
   useEffect(() => { void loadSeries(); }, [loadSeries]);
@@ -105,7 +107,9 @@ export default function DashboardScreen(): React.JSX.Element {
   const counts = { UP: 0, DEGRADED: 0, DOWN: 0, NONE: 0 };
   for (const item of services) counts[item.status ?? "NONE"] += 1;
   const overall: Overall = status.data?.overall ?? "UNKNOWN";
-  const serviceLabel = service === "ALL" ? "tất cả dịch vụ" : service;
+  const serviceLabel = selectedServices.length === 0 ? "tất cả dịch vụ"
+    : selectedServices.length === 1 ? shortName(selectedServices[0])
+      : `${selectedServices.length} dịch vụ (${selectedServices.map(shortName).join(", ")})`;
 
   // Chart data and spoken summaries.
   const reportStatuses = (Object.keys(statusText) as ReportStatus[]).map((key) => ({ label: statusText[key], value: stats.data?.byStatus[key] ?? 0, color: reportStatusColor[key] }));
@@ -174,10 +178,15 @@ export default function DashboardScreen(): React.JSX.Element {
 
       <View style={local.pickerBlock}>
         <Text style={styles.title} accessibilityRole="header">Theo thời gian ({windowText[window]})</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.picker}>
-          <Segmented<string> label="Chọn dịch vụ" value={service} onChange={setService}
-            options={[{ value: "ALL", label: "Tất cả" }, ...services.map((item) => ({ value: item.serviceName, label: shortName(item.serviceName) }))]} />
-        </ScrollView>
+        <View style={styles.row}>
+          <MultiDropdown
+            label="Dịch vụ"
+            value={selectedServices}
+            onChange={setSelectedServices}
+            countLabel={(count) => `${count} dịch vụ`}
+            options={services.map((item) => ({ value: item.serviceName, label: shortName(item.serviceName) }))}
+          />
+        </View>
       </View>
 
       <View style={[styles.wrapRow, { gap: chartGrid.gap }]}>
@@ -226,5 +235,4 @@ const local = StyleSheet.create({
   kpiValue: typography.subheading,
   chartCard: { gap: spacing.md },
   pickerBlock: { gap: spacing.xs },
-  picker: { paddingRight: spacing.lg },
 });
