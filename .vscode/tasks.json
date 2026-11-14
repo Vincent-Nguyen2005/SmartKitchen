@@ -1,0 +1,22 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "SmartKitchen: mobile web",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"--filter",
+				"mobile",
+				"exec",
+				"expo",
+				"start",
+				"--web",
+				"--port",
+				"8081"
+			],
+			"isBackground": true,
+			"problemMatcher": []
+		}
+	]
+}
