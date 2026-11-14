@@ -28,7 +28,7 @@ describe("admin app wiring", () => {
 
   it("mounts health monitoring behind require-admin", async () => {
     const app = createApp({ monitor });
-    expect((await request(app).get("/health-monitor/status")).status).toBe(403);
+    expect((await request(app).get("/health-monitor/status")).status).toBe(401);
     const admin = await request(app).get("/health-monitor/status").set("x-user-id", "a1").set("x-user-role", "ADMIN");
     expect(admin.status).toBe(200);
     expect(admin.body.overall).toBe("UNKNOWN");

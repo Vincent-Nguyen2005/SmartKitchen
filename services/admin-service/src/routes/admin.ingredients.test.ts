@@ -31,7 +31,8 @@ beforeEach(() => {
 
 describe("master ingredients", () => {
   it("requires the ADMIN role", async () => {
-    expect((await request(app).get("/ingredients")).status).toBe(403);
+    expect((await request(app).get("/ingredients")).status).toBe(401);
+    expect((await request(app).get("/ingredients").set("x-user-id", "u1").set("x-user-role", "USER")).status).toBe(403);
   });
 
   it("searches by accent-insensitive normalized name with capped paging", async () => {
