@@ -2,10 +2,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Carrot, Pencil, Plus, Save, Search, SearchX, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { AppIcon, IconButton } from "../../theme";
+import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Button, colors, Field, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Button, colors, Field, Pagination, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 
 type Ingredient = {
   id: string;
@@ -24,6 +24,7 @@ const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: item.allergenTags.join(", "),
 });
+const PAGE_SIZE = 10;
 const optionalNumber = (value: string): number | null => (value.trim() === "" ? null : Number(value.replace(",", ".")));
 
 export default function IngredientsScreen(): React.JSX.Element {
@@ -44,17 +45,26 @@ export default function IngredientsScreen(): React.JSX.Element {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const requestId = useRef(0);
+  const listRef = useRef<FlatList<Ingredient>>(null);
 
   useEffect(() => { const timer = setTimeout(() => setTerm(search.trim()), 400); return () => clearTimeout(timer); }, [search]);
 
+  // One page of PAGE_SIZE at a time (server-side search + filter). The list shows a spinner while a page loads.
   const load = useCallback(async (nextPage: number, refresh = false) => {
     const id = ++requestId.current;
-    if (refresh) setRefreshing(true); else if (nextPage === 1) setLoading(true);
+    if (refresh) setRefreshing(true); else setLoading(true);
     try {
-      const result = await api.get<Page<Ingredient>>(`/api/admin/ingredients${query({ search: term, isActive: active === "all" ? undefined : active, page: nextPage, limit: 30 })}`);
+      const fetchPage = (pageNumber: number) => api.get<Page<Ingredient>>(`/api/admin/ingredients${query({ search: term, isActive: active === "all" ? undefined : active, page: pageNumber, limit: PAGE_SIZE })}`);
+      let result = await fetchPage(nextPage);
+      let shown = nextPage;
+      // The page no longer exists (e.g. items were hidden under "Đang dùng"): show the last page instead.
+      if (result.items.length === 0 && result.total > 0 && nextPage > 1) {
+        shown = Math.ceil(result.total / PAGE_SIZE);
+        result = await fetchPage(shown);
+      }
       if (id !== requestId.current) return;
-      setItems((current) => (nextPage === 1 ? result.items : [...current, ...result.items]));
-      setPage(nextPage); setTotal(result.total); setError(null);
+      setItems(result.items);
+      setPage(shown); setTotal(result.total); setError(null);
     } catch (caught) {
       if (id === requestId.current) setError(errorMessage(caught));
     } finally {
@@ -81,7 +91,7 @@ export default function IngredientsScreen(): React.JSX.Element {
       if (draft.id) await api.put(`/api/admin/ingredients/${encodeURIComponent(draft.id)}`, body);
       else await api.post("/api/admin/ingredients", body);
       setDraft(null);
-      void load(1);
+      void load(page);
     } catch (caught) {
       setFormError(caught instanceof GatewayApiError && caught.status === 409 ? "Tên nguyên liệu đã tồn tại." : errorMessage(caught));
     } finally {
@@ -102,6 +112,11 @@ export default function IngredientsScreen(): React.JSX.Element {
   // Search, add and filter are the list header, so on short screens (phones in landscape) they scroll
   // away with the list. While loading or after an error the list shows the state instead (same requests).
   const showState = loading || Boolean(error && items.length === 0);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const goToPage = (nextPage: number) => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    void load(nextPage);
+  };
   const toolbar = (
     <View>
       <View style={[styles.wrapRow, local.toolbar]}>
@@ -125,11 +140,16 @@ export default function IngredientsScreen(): React.JSX.Element {
         columnWrapperStyle={columns > 1 ? { gap: grid.gap } : undefined}
         keyExtractor={(item) => item.id}
         contentContainerStyle={local.listContent}
-        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(1, true)} tintColor={colors.primary} />}
-        onEndReachedThreshold={0.4}
-        onEndReached={() => { if (!showState && items.length < total) void load(page + 1); }}
+        ref={listRef}
+        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(page, true)} tintColor={colors.primary} />}
+        ListFooterComponent={showState || total === 0 ? undefined : (
+          <View style={local.footer}>
+            <AppText variant="caption" style={local.pageInfo}>Trang {page} / {totalPages} · {total} nguyên liệu</AppText>
+            <Pagination page={page} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+          </View>
+        )}
         ListEmptyComponent={showState
-          ? <ScreenState loading={loading} error={error} onRetry={() => void load(1)} />
+          ? <ScreenState loading={loading} error={error} onRetry={() => void load(page)} />
           : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "all"
             ? "Không tìm thấy nguyên liệu."
             // This is admin-service's master catalog (master_ingredients), not the items users add to their
@@ -192,6 +212,8 @@ const local = StyleSheet.create({
   search: { flexBasis: 200, flexGrow: 1 },
   addButton: { marginBottom: 10 },
   listContent: { gap: 12, paddingBottom: 24 },
+  footer: { gap: 4, paddingTop: 4 },
+  pageInfo: { textAlign: "center" },
   card: { flex: 1, gap: 8 },
   editArea: { minHeight: 44 },
   flex: { flex: 1, minWidth: 0 },

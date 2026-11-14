@@ -44,12 +44,10 @@ const countNewUsers = (page: UsersPage, now: number): string => {
 export interface DashboardScreenProps {
   /** Opens the Báo cáo tab (it starts on the "Mới" filter). */
   onOpenReports: () => void;
-  /** Opens the Hệ thống tab. */
-  onOpenHealth: () => void;
 }
 
-/** "Thống kê": the few numbers an admin acts on (owner: Huy). Details live in Báo cáo / Hệ thống. */
-export default function DashboardScreen({ onOpenReports, onOpenHealth }: DashboardScreenProps): React.JSX.Element {
+/** "Thống kê": the few numbers an admin acts on (owner: Huy). Report details live in Báo cáo. */
+export default function DashboardScreen({ onOpenReports }: DashboardScreenProps): React.JSX.Element {
   const { api } = useGatewayApi();
   const { gutter, isWide } = useLayout();
   const kpiGrid = useGridCell(isWide ? 4 : 2);
@@ -98,7 +96,8 @@ export default function DashboardScreen({ onOpenReports, onOpenHealth }: Dashboa
   const p95ByName = new Map((summary.data?.services ?? []).map((item) => [item.serviceName, item.p95ResponseTimeMs]));
   const counts = { UP: 0, DEGRADED: 0, DOWN: 0, NONE: 0 };
   for (const item of services) counts[item.status ?? "NONE"] += 1;
-  const problemCount = services.filter((item) => needsAttention(severityOf(item.status, p95ByName.get(item.serviceName)))).length;
+  const problemServices = services.filter((item) => needsAttention(severityOf(item.status, p95ByName.get(item.serviceName))));
+  const problemCount = problemServices.length;
   const overall: Overall = status.data?.overall ?? "UNKNOWN";
   const openReports = stats.data?.byStatus.OPEN;
 
@@ -119,8 +118,10 @@ export default function DashboardScreen({ onOpenReports, onOpenHealth }: Dashboa
       value: String(openReports ?? "–"), color: openReports ? colors.warning : colors.success,
     },
     {
-      label: "Dịch vụ có vấn đề", icon: ServerCrash, error: status.error, onPress: onOpenHealth, hint: "Mở Hệ thống",
+      // There is no Hệ thống tab any more, so the card names the affected services itself.
+      label: "Dịch vụ có vấn đề", icon: ServerCrash, error: status.error,
       value: status.data ? String(problemCount) : "–", color: problemCount > 0 ? colors.danger : colors.success,
+      detail: problemCount > 0 ? problemServices.map((item) => shortName(item.serviceName)).join(", ") : "Tất cả hoạt động bình thường",
     },
   ];
 
@@ -165,13 +166,15 @@ type StatCardProps = {
   icon: LucideIcon;
   color: string;
   error: string | null;
+  /** Optional caption under the number. */
+  detail?: string;
   onPress?: () => void;
   hint?: string;
   width?: number;
 };
 
 /** Label (caption) + number (heading 22). Tappable cards show a chevron and open the related tab. */
-function StatCard({ label, value, icon, color, error, onPress, hint, width }: StatCardProps): React.JSX.Element {
+function StatCard({ label, value, icon, color, error, detail, onPress, hint, width }: StatCardProps): React.JSX.Element {
   const shownColor = error ? colors.muted : color;
   const body = (
     <>
@@ -181,11 +184,11 @@ function StatCard({ label, value, icon, color, error, onPress, hint, width }: St
         {onPress ? <AppIcon icon={ChevronRight} size="sm" color={colors.muted} /> : null}
       </View>
       <AppText variant="heading" color={shownColor} numberOfLines={1}>{error ? "–" : value}</AppText>
-      {error ? <AppText variant="caption">Không tải được</AppText> : null}
+      {error ? <AppText variant="caption">Không tải được</AppText> : detail ? <AppText variant="caption" numberOfLines={2}>{detail}</AppText> : null}
     </>
   );
   const style = [styles.card, local.stat, { width: width ?? "100%" }] as const;
-  const a11yLabel = error ? `${label}: không tải được` : `${label}: ${value}`;
+  const a11yLabel = error ? `${label}: không tải được` : `${label}: ${value}${detail ? `. ${detail}` : ""}`;
   if (!onPress) return <View style={style} accessible accessibilityLabel={a11yLabel}>{body}</View>;
   return (
     <Pressable
