@@ -10,7 +10,7 @@ import {
   Utensils,
   Users,
 } from "lucide-react-native";
-import { AppIcon, breakpoints, colors, spacing, textStyles, touchTarget } from "./src/theme";
+import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
   View,
@@ -193,48 +193,55 @@ function AppContent(): React.JSX.Element {
     );
   }
 
+  const signOut = () => {
+    void session.signOut();
+  };
+  const renderTab = ({ key, label, icon: Icon }: (typeof tabs)[number]) => {
+    const active = activeTab === key;
+    return (
+      <TouchableOpacity
+        accessibilityLabel={label}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: active }}
+        key={key}
+        style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
+        onPress={() => setTab(key)}
+      >
+        <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
+        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerText}>SmartKitchen</Text>
-        <TouchableOpacity
-          accessibilityLabel="Đăng xuất"
-          accessibilityRole="button"
-          onPress={() => {
-            void session.signOut();
-          }}
-          style={styles.signOutButton}
-        >
-          <AppIcon icon={LogOut} size="sm" color={colors.surface} />
-          <Text style={styles.signOutText}>Đăng xuất</Text>
-        </TouchableOpacity>
-      </View>
+      {/* ADMIN accounts get no coloured header: the screen starts with the tab row, logout sits on its right. */}
+      {!isAdmin && (
+        <View style={styles.header}>
+          <Text style={styles.headerText}>SmartKitchen</Text>
+          <TouchableOpacity
+            accessibilityLabel="Đăng xuất"
+            accessibilityRole="button"
+            onPress={signOut}
+            style={styles.signOutButton}
+          >
+            <AppIcon icon={LogOut} size="sm" color={colors.surface} />
+            <Text style={styles.signOutText}>Đăng xuất</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
-        {visibleTabs.map(({ key, label, icon: Icon }) => {
-            const active = activeTab === key;
-            return (
-              <TouchableOpacity
-                accessibilityLabel={label}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                key={key}
-                style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
-                onPress={() => setTab(key)}
-              >
-                <AppIcon
-                  icon={Icon}
-                  size="md"
-                  color={active ? colors.primary : colors.muted}
-                />
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-      </ScrollView>
+      {isAdmin ? (
+        <View style={[styles.tabBar, styles.adminTabRow]}>
+          {visibleTabs.map(renderTab)}
+          <IconButton icon={LogOut} size="md" color={colors.text} accessibilityLabel="Đăng xuất" onPress={signOut} />
+        </View>
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
+          {visibleTabs.map(renderTab)}
+        </ScrollView>
+      )}
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
@@ -311,6 +318,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1 as number,
     borderBottomColor: colors.border,
     flexGrow: 0,
+  },
+  adminTabRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingRight: spacing.sm,
   },
   tabBarContent: {
     flexDirection: "row",
