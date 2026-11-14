@@ -91,7 +91,10 @@ export default function AdminHome(): React.JSX.Element {
             onOpenFamily={openFamily}
           />
         )}
-        {section === "overview" && <DashboardScreen />}
+        {section === "overview" && (
+          // Báo cáo mounts fresh on the "Mới" filter, so opening it from here shows pending reports.
+          <DashboardScreen onOpenReports={() => setSection("reports")} onOpenHealth={() => setSection("health")} />
+        )}
         {section === "reports" && <ReportsScreen />}
         {section === "health" && <SystemHealthScreen />}
         {section === "ingredients" && <IngredientsScreen />}

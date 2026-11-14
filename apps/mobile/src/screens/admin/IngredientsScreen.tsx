@@ -32,7 +32,8 @@ export default function IngredientsScreen(): React.JSX.Element {
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
-  const [active, setActive] = useState<"true" | "false" | "all">("true");
+  // "Đang dùng" (isActive=true) or "Tất cả"; hidden ingredients appear under "Tất cả" (dimmed).
+  const [active, setActive] = useState<"true" | "all">("all");
   const [items, setItems] = useState<Ingredient[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -107,8 +108,8 @@ export default function IngredientsScreen(): React.JSX.Element {
         <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Không dấu cũng được" value={search} onChangeText={setSearch} autoCorrect={false} /></View>
         <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(emptyDraft); }} style={local.addButton} />
       </View>
-      <Segmented<"true" | "false" | "all"> label="Trạng thái" value={active} onChange={setActive}
-        options={[{ value: "true", label: "Đang dùng" }, { value: "false", label: "Đã ẩn" }, { value: "all", label: "Tất cả" }]} />
+      <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
+        options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
       {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -129,7 +130,7 @@ export default function IngredientsScreen(): React.JSX.Element {
         onEndReached={() => { if (!showState && items.length < total) void load(page + 1); }}
         ListEmptyComponent={showState
           ? <ScreenState loading={loading} error={error} onRetry={() => void load(1)} />
-          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "true"
+          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "all"
             ? "Không tìm thấy nguyên liệu."
             // This is admin-service's master catalog (master_ingredients), not the items users add to their
             // inventory (inventory-service), so it stays empty until an admin adds or imports ingredients.
