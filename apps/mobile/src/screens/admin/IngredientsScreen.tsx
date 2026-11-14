@@ -318,6 +318,7 @@ export default function IngredientsScreen(): React.JSX.Element {
                   value={draft.promoEndDate}
                   onChange={(promoEndDate) => setDraft({ ...draft, promoEndDate })}
                   minDate={dayFromToday(0)}
+                  suggestedDate={dayFromToday(DEFAULT_PROMO_DAYS)}
                   emptyHint={`Mặc định: hôm nay + ${DEFAULT_PROMO_DAYS} ngày (${toDisplayDate(dayFromToday(DEFAULT_PROMO_DAYS))}). Chỉ dùng khi có % giảm giá.`}
                 />
                 {dateError(draft.promoEndDate) ? <AppText variant="caption" color={colors.danger}>{dateError(draft.promoEndDate)}</AppText> : null}
