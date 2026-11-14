@@ -37,7 +37,7 @@ jobs:
           - package: meal-diary-service
             prisma_schema: services/meal-diary-service/prisma/schema.prisma
           - package: recipe-service
-            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/recipe-service/prisma/schema.prisma
           - package: menu-service
             prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
           - package: shopping-list-service
