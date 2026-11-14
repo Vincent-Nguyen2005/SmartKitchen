@@ -154,6 +154,7 @@ Cuong:
 --- SPRINT 4: Testing, UI Optimization, Documentation & Production Deployment ---
 Status as of 2026-11-06 (Jira export): 46 items - Done 20, In Progress 4, To Do 6, Idea 16.
 Kazan's Sprint 4 statuses below were updated from merged code on main on 2026-11-09; the Jira export counts above are historical. Kazan will synchronize these Done statuses in Jira.
+Huy's Sprint 4 statuses below were updated from merged code on main on 2026-11-14 (PRs #43-#49); Huy will synchronize them in Jira.
 
 Huy:
 [#58] (SCRUM-220) Story: Admin: system health monitoring (EPIC-12) [Done]
@@ -161,7 +162,7 @@ Huy:
 [#53] (SCRUM-248) Task: Unit tests - Gateway, Infra, Notification & Admin Services (EPIC-01/11/12) [Done]
 [#61] (SCRUM-249) Task: Finalize responsive UI - Notification & Admin screens (EPIC-11/12) [Done]
 [#65] (SCRUM-221) Task: Write documentation - Gateway, Infra, Notification & Admin section (EPIC-01/11/12) [Done]
-[#70] (SCRUM-222) Task: Prepare production deployment (self-hosted, Tailscale Funnel) (EPIC-01) [In Progress]
+[#70] (SCRUM-222) Task: Prepare production deployment (self-hosted, Tailscale Funnel) (EPIC-01) [Done] (code on main — PR merged Sprint 4; docker-compose.prod.yml, scripts/self-host-start.sh/.ps1, docs/deploy/self-host.md, .env.example; merged with PR #43)
 [#70] (SCRUM-278) Task: Execute production deployment (self-hosted on Huy’s PC) - EPIC-01 [Idea]
 
 Huy - extra items, added after the original plan ("PR #n" is a GitHub pull request number, not a Jira key):
@@ -179,7 +180,10 @@ Huy - extra items, added after the original plan ("PR #n" is a GitHub pull reque
 (SCRUM-258) Task: Sprint 4 follow-ups: map dropped DB connections to 503, robust compose healthchecks, gateway startup - EPIC-01 [In Progress] (503 for P1001/P1002/P1008/P1017/P2021/P2024, gateway startup: branch fix/sprint-4-followups-v2)
 (SCRUM-265) Feature: Unify mobile UI with the shared theme (colors, typography, icons) - EPIC-13 [In Progress]
 (SCRUM-269) Task: App shell: green header/tab bar, tab label ≥ 12px (App.tsx) [To Do]
-(SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [To Do]
+(SCRUM-283) Task: Role-based navigation for ADMIN + Families/Users admin screens (mobile) - EPIC-12 [Done] (code on main — PR merged Sprint 4; PR #45, AdminFamiliesScreen PR #47)
+(no Jira key) Task: Gateway admin hardening: normalize request paths before the internal-path check (percent-encoding, dot segments, backslash, double slash, case); admin-service 401 without token, 503 when the directory upstream is unreachable - EPIC-01/12 [Done] (code on main — PR merged Sprint 4; PR #43)
+(no Jira key) Task: admin-service health probe timeout raised from 2s to 3s - EPIC-12 [Done] (code on main — PR merged Sprint 4; PR #44)
+Admin UI Sprint 4 — Done (branches merged, see PR history): filter chips to dropdowns in Thống kê/Báo cáo (PR #46); dashboard lists capped at 5 rows + AdminUsersScreen/AdminFamiliesScreen full lists (PR #47); Thống kê stat cards, collapsed healthy services, Nguyên liệu filters (PR #48); Hệ thống tab removed, Nguyên liệu 10 per page (PR #49). Not merged yet: fix/admin-header-cleanup (no green header for ADMIN, logout icon in the tab row).
 
 Kazan:
 [#54] (SCRUM-280) Task: Unit tests - Auth & Family Services (EPIC-02/03) [Done] (tests and CI on main)
