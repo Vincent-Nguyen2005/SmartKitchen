@@ -5,6 +5,7 @@ import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, PageTitle, Segmented, styles, useLayout } from "../notifications/ui";
 import AdminDashboardScreen from "./AdminDashboardScreen";
+import AdminFamiliesScreen from "./AdminFamiliesScreen";
 import AdminFamilyDetailScreen from "./AdminFamilyDetailScreen";
 import AdminUsersScreen from "./AdminUsersScreen";
 import DashboardScreen from "./DashboardScreen";
@@ -15,10 +16,13 @@ import WeightsScreen from "./WeightsScreen";
 
 type Section = "dashboard" | "overview" | "ingredients" | "weights" | "health" | "reports";
 
-/** Admin stack: the sectioned home, with users / family detail pushed on top of the dashboard. */
+/**
+ * Screens pushed over the sectioned home (the empty stack). Back pops one level, so a family opened
+ * from the families list returns to that list, and one opened from the dashboard returns there.
+ */
 type AdminRoute =
-  | { name: "home" }
   | { name: "users" }
+  | { name: "families" }
   | { name: "familyDetail"; familyId: string; familyName: string };
 
 /**
@@ -29,17 +33,22 @@ export default function AdminHome(): React.JSX.Element {
   const { isAdmin } = useGatewayApi();
   const { gutter } = useLayout();
   const [section, setSection] = useState<Section>("dashboard");
-  const [route, setRoute] = useState<AdminRoute>({ name: "home" });
+  const [stack, setStack] = useState<AdminRoute[]>([]);
+  const route = stack[stack.length - 1];
+  const push = (next: AdminRoute) => setStack((current) => [...current, next]);
+  const back = () => setStack((current) => current.slice(0, -1));
+  const openFamily = (family: { id: string; name: string }) => push({ name: "familyDetail", familyId: family.id, familyName: family.name });
 
   // Android back button pops a pushed admin screen instead of leaving the app.
+  const hasPushed = stack.length > 0;
   useEffect(() => {
-    if (route.name === "home") return undefined;
+    if (!hasPushed) return undefined;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setRoute({ name: "home" });
+      setStack((current) => current.slice(0, -1));
       return true;
     });
     return () => subscription.remove();
-  }, [route.name]);
+  }, [hasPushed]);
 
   if (!isAdmin) {
     return (
@@ -50,10 +59,11 @@ export default function AdminHome(): React.JSX.Element {
       </View>
     );
   }
-  const goHome = () => setRoute({ name: "home" });
-  if (route.name === "users") return <AdminUsersScreen onBack={goHome} />;
-  if (route.name === "familyDetail") {
-    return <AdminFamilyDetailScreen familyId={route.familyId} familyName={route.familyName} onBack={goHome} />;
+  if (route?.name === "users") return <AdminUsersScreen onBack={back} />;
+  if (route?.name === "families") return <AdminFamiliesScreen onBack={back} onOpenFamily={openFamily} />;
+  if (route?.name === "familyDetail") {
+    // key: a different family remounts the screen instead of showing stale data.
+    return <AdminFamilyDetailScreen key={route.familyId} familyId={route.familyId} familyName={route.familyName} onBack={back} />;
   }
   return (
     <View style={styles.screen}>
@@ -76,8 +86,9 @@ export default function AdminHome(): React.JSX.Element {
       <View style={{ flex: 1 }}>
         {section === "dashboard" && (
           <AdminDashboardScreen
-            onOpenUsers={() => setRoute({ name: "users" })}
-            onOpenFamily={(family) => setRoute({ name: "familyDetail", familyId: family.id, familyName: family.name })}
+            onOpenUsers={() => push({ name: "users" })}
+            onOpenFamilies={() => push({ name: "families" })}
+            onOpenFamily={openFamily}
           />
         )}
         {section === "overview" && <DashboardScreen />}
