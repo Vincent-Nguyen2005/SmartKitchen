@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { FamilyRole, InvitationStatus, Prisma, PrismaClient } from ".prisma/client-family";
+import { lookupProfiles } from "./user-profiles";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -48,7 +49,16 @@ export class FamilyService {
       include: { family: { include: { members: { orderBy: { joinedAt: "asc" } } } } },
     });
     if (!membership) throw new FamilyServiceError("You do not belong to a family", 404);
-    return { ...membership.family, currentUserRole: membership.role };
+    const profiles = await lookupProfiles(membership.family.members.map((member) => member.userId));
+    return {
+      ...membership.family,
+      members: membership.family.members.map((member) => ({
+        ...member,
+        displayName: profiles.get(member.userId)?.name ?? null,
+        email: profiles.get(member.userId)?.email ?? null,
+      })),
+      currentUserRole: membership.role,
+    };
   }
 
   async getFamilySettings(userId: string) {

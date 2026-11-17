@@ -298,8 +298,8 @@ function AppContent(): React.JSX.Element {
             <Text style={styles.profileValue}>{session.user.fullName?.trim() || "Chưa cập nhật"}</Text>
             <Text style={styles.profileLabel}>Email</Text>
             <Text style={styles.profileValue}>{session.user.email}</Text>
-            <Text style={styles.profileLabel}>Vai trò</Text>
-            <Text style={styles.profileValue}>Thành viên</Text>
+            <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
+            <Text style={styles.profileValue}>{session.family?.currentUserRole === "OWNER" ? "Chủ gia đình" : session.family?.currentUserRole === "ADMIN" ? "Quản trị viên" : session.family?.currentUserRole === "MEMBER" ? "Thành viên" : "Chưa tham gia gia đình"}</Text>
             <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
               onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
               <AppIcon icon={LogOut} size="md" color={colors.danger} />

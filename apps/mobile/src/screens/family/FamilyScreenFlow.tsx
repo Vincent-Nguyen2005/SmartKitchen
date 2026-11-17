@@ -53,14 +53,13 @@ export default function FamilyScreenFlow(): React.JSX.Element {
   return <FamilyOverviewScreen
     family={session.family}
     error={familyError}
-    onRefresh={async () => { try { await session.loadFamily(); setFamilyError(""); } catch { setFamilyError("Unable to load family details."); } }}
     onCreateOrJoin={() => setView("setup")}
     onManageMembers={() => setView("members")}
     onManageSettings={() => setView("settings")}
     onLeave={async () => { await session.leaveFamily(); setView("overview"); }}
     onRegenerateJoinCode={async () => {
       try { await session.regenerateJoinCode(); setFamilyError(""); }
-      catch { setFamilyError("Unable to generate a new join code."); }
+      catch { setFamilyError("Không thể tạo mã mời mới. Vui lòng thử lại."); }
     }}
   />;
 }

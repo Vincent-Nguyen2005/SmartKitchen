@@ -3,6 +3,7 @@ import { FamilyRole } from ".prisma/client-family";
 import { z } from "zod";
 import { FamilyService, FamilyServiceError } from "../services/family.service";
 import { isDatabaseUnavailable } from "../database-error";
+import { ProfileLookupError } from "../services/user-profiles";
 
 export type AuthenticatedRequest = Request & { authUser: { userId: string; email?: string } };
 
@@ -139,6 +140,10 @@ export class FamilyController {
   };
 
   private respondError(res: Response, error: unknown): void {
+    if (error instanceof ProfileLookupError) {
+      res.status(503).json({ error: "SERVICE_UNAVAILABLE", message: "Unable to load member profiles" });
+      return;
+    }
     if (error instanceof FamilyServiceError) {
       res.status(error.statusCode).json({ success: false, error: error.message });
       return;

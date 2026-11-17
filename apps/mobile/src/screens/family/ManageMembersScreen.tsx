@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { ArrowLeft } from "lucide-react-native";
-import { ActivityIndicator, Alert, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { FamilyMemberSummary, FamilyRole } from "./FamilyOverviewScreen";
 import { AppIcon, colors, typography } from "../../theme";
 
@@ -19,8 +19,10 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
   const [error, setError] = useState("");
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<FamilyMemberSummary | null>(null);
   const isOwner = currentUserRole === "OWNER";
   const transferTarget = members.find((member) => member.id === transferTargetId);
+  const transferCandidates = members.filter((member) => member.userId !== currentUserId && member.role !== "OWNER");
 
   const changeRole = async (member: FamilyMemberSummary): Promise<void> => {
     if (!onChangeRole || member.role === "OWNER") return;
@@ -28,23 +30,20 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
     if (!isOwner && nextRole === "ADMIN") return;
     setBusyMemberId(member.id); setError("");
     try { await onChangeRole(member.id, nextRole); }
-    catch { setError("Could not update this member. Please try again."); }
+    catch { setError("Không thể đổi vai trò thành viên. Vui lòng thử lại."); }
     finally { setBusyMemberId(null); }
   };
 
   const remove = (member: FamilyMemberSummary): void => {
     if (!onRemove || member.role === "OWNER" || (member.role === "ADMIN" && !isOwner) || member.userId === currentUserId) return;
-    Alert.alert("Remove family member?", `Remove ${member.displayName || member.email || "this person"} from the family?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => { void removeMember(member); } },
-    ]);
+    setRemoveTarget(member);
   };
 
   const removeMember = async (member: FamilyMemberSummary): Promise<void> => {
     if (!onRemove) return;
     setBusyMemberId(member.id); setError("");
-    try { await onRemove(member.id); }
-    catch { setError("Could not remove this member. Please try again."); }
+    try { await onRemove(member.id); setRemoveTarget(null); }
+    catch { setRemoveTarget(null); setError("Không thể xóa thành viên. Vui lòng thử lại."); }
     finally { setBusyMemberId(null); }
   };
 
@@ -56,7 +55,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
       setTransferModalOpen(false);
       setTransferTargetId(null);
     } catch {
-      setError("Could not transfer ownership. Please try again.");
+      setError("Không thể chuyển quyền chủ gia đình. Vui lòng thử lại.");
     } finally {
       setBusyMemberId(null);
     }
@@ -66,59 +65,71 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
         {!!onBack && <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Gia đình</Text></Pressable>}
-        <Text style={styles.eyebrow}>HOUSEHOLD ACCESS</Text>
-        <Text style={styles.title}>Manage members</Text>
-        <Text style={styles.subtitle}>Choose who can help manage your shared family space.</Text>
+        <Text style={styles.title}>Quản lý thành viên</Text>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         <View style={styles.card}>
           {members.map((member, index) => {
             const isSelf = member.userId === currentUserId;
+            const displayName = member.displayName || member.email || (isSelf ? "Bạn" : `Thành viên ${member.userId.slice(0, 8)}`);
             const canManageTarget = member.role !== "OWNER" && (isOwner || (currentUserRole === "ADMIN" && member.role === "MEMBER")) && !isSelf;
             const isBusy = busyMemberId === member.id;
             return (
               <View key={member.id} style={[styles.member, index > 0 && styles.divider]}>
                 <View style={styles.memberTop}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{(member.displayName || member.email || "?").trim().charAt(0).toUpperCase()}</Text></View>
+                  <View style={styles.avatar}><Text style={styles.avatarText}>{displayName.trim().charAt(0).toUpperCase()}</Text></View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.displayName || member.email || `Member ${member.userId.slice(0, 8)}`}{isSelf ? " (You)" : ""}</Text>
-                    <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{member.role === "OWNER" ? "Owner" : member.role === "ADMIN" ? "Admin" : "Member"}</Text></View>
+                    <Text style={styles.memberName}>{displayName}{isSelf && displayName !== "Bạn" ? " (Bạn)" : ""}</Text>
+                    <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{member.role === "OWNER" ? "Chủ gia đình" : member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text></View>
                   </View>
                   {isBusy && <ActivityIndicator color="#2F6B5F" />}
                 </View>
                 {canManageTarget && <View style={styles.actions}>
-                  {isOwner && !!onChangeRole && <Pressable disabled={isBusy} onPress={() => { void changeRole(member); }} style={styles.secondaryButton}><Text style={styles.secondaryText}>{member.role === "ADMIN" ? "Make member" : "Make admin"}</Text></Pressable>}
-                  {!!onRemove && <Pressable disabled={isBusy} onPress={() => remove(member)} style={styles.removeButton}><Text style={styles.removeText}>Remove</Text></Pressable>}
+                  {isOwner && !!onChangeRole && <Pressable disabled={isBusy} onPress={() => { void changeRole(member); }} style={styles.secondaryButton}><Text style={styles.secondaryText}>{member.role === "ADMIN" ? "Bỏ quyền quản trị" : "Cấp quyền quản trị"}</Text></Pressable>}
+                  {!!onRemove && <Pressable disabled={isBusy} onPress={() => remove(member)} style={styles.removeButton}><Text style={styles.removeText}>Xóa</Text></Pressable>}
                 </View>}
               </View>
             );
           })}
         </View>
-        {isOwner && !!onTransferOwnership && <Pressable onPress={() => setTransferModalOpen(true)} style={styles.transferButton}>
-          <Text style={styles.transferText}>Transfer ownership</Text>
+        {isOwner && !!onTransferOwnership && transferCandidates.length > 0 && <Pressable onPress={() => setTransferModalOpen(true)} style={styles.transferButton}>
+          <Text style={styles.transferText}>Chuyển quyền chủ gia đình</Text>
         </Pressable>}
-        <Text style={styles.note}>{isOwner ? "Only the owner can assign admin access. The owner role cannot be removed here." : "Admins can manage members, but only the owner can assign admin access."}</Text>
       </ScrollView>
       <Modal animationType="fade" onRequestClose={() => setTransferModalOpen(false)} transparent visible={transferModalOpen}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Transfer family ownership</Text>
-            <Text style={styles.modalCopy}>Choose a family member to become the new owner. You will become an admin.</Text>
+            <Text style={styles.modalTitle}>Chuyển quyền chủ gia đình</Text>
+            <Text style={styles.modalCopy}>Chọn người nhận quyền. Bạn sẽ trở thành quản trị viên.</Text>
             <ScrollView style={styles.modalList}>
-              {members.filter((member) => member.userId !== currentUserId && member.role !== "OWNER").map((member) => {
+              {transferCandidates.map((member) => {
                 const selected = transferTargetId === member.id;
                 return <Pressable key={member.id} onPress={() => setTransferTargetId(member.id)} style={styles.targetRow}>
                   <View style={[styles.radio, selected && styles.radioSelected]} />
                   <View style={styles.targetInfo}>
-                    <Text style={styles.targetName}>{member.displayName || member.email || `Member ${member.userId.slice(0, 8)}`}</Text>
-                    <Text style={styles.targetRole}>{member.role === "ADMIN" ? "Admin" : "Member"}</Text>
+                    <Text style={styles.targetName}>{member.displayName || member.email || `Thành viên ${member.userId.slice(0, 8)}`}</Text>
+                    <Text style={styles.targetRole}>{member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text>
                   </View>
                 </Pressable>;
               })}
             </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable onPress={() => setTransferModalOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Cancel</Text></Pressable>
+              <Pressable onPress={() => setTransferModalOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
               <Pressable disabled={!transferTarget || busyMemberId !== null} onPress={() => { void transferOwnership(); }} style={[styles.confirmButton, (!transferTarget || busyMemberId !== null) && styles.disabled]}>
-                {busyMemberId === transferTarget?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.confirmText}>Transfer</Text>}
+                {busyMemberId === transferTarget?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.confirmText}>Chuyển quyền</Text>}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+      <Modal animationType="fade" onRequestClose={() => setRemoveTarget(null)} transparent visible={!!removeTarget}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Xóa thành viên?</Text>
+            <Text style={styles.modalCopy}>Xóa {removeTarget?.displayName || removeTarget?.email || "thành viên này"} khỏi gia đình?</Text>
+            <View style={styles.modalActions}>
+              <Pressable disabled={busyMemberId !== null} onPress={() => setRemoveTarget(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
+              <Pressable disabled={!removeTarget || busyMemberId !== null} onPress={() => { if (removeTarget) void removeMember(removeTarget); }} style={[styles.deleteButton, busyMemberId !== null && styles.disabled]}>
+                {busyMemberId === removeTarget?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.confirmText}>Xóa</Text>}
               </Pressable>
             </View>
           </View>
@@ -131,11 +142,9 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F7F8F4", flex: 1 },
   content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 40, width: "100%" },
-  backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 24, minHeight: 44 },
+  backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 12, minHeight: 44 },
   link: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
-  eyebrow: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.2 },
-  title: { ...typography.pageTitle, color: colors.text, marginTop: 8 },
-  subtitle: { color: "#68736F", fontSize: typography.body.fontSize, lineHeight: 22, marginBottom: 22, marginTop: 8 },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 20 },
   error: { backgroundColor: "#FEE4E2", borderRadius: 10, color: "#B42318", marginBottom: 14, padding: 12 },
   card: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, paddingHorizontal: 16 },
   member: { paddingBottom: 16, paddingTop: 16 },
@@ -156,7 +165,6 @@ const styles = StyleSheet.create({
   removeText: { color: "#B42318", fontSize: typography.caption.fontSize, fontWeight: "700" },
   transferButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 11, borderWidth: 1, marginTop: 18, minHeight: 48, justifyContent: "center" },
   transferText: { color: "#B42318", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
-  note: { color: "#7A8580", fontSize: typography.bodySmall.fontSize, lineHeight: 19, marginTop: 16 },
   modalBackdrop: { alignItems: "center", backgroundColor: "rgba(0,0,0,0.45)", flex: 1, justifyContent: "center", padding: 24 },
   modalCard: { backgroundColor: "#FFFFFF", borderRadius: 18, maxHeight: "80%", padding: 20, width: "100%" },
   modalTitle: { color: "#17211F", fontSize: typography.subheading.fontSize, fontWeight: "700" },
@@ -172,6 +180,7 @@ const styles = StyleSheet.create({
   cancelButton: { borderColor: "#D7E0D9", borderRadius: 9, borderWidth: 1, justifyContent: "center", paddingHorizontal: 16, minHeight: 42 },
   cancelText: { color: "#56635C", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   confirmButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 9, justifyContent: "center", minHeight: 42, minWidth: 88, paddingHorizontal: 16 },
+  deleteButton: { alignItems: "center", backgroundColor: "#B42318", borderRadius: 9, justifyContent: "center", minHeight: 42, minWidth: 88, paddingHorizontal: 16 },
   confirmText: { color: "#FFFFFF", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   disabled: { opacity: 0.55 },
 });

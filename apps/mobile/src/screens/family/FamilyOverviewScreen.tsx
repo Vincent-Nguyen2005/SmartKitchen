@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { RefreshCw } from "lucide-react-native";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { colors, typography } from "../../theme";
 
@@ -10,7 +11,6 @@ type Props = {
   family?: FamilySummary | null;
   loading?: boolean;
   error?: string;
-  onRefresh?: () => Promise<void> | void;
   onCreateOrJoin?: () => void;
   onManageMembers?: () => void;
   onManageSettings?: () => void;
@@ -18,9 +18,9 @@ type Props = {
   onRegenerateJoinCode?: () => Promise<void>;
 };
 
-const roleLabel: Record<FamilyRole, string> = { OWNER: "Owner", ADMIN: "Admin", MEMBER: "Member" };
+const roleLabel: Record<FamilyRole, string> = { OWNER: "Chủ gia đình", ADMIN: "Quản trị viên", MEMBER: "Thành viên" };
 
-export default function FamilyOverviewScreen({ family, loading = false, error, onRefresh, onCreateOrJoin, onManageMembers, onManageSettings, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
+export default function FamilyOverviewScreen({ family, loading = false, error, onCreateOrJoin, onManageMembers, onManageSettings, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
   const [leaving, setLeaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [actionError, setActionError] = useState("");
@@ -30,7 +30,7 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
     if (!onLeave || family?.currentUserRole === "OWNER") return;
     setLeaving(true);
     try { await onLeave(); setActionError(""); }
-    catch { setActionError("Unable to leave this family. Please try again."); }
+    catch { setActionError("Không thể rời gia đình. Vui lòng thử lại."); }
     finally { setLeaving(false); }
   };
 
@@ -38,39 +38,66 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
     if (!onRegenerateJoinCode) return;
     setRegenerating(true);
     try { await onRegenerateJoinCode(); setActionError(""); }
-    catch { setActionError("Unable to generate a new join code."); }
+    catch { setActionError("Không thể tạo mã mời mới. Vui lòng thử lại."); }
     finally { setRegenerating(false); }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.eyebrow}>YOUR HOUSEHOLD</Text>
-        <Text style={styles.title}>Family</Text>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
         {loading ? <ActivityIndicator color="#2F6B5F" size="large" style={styles.loader} /> : family ? (
           <>
             <View style={styles.hero}>
-              <Text style={styles.familyName}>{family.name}</Text>
-              <Text style={styles.memberCount}>{family.members.length} {family.members.length === 1 ? "member" : "members"}</Text>
-              <Text style={styles.codeLabel}>INVITE CODE</Text>
-              <Text selectable style={styles.code}>{family.code}</Text>
-              <Text style={styles.codeHint}>Share this code with people you want to invite.</Text>
-              {canManage && !!onRegenerateJoinCode && <Pressable disabled={regenerating} onPress={() => { void regenerateCode(); }} style={styles.regenerateButton}>
-                {regenerating ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.regenerateText}>Generate a new code</Text>}
-              </Pressable>}
+              <View pointerEvents="none" style={styles.cardCircleLarge} />
+              <View pointerEvents="none" style={styles.cardCircleSmall} />
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardBrand}>SMARTKITCHEN</Text>
+                <Text style={styles.cardType}>THẺ GIA ĐÌNH</Text>
+              </View>
+              <View style={styles.chip}>
+                <View style={styles.chipLineHorizontal} />
+                <View style={styles.chipLineVertical} />
+              </View>
+              <View>
+                <View style={styles.codeLabelRow}>
+                  <Text style={styles.codeLabel}>MÃ MỜI GIA ĐÌNH</Text>
+                  {canManage && !!onRegenerateJoinCode && (
+                    <Pressable
+                      accessibilityLabel="Tạo mã mời mới"
+                      accessibilityRole="button"
+                      disabled={regenerating}
+                      onPress={() => { void regenerateCode(); }}
+                      style={styles.regenerateIconButton}
+                    >
+                      {regenerating ? <ActivityIndicator color="#FFFFFF" size="small" /> : <RefreshCw color="#FFFFFF" size={19} />}
+                    </Pressable>
+                  )}
+                </View>
+                <Text selectable style={styles.code}>{family.code}</Text>
+              </View>
+              <View style={styles.cardFooter}>
+                <View style={styles.cardFooterName}>
+                  <Text style={styles.cardFooterLabel}>TÊN GIA ĐÌNH</Text>
+                  <Text numberOfLines={1} style={styles.familyName}>{family.name}</Text>
+                </View>
+                <View>
+                  <Text style={styles.cardFooterLabel}>THÀNH VIÊN</Text>
+                  <Text style={styles.memberCount}>{family.members.length} người</Text>
+                </View>
+              </View>
             </View>
             <View style={styles.sectionHeading}>
-              <Text style={styles.sectionTitle}>Members</Text>
-              {canManage && <Pressable onPress={onManageMembers}><Text style={styles.actionLink}>Manage</Text></Pressable>}
+              <Text style={styles.sectionTitle}>Thành viên</Text>
+              {canManage && <Pressable onPress={onManageMembers}><Text style={styles.actionLink}>Quản lý</Text></Pressable>}
             </View>
             <View style={styles.card}>
               {family.members.map((member, index) => (
                 <View key={member.id} style={[styles.memberRow, index > 0 && styles.memberDivider]}>
                   <View style={styles.avatar}><Text style={styles.avatarText}>{(member.displayName || member.email || "?").trim().charAt(0).toUpperCase()}</Text></View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.displayName || member.email || `Member ${member.userId.slice(0, 8)}`}</Text>
+                    <Text style={styles.memberName}>{member.displayName || member.email || `Thành viên ${member.userId.slice(0, 8)}`}</Text>
                     {!!member.email && !!member.displayName && <Text style={styles.memberEmail}>{member.email}</Text>}
                   </View>
                   <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerBadgeText]}>{roleLabel[member.role]}</Text></View>
@@ -78,20 +105,19 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
               ))}
             </View>
             {canManage && !!onManageSettings && <Pressable onPress={onManageSettings} style={styles.settingsButton}>
-              <Text style={styles.actionLink}>Family preferences and settings</Text>
+              <Text style={styles.actionLink}>Tùy chọn và cài đặt gia đình</Text>
             </Pressable>}
-            {family.currentUserRole === "OWNER" ? <Text style={styles.ownerNote}>As the owner, transfer ownership before leaving this family.</Text> : (
+            {family.currentUserRole !== "OWNER" && (
               <Pressable disabled={!onLeave || leaving} onPress={leave} style={styles.leaveButton}>
-                {leaving ? <ActivityIndicator color="#B42318" /> : <Text style={styles.leaveText}>Leave family</Text>}
+                {leaving ? <ActivityIndicator color="#B42318" /> : <Text style={styles.leaveText}>Rời gia đình</Text>}
               </Pressable>
             )}
-            {!!onRefresh && <Pressable onPress={onRefresh} style={styles.refreshButton}><Text style={styles.actionLink}>Refresh family details</Text></Pressable>}
           </>
         ) : (
           <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>Your household starts here</Text>
-            <Text style={styles.emptyCopy}>Create a family space or join one with an invite code.</Text>
-            <Pressable onPress={onCreateOrJoin} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Create or join a family</Text></Pressable>
+            <Text style={styles.emptyTitle}>Bắt đầu tạo gia đình</Text>
+            <Text style={styles.emptyCopy}>Tạo gia đình mới hoặc tham gia bằng mã mời.</Text>
+            <Pressable onPress={onCreateOrJoin} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Tạo hoặc tham gia gia đình</Text></Pressable>
           </View>
         )}
       </ScrollView>
@@ -102,19 +128,27 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 36, width: "100%" },
-  eyebrow: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.3, marginTop: 12 },
-  title: { ...typography.pageTitle, color: colors.text, marginBottom: 22, marginTop: 6 },
   error: { backgroundColor: "#FEE4E2", borderRadius: 10, color: "#B42318", marginBottom: 16, padding: 12 },
   loader: { marginTop: 48 },
-  hero: { backgroundColor: "#2F6B5F", borderRadius: 20, marginBottom: 26, padding: 22 },
-  familyName: { color: "#FFFFFF", fontSize: typography.heading.fontSize, fontWeight: "700" },
-  memberCount: { color: "#D9E9E2", fontSize: typography.bodySmall.fontSize, marginTop: 5 },
-  codeLabel: { ...typography.caption, color: "#D9E9E2", fontWeight: "700", letterSpacing: 1.1, marginTop: 24 },
-  code: { color: "#FFFFFF", fontSize: typography.heading.fontSize, fontWeight: "800", letterSpacing: 3, marginTop: 5 },
-  codeHint: { color: "#D9E9E2", fontSize: typography.bodySmall.fontSize, marginTop: 5 },
-  regenerateButton: { alignSelf: "flex-start", borderColor: "#D9E9E2", borderRadius: 9, borderWidth: 1, marginTop: 14, paddingHorizontal: 12, paddingVertical: 9 },
-  regenerateText: { color: "#FFFFFF", fontSize: typography.caption.fontSize, fontWeight: "700" },
-  sectionHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  hero: { backgroundColor: "#174F49", borderRadius: 20, justifyContent: "space-between", minHeight: 230, overflow: "hidden", padding: 22 },
+  cardCircleLarge: { borderColor: "rgba(255,255,255,0.12)", borderRadius: 130, borderWidth: 42, height: 260, position: "absolute", right: -72, top: -105, width: 260 },
+  cardCircleSmall: { backgroundColor: "rgba(255,255,255,0.06)", borderRadius: 80, bottom: -92, height: 160, position: "absolute", right: 38, width: 160 },
+  cardHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  cardBrand: { color: "#FFFFFF", fontSize: typography.bodySmall.fontSize, fontWeight: "800", letterSpacing: 1 },
+  cardType: { color: "#D9E9E2", fontSize: typography.caption.fontSize, fontWeight: "700" },
+  chip: { backgroundColor: "#D9E6D7", borderColor: "#F4F6E9", borderRadius: 6, borderWidth: 1, height: 27, overflow: "hidden", width: 36 },
+  chipLineHorizontal: { borderTopColor: "#A7BDB1", borderTopWidth: 1, left: 0, position: "absolute", right: 0, top: 12 },
+  chipLineVertical: { borderLeftColor: "#A7BDB1", borderLeftWidth: 1, bottom: 0, left: 17, position: "absolute", top: 0 },
+  codeLabelRow: { alignItems: "center", flexDirection: "row", gap: 4 },
+  codeLabel: { color: "#D9E9E2", fontSize: typography.caption.fontSize, fontWeight: "700", letterSpacing: 1.1 },
+  regenerateIconButton: { alignItems: "center", justifyContent: "center", minHeight: 44, minWidth: 44 },
+  code: { color: "#FFFFFF", fontSize: typography.heading.fontSize, fontWeight: "800", letterSpacing: 3, marginTop: 4 },
+  cardFooter: { alignItems: "flex-end", flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  cardFooterName: { flex: 1 },
+  cardFooterLabel: { color: "#D9E9E2", fontSize: typography.caption.fontSize, fontWeight: "700", marginBottom: 4 },
+  familyName: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
+  memberCount: { color: "#FFFFFF", fontSize: typography.body.fontSize, fontWeight: "700" },
+  sectionHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 12, marginTop: 24 },
   sectionTitle: { color: "#17211F", fontSize: typography.subheading.fontSize, fontWeight: "700" },
   actionLink: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   card: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, paddingHorizontal: 16 },
@@ -129,10 +163,8 @@ const styles = StyleSheet.create({
   ownerBadge: { backgroundColor: "#FFF2CC" },
   badgeText: { ...typography.caption, color: "#56635C", fontWeight: "700" },
   ownerBadgeText: { color: "#8A5A00" },
-  ownerNote: { color: "#68736F", fontSize: typography.bodySmall.fontSize, lineHeight: 20, marginTop: 20, textAlign: "center" },
   leaveButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 12, borderWidth: 1, marginTop: 22, minHeight: 48, justifyContent: "center" },
   leaveText: { color: "#B42318", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
-  refreshButton: { alignItems: "center", padding: 18 },
   settingsButton: { alignItems: "center", borderColor: "#C8DAD0", borderRadius: 12, borderWidth: 1, marginTop: 16, minHeight: 48, justifyContent: "center" },
   emptyCard: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 18, borderWidth: 1, marginTop: 22, padding: 24 },
   emptyTitle: { color: "#17211F", fontSize: typography.subheading.fontSize, fontWeight: "700", textAlign: "center" },
