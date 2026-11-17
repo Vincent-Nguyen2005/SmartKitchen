@@ -562,7 +562,7 @@ importers:
   services/recipe-service:
     dependencies:
       '@prisma/client':
-        specifier: ^5.18.0
+        specifier: 5.22.0
         version: 5.22.0(prisma@5.22.0)
       cors:
         specifier: ^2.8.5
@@ -573,6 +573,9 @@ importers:
       express:
         specifier: ^4.19.2
         version: 4.22.2
+      prisma:
+        specifier: 5.22.0
+        version: 5.22.0
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -586,9 +589,9 @@ importers:
       '@types/node':
         specifier: ^20.14.15
         version: 20.19.43
-      prisma:
-        specifier: ^5.18.0
-        version: 5.22.0
+      ts-node:
+        specifier: 10.9.2
+        version: 10.9.2(@types/node@20.19.43)(typescript@5.9.3)
       ts-node-dev:
         specifier: ^2.0.0
         version: 2.0.0(@types/node@20.19.43)(typescript@5.9.3)
