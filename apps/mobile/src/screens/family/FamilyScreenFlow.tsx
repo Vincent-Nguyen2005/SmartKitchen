@@ -22,6 +22,15 @@ export default function FamilyScreenFlow(): React.JSX.Element {
     return <SafeAreaView style={styles.loading}><Text style={styles.message}>Sign in to view your family.</Text></SafeAreaView>;
   }
 
+  // Keep the signed-in member in sync with the profile shown in the account sheet.
+  const currentUser = session.user;
+  const family = session.family && {
+    ...session.family,
+    members: session.family.members.map((member) => member.userId === currentUser.id
+      ? { ...member, displayName: currentUser.fullName?.trim() || "Chưa cập nhật" }
+      : member),
+  };
+
   if (view === "setup") {
     return <CreateOrJoinFamilyScreen
       onBack={() => setView("overview")}
@@ -30,10 +39,10 @@ export default function FamilyScreenFlow(): React.JSX.Element {
     />;
   }
 
-  if (view === "members" && session.family) {
+  if (view === "members" && family) {
     return <ManageMembersScreen
-      members={session.family.members}
-      currentUserRole={session.family.currentUserRole}
+      members={family.members}
+      currentUserRole={family.currentUserRole}
       currentUserId={session.user.id}
       onBack={() => setView("overview")}
       onChangeRole={session.updateMemberRole}
@@ -51,7 +60,7 @@ export default function FamilyScreenFlow(): React.JSX.Element {
   }
 
   return <FamilyOverviewScreen
-    family={session.family}
+    family={family}
     error={familyError}
     onCreateOrJoin={() => setView("setup")}
     onManageMembers={() => setView("members")}

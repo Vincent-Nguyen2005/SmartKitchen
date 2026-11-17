@@ -95,10 +95,9 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
             <View style={styles.card}>
               {family.members.map((member, index) => (
                 <View key={member.id} style={[styles.memberRow, index > 0 && styles.memberDivider]}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{(member.displayName || member.email || "?").trim().charAt(0).toUpperCase()}</Text></View>
+                  <View style={styles.avatar}><Text style={styles.avatarText}>{member.displayName?.trim().charAt(0).toUpperCase() || "?"}</Text></View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{member.displayName || member.email || `Thành viên ${member.userId.slice(0, 8)}`}</Text>
-                    {!!member.email && !!member.displayName && <Text style={styles.memberEmail}>{member.email}</Text>}
+                    <Text style={styles.memberName}>{member.displayName?.trim() || "Chưa có tên"}</Text>
                   </View>
                   <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerBadgeText]}>{roleLabel[member.role]}</Text></View>
                 </View>
@@ -158,7 +157,6 @@ const styles = StyleSheet.create({
   avatarText: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
   memberInfo: { flex: 1 },
   memberName: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "600" },
-  memberEmail: { color: "#7A8580", fontSize: typography.caption.fontSize, marginTop: 3 },
   badge: { backgroundColor: "#EFF2EF", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },
   ownerBadge: { backgroundColor: "#FFF2CC" },
   badgeText: { ...typography.caption, color: "#56635C", fontWeight: "700" },

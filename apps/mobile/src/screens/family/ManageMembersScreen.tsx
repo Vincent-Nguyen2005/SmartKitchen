@@ -70,7 +70,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
         <View style={styles.card}>
           {members.map((member, index) => {
             const isSelf = member.userId === currentUserId;
-            const displayName = member.displayName || member.email || (isSelf ? "Bạn" : `Thành viên ${member.userId.slice(0, 8)}`);
+            const displayName = member.displayName?.trim() || (isSelf ? "Chưa cập nhật" : "Chưa có tên");
             const canManageTarget = member.role !== "OWNER" && (isOwner || (currentUserRole === "ADMIN" && member.role === "MEMBER")) && !isSelf;
             const isBusy = busyMemberId === member.id;
             return (
@@ -78,7 +78,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
                 <View style={styles.memberTop}>
                   <View style={styles.avatar}><Text style={styles.avatarText}>{displayName.trim().charAt(0).toUpperCase()}</Text></View>
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{displayName}{isSelf && displayName !== "Bạn" ? " (Bạn)" : ""}</Text>
+                    <Text style={styles.memberName}>{displayName}{isSelf ? " (Bạn)" : ""}</Text>
                     <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{member.role === "OWNER" ? "Chủ gia đình" : member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text></View>
                   </View>
                   {isBusy && <ActivityIndicator color="#2F6B5F" />}
@@ -106,7 +106,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
                 return <Pressable key={member.id} onPress={() => setTransferTargetId(member.id)} style={styles.targetRow}>
                   <View style={[styles.radio, selected && styles.radioSelected]} />
                   <View style={styles.targetInfo}>
-                    <Text style={styles.targetName}>{member.displayName || member.email || `Thành viên ${member.userId.slice(0, 8)}`}</Text>
+                    <Text style={styles.targetName}>{member.displayName?.trim() || "Chưa có tên"}</Text>
                     <Text style={styles.targetRole}>{member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text>
                   </View>
                 </Pressable>;
@@ -125,7 +125,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Xóa thành viên?</Text>
-            <Text style={styles.modalCopy}>Xóa {removeTarget?.displayName || removeTarget?.email || "thành viên này"} khỏi gia đình?</Text>
+            <Text style={styles.modalCopy}>Xóa {removeTarget?.displayName?.trim() || "thành viên này"} khỏi gia đình?</Text>
             <View style={styles.modalActions}>
               <Pressable disabled={busyMemberId !== null} onPress={() => setRemoveTarget(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
               <Pressable disabled={!removeTarget || busyMemberId !== null} onPress={() => { if (removeTarget) void removeMember(removeTarget); }} style={[styles.deleteButton, busyMemberId !== null && styles.disabled]}>
