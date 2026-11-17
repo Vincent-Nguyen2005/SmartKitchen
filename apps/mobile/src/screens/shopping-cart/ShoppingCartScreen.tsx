@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check, Plus, RefreshCw } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { RadioDropdown } from "../../components/RadioDropdown";
 import { useSession } from "../../services/session";
 import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi } from "./shoppingApi";
 
@@ -280,7 +281,6 @@ export default function ShoppingCartScreen(): React.JSX.Element {
     <SafeAreaView style={styles.container}>
       <View style={[styles.header, { paddingHorizontal: isCompact ? spacing.md : isWide ? spacing.xl : spacing.xl }, isWide && styles.wideContent]}>
         <View style={styles.headerTitle}>
-          <Text style={styles.eyebrow}>SMARTKITCHEN / SHOPPING</Text>
           <Text style={styles.title}>Đi chợ</Text>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách đi chợ" onPress={() => void fetchData(true)} style={styles.refreshButton}>
@@ -298,13 +298,14 @@ export default function ShoppingCartScreen(): React.JSX.Element {
               <TextInput accessibilityLabel="Tên món cần mua" value={name} onChangeText={setName} placeholder="Ví dụ: Sữa tươi" style={styles.input} returnKeyType="done" />
               <View style={styles.quantityRow}>
                 <TextInput accessibilityLabel="Số lượng cần mua" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                <ScrollView style={styles.unitPicker} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitChoices}>
-                  {unitChoices.map((choice) => (
-                    <Pressable accessibilityRole="button" accessibilityState={{ selected: unit === choice }} accessibilityLabel={`Đơn vị ${unitLabels[choice]}`} key={choice} onPress={() => setUnit(choice)} style={[styles.unitChip, unit === choice && styles.unitChipSelected]}>
-                      <Text style={[styles.unitChipText, unit === choice && styles.unitChipTextSelected]}>{unitLabels[choice]}</Text>
-                    </Pressable>
-                  ))}
-                </ScrollView>
+                <RadioDropdown<ShoppingUnit>
+                  label="Đơn vị"
+                  value={unit}
+                  options={unitChoices.map((choice) => ({ value: choice, label: unitLabels[choice] }))}
+                  onChange={setUnit}
+                  searchable
+                  searchPlaceholder="Tìm đơn vị (kg, hộp...)"
+                />
               </View>
               <Pressable accessibilityRole="button" disabled={saving} onPress={() => void addItem()} style={[styles.addButton, saving && styles.disabled]}>
                 {saving ? <ActivityIndicator color={colors.surface} /> : <View style={styles.inlineAction}><AppIcon icon={Plus} size="sm" color={colors.surface} /><Text style={styles.addButtonText}>Lưu vào danh sách</Text></View>}
@@ -370,8 +371,7 @@ const styles = StyleSheet.create({
   wideContent: { alignSelf: "center", maxWidth: 900, width: "100%" },
   header: { alignItems: "center", alignSelf: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.lg, width: "100%" },
   headerTitle: { flex: 1, minWidth: 0 },
-  eyebrow: { color: colors.primary, ...typography.caption, letterSpacing: 1.2 },
-  title: { ...textStyles.pageTitle, color: colors.text, marginTop: spacing.xs },
+  title: { ...textStyles.pageTitle, color: colors.text },
   refreshButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 7, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
   inlineAction: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "center" },
   refreshText: { color: colors.primary, ...typography.labelSmall },
@@ -381,13 +381,7 @@ const styles = StyleSheet.create({
   modalTitle: { ...textStyles.heading, color: colors.text },
   input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   quantityRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  unitPicker: { flex: 1, minWidth: 0 },
   quantityInput: { minWidth: 68, width: 76 },
-  unitChoices: { alignItems: "center", gap: spacing.sm },
-  unitChip: { backgroundColor: colors.primarySoft, borderRadius: 16, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  unitChipSelected: { backgroundColor: colors.primarySoft },
-  unitChipText: { color: colors.muted, ...typography.labelSmall },
-  unitChipTextSelected: { color: colors.primary },
   addButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
   addButtonText: { color: colors.surface, ...typography.label },
   helper: { color: colors.muted, ...typography.bodySmall },
