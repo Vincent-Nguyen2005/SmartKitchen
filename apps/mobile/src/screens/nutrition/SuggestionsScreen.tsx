@@ -1,11 +1,21 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Leaf, ShieldCheck, Sparkles } from "lucide-react-native";
+import {
+  AppIcon,
+  colors,
+  radius,
+  spacing,
+  textStyles,
+  touchTarget,
+} from "../../theme";
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   View,
 } from "react-native";
@@ -16,6 +26,7 @@ import {
 } from "./suggestionsApi";
 
 type Props = { apiBaseUrl: string; userId: string };
+type SuggestedRecipe = PersonalizedSuggestions["suggestions"][number];
 
 function format(value: number): string {
   return Math.round(value).toLocaleString("vi-VN");
@@ -25,6 +36,9 @@ export default function SuggestionsScreen({
   apiBaseUrl,
   userId,
 }: Props): React.JSX.Element {
+  const { width: screenWidth } = useWindowDimensions();
+  const isCompact = screenWidth < 400;
+  const isDesktop = screenWidth >= 1100;
   const [result, setResult] = useState<PersonalizedSuggestions | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,73 +75,112 @@ export default function SuggestionsScreen({
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
         refreshControl={
           <RefreshControl
-            colors={["#28735D"]}
+            colors={[colors.primary]}
             onRefresh={() => void load(true)}
             refreshing={refreshing}
-            tintColor="#28735D"
+            tintColor={colors.primary}
           />
         }
       >
-        <Text style={styles.eyebrow}>DÀNH RIÊNG CHO BẠN</Text>
-        <Text style={styles.title}>Gợi ý món ăn</Text>
-        <Text style={styles.subtitle}>
-          Món có metadata dị ứng hoặc chống chỉ định trùng với hồ sơ sức khỏe sẽ
-          được loại khỏi danh sách.
-        </Text>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>DINH DƯỠNG CÁ NHÂN</Text>
+          <Text style={styles.title}>Gợi ý món ăn</Text>
+          <Text style={styles.subtitle}>
+            Khám phá các món phù hợp với nhu cầu dinh dưỡng của bạn.
+          </Text>
+        </View>
 
         {loading ? (
-          <ActivityIndicator color="#28735D" size="large" style={styles.loader} />
+          <ActivityIndicator
+            color={colors.primary}
+            size="large"
+            style={styles.loader}
+          />
         ) : error ? (
           <View style={styles.empty}>
-            <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
-            <Pressable onPress={() => void load()} style={styles.retry}>
+            <AppIcon icon={Leaf} size="sm" color={colors.primary} />
+            <Text style={styles.emptyTitle}>Chưa thể tải gợi ý</Text>
+            <Text accessibilityRole="alert" style={styles.emptyCopy}>
+              {error}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void load()}
+              style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+            >
               <Text style={styles.retryText}>Thử lại</Text>
             </Pressable>
           </View>
         ) : result ? (
           <>
-            <View style={styles.goalCard}>
-              <Text style={styles.goalTitle}>MỤC TIÊU THAM KHẢO / BỮA</Text>
-              <Text style={styles.goalText}>
-                {format(result.targetPerMeal.calories)} kcal · Đạm {format(result.targetPerMeal.protein)}g ·
-                {" "}Carbs {format(result.targetPerMeal.carbs)}g · Béo {format(result.targetPerMeal.fat)}g
+            <View style={[styles.goalCard, isCompact && styles.cardCompact]}>
+              <View style={styles.goalHeader}>
+                <View style={styles.iconCircle}>
+                  <AppIcon icon={Sparkles} size="sm" color={colors.primary} />
+                </View>
+                <Text style={styles.goalEyebrow}>
+                  MỤC TIÊU THAM KHẢO MỖI BỮA
+                </Text>
+              </View>
+              <View style={styles.goalCaloriesRow}>
+                <Text style={styles.goalCalories}>
+                  {format(result.targetPerMeal.calories)}
+                </Text>
+                <Text style={styles.goalUnit}>kcal</Text>
+              </View>
+              <View style={[styles.goalMacros, isCompact && styles.goalMacrosCompact]}>
+                <MacroSummary
+                  label="Đạm"
+                  value={result.targetPerMeal.protein}
+                />
+                <MacroSummary
+                  label="Tinh bột"
+                  value={result.targetPerMeal.carbs}
+                />
+                <MacroSummary
+                  label="Chất béo"
+                  value={result.targetPerMeal.fat}
+                />
+              </View>
+            </View>
+
+            <View style={[styles.sectionHeading, isCompact && styles.sectionHeadingCompact]}>
+              <Text style={styles.sectionTitle}>Món dành cho bạn</Text>
+              <Text style={styles.sectionCount}>
+                {result.suggestions.length} gợi ý
               </Text>
             </View>
+
             {result.suggestions.length === 0 ? (
               <View style={styles.empty}>
+                <AppIcon icon={Leaf} size="sm" color={colors.primary} />
                 <Text style={styles.emptyTitle}>Chưa có món phù hợp</Text>
                 <Text style={styles.emptyCopy}>
-                  Catalog hiện chưa có món ăn hoặc tất cả món đã bị loại bởi metadata sức khỏe.
+                  Danh mục hiện chưa có món ăn, hoặc các món đã bị loại bởi
+                  thông tin sức khỏe trong hồ sơ.
                 </Text>
               </View>
             ) : (
-              result.suggestions.map((recipe) => (
-                <View key={recipe.id} style={styles.recipeCard}>
-                  <View style={styles.recipeHeading}>
-                    <Text style={styles.recipeName}>{recipe.name}</Text>
-                    <Text style={styles.score}>{recipe.nutritionScore}%</Text>
-                  </View>
-                  {recipe.description ? (
-                    <Text style={styles.description}>{recipe.description}</Text>
-                  ) : null}
-                  <Text style={styles.macros}>
-                    {format(recipe.calories)} kcal · Đạm {format(recipe.protein)}g ·
-                    {" "}Carbs {format(recipe.carbs)}g · Béo {format(recipe.fat)}g
-                  </Text>
-                  {recipe.ingredients.length > 0 ? (
-                    <Text style={styles.detail}>
-                      Nguyên liệu: {recipe.ingredients.join(", ")}
-                    </Text>
-                  ) : null}
-                  <Text style={styles.scoreCaption}>Mức độ phù hợp dinh dưỡng ước tính</Text>
-                </View>
-              ))
+              <View style={[styles.recipeList, isDesktop && styles.recipeListDesktop]}>
+                {result.suggestions.map((recipe) => (
+                  <RecipeCard key={recipe.id} recipe={recipe} desktop={isDesktop} compact={isCompact} />
+                ))}
+              </View>
             )}
+
+            <View style={styles.safetyNote}>
+              <AppIcon icon={ShieldCheck} size="sm" color={colors.primary} />
+              <Text style={styles.safetyText}>
+                Món có thông tin dị ứng hoặc chống chỉ định trùng hồ sơ sức khỏe
+                sẽ được loại khỏi gợi ý khi có metadata tương ứng.
+              </Text>
+            </View>
             <Text style={styles.disclaimer}>
-              Gợi ý dựa trên metadata món ăn và hồ sơ bạn cung cấp; không thay thế tư vấn y tế.
+              Gợi ý dựa trên dữ liệu món ăn và hồ sơ bạn cung cấp; không thay
+              thế tư vấn y tế.
             </Text>
           </>
         ) : null}
@@ -136,29 +189,275 @@ export default function SuggestionsScreen({
   );
 }
 
+function MacroSummary({
+  label,
+  value,
+}: {
+  label: string;
+  value: number;
+}): React.JSX.Element {
+  return (
+    <View style={styles.macroSummaryItem}>
+      <Text style={styles.macroSummaryLabel}>{label}</Text>
+      <Text style={styles.macroSummaryValue}>{format(value)} g</Text>
+    </View>
+  );
+}
+
+function RecipeCard({
+  recipe,
+  desktop,
+  compact,
+}: {
+  recipe: SuggestedRecipe;
+  desktop: boolean;
+  compact: boolean;
+}): React.JSX.Element {
+  const safeScore = Number.isFinite(recipe.nutritionScore)
+    ? Math.max(0, Math.min(recipe.nutritionScore, 100))
+    : 0;
+
+  return (
+    <View style={[styles.recipeCard, desktop && styles.recipeCardDesktop, compact && styles.cardCompact]}>
+      <View style={[styles.recipeHeading, compact && styles.recipeHeadingCompact]}>
+        <Text style={styles.recipeName}>{recipe.name}</Text>
+        <View style={styles.scoreBadge}>
+          <Text style={styles.scoreText}>{recipe.nutritionScore}%</Text>
+        </View>
+      </View>
+      {recipe.description ? (
+        <Text style={styles.description}>{recipe.description}</Text>
+      ) : null}
+
+      <View style={styles.nutritionBlock}>
+        <Text style={styles.recipeCalories}>
+          {format(recipe.calories)} kcal
+        </Text>
+        <Text style={styles.recipeMacros}>
+          Đạm {format(recipe.protein)} g · Tinh bột {format(recipe.carbs)} g ·{" "}
+          Chất béo {format(recipe.fat)} g
+        </Text>
+      </View>
+
+      {recipe.ingredients.length > 0 ? (
+        <View style={styles.ingredientsBlock}>
+          <Text style={styles.ingredientsLabel}>Nguyên liệu</Text>
+          <Text style={styles.ingredientsText}>
+            {recipe.ingredients.join(", ")}
+          </Text>
+        </View>
+      ) : null}
+
+      <View style={styles.scoreHeading}>
+        <Text style={styles.scoreCaption}>Độ phù hợp dinh dưỡng ước tính</Text>
+      </View>
+      <View style={styles.track}>
+        <View style={[styles.fill, { width: `${safeScore}%` }]} />
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: "#F4F7F2", flex: 1 },
-  content: { padding: 22, paddingBottom: 36 },
-  eyebrow: { color: "#28735D", fontSize: 11, fontWeight: "800", letterSpacing: 1.2, marginTop: 8 },
-  title: { color: "#182A24", fontSize: 28, fontWeight: "800", marginTop: 8 },
-  subtitle: { color: "#65746C", fontSize: 14, lineHeight: 21, marginTop: 7 },
-  goalCard: { backgroundColor: "#183D32", borderRadius: 11, marginTop: 18, padding: 15 },
-  goalTitle: { color: "#C1D8CB", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
-  goalText: { color: "#FFFFFF", fontSize: 13, fontWeight: "700", lineHeight: 20, marginTop: 8 },
-  recipeCard: { backgroundColor: "#FFFFFF", borderColor: "#E0E6E0", borderRadius: 11, borderWidth: 1, marginTop: 12, padding: 16 },
-  recipeHeading: { alignItems: "flex-start", flexDirection: "row", gap: 12, justifyContent: "space-between" },
-  recipeName: { color: "#182A24", flex: 1, fontSize: 17, fontWeight: "800" },
-  score: { backgroundColor: "#E8F2EC", borderRadius: 7, color: "#28735D", fontSize: 13, fontWeight: "800", overflow: "hidden", paddingHorizontal: 9, paddingVertical: 5 },
-  description: { color: "#65746C", fontSize: 13, lineHeight: 19, marginTop: 8 },
-  macros: { color: "#35463E", fontSize: 12, fontWeight: "700", lineHeight: 19, marginTop: 10 },
-  detail: { color: "#65746C", fontSize: 12, lineHeight: 18, marginTop: 8 },
-  scoreCaption: { color: "#738078", fontSize: 11, marginTop: 8 },
-  disclaimer: { color: "#738078", fontSize: 11, lineHeight: 17, marginTop: 16 },
-  loader: { marginTop: 60 },
-  empty: { alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 10, marginTop: 20, padding: 20 },
-  emptyTitle: { color: "#182A24", fontSize: 16, fontWeight: "800" },
-  emptyCopy: { color: "#65746C", fontSize: 13, lineHeight: 19, marginTop: 7, textAlign: "center" },
-  error: { color: "#B42318", fontSize: 14, lineHeight: 21, textAlign: "center" },
-  retry: { backgroundColor: "#28735D", borderRadius: 8, marginTop: 14, paddingHorizontal: 18, paddingVertical: 11 },
-  retryText: { color: "#FFFFFF", fontWeight: "800" },
+  // SCRUM-232: compact cards on phones; two columns on roomy desktop widths.
+  contentCompact: { paddingHorizontal: spacing.md },
+  cardCompact: { padding: spacing.md },
+  goalMacrosCompact: { flexDirection: "column" },
+  sectionHeadingCompact: { flexWrap: "wrap" },
+  recipeList: { width: "100%" },
+  recipeListDesktop: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  recipeCardDesktop: { width: "48.5%" },
+  recipeHeadingCompact: { flexWrap: "wrap", gap: spacing.sm },
+  safeArea: { flex: 1, backgroundColor: colors.background },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+    width: "100%",
+    maxWidth: 960,
+    alignSelf: "center",
+  },
+  header: { marginBottom: spacing.lg },
+  eyebrow: {
+    ...textStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  title: {
+    ...textStyles.heading,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  subtitle: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  loader: { marginTop: spacing.xl },
+  goalCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+  },
+  goalHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  iconCircle: {
+    alignItems: "center",
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    justifyContent: "center",
+    height: touchTarget,
+    width: touchTarget,
+  },
+  goalEyebrow: {
+    ...textStyles.caption,
+    color: colors.muted,
+    fontWeight: "700",
+    flex: 1,
+  },
+  goalCaloriesRow: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  goalCalories: { ...textStyles.heading, color: colors.text },
+  goalUnit: { ...textStyles.bodySmall, color: colors.muted },
+  goalMacros: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+  },
+  macroSummaryItem: { flex: 1, minWidth: 0 },
+  macroSummaryLabel: { ...textStyles.caption, color: colors.muted },
+  macroSummaryValue: {
+    ...textStyles.labelSmall,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    marginBottom: spacing.md,
+  },
+  sectionTitle: { ...textStyles.subheading, color: colors.text, flex: 1 },
+  sectionCount: { ...textStyles.caption, color: colors.muted },
+  recipeCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+  },
+  recipeHeading: {
+    alignItems: "flex-start",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+  },
+  recipeName: { ...textStyles.subheading, color: colors.text, flex: 1, minWidth: 0 },
+  scoreBadge: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  scoreText: { ...textStyles.labelSmall, color: colors.primary },
+  description: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
+  nutritionBlock: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+  },
+  recipeCalories: { ...textStyles.label, color: colors.text },
+  recipeMacros: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  ingredientsBlock: { marginTop: spacing.md },
+  ingredientsLabel: { ...textStyles.labelSmall, color: colors.text },
+  ingredientsText: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  scoreHeading: { marginTop: spacing.md },
+  scoreCaption: { ...textStyles.caption, color: colors.muted },
+  track: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    height: spacing.sm,
+    marginTop: spacing.sm,
+    overflow: "hidden",
+  },
+  fill: {
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    height: "100%",
+  },
+  safetyNote: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+    alignItems: "flex-start",
+    padding: spacing.md,
+    marginTop: spacing.xs,
+  },
+  safetyText: { ...textStyles.caption, color: colors.text, flex: 1 },
+  disclaimer: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.md,
+  },
+  empty: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.xl,
+    marginTop: spacing.sm,
+  },
+  emptyTitle: {
+    ...textStyles.subheading,
+    color: colors.text,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
+  emptyCopy: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
+  retry: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.lg,
+    marginTop: spacing.md,
+  },
+  retryText: { ...textStyles.labelSmall, color: colors.primary },
+  pressed: { opacity: 0.8 },
 });

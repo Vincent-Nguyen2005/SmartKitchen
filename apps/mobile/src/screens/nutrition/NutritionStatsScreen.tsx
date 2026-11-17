@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Calendar, ChevronLeft, ChevronRight } from "lucide-react-native";
+import { AppIcon, IconButton, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   View,
 } from "react-native";
@@ -36,6 +39,8 @@ export default function NutritionStatsScreen({
   apiBaseUrl,
   userId,
 }: Props): React.JSX.Element {
+  const { width: screenWidth } = useWindowDimensions();
+  const isCompact = screenWidth < 400;
   const [date, setDate] = useState(today);
   const [stats, setStats] = useState<DailyNutritionStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,95 +82,121 @@ export default function NutritionStatsScreen({
     setDate(selected.toISOString().slice(0, 10));
   };
 
+  const isToday = date === today();
+
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
         refreshControl={
           <RefreshControl
-            colors={["#28735D"]}
+            colors={[colors.primary]}
             onRefresh={() => void loadStats(true)}
             refreshing={refreshing}
-            tintColor="#28735D"
+            tintColor={colors.primary}
           />
         }
       >
-        <Text style={styles.eyebrow}>DINH DƯỠNG HẰNG NGÀY</Text>
-        <Text style={styles.title}>Thống kê dinh dưỡng</Text>
-        <View style={styles.dateBar}>
-          <Pressable
-            accessibilityLabel="Ngày trước"
-            accessibilityRole="button"
-            onPress={() => moveDate(-1)}
-            style={styles.dateArrow}
-          >
-            <Text style={styles.dateArrowText}>‹</Text>
-          </Pressable>
-          <Text style={styles.dateText}>
-            {date === today() ? "Hôm nay · " : ""}
-            {formatDay(date)}
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>DINH DƯỠNG MỖI NGÀY</Text>
+          <Text style={styles.title}>Thống kê dinh dưỡng</Text>
+          <Text style={styles.subtitle}>
+            Theo dõi năng lượng và dưỡng chất mỗi ngày.
           </Text>
-          <Pressable
+        </View>
+
+        <View style={styles.dateBar}>
+          <IconButton
+            accessibilityLabel="Ngày trước"
+            onPress={() => moveDate(-1)}
+            icon={ChevronLeft}
+            color={colors.text}
+            style={styles.dateArrow}
+          />
+          <View style={styles.dateCopy}>
+            <View style={styles.dateLabelRow}>
+              <AppIcon icon={Calendar} size="sm" color={colors.primary} />
+              <Text style={styles.dateLabel}>
+                {isToday ? "Hôm nay" : "Ngày đã chọn"}
+              </Text>
+            </View>
+            <Text style={styles.dateText}>{formatDay(date)}</Text>
+          </View>
+          <IconButton
             accessibilityLabel="Ngày tiếp theo"
-            accessibilityRole="button"
             disabled={date >= today()}
             onPress={() => moveDate(1)}
+            icon={ChevronRight}
+            color={colors.text}
             style={[styles.dateArrow, date >= today() && styles.disabled]}
-          >
-            <Text style={styles.dateArrowText}>›</Text>
-          </Pressable>
+          />
         </View>
 
         {loading ? (
-          <ActivityIndicator color="#28735D" size="large" style={styles.loader} />
+          <ActivityIndicator color={colors.primary} size="large" style={styles.loader} />
         ) : error ? (
           <View style={styles.empty}>
-            <Text accessibilityRole="alert" style={styles.error}>
-              {error}
-            </Text>
-            <Pressable onPress={() => void loadStats()} style={styles.retry}>
+            <Text style={styles.emptyTitle}>Chưa thể tải thống kê</Text>
+            <Text accessibilityRole="alert" style={styles.error}>{error}</Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => void loadStats()}
+              style={({ pressed }) => [styles.retry, pressed && styles.pressed]}
+            >
               <Text style={styles.retryText}>Thử lại</Text>
             </Pressable>
           </View>
         ) : stats ? (
           <>
-            <View style={styles.summaryCard}>
-              <Text style={styles.cardEyebrow}>NĂNG LƯỢNG</Text>
+            <View style={[styles.summaryCard, isCompact && styles.cardCompact]}>
+              <Text style={styles.cardEyebrow}>NĂNG LƯỢNG ĐÃ NẠP</Text>
               <Text style={styles.calories}>
                 {formatNumber(stats.totalCalories)}
-                <Text style={styles.unit}> / {formatNumber(stats.targets.calories)} kcal</Text>
+                <Text style={styles.unit}> kcal</Text>
               </Text>
-              <ProgressBar percent={stats.completionPercent.calories} color="#9ED5BD" />
-              <Text style={styles.completion}>
-                {stats.completionPercent.calories}% mục tiêu
+              <Text style={styles.targetText}>
+                Mục tiêu: {formatNumber(stats.targets.calories)} kcal
               </Text>
+              <ProgressBar percent={stats.completionPercent.calories} color={colors.primary} />
+              <View style={[styles.progressCaption, isCompact && styles.progressCaptionCompact]}>
+                <Text style={styles.progressText}>
+                  {formatNumber(stats.completionPercent.calories)}% mục tiêu
+                </Text>
+                <Text style={styles.progressText}>
+                  {stats.totalCalories > stats.targets.calories
+                    ? `Vượt ${formatNumber(stats.totalCalories - stats.targets.calories)} kcal`
+                    : `Còn ${formatNumber(stats.targets.calories - stats.totalCalories)} kcal`}
+                </Text>
+              </View>
             </View>
-            <View style={styles.macroList}>
+
+            <View style={[styles.macroCard, isCompact && styles.cardCompact]}>
+              <Text style={styles.sectionTitle}>Dưỡng chất trong ngày</Text>
               <NutritionRow
-                label="Protein"
+                label="Đạm"
                 total={stats.totalProtein}
                 target={stats.targets.protein}
                 percent={stats.completionPercent.protein}
-                color="#6BA98B"
+                color={colors.success}
               />
               <NutritionRow
-                label="Carbs"
+                label="Tinh bột"
                 total={stats.totalCarbs}
                 target={stats.targets.carbs}
                 percent={stats.completionPercent.carbs}
-                color="#D9A944"
+                color={colors.warning}
               />
               <NutritionRow
-                label="Fat"
+                label="Chất béo"
                 total={stats.totalFat}
                 target={stats.targets.fat}
                 percent={stats.completionPercent.fat}
-                color="#DF8367"
+                color={colors.danger}
               />
             </View>
             <Text style={styles.note}>
-              Mục tiêu calo ước tính theo hồ sơ; macro phân bổ theo quy ước 20% protein,
-              50% carbs và 30% fat.
+              Mục tiêu dựa trên hồ sơ dinh dưỡng. Tỉ lệ tham khảo: 20% đạm,
+              50% tinh bột và 30% chất béo.
             </Text>
           </>
         ) : null}
@@ -192,7 +223,7 @@ function NutritionRow({
       <View style={styles.rowHeading}>
         <Text style={styles.rowLabel}>{label}</Text>
         <Text style={styles.rowAmount}>
-          {formatNumber(total)} / {formatNumber(target)} g · {percent}%
+          {formatNumber(total)} / {formatNumber(target)} g
         </Text>
       </View>
       <ProgressBar percent={percent} color={color} />
@@ -207,12 +238,15 @@ function ProgressBar({
   percent: number;
   color: string;
 }): React.JSX.Element {
+  const safePercent = Number.isFinite(percent)
+    ? Math.max(0, Math.min(percent, 100))
+    : 0;
   return (
     <View style={styles.track}>
       <View
         style={[
           styles.fill,
-          { backgroundColor: color, width: `${Math.min(percent, 100)}%` },
+          { backgroundColor: color, width: `${safePercent}%` },
         ]}
       />
     </View>
@@ -220,39 +254,167 @@ function ProgressBar({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: "#F4F7F2", flex: 1 },
-  content: { padding: 22, paddingBottom: 36 },
-  eyebrow: { color: "#28735D", fontSize: 11, fontWeight: "800", letterSpacing: 1.2, marginTop: 8 },
-  title: { color: "#182A24", fontSize: 28, fontWeight: "800", marginTop: 8 },
+  // SCRUM-232: center the dashboard and reduce spacing on narrow devices.
+  contentCompact: { paddingHorizontal: spacing.md },
+  cardCompact: { padding: spacing.md },
+  progressCaptionCompact: { flexDirection: "column", alignItems: "flex-start" },
+  safeArea: { backgroundColor: colors.background, flex: 1 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+    width: "100%",
+    maxWidth: 920,
+    alignSelf: "center",
+  },
+  header: { marginBottom: spacing.lg },
+  eyebrow: {
+    ...textStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  title: {
+    ...textStyles.heading,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  subtitle: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
   dateBar: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.md,
   },
-  dateArrow: { alignItems: "center", height: 44, justifyContent: "center", width: 42 },
-  dateArrowText: { color: "#28735D", fontSize: 30, lineHeight: 34 },
-  dateText: { color: "#35463E", flex: 1, fontSize: 13, fontWeight: "700", textAlign: "center" },
-  summaryCard: { backgroundColor: "#183D32", borderRadius: 12, marginTop: 18, padding: 18 },
-  cardEyebrow: { color: "#C1D8CB", fontSize: 10, fontWeight: "800", letterSpacing: 0.8 },
-  calories: { color: "#FFFFFF", fontSize: 26, fontWeight: "800", marginTop: 8 },
-  unit: { color: "#B9D1C3", fontSize: 13, fontWeight: "600" },
-  track: { backgroundColor: "#E6ECE7", borderRadius: 5, height: 8, marginTop: 10, overflow: "hidden" },
-  fill: { borderRadius: 5, height: "100%" },
-  completion: { color: "#D1E0D7", fontSize: 12, marginTop: 8 },
-  macroList: { backgroundColor: "#FFFFFF", borderRadius: 12, marginTop: 14, paddingHorizontal: 16 },
-  row: { borderBottomColor: "#E7ECE8", borderBottomWidth: 1, paddingBottom: 15, paddingTop: 15 },
-  rowHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  rowLabel: { color: "#35463E", fontSize: 14, fontWeight: "800" },
-  rowAmount: { color: "#65746C", fontSize: 12, fontWeight: "600" },
-  note: { color: "#738078", fontSize: 12, lineHeight: 18, marginTop: 14 },
-  loader: { marginTop: 60 },
-  empty: { alignItems: "center", marginTop: 48, padding: 20 },
-  error: { color: "#B42318", fontSize: 14, lineHeight: 21, textAlign: "center" },
-  retry: { backgroundColor: "#28735D", borderRadius: 8, marginTop: 14, paddingHorizontal: 18, paddingVertical: 11 },
-  retryText: { color: "#FFFFFF", fontWeight: "800" },
+  dateArrow: { borderRadius: radius.sm },
+  dateCopy: { alignItems: "center", flex: 1, minWidth: 0, paddingHorizontal: spacing.xs },
+  dateLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
+  dateLabel: {
+    ...textStyles.caption,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  dateText: {
+    ...textStyles.labelSmall,
+    flexShrink: 1,
+    color: colors.text,
+    marginTop: spacing.xs,
+    textAlign: "center",
+  },
+  summaryCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: spacing.lg,
+  },
+  cardEyebrow: {
+    ...textStyles.caption,
+    color: colors.muted,
+    fontWeight: "700",
+  },
+  calories: {
+    ...textStyles.heading,
+    color: colors.text,
+    marginTop: spacing.sm,
+  },
+  unit: { ...textStyles.bodySmall, color: colors.muted },
+  targetText: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  track: {
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.pill,
+    height: spacing.sm,
+    marginTop: spacing.md,
+    overflow: "hidden",
+  },
+  fill: { borderRadius: radius.pill, height: "100%" },
+  progressCaption: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    flexWrap: "wrap",
+  },
+  progressText: { ...textStyles.caption, color: colors.muted, flexShrink: 1 },
+  macroCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  sectionTitle: { ...textStyles.subheading, color: colors.text },
+  row: {
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
+    paddingVertical: spacing.md,
+  },
+  rowHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+  },
+  rowLabel: { ...textStyles.labelSmall, color: colors.text },
+  rowAmount: {
+    ...textStyles.caption,
+    color: colors.muted,
+    textAlign: "right",
+    flexShrink: 1,
+  },
+  note: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.md,
+  },
+  loader: { marginTop: spacing.xl },
+  empty: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    marginTop: spacing.md,
+    padding: spacing.xl,
+  },
+  emptyTitle: { ...textStyles.subheading, color: colors.text },
+  error: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
+  retry: {
+    alignItems: "center",
+    backgroundColor: colors.primarySoft,
+    borderRadius: radius.sm,
+    justifyContent: "center",
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.lg,
+    minHeight: touchTarget,
+  },
+  retryText: { ...textStyles.labelSmall, color: colors.primary },
   disabled: { opacity: 0.35 },
+  pressed: { opacity: 0.82 },
 });

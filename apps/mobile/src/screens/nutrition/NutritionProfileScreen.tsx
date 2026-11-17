@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Check } from "lucide-react-native";
+import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
   Alert,
@@ -8,6 +10,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   TextInput,
   View,
@@ -57,6 +60,8 @@ export default function NutritionProfileScreen({
   apiBaseUrl,
   accessToken,
 }: Props): React.JSX.Element {
+  const { width: screenWidth } = useWindowDimensions();
+  const isCompact = screenWidth < 400;
   const api = useMemo(
     () =>
       accessToken
@@ -212,80 +217,92 @@ export default function NutritionProfileScreen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.eyebrow}>DINH DƯỠNG CÁ NHÂN</Text>
-          <Text style={styles.title}>Hồ sơ thể chất</Text>
-          <Text style={styles.subtitle}>
-            Thông tin của bạn giúp ước tính nhu cầu năng lượng mỗi ngày.
-          </Text>
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>DINH DƯỠNG CÁ NHÂN</Text>
+            <Text style={styles.title}>Hồ sơ dinh dưỡng</Text>
+            <Text style={styles.subtitle}>
+              Cập nhật thông tin để tính nhu cầu năng lượng phù hợp với bạn.
+            </Text>
+          </View>
 
           {loading ? (
-            <ActivityIndicator color="#28735D" style={styles.loader} />
+            <ActivityIndicator color={colors.primary} style={styles.loader} />
           ) : (
             <>
-              <View style={styles.measurements}>
+              <View style={[styles.formCard, isCompact && styles.cardCompact]}>
+                <Text style={styles.cardTitle}>Thông tin cơ bản</Text>
+                <Text style={styles.cardHint}>
+                  Các chỉ số giúp ước tính nhu cầu dinh dưỡng hằng ngày.
+                </Text>
+                <View style={[styles.measurements, isCompact && styles.measurementsCompact]}>
+                  <NumberField
+                    label="Chiều cao"
+                    unit="cm"
+                    value={height}
+                    onChangeText={setHeight}
+                  />
+                  <NumberField
+                    label="Cân nặng"
+                    unit="kg"
+                    value={weight}
+                    onChangeText={setWeight}
+                  />
+                </View>
                 <NumberField
-                  label="Chiều cao"
-                  unit="cm"
-                  value={height}
-                  onChangeText={setHeight}
+                  label="Năm sinh"
+                  unit="năm"
+                  value={birthYear}
+                  onChangeText={setBirthYear}
                 />
-                <NumberField
-                  label="Cân nặng"
-                  unit="kg"
-                  value={weight}
-                  onChangeText={setWeight}
-                />
-              </View>
-              <NumberField
-                label="Năm sinh"
-                unit="năm"
-                value={birthYear}
-                onChangeText={setBirthYear}
-              />
 
-              <Text style={styles.sectionTitle}>Giới tính</Text>
-              <View style={styles.genderRow}>
-                <ChoiceButton
-                  label="Nữ"
-                  selected={gender === "FEMALE"}
-                  onPress={() => setGender("FEMALE")}
-                />
-                <ChoiceButton
-                  label="Nam"
-                  selected={gender === "MALE"}
-                  onPress={() => setGender("MALE")}
-                />
+                <Text style={styles.sectionTitle}>Giới tính</Text>
+                <View style={styles.genderRow}>
+                  <ChoiceButton
+                    label="Nữ"
+                    selected={gender === "FEMALE"}
+                    onPress={() => setGender("FEMALE")}
+                  />
+                  <ChoiceButton
+                    label="Nam"
+                    selected={gender === "MALE"}
+                    onPress={() => setGender("MALE")}
+                  />
+                </View>
               </View>
 
-              <Text style={styles.sectionTitle}>Mức độ vận động</Text>
-              <View style={styles.activityList}>
-                {activityOptions.map((option) => (
-                  <Pressable
-                    key={option.value}
-                    accessibilityRole="radio"
-                    accessibilityState={{
-                      selected: activityLevel === option.value,
-                    }}
-                    onPress={() => setActivityLevel(option.value)}
-                    style={[
-                      styles.activityOption,
-                      activityLevel === option.value && styles.activitySelected,
-                    ]}
-                  >
-                    <View style={styles.radioOuter}>
-                      {activityLevel === option.value && (
-                        <View style={styles.radioInner} />
-                      )}
-                    </View>
-                    <View style={styles.activityCopy}>
-                      <Text style={styles.activityLabel}>{option.label}</Text>
-                      <Text style={styles.activityDetail}>{option.detail}</Text>
-                    </View>
-                  </Pressable>
-                ))}
+              <View style={[styles.formCard, isCompact && styles.cardCompact]}>
+                <Text style={styles.cardTitle}>Mức độ vận động</Text>
+                <Text style={styles.cardHint}>
+                  Chọn mức độ gần nhất với sinh hoạt của bạn.
+                </Text>
+                <View style={styles.activityList}>
+                  {activityOptions.map((option) => (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: activityLevel === option.value }}
+                      onPress={() => setActivityLevel(option.value)}
+                      style={({ pressed }) => [
+                        styles.activityOption,
+                        activityLevel === option.value && styles.activitySelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <View style={styles.radioOuter}>
+                        {activityLevel === option.value && (
+                          <View style={styles.radioInner} />
+                        )}
+                      </View>
+                      <View style={styles.activityCopy}>
+                        <Text style={styles.activityLabel}>{option.label}</Text>
+                        <Text style={styles.activityDetail}>{option.detail}</Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
 
               {!!error && (
@@ -296,7 +313,7 @@ export default function NutritionProfileScreen({
               <Pressable
                 accessibilityRole="button"
                 disabled={saving || !api}
-                onPress={save}
+                onPress={() => void save()}
                 style={({ pressed }) => [
                   styles.saveButton,
                   pressed && styles.pressed,
@@ -304,29 +321,30 @@ export default function NutritionProfileScreen({
                 ]}
               >
                 {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={colors.primaryText} />
                 ) : (
-                  <Text style={styles.saveText}>Lưu và tính toán</Text>
+                  <Text style={styles.saveText}>Lưu và tính nhu cầu calo</Text>
                 )}
               </Pressable>
 
               {result && (
-                <View accessibilityLiveRegion="polite" style={styles.result}>
-                  <Text style={styles.resultLabel}>NHU CẦU CALO HÀNG NGÀY</Text>
+                <View accessibilityLiveRegion="polite" style={[styles.result, isCompact && styles.cardCompact]}>
+                  <Text style={styles.resultLabel}>MỤC TIÊU NĂNG LƯỢNG</Text>
                   <Text style={styles.calorie}>
                     {result.tdee.toLocaleString("vi-VN")}{" "}
-                    <Text style={styles.kcal}>kcal</Text>
+                    <Text style={styles.kcal}>kcal / ngày</Text>
                   </Text>
                   <Text style={styles.resultNote}>
-                    TDEE ước tính • BMR {result.bmr.toLocaleString("vi-VN")}{" "}
-                    kcal
+                    Ước tính theo hồ sơ · BMR {result.bmr.toLocaleString("vi-VN")} kcal
                   </Text>
                 </View>
               )}
             </>
           )}
+
           {accessToken ? (
             <HealthPreferencesSection
+              compact={isCompact}
               apiBaseUrl={apiBaseUrl}
               accessToken={accessToken}
             />
@@ -338,9 +356,11 @@ export default function NutritionProfileScreen({
 }
 
 function HealthPreferencesSection({
+  compact,
   apiBaseUrl,
   accessToken,
 }: {
+  compact: boolean;
   apiBaseUrl: string;
   accessToken: string;
 }): React.JSX.Element {
@@ -406,13 +426,13 @@ function HealthPreferencesSection({
   };
 
   return (
-    <View style={styles.healthSection}>
+    <View style={[styles.healthSection, compact && styles.cardCompact]}>
       <Text style={styles.sectionTitle}>Dị ứng và bệnh lý</Text>
       <Text style={styles.healthNote}>
         Các lựa chọn này được dùng để loại món có metadata trùng khớp khỏi gợi ý.
       </Text>
       {loading ? (
-        <ActivityIndicator color="#28735D" style={styles.healthLoader} />
+        <ActivityIndicator color={colors.primary} style={styles.healthLoader} />
       ) : (
         <>
           <Text style={styles.healthGroupTitle}>Dị ứng</Text>
@@ -457,7 +477,7 @@ function HealthPreferencesSection({
             style={[styles.healthSave, saving && styles.disabled]}
           >
             {saving ? (
-              <ActivityIndicator color="#FFFFFF" />
+              <ActivityIndicator color={colors.primaryText} />
             ) : (
               <Text style={styles.healthSaveText}>Lưu hồ sơ sức khỏe</Text>
             )}
@@ -482,10 +502,14 @@ function HealthOptionButton({
       accessibilityRole="checkbox"
       accessibilityState={{ checked: selected }}
       onPress={onPress}
-      style={[styles.healthOption, selected && styles.healthOptionSelected]}
+      style={({ pressed }) => [
+        styles.healthOption,
+        selected && styles.healthOptionSelected,
+        pressed && styles.pressed,
+      ]}
     >
       <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-        {selected ? <Text style={styles.checkmark}>✓</Text> : null}
+        {selected ? <AppIcon icon={Check} size="sm" color={colors.primaryText} /> : null}
       </View>
       <View style={styles.healthOptionCopy}>
         <Text style={styles.healthOptionName}>{option.name}</Text>
@@ -513,11 +537,12 @@ function NumberField({
       <Text style={styles.fieldLabel}>{label}</Text>
       <View style={styles.inputShell}>
         <TextInput
-          keyboardType="decimal-pad"
+          accessibilityLabel={label}
+          keyboardType={unit === "năm" ? "number-pad" : "decimal-pad"}
           onChangeText={onChangeText}
           value={value}
           placeholder="0"
-          placeholderTextColor="#9AA49E"
+          placeholderTextColor={colors.muted}
           style={styles.input}
         />
         <Text style={styles.unit}>{unit}</Text>
@@ -540,7 +565,11 @@ function ChoiceButton({
       accessibilityRole="radio"
       accessibilityState={{ selected }}
       onPress={onPress}
-      style={[styles.genderChoice, selected && styles.genderSelected]}
+      style={({ pressed }) => [
+        styles.genderChoice,
+        selected && styles.genderSelected,
+        pressed && styles.pressed,
+      ]}
     >
       <View style={styles.radioOuter}>
         {selected && <View style={styles.radioInner} />}
@@ -551,179 +580,256 @@ function ChoiceButton({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#F4F7F2" },
+  // SCRUM-232: input pairs become a single column on small devices.
+  contentCompact: { paddingHorizontal: spacing.md },
+  measurementsCompact: { flexDirection: "column", gap: 0 },
+  cardCompact: { padding: spacing.md },
+  safeArea: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  content: { padding: 22, paddingBottom: 36 },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+    width: "100%",
+    maxWidth: 800,
+    alignSelf: "center",
+  },
+  header: { marginBottom: spacing.lg },
   eyebrow: {
-    color: "#28735D",
-    fontSize: 11,
-    fontWeight: "800",
-    letterSpacing: 1.2,
-    marginTop: 8,
-  },
-  title: { color: "#182A24", fontSize: 30, fontWeight: "800", marginTop: 10 },
-  subtitle: {
-    color: "#65746C",
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 22,
-    marginTop: 7,
-  },
-  loader: { marginTop: 50 },
-  measurements: { flexDirection: "row", gap: 12 },
-  field: { flex: 1, marginBottom: 14 },
-  fieldLabel: {
-    color: "#35463E",
-    fontSize: 13,
+    ...textStyles.caption,
+    color: colors.primary,
     fontWeight: "700",
-    marginBottom: 7,
+  },
+  title: {
+    ...textStyles.heading,
+    color: colors.text,
+    marginTop: spacing.xs,
+  },
+  subtitle: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
+  loader: { marginTop: spacing.xl },
+  formCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  cardTitle: { ...textStyles.subheading, color: colors.text },
+  cardHint: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.xs,
+    marginBottom: spacing.lg,
+  },
+  measurements: { flexDirection: "row", gap: spacing.sm },
+  field: { flex: 1, minWidth: 0, marginBottom: spacing.md },
+  fieldLabel: {
+    ...textStyles.labelSmall,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   inputShell: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D8E1D9",
-    borderRadius: 9,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
     flexDirection: "row",
-    minHeight: 52,
-    paddingHorizontal: 13,
+    minHeight: touchTarget + spacing.xs,
+    paddingHorizontal: spacing.md,
   },
-  input: { color: "#182A24", flex: 1, fontSize: 17, paddingVertical: 12 },
-  unit: { color: "#738078", fontSize: 13, fontWeight: "600" },
+  input: {
+    ...textStyles.body,
+    color: colors.text,
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: spacing.sm,
+  },
+  unit: { ...textStyles.caption, color: colors.muted },
   sectionTitle: {
-    color: "#35463E",
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 9,
-    marginTop: 10,
+    ...textStyles.labelSmall,
+    color: colors.text,
+    marginBottom: spacing.sm,
+    marginTop: spacing.xs,
   },
-  genderRow: { flexDirection: "row", gap: 10 },
+  genderRow: { flexDirection: "row", gap: spacing.sm },
   genderChoice: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#D8E1D9",
-    borderRadius: 9,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
     flex: 1,
     flexDirection: "row",
-    gap: 10,
-    minHeight: 48,
-    paddingHorizontal: 14,
+    gap: spacing.sm,
+    minHeight: touchTarget,
+    paddingHorizontal: spacing.md,
   },
-  genderSelected: { backgroundColor: "#E8F2EC", borderColor: "#28735D" },
-  genderText: { color: "#263A31", fontSize: 14, fontWeight: "700" },
+  genderSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  genderText: { ...textStyles.labelSmall, color: colors.text },
   radioOuter: {
     alignItems: "center",
-    borderColor: "#829188",
-    borderRadius: 10,
+    borderColor: colors.muted,
+    borderRadius: radius.pill,
     borderWidth: 1.5,
-    height: 19,
+    height: spacing.lg,
     justifyContent: "center",
-    width: 19,
+    width: spacing.lg,
   },
   radioInner: {
-    backgroundColor: "#28735D",
-    borderRadius: 5,
-    height: 9,
-    width: 9,
+    backgroundColor: colors.primary,
+    borderRadius: radius.pill,
+    height: spacing.sm,
+    width: spacing.sm,
   },
-  activityList: { gap: 7 },
+  activityList: { gap: spacing.sm },
   activityOption: {
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E0E6E0",
-    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 11,
-    minHeight: 58,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    gap: spacing.md,
+    minHeight: touchTarget + spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  activitySelected: { backgroundColor: "#EAF3ED", borderColor: "#5D9A7B" },
-  activityCopy: { flex: 1 },
-  activityLabel: { color: "#263A31", fontSize: 13, fontWeight: "700" },
-  activityDetail: { color: "#738078", fontSize: 11, marginTop: 3 },
-  error: { color: "#B42318", fontSize: 13, lineHeight: 18, marginTop: 12 },
+  activitySelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
+  activityCopy: { flex: 1, minWidth: 0 },
+  activityLabel: { ...textStyles.labelSmall, color: colors.text },
+  activityDetail: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  error: {
+    ...textStyles.bodySmall,
+    color: colors.danger,
+    marginBottom: spacing.sm,
+  },
   saveButton: {
     alignItems: "center",
-    backgroundColor: "#28735D",
-    borderRadius: 9,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
     justifyContent: "center",
-    marginTop: 18,
-    minHeight: 52,
+    minHeight: touchTarget + spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.xs,
   },
-  saveText: { color: "#FFFFFF", fontSize: 15, fontWeight: "800" },
-  pressed: { opacity: 0.84 },
-  disabled: { opacity: 0.6 },
+  saveText: { ...textStyles.labelSmall, color: colors.primaryText },
+  pressed: { opacity: 0.82 },
+  disabled: { opacity: 0.5 },
   result: {
-    backgroundColor: "#183D32",
-    borderRadius: 10,
-    marginTop: 16,
-    padding: 18,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    marginTop: spacing.md,
+    padding: spacing.lg,
   },
   resultLabel: {
-    color: "#C1D8CB",
-    fontSize: 10,
-    fontWeight: "800",
-    letterSpacing: 0.8,
+    ...textStyles.caption,
+    color: colors.muted,
+    fontWeight: "700",
   },
-  calorie: { color: "#FFFFFF", fontSize: 32, fontWeight: "800", marginTop: 8 },
-  kcal: { color: "#B9D1C3", fontSize: 15, fontWeight: "700" },
-  resultNote: { color: "#D1E0D7", fontSize: 12, marginTop: 4 },
+  calorie: {
+    ...textStyles.heading,
+    color: colors.primary,
+    marginTop: spacing.sm,
+  },
+  kcal: { ...textStyles.bodySmall, color: colors.muted },
+  resultNote: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
   healthSection: {
-    backgroundColor: "#FFFFFF",
-    borderColor: "#E0E6E0",
-    borderRadius: 10,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     borderWidth: 1,
-    marginTop: 22,
-    padding: 15,
+    marginTop: spacing.lg,
+    padding: spacing.lg,
   },
-  healthNote: { color: "#65746C", fontSize: 12, lineHeight: 18, marginBottom: 8 },
-  healthLoader: { marginVertical: 18 },
+  healthNote: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  healthLoader: { marginVertical: spacing.lg },
   healthGroupTitle: {
-    color: "#35463E",
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 7,
-    marginTop: 12,
+    ...textStyles.labelSmall,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
-  healthEmpty: { color: "#738078", fontSize: 12, paddingVertical: 8 },
+  healthEmpty: {
+    ...textStyles.caption,
+    color: colors.muted,
+    paddingVertical: spacing.sm,
+  },
   healthOption: {
     alignItems: "center",
-    borderColor: "#E0E6E0",
-    borderRadius: 8,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
     borderWidth: 1,
     flexDirection: "row",
-    gap: 10,
-    marginBottom: 6,
-    minHeight: 46,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: spacing.md,
+    minHeight: touchTarget,
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  healthOptionSelected: { backgroundColor: "#EAF3ED", borderColor: "#5D9A7B" },
+  healthOptionSelected: {
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primary,
+  },
   checkbox: {
     alignItems: "center",
-    borderColor: "#829188",
-    borderRadius: 4,
+    borderColor: colors.muted,
+    borderRadius: radius.sm,
     borderWidth: 1.5,
-    height: 19,
+    height: spacing.lg + spacing.xs,
     justifyContent: "center",
-    width: 19,
+    width: spacing.lg + spacing.xs,
   },
-  checkboxSelected: { backgroundColor: "#28735D", borderColor: "#28735D" },
-  checkmark: { color: "#FFFFFF", fontSize: 12, fontWeight: "800", lineHeight: 15 },
-  healthOptionCopy: { flex: 1 },
-  healthOptionName: { color: "#263A31", fontSize: 13, fontWeight: "700" },
-  healthOptionDescription: { color: "#738078", fontSize: 11, marginTop: 3 },
-  healthMessage: { color: "#28735D", fontSize: 12, lineHeight: 18, marginTop: 8 },
+  checkboxSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  healthOptionCopy: { flex: 1, minWidth: 0 },
+  healthOptionName: { ...textStyles.labelSmall, color: colors.text },
+  healthOptionDescription: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.xs,
+  },
+  healthMessage: {
+    ...textStyles.bodySmall,
+    color: colors.primary,
+    marginTop: spacing.sm,
+  },
   healthSave: {
     alignItems: "center",
-    backgroundColor: "#28735D",
-    borderRadius: 8,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
     justifyContent: "center",
-    marginTop: 12,
-    minHeight: 46,
+    marginTop: spacing.md,
+    minHeight: touchTarget + spacing.xs,
   },
-  healthSaveText: { color: "#FFFFFF", fontSize: 13, fontWeight: "800" },
+  healthSaveText: { ...textStyles.labelSmall, color: colors.primaryText },
 });
