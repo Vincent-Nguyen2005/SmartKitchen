@@ -39,13 +39,15 @@ export default function LoginScreen({
   const [loading, setLoading] = useState(false);
 
   const submit = async (): Promise<void> => {
-    if (!/^\S+@\S+\.\S+$/.test(email.trim()))
+    const enteredEmail = email.trim();
+    const loginEmail = enteredEmail.includes("@") ? enteredEmail : `${enteredEmail}@gmail.com`;
+    if (!/^\S+@\S+\.\S+$/.test(loginEmail))
       return setError("Vui lòng nhập email hợp lệ.");
     if (!password) return setError("Vui lòng nhập mật khẩu.");
     setError("");
     setLoading(true);
     try {
-      await onSubmit?.(email.trim().toLowerCase(), password);
+      await onSubmit?.(loginEmail.toLowerCase(), password);
     } catch (loginError) {
       if (loginError instanceof ApiError && loginError.code === "EMAIL_NOT_VERIFIED") onVerificationRequired?.();
       else setError(authErrorMessage(loginError, "Không thể đăng nhập. Vui lòng thử lại."));
@@ -67,16 +69,21 @@ export default function LoginScreen({
           <Text style={styles.subtitle}>
             Đăng nhập để quản lý căn bếp của gia đình.
           </Text>
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            onChangeText={setEmail}
-            placeholder="Địa chỉ email"
-            placeholderTextColor="#8B949E"
-            style={styles.input}
-            value={email}
-          />
+          <View style={styles.emailRow}>
+            <TextInput
+              accessibilityLabel="Tên email"
+              accessibilityHint="Nếu không nhập đuôi email, hệ thống sẽ dùng @gmail.com"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="Tên email"
+              placeholderTextColor="#8B949E"
+              style={styles.emailInput}
+              value={email}
+            />
+            {!email.includes("@") && <Text style={styles.emailSuffix}>@gmail.com</Text>}
+          </View>
           <View style={styles.passwordRow}>
             <TextInput
               autoCapitalize="none"
@@ -155,16 +162,17 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 28,
   },
-  input: {
+  emailRow: {
+    alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderColor: "#DCE3DE",
     borderRadius: 12,
     borderWidth: 1,
-    color: "#17211F",
-    fontSize: typography.body.fontSize,
+    flexDirection: "row",
     marginBottom: 14,
-    padding: 16,
   },
+  emailInput: { color: "#17211F", flex: 1, fontSize: typography.body.fontSize, minWidth: 0, padding: 16 },
+  emailSuffix: { color: "#68736F", fontSize: typography.body.fontSize, paddingRight: 16 },
   passwordRow: {
     alignItems: "center",
     backgroundColor: "#FFFFFF",

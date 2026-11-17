@@ -38,10 +38,12 @@ export default function RegisterScreen({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const enteredEmail = email.trim();
+  const registrationEmail = enteredEmail.includes("@") ? enteredEmail : `${enteredEmail}@gmail.com`;
 
   const submit = async (): Promise<void> => {
     if (fullName.trim().length < 2) return setError("Vui lòng nhập họ tên ít nhất 2 ký tự.");
-    if (!/^\S+@\S+\.\S+$/.test(email.trim()))
+    if (!/^\S+@\S+\.\S+$/.test(registrationEmail))
       return setError("Vui lòng nhập địa chỉ email hợp lệ.");
     if (password.length < 8 || !/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password))
       return setError("Mật khẩu cần ít nhất 8 ký tự, gồm chữ hoa, chữ thường và số.");
@@ -51,7 +53,7 @@ export default function RegisterScreen({
     setError("");
     setLoading(true);
     try {
-      await onSubmit?.(fullName.trim(), email.trim().toLowerCase(), password);
+      await onSubmit?.(fullName.trim(), registrationEmail.toLowerCase(), password);
     } catch (registrationError) {
       setError(authErrorMessage(registrationError, "Không thể đăng ký. Vui lòng thử lại."));
     } finally {
@@ -78,16 +80,21 @@ export default function RegisterScreen({
             style={styles.input}
             value={fullName}
           />
-          <TextInput
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            onChangeText={setEmail}
-            placeholder="Email"
-            placeholderTextColor="#8B949E"
-            style={styles.input}
-            value={email}
-          />
+          <View style={styles.emailRow}>
+            <TextInput
+              accessibilityLabel="Tên email"
+              accessibilityHint="Nếu không nhập đuôi email, hệ thống sẽ dùng @gmail.com"
+              autoCapitalize="none"
+              autoComplete="email"
+              keyboardType="email-address"
+              onChangeText={setEmail}
+              placeholder="Tên email"
+              placeholderTextColor="#8B949E"
+              style={styles.emailInput}
+              value={email}
+            />
+            {!email.includes("@") && <Text style={styles.emailSuffix}>@gmail.com</Text>}
+          </View>
           <View style={styles.passwordRow}>
             <TextInput
               autoCapitalize="none"
@@ -181,6 +188,9 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     padding: 16,
   },
+  emailRow: { alignItems: "center", backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, flexDirection: "row", marginBottom: 12 },
+  emailInput: { color: "#17211F", flex: 1, fontSize: typography.body.fontSize, minWidth: 0, padding: 16 },
+  emailSuffix: { color: "#68736F", fontSize: typography.body.fontSize, paddingRight: 16 },
   passwordRow: {
     alignItems: "center",
     backgroundColor: "#FFFFFF",
