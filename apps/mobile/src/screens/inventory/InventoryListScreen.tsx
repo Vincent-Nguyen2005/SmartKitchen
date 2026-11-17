@@ -14,15 +14,37 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Package, Pencil, Search, Trash2, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { RadioDropdown } from "../../components/RadioDropdown";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
 import InventoryCapturePanel from "./InventoryCapturePanel";
 
-const categories = ["All", "FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
+const categories: Array<{ value: "ALL" | InventoryLocation; label: string }> = [
+  { value: "ALL", label: "Tất cả" },
+  { value: "FRIDGE", label: "Tủ lạnh" },
+  { value: "FREEZER", label: "Ngăn đông" },
+  { value: "PANTRY", label: "Tủ đựng thực phẩm" },
+  { value: "COUNTER", label: "Kệ bếp" },
+];
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
+const inventoryUnitLabels: Record<InventoryUnit, string> = {
+  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
+  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
+};
+const inventoryLocationLabels: Record<InventoryLocation, string> = {
+  FRIDGE: "Tủ lạnh", FREEZER: "Ngăn đông", PANTRY: "Tủ đựng thực phẩm", COUNTER: "Kệ bếp",
+};
+const itemStatusLabels: Record<string, string> = {
+  FRESH: "Còn dùng được", NEAR_EXPIRY: "Sắp hết hạn", EXPIRED: "Đã hết hạn", CONSUMED: "Đã dùng hết", DISCARDED: "Đã bỏ",
+};
 type InventoryDialogMode = "edit" | "consume";
+
+function formatDateDdMmYyyy(value: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+}
 
 type Props = {
   onItemPress?: (item: FoodItem) => void;
@@ -42,7 +64,7 @@ export default function InventoryListScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState("All");
+  const [activeCategory, setActiveCategory] = useState<"ALL" | InventoryLocation>("ALL");
   const [expiringItems, setExpiringItems] = useState<Awaited<ReturnType<typeof inventoryApi.expiring>>["items"]>([]);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [alertBusy, setAlertBusy] = useState(false);
@@ -102,8 +124,7 @@ export default function InventoryListScreen({
     return items.filter((item) => {
       const matchesSearch =
         !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch);
-      const matchesCategory =
-        activeCategory === "All" || item.storageLocation === activeCategory;
+      const matchesCategory = activeCategory === "ALL" || item.storageLocation === activeCategory;
       return matchesSearch && matchesCategory;
     });
   }, [activeCategory, items, search]);
@@ -115,7 +136,7 @@ export default function InventoryListScreen({
     setEditQuantity(String(item.quantity));
     setEditUnit(item.unit as InventoryUnit);
     setEditLocation(item.storageLocation as InventoryLocation);
-    setEditExpiryDate(item.expiryDate ? item.expiryDate.slice(0, 10) : "");
+    setEditExpiryDate(item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "");
   };
 
   const openConsume = (item: FoodItem) => {
@@ -136,13 +157,15 @@ export default function InventoryListScreen({
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) { setError("Số lượng phải là số không âm."); return; }
     let expiryDate: string | undefined;
     if (editExpiryDate.trim()) {
-      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(editExpiryDate.trim());
-      if (!match) { setError("Hạn dùng cần có dạng YYYY-MM-DD."); return; }
-      const parsedDate = new Date(`${editExpiryDate.trim()}T12:00:00.000Z`);
-      if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== editExpiryDate.trim()) {
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(editExpiryDate.trim());
+      if (!match) { setError("Hạn dùng cần có dạng DD/MM/YYYY."); return; }
+      const [, day, month, year] = match;
+      const isoDate = `${year}-${month}-${day}`;
+      const parsedDate = new Date(`${isoDate}T12:00:00.000Z`);
+      if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== isoDate) {
         setError("Ngày hạn dùng không hợp lệ."); return;
       }
-      expiryDate = parsedDate.toISOString();
+      expiryDate = `${isoDate}T00:00:00.000Z`;
     }
     setSavingItem(true);
     setError(null);
@@ -211,7 +234,6 @@ export default function InventoryListScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
-        <Text style={styles.eyebrow}>SMARTKITCHEN / INVENTORY</Text>
         <Text style={styles.title}>Kho của bạn</Text>
         <Text style={styles.subtitle}>
           {items.length} nguyên liệu trong kho
@@ -235,19 +257,19 @@ export default function InventoryListScreen({
 
       <View style={[styles.categoryScroller, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
         <View style={styles.categoryRail}>
-          {categories.map((category) => {
-            const active = category === activeCategory;
+          {categories.map(({ value, label }) => {
+            const active = value === activeCategory;
             return (
               <Pressable
                 accessibilityRole="button"
                 accessibilityState={{ selected: active }}
-                accessibilityLabel={category === "All" ? "Tất cả vị trí" : `Vị trí ${category}`}
-                key={category}
-                onPress={() => setActiveCategory(category)}
+                accessibilityLabel={value === "ALL" ? "Tất cả vị trí" : `Vị trí ${label}`}
+                key={value}
+                onPress={() => setActiveCategory(value)}
                 style={[styles.categoryButton, active && styles.categoryButtonActive]}
               >
                 <Text style={[styles.categoryText, active && styles.categoryTextActive]}>
-                  {category}
+                  {label}
                 </Text>
               </Pressable>
             );
@@ -336,21 +358,21 @@ export default function InventoryListScreen({
                 </View>
                 <View style={styles.recipeInfo}>
                   <Text style={styles.recipeCategory}>
-                    {item.storageLocation}
+                    {inventoryLocationLabels[item.storageLocation as InventoryLocation] ?? item.storageLocation}
                   </Text>
                   <Pressable accessibilityRole={onItemPress ? "button" : undefined} disabled={!onItemPress} onPress={() => onItemPress?.(item)}>
                     <Text style={styles.recipeTitle}>{item.name}</Text>
                   </Pressable>
                   <Text numberOfLines={2} style={styles.recipeDescription}>
-                    {item.quantity} {item.unit}
+                    {item.quantity} {inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}
                     {item.expiryDate &&
-                      ` • HSD: ${new Date(item.expiryDate).toLocaleDateString("vi-VN")}`}
+                      ` • HSD: ${formatDateDdMmYyyy(item.expiryDate)}`}
                   </Text>
                   <View style={styles.recipeMeta}>
-                    <Text style={styles.metaText}>{item.status}</Text>
+                    <Text style={styles.metaText}>{itemStatusLabels[item.status] ?? item.status}</Text>
                     <View style={styles.metaDot} />
                     <Text style={styles.metaText}>
-                      {item.quantity} {item.unit}
+                      {item.quantity} {inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}
                     </Text>
                   </View>
                   <View style={styles.itemActions}>
@@ -383,22 +405,16 @@ export default function InventoryListScreen({
                 <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
                 <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
                 <TextInput accessibilityLabel="Số lượng còn lại" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                <Text style={styles.fieldLabel}>Đơn vị</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRail}>
-                  {inventoryUnits.map((choice) => <Pressable accessibilityRole="button" accessibilityState={{ selected: editUnit === choice }} key={choice} onPress={() => setEditUnit(choice)} style={[styles.choiceChip, editUnit === choice && styles.choiceChipActive]}><Text style={[styles.choiceText, editUnit === choice && styles.choiceTextActive]}>{choice}</Text></Pressable>)}
-                </ScrollView>
-                <Text style={styles.fieldLabel}>Vị trí</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choiceRail}>
-                  {inventoryLocations.map((choice) => <Pressable accessibilityRole="button" accessibilityState={{ selected: editLocation === choice }} key={choice} onPress={() => setEditLocation(choice)} style={[styles.choiceChip, editLocation === choice && styles.choiceChipActive]}><Text style={[styles.choiceText, editLocation === choice && styles.choiceTextActive]}>{choice}</Text></Pressable>)}
-                </ScrollView>
-                <Text style={styles.fieldLabel}>Hạn dùng · YYYY-MM-DD</Text>
-                <TextInput accessibilityLabel="Hạn dùng theo YYYY-MM-DD, để trống nếu không có" value={editExpiryDate} onChangeText={setEditExpiryDate} placeholder="2026-12-31" style={styles.modalInput} />
+                <RadioDropdown<InventoryUnit> label="Đơn vị" value={editUnit} options={inventoryUnits.map((choice) => ({ value: choice, label: inventoryUnitLabels[choice] }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
+                <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={editLocation} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={setEditLocation} />
+                <Text style={styles.fieldLabel}>Hạn dùng · DD/MM/YYYY</Text>
+                <TextInput accessibilityLabel="Hạn dùng theo DD/MM/YYYY, để trống nếu không có" value={editExpiryDate} onChangeText={setEditExpiryDate} placeholder="31/12/2026" style={styles.modalInput} />
               </ScrollView>
             ) : (
               <View style={styles.modalForm}>
-                <Text style={styles.fieldLabel}>Số lượng đã dùng ({activeItem?.unit})</Text>
-                <TextInput accessibilityLabel={`Số lượng đã dùng, đơn vị ${activeItem?.unit}`} value={consumeQuantity} onChangeText={setConsumeQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                <Text style={styles.alertHint}>Còn trong kho: {activeItem?.quantity} {activeItem?.unit}. Lượng dùng được ghi vào lịch sử tiêu thụ để tạo gợi ý mua.</Text>
+                <Text style={styles.fieldLabel}>Số lượng đã dùng ({activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""})</Text>
+                <TextInput accessibilityLabel={`Số lượng đã dùng, đơn vị ${activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""}`} value={consumeQuantity} onChangeText={setConsumeQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
+                <Text style={styles.alertHint}>Còn trong kho: {activeItem?.quantity} {activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""}. Lượng dùng được ghi vào lịch sử tiêu thụ để tạo gợi ý mua.</Text>
               </View>
             )}
             <View style={styles.modalActions}>
@@ -418,16 +434,10 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
   header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
-  eyebrow: {
-    color: colors.primary,
-    ...typography.caption,
-    letterSpacing: 1.4,
-  },
   title: {
     ...textStyles.pageTitle,
     color: colors.text,
     fontWeight: "700",
-    marginTop: spacing.lg,
   },
   subtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.sm },
   searchBox: {
@@ -573,11 +583,6 @@ const styles = StyleSheet.create({
   modalForm: { gap: spacing.sm, paddingBottom: spacing.sm },
   fieldLabel: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
   modalInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md },
-  choiceRail: { alignItems: "center", gap: spacing.sm, paddingVertical: spacing.xs },
-  choiceChip: { backgroundColor: colors.primarySoft, borderRadius: 16, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  choiceChipActive: { backgroundColor: colors.primary },
-  choiceText: { color: colors.muted, ...typography.labelSmall },
-  choiceTextActive: { color: colors.surface },
   modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
   cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
   cancelButtonText: { color: colors.muted, ...typography.labelSmall },

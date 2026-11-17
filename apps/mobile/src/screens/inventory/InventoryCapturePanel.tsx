@@ -14,6 +14,7 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, Check, FileImage, Keyboard, Mic, Package, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { RadioDropdown } from "../../components/RadioDropdown";
 import { inventoryApi, InventoryUnit, ProductCatalogResult, ReceiptMimeType } from "./inventoryApi";
 
 type Mode = "manual" | "catalog" | "barcode" | "receipt" | "voice";
@@ -432,7 +433,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
                   <TextInput accessibilityLabel={`Tên thực phẩm nhận diện: ${draft.sourceText}`} value={draft.name} onChangeText={(value) => updateReceiptDraft(draft.id, "name", value)} style={styles.input} />
                   <View style={styles.barcodeRow}>
                     <TextInput accessibilityLabel={`Số lượng cho ${draft.name || "món nhận diện"}`} value={draft.quantity} onChangeText={(value) => updateReceiptDraft(draft.id, "quantity", value)} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                    <UnitButtons fill value={draft.unit} onChange={(value) => updateReceiptDraft(draft.id, "unit", value)} />
+                    <UnitButtons value={draft.unit} onChange={(value) => updateReceiptDraft(draft.id, "unit", value)} />
                   </View>
                   <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveReceiptDraft(draft)} style={styles.saveButton}><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></Pressable>
                 </View>
@@ -457,7 +458,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
               <TextInput accessibilityLabel="Tên thực phẩm" value={name} onChangeText={setName} placeholder="Ví dụ: Gạo jasmine" style={styles.input} />
               <Text style={styles.label}>Số lượng</Text>
               <TextInput accessibilityLabel="Số lượng thực phẩm" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
-              <Text style={styles.label}>Đơn vị</Text>
               <UnitButtons value={unit} onChange={setUnit} />
               <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveMainDraft()} style={[styles.saveButton, busy && styles.disabledButton]}>
                 {busy ? <ActivityIndicator color={colors.surface} /> : <View style={styles.actionContent}><AppIcon icon={Check} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></View>}
@@ -472,15 +472,16 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   );
 }
 
-function UnitButtons({ value, onChange, fill = false }: { value: InventoryUnit; onChange: (unit: InventoryUnit) => void; fill?: boolean }): React.JSX.Element {
+function UnitButtons({ value, onChange }: { value: InventoryUnit; onChange: (unit: InventoryUnit) => void }): React.JSX.Element {
   return (
-    <ScrollView style={fill && styles.unitScrollerFill} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.unitRow}>
-      {units.map((unit) => (
-        <Pressable accessibilityRole="button" accessibilityState={{ selected: value === unit }} accessibilityLabel={`Đơn vị ${unitLabels[unit]}`} key={unit} onPress={() => onChange(unit)} style={[styles.unitButton, value === unit && styles.unitButtonActive]}>
-          <Text style={[styles.unitText, value === unit && styles.unitTextActive]}>{unitLabels[unit]}</Text>
-        </Pressable>
-      ))}
-    </ScrollView>
+    <RadioDropdown<InventoryUnit>
+      label="Đơn vị"
+      value={value}
+      options={units.map((unit) => ({ value: unit, label: unitLabels[unit] }))}
+      onChange={onChange}
+      searchable
+      searchPlaceholder="Tìm đơn vị (kg, hộp...)"
+    />
   );
 }
 
@@ -518,12 +519,6 @@ const styles = StyleSheet.create({
   ocrText: { backgroundColor: colors.background, borderRadius: 6, color: colors.muted, ...typography.bodySmall, padding: spacing.md },
   receiptCard: { backgroundColor: colors.background, borderRadius: 8, gap: spacing.sm, marginTop: spacing.xs, padding: spacing.md },
   sourceText: { color: colors.muted, ...typography.caption },
-  unitRow: { gap: spacing.sm, paddingVertical: spacing.xs },
-  unitScrollerFill: { flex: 1, minWidth: 0 },
-  unitButton: { backgroundColor: colors.primarySoft, borderRadius: 15, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  unitButtonActive: { backgroundColor: colors.primarySoft },
-  unitText: { color: colors.muted, ...typography.labelSmall },
-  unitTextActive: { color: colors.primary },
   saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, marginTop: spacing.xs, paddingHorizontal: spacing.md },
   voiceButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
   voiceButtonActive: { backgroundColor: colors.danger },
