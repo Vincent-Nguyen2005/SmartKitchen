@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +11,12 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { Camera, Check, FileImage, Keyboard, Mic, Package, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { Camera, Check, FileImage, Mic, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
-import { inventoryApi, InventoryUnit, ProductCatalogResult, ReceiptMimeType } from "./inventoryApi";
+import { inventoryApi, InventoryUnit, ReceiptMimeType } from "./inventoryApi";
 
-type Mode = "manual" | "catalog" | "barcode" | "receipt" | "voice";
+type Mode = "photo" | "barcode" | "receipt" | "voice";
 type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void };
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
@@ -42,17 +41,12 @@ function parseVoiceDraft(text: string): { name: string; quantity: string; unit: 
 export default function InventoryCapturePanel({ familyId, accessToken, onSaved }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
-  const [mode, setMode] = useState<Mode>("manual");
+  const [mode, setMode] = useState<Mode>("photo");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unit, setUnit] = useState<InventoryUnit>("PIECE");
   const [barcode, setBarcode] = useState("");
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
-  const [catalogQuery, setCatalogQuery] = useState("");
-  const [catalogResults, setCatalogResults] = useState<ProductCatalogResult[]>([]);
-  const [catalogSearched, setCatalogSearched] = useState(false);
-  const [catalogLoading, setCatalogLoading] = useState(false);
-  const [selectedCatalogProduct, setSelectedCatalogProduct] = useState<ProductCatalogResult | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [busy, setBusy] = useState(false);
@@ -79,41 +73,14 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
     setMode(nextMode);
     setNote(null);
     setCameraActive(false);
-    if (nextMode !== "catalog") setSelectedCatalogProduct(null);
-  };
-
-  const searchCatalog = async () => {
-    const query = catalogQuery.trim();
-    if (query.length < 2) { setNote("Nhập ít nhất 2 ký tự để tìm trong Open Food Facts."); return; }
-    if (!accessToken) { setNote("Đăng nhập để tìm sản phẩm."); return; }
-    setCatalogLoading(true);
-    setCatalogSearched(false);
-    setCatalogResults([]);
-    setNote(null);
-    try {
-      const result = await inventoryApi.searchCatalog(accessToken, query);
-      setCatalogResults(result.results);
-      setCatalogSearched(true);
-      if (!result.results.length) setNote("Không tìm thấy sản phẩm khớp. Bạn có thể nhập tên thủ công.");
-    } catch (error) {
-      setNote(error instanceof Error ? error.message : "Không tìm được sản phẩm lúc này.");
-    } finally {
-      setCatalogLoading(false);
-    }
-  };
-
-  const chooseCatalogProduct = (product: ProductCatalogResult) => {
-    setSelectedCatalogProduct(product);
-    setName(product.name);
-    setBarcode(product.barcode);
-    setQuantity("1");
-    setUnit("PIECE");
-    setNote("Tên và mã vạch lấy từ Open Food Facts. Kiểm tra thông tin, số lượng và đơn vị trước khi thêm vào kho.");
+    setName("");
+    setBarcodeResult(null);
   };
 
   const lookupBarcode = async (rawBarcode: string) => {
     const value = rawBarcode.trim();
     setBarcode(value);
+    setName("");
     setNote(null);
     setBarcodeResult(null);
     if (!/^\d{8,14}$/.test(value)) {
@@ -126,13 +93,13 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
       const result = await inventoryApi.lookupBarcode(accessToken, value);
       if (result.found && result.product) {
         setName(result.product.name);
-        setBarcodeResult(`Đã tìm thấy trên ${result.source}${result.product.brand ? ` • ${result.product.brand}` : ""}. Kiểm tra và sửa trước khi lưu.`);
+        setBarcodeResult(`Đã tìm thấy trên ${result.source}${result.product.brand ? ` • ${result.product.brand}` : ""}. Kiểm tra tên sản phẩm trước khi lưu.`);
       } else {
         setName("");
-        setBarcodeResult("Chưa có thông tin cho mã này. Nhập tên và đơn vị thủ công rồi xác nhận để lưu.");
+        setBarcodeResult("Chưa tìm được tên sản phẩm cho mã này. Hãy chụp sản phẩm hoặc thử mã khác.");
       }
     } catch (error) {
-      setBarcodeResult("Không tra cứu được lúc này. Bạn vẫn có thể nhập tên và lưu thủ công.");
+      setBarcodeResult("Không tra cứu được lúc này. Hãy thử lại sau.");
       setNote(error instanceof Error ? error.message : "Không tra cứu được mã vạch.");
     } finally {
       setBusy(false);
@@ -191,27 +158,26 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   };
 
   const saveMainDraft = async () => {
-    const itemBarcode = mode === "barcode" ? barcode : mode === "catalog" ? selectedCatalogProduct?.barcode : undefined;
+    const itemBarcode = mode === "barcode" ? barcode : undefined;
     const saved = await saveItem(name, quantity, unit, itemBarcode);
     if (!saved) return;
     setName("");
     setQuantity("1");
     setBarcode("");
     setBarcodeResult(null);
-    setSelectedCatalogProduct(null);
     setVoiceText("");
     setNote("Đã xác nhận và thêm thực phẩm vào kho.");
   };
 
-  const scanReceipt = async (source: "camera" | "library") => {
+  const scanReceipt = async (source: "camera" | "library", productPhoto = false) => {
     setNote(null);
     try {
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) { setNote("Chưa được cấp quyền camera. Hãy chọn ảnh hóa đơn từ thư viện hoặc nhập tay."); return; }
+        if (!permission.granted) { setNote("Chưa được cấp quyền camera. Hãy cấp quyền rồi thử lại."); return; }
       } else {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) { setNote("Chưa được cấp quyền ảnh. Hãy chụp hóa đơn hoặc nhập tay."); return; }
+        if (!permission.granted) { setNote("Chưa được cấp quyền ảnh. Hãy chụp hóa đơn bằng camera."); return; }
       }
       const result = source === "camera"
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 })
@@ -219,8 +185,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
       if (result.canceled) return;
       const asset = result.assets[0];
       const imageBase64 = asset?.base64;
-      if (!imageBase64) { setNote("Không đọc được dữ liệu ảnh. Hãy chọn ảnh khác hoặc nhập tay."); return; }
-      if (imageBase64.length > 7_000_000) { setNote("Ảnh hóa đơn quá lớn. Hãy chọn ảnh nhỏ hơn 5 MB hoặc nhập tay."); return; }
+      if (!imageBase64) { setNote("Không đọc được dữ liệu ảnh. Hãy chụp lại."); return; }
+      if (imageBase64.length > 7_000_000) { setNote("Ảnh quá lớn. Hãy chụp ảnh nhỏ hơn 5 MB."); return; }
       const reportedMimeType = asset.mimeType?.toLowerCase();
       const extension = (asset.fileName ?? asset.uri).split(/[?#]/)[0].match(/\.([^.]+)$/)?.[1]?.toLowerCase();
       const extensionMimeType: Record<string, ReceiptMimeType> = {
@@ -232,12 +198,20 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
       const mimeType = reportedMimeType
         ? (["image/jpeg", "image/png", "image/webp"].includes(reportedMimeType) ? reportedMimeType as ReceiptMimeType : undefined)
         : extension ? extensionMimeType[extension] : undefined;
-      if (!mimeType) { setNote("Ảnh cần ở định dạng JPEG, PNG hoặc WebP. Hãy chọn ảnh khác hoặc nhập tay."); return; }
+      if (!mimeType) { setNote("Ảnh cần ở định dạng JPEG, PNG hoặc WebP. Hãy chụp lại."); return; }
       if (!accessToken) { setNote("Đăng nhập để xử lý hóa đơn."); return; }
       setBusy(true);
       setReceiptDrafts([]);
       setReceiptText("");
       const recognized = await inventoryApi.recognizeReceipt(accessToken, imageBase64, mimeType);
+      if (productPhoto) {
+        const detectedName = recognized.items[0]?.name.trim() ?? "";
+        setName(detectedName);
+        setQuantity("1");
+        setUnit("PIECE");
+        setNote(detectedName ? "Tên sản phẩm được đọc từ ảnh. Kiểm tra tên, rồi nhập số lượng và đơn vị." : "Không đọc được tên sản phẩm từ ảnh. Hãy chụp rõ mặt trước sản phẩm hoặc quét mã vạch.");
+        return;
+      }
       setReceiptText(recognized.rawText);
       setReceiptDrafts(recognized.items.map((item, index) => ({
         id: `${Date.now()}-${index}`,
@@ -246,9 +220,9 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
         unit: item.unit,
         sourceText: item.sourceText,
       })));
-      setNote(recognized.items.length ? `Nhận diện được ${recognized.items.length} dòng. Hãy kiểm tra và sửa từng dòng trước khi lưu.` : "Chưa nhận diện được mặt hàng. Hãy chọn ảnh rõ hơn hoặc nhập thực phẩm bằng tay.");
+      setNote(recognized.items.length ? `Nhận diện được ${recognized.items.length} dòng. Hãy kiểm tra từng dòng trước khi lưu.` : "Chưa nhận diện được mặt hàng. Hãy chọn ảnh rõ hơn.");
     } catch (error) {
-      setNote(error instanceof Error ? error.message : "Không đọc được hóa đơn. Bạn có thể nhập mặt hàng bằng tay.");
+      setNote(error instanceof Error ? error.message : "Không đọc được ảnh. Hãy thử lại.");
     } finally {
       setBusy(false);
     }
@@ -289,11 +263,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
       const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
       speechModule.current = ExpoSpeechRecognitionModule;
       if (!ExpoSpeechRecognitionModule.isRecognitionAvailable() || !ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
-        setNote("Thiết bị chưa hỗ trợ nhận dạng tiếng Việt trên máy. Nhập tên món bằng tay nhé.");
+        setNote("Thiết bị chưa hỗ trợ nhận dạng tiếng Việt trên máy. Hãy chụp sản phẩm hoặc quét mã vạch.");
         return;
       }
       const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!permission.granted) { setNote("Chưa được cấp quyền micro hoặc nhận dạng giọng nói. Bạn có thể nhập tay."); return; }
+      if (!permission.granted) { setNote("Chưa được cấp quyền micro hoặc nhận dạng giọng nói."); return; }
       clearSpeechSubscriptions();
       speechSubscriptions.current = [
         ExpoSpeechRecognitionModule.addListener("result", (event) => {
@@ -302,11 +276,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
         ExpoSpeechRecognitionModule.addListener("end", () => setRecognizing(false)),
         ExpoSpeechRecognitionModule.addListener("error", (event) => {
           setRecognizing(false);
-          setNote(`Không nhận dạng được giọng nói (${event.error}). Bạn có thể sửa bản nháp hoặc nhập tay.`);
+          setNote(`Không nhận dạng được giọng nói (${event.error}). Hãy thử lại hoặc chụp sản phẩm.`);
         }),
         ExpoSpeechRecognitionModule.addListener("nomatch", () => {
           setRecognizing(false);
-          setNote("Chưa nghe rõ tên thực phẩm. Thử lại hoặc nhập tay nhé.");
+          setNote("Chưa nghe rõ tên thực phẩm. Hãy thử lại hoặc chụp sản phẩm.");
         }),
       ];
       ExpoSpeechRecognitionModule.start({ lang: "vi-VN", interimResults: true, continuous: false, requiresOnDeviceRecognition: true });
@@ -314,85 +288,39 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
       setNote("Đang nhận dạng trên thiết bị. Nói tên thực phẩm, ví dụ: ‘2 kg gạo’.");
     } catch {
       setRecognizing(false);
-      setNote("Chưa có module giọng nói trong bản ứng dụng này. Hãy cài development build mới hoặc nhập tay.");
+      setNote("Chưa có module giọng nói trong bản ứng dụng này. Hãy chụp sản phẩm hoặc quét mã vạch.");
     }
   };
 
-  const showMainDraft = mode === "manual" || mode === "voice" ||
-    (mode === "barcode" && (!!barcodeResult || /^\d{8,14}$/.test(barcode))) ||
-    (mode === "catalog" && selectedCatalogProduct !== null);
+  const showMainDraft = !!name.trim() && (mode === "photo" || mode === "barcode" || mode === "voice");
 
   return (
     <View style={[styles.panel, { padding: isCompact ? spacing.md : spacing.lg }]}>
       <Text style={styles.panelTitle}>Thêm thực phẩm</Text>
-      <Text style={styles.panelSubtitle}>Chọn cách nhập. Mọi kết quả đều là bản nháp cho bạn kiểm tra trước khi lưu.</Text>
+      <Text style={styles.panelSubtitle}>Chụp sản phẩm hoặc quét mã để nhận diện tên, rồi nhập số lượng và đơn vị.</Text>
       {!familyId || !accessToken ? (
         <Text style={styles.helper}>Đăng nhập và tạo hoặc tham gia gia đình để thêm thực phẩm vào kho.</Text>
       ) : (
         <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.modeRow}>
+          <View style={styles.modeRow}>
             {([
-              ["manual", "Nhập tay"], ["catalog", "Tìm sản phẩm"], ["barcode", "Mã vạch"], ["receipt", "Hóa đơn"], ["voice", "Giọng nói"],
+              ["photo", "Chụp"], ["barcode", "Quét mã vạch"], ["receipt", "Hóa đơn"], ["voice", "Giọng nói"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
-              <Pressable accessibilityRole="button" accessibilityState={{ selected: mode === value }} key={value} onPress={() => chooseMode(value)} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void scanReceipt("camera", true); if (value === "barcode") void startBarcodeCamera(); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <View style={styles.modeContent}>
-                  {value === "manual" ? <AppIcon icon={Keyboard} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                    : value === "catalog" ? <AppIcon icon={Search} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                  {value === "photo" ? <AppIcon icon={Camera} size="sm" color={mode === value ? colors.surface : colors.muted} />
                     : value === "barcode" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
                       : value === "receipt" ? <AppIcon icon={Receipt} size="sm" color={mode === value ? colors.surface : colors.muted} />
                         : <AppIcon icon={Mic} size="sm" color={mode === value ? colors.surface : colors.muted} />}
-                  <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
+                  {value !== "photo" && <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>}
                 </View>
               </Pressable>
             ))}
-          </ScrollView>
-
-          {mode === "catalog" && (
-            <View style={styles.section}>
-              <Text style={styles.label}>Tìm tên thực phẩm trong danh mục Open Food Facts</Text>
-              <View style={styles.barcodeRow}>
-                <TextInput
-                  accessibilityLabel="Tên sản phẩm cần tìm bên ngoài"
-                  onChangeText={(value) => { setCatalogQuery(value); setCatalogSearched(false); setCatalogResults([]); }}
-                  onSubmitEditing={() => void searchCatalog()}
-                  placeholder="Ví dụ: sữa tươi, mì gói..."
-                  returnKeyType="search"
-                  style={[styles.input, styles.barcodeInput]}
-                  value={catalogQuery}
-                />
-                <Pressable accessibilityRole="button" accessibilityLabel="Tìm sản phẩm bên ngoài" disabled={catalogLoading} onPress={() => void searchCatalog()} style={styles.secondaryButton}>
-                  {catalogLoading ? <ActivityIndicator size="small" color={colors.primary} /> : <View style={styles.actionContent}><AppIcon icon={Search} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Tìm</Text></View>}
-                </Pressable>
-              </View>
-              <Text style={styles.helper}>Kết quả lấy trực tiếp từ Open Food Facts, không phải danh sách có sẵn. Dữ liệu do cộng đồng đóng góp nên hãy kiểm tra trước khi lưu.</Text>
-              {selectedCatalogProduct && (
-                <View style={styles.catalogSelected}>
-                  {selectedCatalogProduct.imageUrl ? <Image source={{ uri: selectedCatalogProduct.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><AppIcon icon={Package} size="md" color={colors.primary} /></View>}
-                  <View style={styles.catalogProductInfo}>
-                    <Text numberOfLines={2} style={styles.catalogProductName}>{selectedCatalogProduct.name}</Text>
-                    <Text numberOfLines={1} style={styles.helper}>{selectedCatalogProduct.brand || "Open Food Facts"}{selectedCatalogProduct.packageQuantity ? ` · ${selectedCatalogProduct.packageQuantity}` : ""}</Text>
-                    <Text style={styles.sourceText}>Mã vạch {selectedCatalogProduct.barcode}</Text>
-                  </View>
-                  <IconButton accessibilityLabel="Bỏ chọn sản phẩm" icon={X} color={colors.muted} onPress={() => { setSelectedCatalogProduct(null); setName(""); setBarcode(""); }} />
-                </View>
-              )}
-              {!selectedCatalogProduct && catalogResults.map((product) => (
-                <Pressable accessibilityRole="button" accessibilityLabel={`Chọn ${product.name}${product.brand ? `, ${product.brand}` : ""}`} key={product.barcode} onPress={() => chooseCatalogProduct(product)} style={styles.catalogResult}>
-                  {product.imageUrl ? <Image source={{ uri: product.imageUrl }} style={styles.catalogImage} /> : <View style={styles.catalogImageFallback}><AppIcon icon={Package} size="md" color={colors.primary} /></View>}
-                  <View style={styles.catalogProductInfo}>
-                    <Text numberOfLines={2} style={styles.catalogProductName}>{product.name}</Text>
-                    <Text numberOfLines={1} style={styles.helper}>{product.brand || "Open Food Facts"}{product.packageQuantity ? ` · ${product.packageQuantity}` : ""}</Text>
-                    <Text style={styles.sourceText}>Mã vạch {product.barcode}</Text>
-                  </View>
-                </Pressable>
-              ))}
-              {!selectedCatalogProduct && catalogSearched && !catalogResults.length && <Text style={styles.emptyCatalog}>Chưa có kết quả. Hãy thử từ khóa khác hoặc nhập tên thủ công.</Text>}
-            </View>
-          )}
+          </View>
 
           {mode === "barcode" && (
             <View style={styles.section}>
-              <Text style={styles.label}>Quét bằng camera hoặc nhập mã thủ công</Text>
+              <Text style={styles.label}>Quét bằng camera hoặc nhập mã vạch</Text>
               <View style={styles.barcodeRow}>
                 <TextInput accessibilityLabel="Mã vạch gồm 8 đến 14 chữ số" value={barcode} onChangeText={setBarcode} placeholder="8–14 chữ số" keyboardType="number-pad" style={[styles.input, styles.barcodeInput]} />
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={Search} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Tra cứu</Text></View></Pressable>
@@ -429,8 +357,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
               {receiptDrafts.map((draft) => (
                 <View key={draft.id} style={styles.receiptCard}>
                   <Text style={styles.sourceText}>Nhận diện: {draft.sourceText}</Text>
-                  <Text style={styles.label}>Tên thực phẩm</Text>
-                  <TextInput accessibilityLabel={`Tên thực phẩm nhận diện: ${draft.sourceText}`} value={draft.name} onChangeText={(value) => updateReceiptDraft(draft.id, "name", value)} style={styles.input} />
+                  <Text style={styles.recognizedName}>{draft.name}</Text>
                   <View style={styles.barcodeRow}>
                     <TextInput accessibilityLabel={`Số lượng cho ${draft.name || "món nhận diện"}`} value={draft.quantity} onChangeText={(value) => updateReceiptDraft(draft.id, "quantity", value)} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
                     <UnitButtons value={draft.unit} onChange={(value) => updateReceiptDraft(draft.id, "unit", value)} />
@@ -454,8 +381,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
 
           {showMainDraft && (
             <View style={styles.section}>
-              <Text style={styles.label}>Xem lại tên</Text>
-              <TextInput accessibilityLabel="Tên thực phẩm" value={name} onChangeText={setName} placeholder="Ví dụ: Gạo jasmine" style={styles.input} />
+              <Text style={styles.label}>Sản phẩm nhận diện</Text>
+              <Text style={styles.recognizedName}>{name}</Text>
               <Text style={styles.label}>Số lượng</Text>
               <TextInput accessibilityLabel="Số lượng thực phẩm" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
               <UnitButtons value={unit} onChange={setUnit} />
@@ -489,22 +416,16 @@ const styles = StyleSheet.create({
   panel: { alignSelf: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, marginTop: spacing.lg, maxWidth: 860, width: "100%" },
   panelTitle: { ...textStyles.subheading, color: colors.text },
   panelSubtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.xs },
-  modeRow: { gap: spacing.sm, paddingVertical: spacing.lg },
+  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.lg },
   modeButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 20, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   modeContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   modeButtonActive: { backgroundColor: colors.primary },
   modeText: { color: colors.muted, ...typography.labelSmall },
   modeTextActive: { color: colors.surface },
   actionContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  catalogResult: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 76, padding: spacing.md },
-  catalogSelected: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.border, borderRadius: 8, borderWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 76, padding: spacing.md },
-  catalogImage: { backgroundColor: colors.background, borderRadius: 6, height: 56, width: 56 },
-  catalogImageFallback: { alignItems: "center", backgroundColor: colors.background, borderRadius: 6, height: 56, justifyContent: "center", width: 56 },
-  catalogProductInfo: { flex: 1, gap: spacing.xs, minWidth: 0 },
-  catalogProductName: { color: colors.text, ...typography.label },
-  emptyCatalog: { backgroundColor: colors.background, borderRadius: 8, color: colors.muted, ...typography.bodySmall, padding: spacing.md },
   section: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.md, paddingTop: spacing.lg },
   label: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
+  recognizedName: { backgroundColor: colors.primarySoft, borderRadius: 7, color: colors.text, ...typography.label, padding: spacing.md },
   input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   barcodeRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   barcodeInput: { flex: 1, minWidth: 0 },

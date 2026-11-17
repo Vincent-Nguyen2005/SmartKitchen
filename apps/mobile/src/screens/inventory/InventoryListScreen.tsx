@@ -13,20 +13,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Package, Pencil, Search, Trash2, X } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { AppIcon, colors, fontFamily, IconButton, spacing, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
 import InventoryCapturePanel from "./InventoryCapturePanel";
 
-const categories: Array<{ value: "ALL" | InventoryLocation; label: string }> = [
-  { value: "ALL", label: "Tất cả" },
-  { value: "FRIDGE", label: "Tủ lạnh" },
-  { value: "FREEZER", label: "Ngăn đông" },
-  { value: "PANTRY", label: "Tủ đựng thực phẩm" },
-  { value: "COUNTER", label: "Kệ bếp" },
-];
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
 const inventoryUnitLabels: Record<InventoryUnit, string> = {
@@ -64,7 +57,6 @@ export default function InventoryListScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<"ALL" | InventoryLocation>("ALL");
   const [expiringItems, setExpiringItems] = useState<Awaited<ReturnType<typeof inventoryApi.expiring>>["items"]>([]);
   const [alertError, setAlertError] = useState<string | null>(null);
   const [alertBusy, setAlertBusy] = useState(false);
@@ -121,13 +113,8 @@ export default function InventoryListScreen({
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    return items.filter((item) => {
-      const matchesSearch =
-        !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch);
-      const matchesCategory = activeCategory === "ALL" || item.storageLocation === activeCategory;
-      return matchesSearch && matchesCategory;
-    });
-  }, [activeCategory, items, search]);
+    return items.filter((item) => !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch));
+  }, [items, search]);
 
   const openEdit = (item: FoodItem) => {
     setDialogMode("edit");
@@ -234,7 +221,6 @@ export default function InventoryListScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
-        <Text style={styles.title}>Kho của bạn</Text>
         <Text style={styles.subtitle}>
           {items.length} nguyên liệu trong kho
         </Text>
@@ -252,28 +238,6 @@ export default function InventoryListScreen({
           {search.length > 0 && (
             <IconButton accessibilityLabel="Xóa nội dung tìm kiếm" icon={X} onPress={() => setSearch("")} />
           )}
-        </View>
-      </View>
-
-      <View style={[styles.categoryScroller, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
-        <View style={styles.categoryRail}>
-          {categories.map(({ value, label }) => {
-            const active = value === activeCategory;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={value === "ALL" ? "Tất cả vị trí" : `Vị trí ${label}`}
-                key={value}
-                onPress={() => setActiveCategory(value)}
-                style={[styles.categoryButton, active && styles.categoryButtonActive]}
-              >
-                <Text style={[styles.categoryText, active && styles.categoryTextActive]}>
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
         </View>
       </View>
 
@@ -434,11 +398,6 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
   header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
-  title: {
-    ...textStyles.pageTitle,
-    color: colors.text,
-    fontWeight: "700",
-  },
   subtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.sm },
   searchBox: {
     alignItems: "center",
@@ -452,21 +411,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   searchInput: { color: colors.text, flex: 1, fontFamily, fontSize: typography.body.fontSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  categoryScroller: { alignSelf: "center", flexShrink: 0, width: "100%" },
-  categoryRail: { alignItems: "flex-start", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  categoryButton: {
-    alignItems: "center",
-    backgroundColor: colors.primarySoft,
-    borderRadius: 24,
-    flexGrow: 0,
-    flexShrink: 0,
-    minHeight: touchTarget,
-    justifyContent: "center",
-    paddingHorizontal: spacing.sm,
-  },
-  categoryButtonActive: { backgroundColor: colors.primary },
-  categoryText: { color: colors.muted, ...typography.labelSmall },
-  categoryTextActive: { color: colors.surface },
   listContent: { alignSelf: "center", paddingBottom: spacing.xl, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
