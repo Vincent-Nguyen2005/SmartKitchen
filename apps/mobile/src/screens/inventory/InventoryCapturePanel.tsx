@@ -11,12 +11,12 @@ import {
 } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { Camera, Check, FileImage, Mic, Receipt, ScanBarcode, Search, X } from "lucide-react-native";
+import { Camera, Check, FileImage, Mic, ScanBarcode, Search, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { inventoryApi, InventoryUnit, ReceiptMimeType } from "./inventoryApi";
 
-type Mode = "photo" | "barcode" | "receipt" | "voice";
+type Mode = "photo" | "scan" | "voice";
 type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void };
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
@@ -81,6 +81,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
     const value = rawBarcode.trim();
     setBarcode(value);
     setName("");
+    setReceiptDrafts([]);
+    setReceiptText("");
     setNote(null);
     setBarcodeResult(null);
     if (!/^\d{8,14}$/.test(value)) {
@@ -158,7 +160,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   };
 
   const saveMainDraft = async () => {
-    const itemBarcode = mode === "barcode" ? barcode : undefined;
+    const itemBarcode = mode === "scan" ? barcode : undefined;
     const saved = await saveItem(name, quantity, unit, itemBarcode);
     if (!saved) return;
     setName("");
@@ -171,6 +173,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
 
   const scanReceipt = async (source: "camera" | "library", productPhoto = false) => {
     setNote(null);
+    if (!productPhoto) {
+      setName("");
+      setBarcodeResult(null);
+      setCameraActive(false);
+    }
     try {
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -292,7 +299,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
     }
   };
 
-  const showMainDraft = !!name.trim() && (mode === "photo" || mode === "barcode" || mode === "voice");
+  const showMainDraft = !!name.trim() && (mode === "photo" || mode === "scan" || mode === "voice");
 
   return (
     <View style={[styles.panel, { padding: isCompact ? spacing.md : spacing.lg }]}>
@@ -304,21 +311,20 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
         <>
           <View style={styles.modeRow}>
             {([
-              ["photo", "Chụp"], ["barcode", "Quét mã vạch"], ["receipt", "Hóa đơn"], ["voice", "Giọng nói"],
+              ["photo", "Chụp ảnh"], ["scan", "Mã vạch / hóa đơn"], ["voice", "Giọng nói"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
-              <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void scanReceipt("camera", true); if (value === "barcode") void startBarcodeCamera(); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void scanReceipt("camera", true); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <View style={styles.modeContent}>
                   {value === "photo" ? <AppIcon icon={Camera} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                    : value === "barcode" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                      : value === "receipt" ? <AppIcon icon={Receipt} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                        : <AppIcon icon={Mic} size="sm" color={mode === value ? colors.surface : colors.muted} />}
-                  {value !== "photo" && <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>}
+                    : value === "scan" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
+                      : <AppIcon icon={Mic} size="sm" color={mode === value ? colors.surface : colors.muted} />}
+                  <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
                 </View>
               </Pressable>
             ))}
           </View>
 
-          {mode === "barcode" && (
+          {mode === "scan" && (
             <View style={styles.section}>
               <Text style={styles.label}>Quét bằng camera hoặc nhập mã vạch</Text>
               <View style={styles.barcodeRow}>
@@ -343,11 +349,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
                 <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={ScanBarcode} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></View></Pressable>
               )}
               {barcodeResult && <Text style={styles.helper}>{barcodeResult}</Text>}
-            </View>
-          )}
-
-          {mode === "receipt" && (
-            <View style={styles.section}>
+              <View style={styles.scanDivider} />
               <Text style={styles.label}>Đọc hóa đơn (ảnh JPEG, PNG hoặc WebP, tối đa 5 MB)</Text>
               <View style={styles.actionsRow}>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera")} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chụp hóa đơn</Text></View></Pressable>
@@ -424,6 +426,7 @@ const styles = StyleSheet.create({
   modeTextActive: { color: colors.surface },
   actionContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   section: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.md, paddingTop: spacing.lg },
+  scanDivider: { backgroundColor: colors.border, height: 1, marginVertical: spacing.xs },
   label: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
   recognizedName: { backgroundColor: colors.primarySoft, borderRadius: 7, color: colors.text, ...typography.label, padding: spacing.md },
   input: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
