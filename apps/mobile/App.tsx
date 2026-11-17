@@ -3,19 +3,22 @@ import {
   Archive,
   Bell,
   BookOpen,
+  CircleUserRound,
   LogOut,
   Salad,
   Settings,
   ShoppingBasket,
   Utensils,
   Users,
+  X,
 } from "lucide-react-native";
 import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
+  Modal,
+  Pressable,
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
   Platform,
@@ -59,6 +62,10 @@ const tabs = [
   { key: "notifications", label: "Thông báo", icon: Bell },
   { key: "admin", label: "Quản trị", icon: Settings },
 ] as const;
+const memberNavigationKeys: ReadonlySet<Tab> = new Set(["inventory", "shopping", "menu", "family", "notifications"]);
+const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
+const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
+const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
 
 // Logic lấy API và User ID của Hùng
 const apiBaseUrl =
@@ -82,6 +89,8 @@ function AppContent(): React.JSX.Element {
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
@@ -90,9 +99,7 @@ function AppContent(): React.JSX.Element {
   const visibleTabs = tabs.filter(({ key }) => (key === "admin") === isAdmin);
   // Derived (not synced in an effect) so no other tab renders for a frame after the role changes.
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
-  const tabWidth = width >= breakpoints.wide
-    ? Math.min(140, width / visibleTabs.length)
-    : width < 360 ? 72 : 88;
+  const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
 
   // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
   useEffect(() => {
@@ -204,44 +211,103 @@ function AppContent(): React.JSX.Element {
         accessibilityRole="tab"
         accessibilityState={{ selected: active }}
         key={key}
-        style={[styles.tab, { width: tabWidth }, active && styles.tabActive]}
+        style={[styles.tab, { width: width >= breakpoints.wide ? 140 : 88 }, active && styles.tabActive]}
         onPress={() => setTab(key)}
       >
         <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
-        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+        <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
       </TouchableOpacity>
     );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* ADMIN accounts get no coloured header: the screen starts with the tab row, logout sits on its right. */}
-      {!isAdmin && (
-        <View style={styles.header}>
-          <Text style={styles.headerText}>SmartKitchen</Text>
-          <TouchableOpacity
-            accessibilityLabel="Đăng xuất"
-            accessibilityRole="button"
-            onPress={signOut}
-            style={styles.signOutButton}
-          >
-            <AppIcon icon={LogOut} size="sm" color={colors.surface} />
-            <Text style={styles.signOutText}>Đăng xuất</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {!!notice && <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>}
       {isAdmin ? (
         <View style={[styles.tabBar, styles.adminTabRow]}>
           {visibleTabs.map(renderTab)}
           <IconButton icon={LogOut} size="md" color={colors.text} accessibilityLabel="Đăng xuất" onPress={signOut} />
         </View>
       ) : (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tabBar} contentContainerStyle={[styles.tabBarContent, width >= breakpoints.wide && styles.tabBarContentWide]}>
-          {visibleTabs.map(renderTab)}
-        </ScrollView>
+        <View style={[styles.tabBar, styles.memberTabRow]}>
+          {memberTabs.map(({ key, label, icon: Icon }) => {
+            const active = menuKeys.has(key) ? menuKeys.has(activeTab) : activeTab === key;
+            return (
+              <TouchableOpacity
+                accessibilityLabel={label}
+                accessibilityRole={key === "menu" ? "button" : "tab"}
+                accessibilityState={key === "menu" ? { expanded: menuOpen } : { selected: active }}
+                key={key}
+                onPress={() => { if (key === "menu") setMenuOpen(true); else setTab(key); }}
+                style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
+              >
+                <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
+                <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+          <TouchableOpacity
+            accessibilityLabel="Hồ sơ người dùng"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: profileOpen }}
+            onPress={() => setProfileOpen(true)}
+            style={[styles.tab, { width: memberTabWidth }]}
+          >
+            <AppIcon icon={CircleUserRound} size="md" color={colors.muted} />
+            <Text style={styles.tabText}>Hồ sơ</Text>
+          </TouchableOpacity>
+        </View>
       )}
+      {!!notice && (
+        <View pointerEvents="none" style={styles.authNoticeContainer}>
+          <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>
+        </View>
+      )}
+
+      <Modal transparent animationType="fade" visible={menuOpen && !isAdmin} onRequestClose={() => setMenuOpen(false)}>
+        <View style={styles.sheetOverlay}>
+          <Pressable accessibilityLabel="Đóng danh mục thực đơn" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={StyleSheet.absoluteFill} />
+          <View accessibilityViewIsModal style={styles.sheetPanel}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Thực đơn</Text>
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.sheetClose}>
+                <AppIcon icon={X} size="md" />
+              </TouchableOpacity>
+            </View>
+            {menuTabs.map(({ key, label, icon: Icon }) => (
+              <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" key={key}
+                onPress={() => { setTab(key); setMenuOpen(false); }} style={styles.sheetItem}>
+                <AppIcon icon={Icon} size="md" color={colors.primary} />
+                <Text style={styles.sheetItemText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal transparent animationType="fade" visible={profileOpen && !isAdmin} onRequestClose={() => setProfileOpen(false)}>
+        <View style={styles.sheetOverlay}>
+          <Pressable accessibilityLabel="Đóng hồ sơ" accessibilityRole="button" onPress={() => setProfileOpen(false)} style={StyleSheet.absoluteFill} />
+          <View accessibilityViewIsModal style={styles.sheetPanel}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Hồ sơ người dùng</Text>
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setProfileOpen(false)} style={styles.sheetClose}>
+                <AppIcon icon={X} size="md" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.profileLabel}>Họ tên</Text>
+            <Text style={styles.profileValue}>{session.user.fullName?.trim() || "Chưa cập nhật"}</Text>
+            <Text style={styles.profileLabel}>Email</Text>
+            <Text style={styles.profileValue}>{session.user.email}</Text>
+            <Text style={styles.profileLabel}>Vai trò</Text>
+            <Text style={styles.profileValue}>Thành viên</Text>
+            <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
+              onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
+              <AppIcon icon={LogOut} size="md" color={colors.danger} />
+              <Text style={styles.sheetSignOutText}>Đăng xuất</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
@@ -294,26 +360,29 @@ export default function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  authNotice: { backgroundColor: "#E8F4EE", color: "#20594F", padding: 12, textAlign: "center" },
+  authNoticeContainer: {
+    position: "absolute",
+    top: touchTarget + spacing.xl + spacing.sm * 2,
+    left: spacing.md,
+    right: spacing.md,
+    zIndex: 20,
+    alignItems: "center",
+  },
+  authNotice: {
+    ...textStyles.bodySmall,
+    backgroundColor: "#E8F4EE",
+    borderColor: colors.primary,
+    borderRadius: 12,
+    borderWidth: 1,
+    color: "#20594F",
+    maxWidth: 480,
+    overflow: "hidden",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    textAlign: "center",
+  },
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: spacing.md,
-  },
-  headerText: { ...textStyles.subheading, color: colors.surface },
-  signOutButton: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.xs,
-    justifyContent: "center",
-    minHeight: touchTarget,
-    paddingHorizontal: spacing.sm,
-  },
-  signOutText: { ...textStyles.labelSmall, color: colors.surface },
   tabBar: {
     borderBottomWidth: 1 as number,
     borderBottomColor: colors.border,
@@ -325,20 +394,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingRight: spacing.sm,
   },
-  tabBarContent: {
-    flexDirection: "row",
-  },
-  tabBarContentWide: {
-    alignSelf: "center",
-    width: "100%",
-  },
+  memberTabRow: { flexDirection: "row", justifyContent: "center" },
   tab: {
     alignItems: "center",
     gap: spacing.xs,
-    justifyContent: "center",
-    minHeight: touchTarget + spacing.md,
+    height: touchTarget + spacing.xl + spacing.sm,
     paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.xs,
+    paddingTop: spacing.sm,
     backgroundColor: colors.background,
   },
   tabActive: {
@@ -349,9 +411,30 @@ const styles = StyleSheet.create({
   tabText: {
     ...textStyles.labelSmall,
     color: colors.muted,
+    fontSize: 12,
+    lineHeight: 16,
     textAlign: "center",
   },
   tabTextActive: { color: colors.primary },
+  sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
+  sheetPanel: {
+    alignSelf: "center",
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    maxWidth: 440,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl,
+    width: "100%",
+  },
+  sheetHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm },
+  sheetTitle: { ...textStyles.subheading, flex: 1 },
+  sheetClose: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
+  sheetItem: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  sheetItemText: { ...textStyles.body, color: colors.text },
+  sheetSignOutText: { ...textStyles.body, color: colors.danger },
+  profileLabel: { ...textStyles.caption, marginTop: spacing.sm },
+  profileValue: { ...textStyles.body, marginBottom: spacing.xs },
   content: { flex: 1 },
   restoreError: {
     backgroundColor: colors.background,
