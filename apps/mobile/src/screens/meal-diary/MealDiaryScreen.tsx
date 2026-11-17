@@ -8,6 +8,7 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  useWindowDimensions,
   Text,
   TextInput,
   View,
@@ -87,6 +88,8 @@ export default function MealDiaryScreen({
   apiBaseUrl,
   userId,
 }: Props): React.JSX.Element {
+  const { width: screenWidth } = useWindowDimensions();
+  const isCompact = screenWidth < 400;
   const api = createMealDiaryApi(apiBaseUrl, userId);
   const [selectedDate, setSelectedDate] = useState(() =>
     utcDateString(new Date()),
@@ -227,43 +230,37 @@ export default function MealDiaryScreen({
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
-      <View style={styles.header}>
-        <View style={styles.headingCopy}>
-          <Text style={styles.eyebrow}>DINH DƯỠNG HẰNG NGÀY</Text>
-          <Text style={styles.title}>Nhật ký bữa ăn</Text>
-        </View>
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => openForm()}
-          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
-        >
-          <AppIcon icon={Plus} size="sm" color={colors.primaryText} />
-          <Text style={styles.addButtonText}>Ghi bữa</Text>
-        </Pressable>
-      </View>
-
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
             colors={[colors.primary]}
-            onRefresh={() => void loadDiary(selectedDate, true)}
-            refreshing={refreshing}
             tintColor={colors.primary}
+            refreshing={refreshing}
+            onRefresh={() => void loadDiary(selectedDate, true)}
           />
         }
       >
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>DINH DƯỠNG MỖI NGÀY</Text>
+          <Text style={styles.title}>Nhật ký bữa ăn</Text>
+          <Text style={styles.headerSubtitle}>
+            Theo dõi bữa ăn và năng lượng của bạn.
+          </Text>
+        </View>
+
         <View style={styles.dateBar}>
           <IconButton
             accessibilityLabel="Ngày trước"
             onPress={() => moveDate(-1)}
             icon={ChevronLeft}
-            style={styles.dateArrow}
             color={colors.text}
+            style={styles.dateArrow}
           />
           <View style={styles.dateCopy}>
             <View style={styles.dateLabelRow}>
-              <AppIcon icon={Calendar} size="sm" color={colors.muted} />
+              <AppIcon icon={Calendar} size="sm" color={colors.primary} />
               <Text style={styles.dateLabel}>
                 {isToday ? "Hôm nay" : "Ngày đã chọn"}
               </Text>
@@ -275,24 +272,28 @@ export default function MealDiaryScreen({
             disabled={isToday}
             onPress={() => moveDate(1)}
             icon={ChevronRight}
-            style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
             color={colors.text}
+            style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
           />
         </View>
 
         <View style={styles.summaryPanel}>
-          <View style={styles.calorieHeading}>
-            <View>
-              <Text style={styles.panelEyebrow}>NĂNG LƯỢNG</Text>
+          <View style={[styles.calorieHeading, isCompact && styles.calorieHeadingCompact]}>
+            <View style={[styles.calorieCopy, isCompact && styles.calorieCopyCompact]}>
+              <Text style={styles.panelEyebrow}>Đã nạp</Text>
               <Text style={styles.calorieValue}>
                 {formatNumber(summary.calories)}
                 <Text style={styles.calorieUnit}> kcal</Text>
               </Text>
             </View>
-            <Text style={styles.goalText}>
-              / {formatNumber(calorieGoal)} kcal
-            </Text>
+            <View style={[styles.goalCopy, isCompact && styles.goalCopyCompact]}>
+              <Text style={styles.panelEyebrow}>Mục tiêu</Text>
+              <Text style={styles.goalText}>
+                {formatNumber(calorieGoal)} kcal
+              </Text>
+            </View>
           </View>
+
           <View style={styles.calorieTrack}>
             <View
               style={[
@@ -301,20 +302,36 @@ export default function MealDiaryScreen({
               ]}
             />
           </View>
-          <View style={styles.macroRow}>
+          <View style={[styles.progressCaption, isCompact && styles.progressCaptionCompact]}>
+            <Text style={styles.progressText}>
+              {Math.round((summary.calories / calorieGoal) * 100)}% mục tiêu
+            </Text>
+            <Text style={styles.progressText}>
+              {summary.calories > calorieGoal
+                ? `Vượt ${formatNumber(summary.calories - calorieGoal)} kcal`
+                : `Còn ${formatNumber(calorieGoal - summary.calories)} kcal`}
+            </Text>
+          </View>
+
+          <View style={styles.macroDivider} />
+          <Text style={styles.macroHeading}>Dinh dưỡng trong ngày</Text>
+          <View style={[styles.macroRow, isCompact && styles.macroRowCompact]}>
             <MacroProgress
+              compact={isCompact}
               label="Đạm"
               value={summary.protein}
               goal={proteinGoal}
               color={colors.success}
             />
             <MacroProgress
+              compact={isCompact}
               label="Tinh bột"
               value={summary.carbs}
               goal={carbsGoal}
               color={colors.warning}
             />
             <MacroProgress
+              compact={isCompact}
               label="Chất béo"
               value={summary.fat}
               goal={fatGoal}
@@ -323,13 +340,23 @@ export default function MealDiaryScreen({
           </View>
           <Text style={styles.goalNote}>
             {calorieGoal === 2000
-              ? "Mục tiêu mặc định · cập nhật hồ sơ để cá nhân hóa"
-              : "Mục tiêu calo lấy từ hồ sơ dinh dưỡng"}
+              ? "Mục tiêu tạm tính · cập nhật hồ sơ để cá nhân hóa"
+              : "Mục tiêu theo hồ sơ dinh dưỡng"}
           </Text>
         </View>
 
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Thêm bữa ăn vào nhật ký"
+          onPress={() => openForm()}
+          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
+        >
+          <AppIcon icon={Plus} size="sm" color={colors.primaryText} />
+          <Text style={styles.addButtonText}>Thêm bữa ăn</Text>
+        </Pressable>
+
         <View style={styles.mealHeading}>
-          <Text style={styles.sectionTitle}>Các bữa trong ngày</Text>
+          <Text style={styles.sectionTitle}>Các bữa ăn</Text>
           <Text style={styles.mealCount}>{meals.length} bữa đã ghi</Text>
         </View>
 
@@ -355,18 +382,10 @@ export default function MealDiaryScreen({
           </View>
         ) : meals.length === 0 ? (
           <View style={styles.emptyState}>
-            <AppIcon icon={Plus} size="lg" color={colors.primary} />
-            <Text style={styles.emptyTitle}>Bắt đầu ghi nhật ký</Text>
+            <Text style={styles.emptyTitle}>Chưa có bữa ăn nào</Text>
             <Text style={styles.emptyCopy}>
-              Món ăn đầu tiên trong ngày sẽ xuất hiện ở đây.
+              Nhấn “Thêm bữa ăn” để bắt đầu ghi nhật ký.
             </Text>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => openForm()}
-              style={styles.retryButton}
-            >
-              <Text style={styles.retryText}>Ghi món đầu tiên</Text>
-            </Pressable>
           </View>
         ) : (
           mealTypes.map((option) => {
@@ -374,7 +393,7 @@ export default function MealDiaryScreen({
               (meal) => meal.mealType === option.value,
             );
             return (
-              <View key={option.value} style={styles.mealSection}>
+              <View key={option.value} style={[styles.mealSection, isCompact && styles.mealSectionCompact]}>
                 <View style={styles.sectionHeading}>
                   <Text style={styles.sectionName}>{option.label}</Text>
                   <Pressable
@@ -389,7 +408,7 @@ export default function MealDiaryScreen({
                 </View>
                 {sectionMeals.length > 0 ? (
                   sectionMeals.map((meal) => (
-                    <MealEntry key={meal.id} meal={meal} />
+                    <MealEntry key={meal.id} meal={meal} compact={isCompact} />
                   ))
                 ) : (
                   <Text style={styles.sectionEmpty}>Chưa ghi món</Text>
@@ -427,11 +446,13 @@ export default function MealDiaryScreen({
 }
 
 function MacroProgress({
+  compact,
   label,
   value,
   goal,
   color,
 }: {
+  compact: boolean;
   label: string;
   value: number;
   goal: number;
@@ -439,7 +460,7 @@ function MacroProgress({
 }): React.JSX.Element {
   const progress = Math.min(value / Math.max(goal, 1), 1);
   return (
-    <View style={styles.macroItem}>
+    <View style={[styles.macroItem, compact && styles.macroItemCompact]}>
       <Text style={styles.macroLabel}>{label}</Text>
       <Text style={styles.macroValue}>
         {formatNumber(value)} <Text style={styles.macroGoal}>/ {goal} g</Text>
@@ -456,10 +477,10 @@ function MacroProgress({
   );
 }
 
-function MealEntry({ meal }: { meal: MealLog }): React.JSX.Element {
+function MealEntry({ meal, compact }: { meal: MealLog; compact: boolean }): React.JSX.Element {
   return (
     <View style={styles.mealEntry}>
-      <View style={styles.mealEntryTop}>
+      <View style={[styles.mealEntryTop, compact && styles.mealEntryTopCompact]}>
         <Text style={styles.mealTime}>
           {new Date(meal.loggedAt).toLocaleTimeString("vi-VN", {
             hour: "2-digit",
@@ -475,7 +496,7 @@ function MealEntry({ meal }: { meal: MealLog }): React.JSX.Element {
         </View>
       </View>
       {meal.items.map((item) => (
-        <View key={item.id} style={styles.foodRow}>
+        <View key={item.id} style={[styles.foodRow, compact && styles.foodRowCompact]}>
           <View style={styles.foodCopy}>
             <Text style={styles.foodName}>{item.foodName}</Text>
             <Text style={styles.foodDetails}>
@@ -492,7 +513,7 @@ function MealEntry({ meal }: { meal: MealLog }): React.JSX.Element {
                 .join(" · ") || "Thông tin dinh dưỡng chưa đầy đủ"}
             </Text>
           </View>
-          <Text style={styles.foodCalories}>
+          <Text style={[styles.foodCalories, compact && styles.foodCaloriesCompact]}>
             {formatNumber(item.calories * item.quantity)} kcal
           </Text>
         </View>
@@ -544,6 +565,9 @@ function MealFormModal({
   onMealTypeChange: (value: MealType) => void;
   onSourceChange: (value: MealSource) => void;
 }): React.JSX.Element {
+  const { width: screenWidth } = useWindowDimensions();
+  const isDesktop = screenWidth >= 768;
+
   return (
     <Modal
       animationType="slide"
@@ -551,14 +575,14 @@ function MealFormModal({
       transparent
       visible={visible}
     >
-      <View style={styles.modalScrim}>
+      <View style={[styles.modalScrim, isDesktop && styles.modalScrimDesktop]}>
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.modalKeyboard}
+          style={[styles.modalKeyboard, isDesktop && styles.modalKeyboardDesktop]}
         >
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, isDesktop && styles.modalSheetDesktop]}>
             <View style={styles.modalHeading}>
-              <View>
+              <View style={styles.modalHeadingCopy}>
                 <Text style={styles.modalEyebrow}>{dateLabel}</Text>
                 <Text style={styles.modalTitle}>Thêm món ăn</Text>
               </View>
@@ -619,7 +643,9 @@ function MealFormModal({
                 value={calories}
               />
 
-              <Text style={styles.fieldLabel}>Dinh dưỡng đa lượng</Text>
+              <Text style={styles.fieldLabel}>
+                Thành phần dinh dưỡng (nếu biết)
+              </Text>
               <View style={styles.macroInputs}>
                 <NumberInput
                   accessibilityLabel="Đạm"
@@ -643,6 +669,9 @@ function MealFormModal({
                   value={fat}
                 />
               </View>
+              <Text style={styles.formHint}>
+                Bạn có thể bỏ trống các chỉ số chưa biết.
+              </Text>
 
               {!!error && (
                 <Text accessibilityRole="alert" style={styles.formError}>
@@ -726,16 +755,38 @@ function ChoiceChip({
 }
 
 const styles = StyleSheet.create({
-  safeArea: { backgroundColor: colors.background, flex: 1 },
-  header: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+  // SCRUM-232: page width is capped on desktop, while narrow phones stack
+  // densely packed summary/meal rows rather than squeeze their content.
+  contentCompact: { paddingHorizontal: spacing.md },
+  calorieHeadingCompact: { flexDirection: "column", alignItems: "flex-start" },
+  calorieCopyCompact: { flex: 0 },
+  goalCopyCompact: { alignItems: "flex-start" },
+  progressCaptionCompact: { flexWrap: "wrap" },
+  macroRowCompact: { flexDirection: "column" },
+  macroItemCompact: { flex: 0, width: "100%" },
+  mealSectionCompact: { paddingHorizontal: spacing.sm },
+  mealEntryTopCompact: { flexWrap: "wrap", gap: spacing.xs },
+  foodRowCompact: { flexWrap: "wrap", alignItems: "flex-start" },
+  foodCaloriesCompact: { textAlign: "left" },
+  modalScrimDesktop: { justifyContent: "center", alignItems: "center", padding: spacing.lg },
+  modalKeyboardDesktop: { alignSelf: "center", width: "100%", maxWidth: 680 },
+  modalSheetDesktop: { borderRadius: radius.md },
+  modalHeadingCopy: { flex: 1, minWidth: 0, paddingRight: spacing.sm },
+  safeArea: {
+    flex: 1,
+    backgroundColor: colors.background,
   },
-  headingCopy: { flex: 1, paddingRight: spacing.sm },
+  content: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xl * 2,
+    width: "100%",
+    maxWidth: 920,
+    alignSelf: "center",
+  },
+  header: {
+    marginBottom: spacing.lg,
+  },
   eyebrow: {
     ...textStyles.caption,
     color: colors.primary,
@@ -743,185 +794,258 @@ const styles = StyleSheet.create({
   },
   title: {
     ...textStyles.heading,
+    color: colors.text,
     marginTop: spacing.xs,
   },
-  addButton: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    flexDirection: "row",
-    gap: spacing.xs,
-    justifyContent: "center",
-    minHeight: touchTarget,
-    paddingHorizontal: spacing.md,
+  headerSubtitle: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    marginTop: spacing.xs,
   },
-  addButtonText: {
-    ...textStyles.caption,
-    color: colors.primaryText,
-    fontWeight: "700",
-  },
-  pressed: { opacity: 0.82 },
-  content: { paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   dateBar: {
-    alignItems: "center",
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: spacing.md,
-    marginTop: spacing.md,
-  },
-  dateArrow: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.sm,
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: radius.sm,
     borderWidth: 1,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
   },
-  dateArrowDisabled: { opacity: 0.5 },
-  dateCopy: { alignItems: "center", flex: 1 },
-  dateLabelRow: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
+  dateArrow: {
+    borderRadius: radius.sm,
+  },
+  dateArrowDisabled: {
+    opacity: 0.35,
+  },
+  dateCopy: {
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: spacing.xs,
+  },
+  dateLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.xs,
+  },
   dateLabel: {
     ...textStyles.caption,
-    color: colors.muted,
+    color: colors.primary,
     fontWeight: "700",
   },
   dateValue: {
     ...textStyles.labelSmall,
+    flexShrink: 1,
     color: colors.text,
     marginTop: spacing.xs,
+    textAlign: "center",
   },
   summaryPanel: {
-    backgroundColor: colors.text,
-    borderRadius: radius.sm,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
     padding: spacing.lg,
   },
   calorieHeading: {
     alignItems: "flex-end",
     flexDirection: "row",
     justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  calorieCopy: {
+    flex: 1,
+  },
+  goalCopy: {
+    alignItems: "flex-end",
+    paddingBottom: spacing.xs,
   },
   panelEyebrow: {
     ...textStyles.caption,
-    color: colors.primarySoft,
-    fontWeight: "700",
+    color: colors.muted,
   },
   calorieValue: {
     ...textStyles.heading,
-    color: colors.surface,
+    color: colors.text,
     marginTop: spacing.xs,
   },
   calorieUnit: {
-    ...textStyles.labelSmall,
-    color: colors.primarySoft,
+    ...textStyles.bodySmall,
+    color: colors.muted,
   },
   goalText: {
-    ...textStyles.caption,
-    color: colors.primarySoft,
-    marginBottom: spacing.xs,
+    ...textStyles.labelSmall,
+    color: colors.text,
+    marginTop: spacing.xs,
   },
   calorieTrack: {
-    backgroundColor: colors.muted,
+    backgroundColor: colors.primarySoft,
     borderRadius: radius.pill,
     height: spacing.sm,
-    marginTop: spacing.md,
     overflow: "hidden",
+    marginTop: spacing.lg,
   },
   calorieFill: {
-    backgroundColor: colors.warning,
-    borderRadius: radius.pill,
+    backgroundColor: colors.primary,
     height: "100%",
+    borderRadius: radius.pill,
   },
-  macroRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
-  macroItem: { flex: 1, minWidth: 0 },
+  progressCaption: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+  },
+  progressText: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  macroDivider: {
+    height: 1,
+    backgroundColor: colors.border,
+    marginVertical: spacing.lg,
+  },
+  macroHeading: {
+    ...textStyles.labelSmall,
+    color: colors.text,
+  },
+  macroRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  macroItem: {
+    flex: 1,
+    minWidth: 0,
+  },
   macroLabel: {
     ...textStyles.caption,
-    color: colors.primarySoft,
-    fontWeight: "700",
+    color: colors.muted,
   },
   macroValue: {
-    ...textStyles.caption,
-    color: colors.surface,
-    fontWeight: "700",
+    ...textStyles.labelSmall,
+    color: colors.text,
     marginTop: spacing.xs,
   },
   macroGoal: {
     ...textStyles.caption,
-    color: colors.border,
-    fontWeight: "500",
+    color: colors.muted,
   },
   macroTrack: {
-    backgroundColor: colors.muted,
-    borderRadius: radius.pill,
     height: spacing.xs,
-    marginTop: spacing.xs,
+    borderRadius: radius.pill,
+    backgroundColor: colors.background,
     overflow: "hidden",
+    marginTop: spacing.sm,
   },
-  macroFill: { borderRadius: radius.pill, height: "100%" },
+  macroFill: {
+    height: "100%",
+    borderRadius: radius.pill,
+  },
   goalNote: {
     ...textStyles.caption,
-    color: colors.border,
+    color: colors.muted,
+    marginTop: spacing.lg,
+  },
+  addButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: touchTarget + spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
     marginTop: spacing.md,
+  },
+  addButtonText: {
+    ...textStyles.labelSmall,
+    color: colors.primaryText,
+  },
+  pressed: {
+    opacity: 0.82,
   },
   mealHeading: {
-    alignItems: "baseline",
     flexDirection: "row",
+    alignItems: "baseline",
     justifyContent: "space-between",
-    marginBottom: spacing.xs,
+    gap: spacing.sm,
     marginTop: spacing.xl,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    ...textStyles.heading,
+    ...textStyles.subheading,
     color: colors.text,
   },
-  mealCount: { ...textStyles.caption, color: colors.muted },
-  loader: { marginTop: spacing.xl * 2 },
+  mealCount: {
+    ...textStyles.caption,
+    color: colors.muted,
+  },
+  loader: {
+    marginTop: spacing.xl,
+  },
   emptyState: {
     alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.surface,
+    borderRadius: radius.md,
     borderColor: colors.border,
-    borderRadius: radius.sm,
     borderWidth: 1,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.xl,
+    padding: spacing.xl,
+    minHeight: touchTarget * 3,
   },
   emptyTitle: {
     ...textStyles.subheading,
     color: colors.text,
-    marginTop: spacing.sm,
-  },
-  emptyCopy: {
-    ...textStyles.caption,
-    color: colors.muted,
-    marginTop: spacing.xs,
     textAlign: "center",
   },
+  emptyCopy: {
+    ...textStyles.bodySmall,
+    color: colors.muted,
+    textAlign: "center",
+    marginTop: spacing.sm,
+  },
   retryButton: {
+    minHeight: touchTarget,
+    justifyContent: "center",
     alignItems: "center",
     backgroundColor: colors.primarySoft,
     borderRadius: radius.sm,
     marginTop: spacing.md,
-    minHeight: touchTarget,
-    justifyContent: "center",
     paddingHorizontal: spacing.lg,
   },
   retryText: {
-    ...textStyles.caption,
+    ...textStyles.labelSmall,
     color: colors.primary,
-    fontWeight: "700",
   },
-  mealSection: { marginTop: spacing.lg },
-  sectionHeading: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
+  mealSection: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.md,
     marginBottom: spacing.sm,
+  },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
   },
   sectionName: {
     ...textStyles.label,
     color: colors.text,
   },
   sectionAdd: {
-    alignItems: "center",
     flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: spacing.xs,
     minHeight: touchTarget,
     paddingHorizontal: spacing.sm,
@@ -937,47 +1061,46 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   mealEntry: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    marginTop: spacing.xs,
+    paddingTop: spacing.md,
   },
   mealEntryTop: {
-    alignItems: "center",
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: spacing.sm,
+    marginBottom: spacing.xs,
   },
   mealTime: {
     ...textStyles.caption,
     color: colors.muted,
-    fontWeight: "700",
   },
   sourceBadge: {
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colors.background,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   source_HOME: { backgroundColor: colors.successSoft },
   source_EATING_OUT: { backgroundColor: colors.warningSoft },
   source_DELIVERY: { backgroundColor: colors.dangerSoft },
-  sourceText: { ...textStyles.caption, fontWeight: "700" },
+  sourceText: { ...textStyles.caption, color: colors.muted },
   sourceText_HOME: { color: colors.success },
   sourceText_EATING_OUT: { color: colors.warning },
   sourceText_DELIVERY: { color: colors.danger },
   foodRow: {
-    alignItems: "center",
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
     minHeight: touchTarget,
     paddingVertical: spacing.sm,
+    gap: spacing.sm,
   },
-  foodCopy: { flex: 1, paddingRight: spacing.md },
+  foodCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
   foodName: {
     ...textStyles.labelSmall,
     color: colors.text,
@@ -989,120 +1112,136 @@ const styles = StyleSheet.create({
   },
   foodCalories: {
     ...textStyles.caption,
+    flexShrink: 1,
     color: colors.text,
     fontWeight: "700",
+    textAlign: "right",
   },
   modalScrim: {
-    backgroundColor: colors.overlay,
     flex: 1,
     justifyContent: "flex-end",
+    backgroundColor: colors.overlay,
   },
-  modalKeyboard: { justifyContent: "flex-end", maxHeight: "94%" },
+  modalKeyboard: {
+    justifyContent: "flex-end",
+    maxHeight: "94%",
+  },
   modalSheet: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: radius.md,
     borderTopRightRadius: radius.md,
     maxHeight: "100%",
     paddingTop: spacing.lg,
   },
   modalHeading: {
-    alignItems: "center",
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.md,
+    borderBottomColor: colors.border,
+    borderBottomWidth: 1,
   },
   modalEyebrow: {
     ...textStyles.caption,
     color: colors.primary,
-    fontWeight: "700",
   },
   modalTitle: {
-    ...textStyles.heading,
+    ...textStyles.subheading,
     color: colors.text,
     marginTop: spacing.xs,
   },
   closeButton: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.background,
     borderRadius: radius.pill,
   },
-  formContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl },
+  formContent: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xl,
+  },
   fieldLabel: {
-    ...textStyles.caption,
+    ...textStyles.labelSmall,
     color: colors.text,
-    fontWeight: "700",
     marginBottom: spacing.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   textInput: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
     ...textStyles.body,
-    color: colors.text,
     minHeight: touchTarget + spacing.xs,
     paddingHorizontal: spacing.md,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.sm,
+    color: colors.text,
   },
   choiceRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: spacing.sm,
-    marginBottom: spacing.xs,
   },
   choiceChip: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    minHeight: touchTarget,
     justifyContent: "center",
+    minHeight: touchTarget,
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: radius.pill,
     paddingHorizontal: spacing.md,
   },
   choiceChipSelected: {
-    backgroundColor: colors.primarySoft,
     borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
   },
   choiceText: {
     ...textStyles.caption,
     color: colors.muted,
+  },
+  choiceTextSelected: {
+    color: colors.primary,
     fontWeight: "700",
   },
-  choiceTextSelected: { color: colors.primary },
   numberInput: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
     flexDirection: "row",
+    alignItems: "center",
     minHeight: touchTarget + spacing.xs,
     paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    borderColor: colors.border,
+    borderWidth: 1,
+    backgroundColor: colors.background,
   },
   numberText: {
-    flex: 1,
     ...textStyles.bodySmall,
+    flex: 1,
     color: colors.text,
     paddingVertical: spacing.sm,
   },
   numberUnit: {
     ...textStyles.caption,
     color: colors.muted,
-    fontWeight: "700",
   },
-  macroInputs: { flexDirection: "row", gap: spacing.sm },
+  macroInputs: {
+    gap: spacing.sm,
+  },
+  formHint: {
+    ...textStyles.caption,
+    color: colors.muted,
+    marginTop: spacing.sm,
+  },
   formError: {
     ...textStyles.caption,
     color: colors.danger,
     marginTop: spacing.md,
   },
   saveButton: {
+    minHeight: touchTarget + spacing.sm,
+    justifyContent: "center",
     alignItems: "center",
     backgroundColor: colors.primary,
-    borderRadius: radius.sm,
-    justifyContent: "center",
+    borderRadius: radius.md,
     marginTop: spacing.lg,
-    minHeight: touchTarget + spacing.sm,
   },
   saveButtonText: {
     ...textStyles.labelSmall,
