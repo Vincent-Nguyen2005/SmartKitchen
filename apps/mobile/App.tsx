@@ -17,6 +17,7 @@ import {
 import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
+  BackHandler,
   Modal,
   Pressable,
   View,
@@ -26,7 +27,7 @@ import {
   Platform,
   useWindowDimensions,
 } from "react-native";
-import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import LoginScreen from "./src/screens/auth/LoginScreen";
 import ForgotPasswordScreen from "./src/screens/auth/ForgotPasswordScreen";
 import OtpVerificationScreen from "./src/screens/auth/OtpVerificationScreen";
@@ -95,7 +96,8 @@ export function resolveNutritionUserId(
 
 function AppContent(): React.JSX.Element {
   const session = useSession();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("inventory");
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
@@ -112,6 +114,14 @@ function AppContent(): React.JSX.Element {
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
+  const availableWidth = width - insets.left - insets.right;
+  const menuTabPixelWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : availableWidth / 6;
+  const dropdownWidth = Math.min(220, availableWidth - spacing.sm * 2);
+  const dropdownLeft = insets.left + Math.min(
+    (availableWidth - menuTabPixelWidth * 6) / 2 + menuTabPixelWidth * 2,
+    availableWidth - dropdownWidth - spacing.sm,
+  );
+  const dropdownTop = insets.top + touchTarget + spacing.xl + spacing.sm + 1;
 
   // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
   useEffect(() => {
@@ -124,6 +134,22 @@ function AppContent(): React.JSX.Element {
     const timer = setTimeout(() => setNotice(null), 6000);
     return () => clearTimeout(timer);
   }, [notice]);
+
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    if (Platform.OS === "web") {
+      const closeOnEscape = (event: KeyboardEvent) => {
+        if (event.key === "Escape") setMenuOpen(false);
+      };
+      window.addEventListener("keydown", closeOnEscape);
+      return () => window.removeEventListener("keydown", closeOnEscape);
+    }
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      setMenuOpen(false);
+      return true;
+    });
+    return () => subscription.remove();
+  }, [menuOpen]);
 
   const withNotice = (screen: React.JSX.Element): React.JSX.Element => (
     <View style={styles.container}>
@@ -256,7 +282,7 @@ function AppContent(): React.JSX.Element {
                 accessibilityRole={key === "menu" ? "button" : "tab"}
                 accessibilityState={key === "menu" ? { expanded: menuOpen } : { selected: active }}
                 key={key}
-                onPress={() => { if (key === "menu") setMenuOpen(true); else setTab(key); }}
+                onPress={() => { if (key === "menu") setMenuOpen((open) => !open); else setTab(key); }}
                 style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
               >
                 {key === "menu" ? (
@@ -285,26 +311,23 @@ function AppContent(): React.JSX.Element {
       )}
       {!!notice && <NoticeBanner message={notice} />}
 
-      <Modal transparent animationType="fade" visible={menuOpen && !isAdmin} onRequestClose={() => setMenuOpen(false)}>
-        <View style={styles.sheetOverlay}>
+      {menuOpen && !isAdmin && (
+        <View style={styles.menuDropdownLayer}>
           <Pressable accessibilityLabel="Đóng danh mục thực đơn" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={StyleSheet.absoluteFill} />
-          <View accessibilityViewIsModal style={[styles.sheetPanel, styles.menuSheetPanel]}>
-            <View style={styles.menuSheetTop}>
-              <View style={styles.menuSheetHandle} />
-              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={[styles.sheetClose, styles.menuSheetClose]}>
-                <AppIcon icon={X} size="md" />
-              </TouchableOpacity>
-            </View>
+          <View accessibilityViewIsModal style={[styles.menuDropdown, {
+            left: dropdownLeft,
+            top: dropdownTop,
+            width: dropdownWidth,
+            maxHeight: Math.max(0, height - dropdownTop - insets.bottom - spacing.sm),
+          }]}>
             {menuTabs.map(({ key, label, icon: Icon }) => {
               const selected = activeTab === key;
               return (
                 <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" key={key}
                   accessibilityState={{ selected }}
                   onPress={() => { setTab(key); setMenuOpen(false); }}
-                  style={[styles.menuSheetItem, selected && styles.menuSheetItemActive]}>
-                  <View style={[styles.menuSheetIcon, selected && styles.menuSheetIconActive]}>
-                    <AppIcon icon={Icon} size="md" color={colors.primary} />
-                  </View>
+                  style={[styles.menuDropdownItem, selected && styles.menuDropdownItemActive]}>
+                  <AppIcon icon={Icon} size="md" color={selected ? colors.primary : colors.muted} />
                   <Text style={[styles.sheetItemText, selected && styles.sheetItemTextActive]}>{label}</Text>
                   {selected && <AppIcon icon={Check} size="sm" color={colors.primary} />}
                 </TouchableOpacity>
@@ -312,7 +335,7 @@ function AppContent(): React.JSX.Element {
             })}
           </View>
         </View>
-      </Modal>
+      )}
 
       <Modal transparent animationType="fade" visible={profileOpen && !isAdmin} onRequestClose={() => setProfileOpen(false)}>
         <View style={styles.sheetOverlay}>
@@ -458,24 +481,29 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   sheetHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm },
-  menuSheetPanel: { paddingTop: spacing.xs, paddingBottom: spacing.lg },
-  menuSheetTop: { alignItems: "center", flexDirection: "row", justifyContent: "center", minHeight: touchTarget },
-  menuSheetClose: { position: "absolute", right: 0, top: 0 },
-  menuSheetHandle: { backgroundColor: colors.border, borderRadius: 3, height: 4, width: 36 },
-  menuSheetItem: {
-    alignItems: "center",
+  menuDropdownLayer: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 30, elevation: 30 },
+  menuDropdown: {
+    backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 12,
     borderWidth: 1,
+    elevation: 8,
+    padding: spacing.xs,
+    position: "absolute",
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+  },
+  menuDropdownItem: {
+    alignItems: "center",
+    borderRadius: 8,
     flexDirection: "row",
     gap: spacing.md,
-    marginBottom: spacing.xs,
-    minHeight: 56,
+    minHeight: 48,
     paddingHorizontal: spacing.md,
   },
-  menuSheetItemActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-  menuSheetIcon: { alignItems: "center", justifyContent: "center", minHeight: 36, minWidth: 36 },
-  menuSheetIconActive: { backgroundColor: colors.surface, borderRadius: 10 },
+  menuDropdownItemActive: { backgroundColor: colors.primarySoft },
   sheetTitle: { ...textStyles.subheading, flex: 1 },
   sheetClose: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   sheetItem: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.sm },

@@ -1,0 +1,747 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1b4d3e">
+  <title>Kế hoạch dự án SmartKitchen | Capstone 1</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --green: #1b4d3e;
+      --forest: #2c6e49;
+      --mint: #dceee4;
+      --gray: #f4f6f8;
+      --ink: #19332b;
+      --muted: #62736c;
+      --line: #dce4df;
+      --white: #fff;
+      --amber: #bd7b20;
+      --red: #ad5144;
+      --shadow: 0 24px 70px #102e2418;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { width: 100%; height: 100%; margin: 0; }
+
+    body {
+      overflow: hidden;
+      background: #e7ece9;
+      color: var(--ink);
+      font-family: Inter, "Segoe UI", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button { font: inherit; }
+
+    .deck {
+      position: relative;
+      display: grid;
+      width: 100%;
+      height: 100%;
+      place-items: center;
+      padding: 26px 26px 72px;
+    }
+
+    .slide {
+      position: absolute;
+      display: none;
+      width: min(calc(100vw - 52px), calc((100vh - 100px) * 16 / 9), 1440px);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      padding: clamp(30px, 4.3vw, 72px);
+      border: 1px solid #ffffffaa;
+      border-radius: 22px;
+      background: var(--gray);
+      box-shadow: var(--shadow);
+      isolation: isolate;
+    }
+
+    .slide.active {
+      display: flex;
+      flex-direction: column;
+      animation: enter .32s ease both;
+    }
+
+    .slide::after {
+      position: absolute;
+      z-index: -1;
+      right: -9%;
+      bottom: -34%;
+      width: 43%;
+      aspect-ratio: 1;
+      border: 1px solid #2c6e4914;
+      border-radius: 50%;
+      box-shadow: 0 0 0 34px #2c6e4908, 0 0 0 68px #2c6e4905;
+      content: "";
+      pointer-events: none;
+    }
+
+    .cover {
+      color: var(--white);
+      background:
+        radial-gradient(ellipse at 86% 16%, #72a98644 0, transparent 38%),
+        linear-gradient(135deg, #153d32, var(--green) 58%, #286647);
+    }
+
+    .cover::after {
+      right: -3%;
+      bottom: -43%;
+      border-color: #ffffff20;
+      box-shadow: 0 0 0 42px #ffffff0d, 0 0 0 84px #ffffff08, 0 0 0 126px #ffffff05;
+    }
+
+    .cover .eyebrow, .cover .muted, .cover .footer { color: #d0e3d8; }
+    .cover .eyebrow::before { background: #9dcaae; }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 16px;
+      color: var(--forest);
+      font-size: clamp(10px, .82vw, 13px);
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow::before {
+      width: 23px;
+      height: 3px;
+      border-radius: 99px;
+      background: var(--forest);
+      content: "";
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      max-width: 930px;
+      margin-bottom: 20px;
+      font-size: clamp(38px, 5.3vw, 78px);
+      line-height: 1.04;
+      letter-spacing: -.045em;
+    }
+
+    h2 {
+      margin-bottom: 7px;
+      color: var(--green);
+      font-size: clamp(27px, 3vw, 43px);
+      line-height: 1.08;
+      letter-spacing: -.035em;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: clamp(15px, 1.35vw, 20px);
+      line-height: 1.2;
+    }
+
+    p, li { font-size: clamp(12px, 1.12vw, 16px); line-height: 1.48; }
+    .subtitle { color: #e1eee6; font-size: clamp(17px, 1.8vw, 26px); }
+    .muted { color: var(--muted); }
+    .small { font-size: clamp(10px, .85vw, 13px); }
+
+    .slide-head { margin-bottom: clamp(16px, 2vw, 28px); }
+    .slide-head .eyebrow { margin-bottom: 10px; }
+    .slide-head p { margin-bottom: 0; color: var(--muted); }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: auto;
+      padding-top: 16px;
+      color: #829089;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .cover .footer { border-top: 1px solid #ffffff28; }
+    .content .footer { border-top: 1px solid var(--line); }
+
+    .cover-copy { max-width: 850px; margin-block: auto; }
+    .cover .eyebrow { margin-bottom: 23px; }
+    .cover-meta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 18px;
+      padding: 10px 15px;
+      border: 1px solid #ffffff35;
+      border-radius: 99px;
+      background: #ffffff0c;
+      color: #f1f7f3;
+      font-size: clamp(11px, .95vw, 14px);
+      font-weight: 650;
+    }
+
+    .cover-mark {
+      display: grid;
+      width: 58px;
+      height: 58px;
+      margin-bottom: 28px;
+      place-items: center;
+      border: 1px solid #ffffff4d;
+      border-radius: 18px;
+      background: #ffffff12;
+      color: #d9eedf;
+      font-size: 28px;
+    }
+
+    .grid { display: grid; gap: 14px; }
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      min-width: 0;
+      padding: clamp(15px, 1.6vw, 23px);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--white);
+    }
+
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .card ul { margin: 8px 0 0; padding-left: 18px; }
+    .card li + li { margin-top: 5px; }
+    .accent-card { border-top: 4px solid var(--forest); }
+
+    .number {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      margin-bottom: 12px;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--mint);
+      color: var(--green);
+      font-size: 14px;
+      font-weight: 850;
+    }
+
+    .metric {
+      display: flex;
+      min-height: 100%;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 18px;
+      border-radius: 15px;
+      background: var(--green);
+      color: var(--white);
+    }
+
+    .metric strong { font-size: clamp(24px, 3vw, 42px); line-height: 1; letter-spacing: -.04em; }
+    .metric span { margin-top: 10px; color: #d4e7dc; font-size: clamp(10px, .92vw, 14px); }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      padding: 5px 9px;
+      border-radius: 99px;
+      background: #e3f0e8;
+      color: var(--green);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+
+    .tag.amber { background: #f6eddc; color: #865914; }
+    .tag.red { background: #f5e6e3; color: #944238; }
+    .role-card { display: flex; flex-direction: column; min-height: 150px; }
+    .role-card .tag { margin-bottom: 11px; }
+    .role-card p { margin-bottom: 0; color: var(--muted); }
+    .member { color: var(--green); font-weight: 800; }
+
+    .scope-card { min-height: 240px; }
+    .scope-card h3 { display: flex; align-items: center; gap: 9px; }
+    .scope-card ul { margin-top: 14px; }
+    .scope-card li { padding-left: 2px; }
+    .scope-icon { color: var(--forest); font-weight: 900; }
+    .scope-card.out { border-top: 4px solid #b98a4b; }
+    .scope-card.out .scope-icon { color: var(--amber); }
+
+    .wbs { display: grid; grid-template-columns: 90px 1fr 1.05fr; gap: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 15px; background: var(--white); }
+    .wbs > div { padding: 12px 16px; border-bottom: 1px solid var(--line); font-size: clamp(11px, 1vw, 14px); line-height: 1.4; }
+    .wbs > div:nth-last-child(-n+3) { border-bottom: 0; }
+    .wbs-head { background: #e8f0eb; color: var(--green); font-size: 10px !important; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .phase { color: var(--green); font-weight: 850; }
+    .task-list { color: var(--muted); }
+
+    .timeline { display: grid; grid-template-columns: 155px repeat(4, 1fr); align-items: center; gap: 9px 12px; }
+    .timeline .head { padding: 0 6px 6px; color: var(--muted); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
+    .sprint-label { font-size: clamp(11px, 1vw, 14px); font-weight: 800; }
+    .track { position: relative; height: 35px; border-radius: 9px; background: #e8edea; }
+    .bar { position: absolute; top: 4px; bottom: 4px; display: grid; padding: 0 10px; place-items: center start; overflow: hidden; border-radius: 7px; background: #b7d4c2; color: #194733; font-size: 10px; font-weight: 800; white-space: nowrap; }
+    .bar.s1 { left: 3%; width: 92%; }
+    .bar.s2 { left: 3%; width: 92%; }
+    .bar.s3 { left: 3%; width: 92%; background: var(--forest); color: var(--white); }
+    .bar.s4 { left: 3%; width: 92%; background: #dbe8df; color: var(--green); }
+    .milestone-strip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 18px; }
+    .milestone { padding: 11px 13px; border-left: 3px solid var(--forest); border-radius: 0 9px 9px 0; background: #fff; }
+    .milestone b { display: block; margin-bottom: 3px; color: var(--green); font-size: 11px; }
+    .milestone span { color: var(--muted); font-size: 10px; }
+
+    .resource-layout { display: grid; grid-template-columns: 1fr 1fr .8fr; gap: 14px; flex: 1; }
+    .resource-card { display: flex; flex-direction: column; justify-content: space-between; }
+    .pills { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .pill { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfb; color: #40574e; font-size: 11px; font-weight: 650; }
+    .budget { display: flex; flex-direction: column; justify-content: center; background: var(--green); color: var(--white); }
+    .budget strong { margin: 8px 0; font-size: clamp(42px, 5vw, 72px); letter-spacing: -.06em; line-height: 1; }
+    .budget p { margin-bottom: 0; color: #d4e7dc; }
+
+    table { width: 100%; border-collapse: separate; border-spacing: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: var(--white); }
+    th, td { padding: clamp(11px, 1.25vw, 18px); border-bottom: 1px solid var(--line); font-size: clamp(10px, .98vw, 14px); line-height: 1.4; text-align: left; vertical-align: middle; }
+    th { background: #e8f0eb; color: var(--green); font-size: 10px; font-weight: 850; letter-spacing: .08em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    td:first-child { font-weight: 750; }
+    td:nth-child(2) { white-space: nowrap; }
+
+    .communication { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; }
+    .comms-card { display: grid; grid-template-columns: 48px 1fr; align-items: start; gap: 12px; }
+    .comms-card .number { width: 42px; height: 42px; margin: 0; font-size: 18px; }
+    .comms-card p { margin-bottom: 0; color: var(--muted); }
+    .approval {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 13px 16px;
+      border: 1px solid #cfe0d5;
+      border-radius: 12px;
+      background: #e8f2ec;
+      color: var(--green);
+      font-size: clamp(11px, 1vw, 14px);
+      font-weight: 750;
+    }
+    .approval b { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 50%; background: var(--forest); color: #fff; }
+
+    .deliverables { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+    .deliverable { display: flex; align-items: center; gap: 13px; padding: 14px; border: 1px solid var(--line); border-radius: 13px; background: var(--white); }
+    .deliverable b { display: grid; width: 32px; height: 32px; flex: 0 0 auto; place-items: center; border-radius: 10px; background: var(--mint); color: var(--green); }
+    .deliverable span { font-size: clamp(11px, 1vw, 14px); font-weight: 700; line-height: 1.35; }
+    .conclusion { display: flex; align-items: center; gap: 18px; margin-top: 15px; padding: 19px 22px; border-radius: 15px; background: var(--green); color: var(--white); }
+    .conclusion .stamp { display: grid; width: 43px; height: 43px; flex: 0 0 auto; place-items: center; border: 1px solid #ffffff50; border-radius: 50%; color: #d6ebde; font-size: 20px; }
+    .conclusion strong { display: block; margin-bottom: 3px; font-size: clamp(14px, 1.35vw, 20px); }
+    .conclusion span { color: #d4e7dc; font-size: clamp(10px, .9vw, 13px); }
+
+    .controls {
+      position: fixed;
+      z-index: 5;
+      right: 24px;
+      bottom: 18px;
+      left: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      max-width: 1440px;
+      margin: auto;
+      color: #465a51;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .control-group { display: flex; align-items: center; gap: 8px; }
+    .control-btn {
+      display: grid;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border: 1px solid #ced8d2;
+      border-radius: 12px;
+      background: #fff;
+      color: var(--green);
+      cursor: pointer;
+    }
+    .control-btn:hover:not(:disabled) { border-color: var(--forest); background: #edf5f0; }
+    .control-btn:focus-visible { outline: 3px solid #2c6e4966; outline-offset: 2px; }
+    .control-btn:disabled { cursor: not-allowed; opacity: .4; }
+    .progress { position: absolute; right: 0; bottom: -18px; left: 0; height: 3px; overflow: hidden; border-radius: 9px; background: #cfd9d3; }
+    .progress span { display: block; width: 10%; height: 100%; border-radius: inherit; background: var(--forest); transition: width .25s ease; }
+    .key-hint { color: #75847d; font-weight: 550; }
+
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(8px) scale(.995); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    @media (max-width: 760px) {
+      body { overflow: auto; }
+      .deck { display: block; height: auto; min-height: 100%; padding: 12px 12px 74px; }
+      .slide { position: relative; width: 100%; height: auto; min-height: max(calc(100dvh - 90px), 340px); aspect-ratio: auto; overflow: visible; margin: 0 auto 15px; padding: 27px 22px; border-radius: 17px; }
+      .slide:not(.active) { display: none; }
+      .slide.active { display: flex; }
+      .four, .three { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .resource-layout { grid-template-columns: 1fr 1fr; }
+      .resource-layout .budget { grid-column: 1 / -1; min-height: 145px; }
+      .wbs { grid-template-columns: 62px 1fr; }
+      .wbs > div:nth-child(3n) { display: none; }
+      .wbs > div:nth-last-child(-n+2) { border-bottom: 0; }
+      .timeline { grid-template-columns: 85px repeat(4, 1fr); gap: 8px 5px; }
+      .milestone-strip { grid-template-columns: repeat(2, 1fr); }
+      .controls { right: 12px; bottom: 10px; left: 12px; }
+      .key-hint { display: none; }
+    }
+
+    @media (max-height: 520px) and (min-width: 761px) {
+      body { overflow: auto; }
+      .deck { display: block; height: auto; min-height: 100%; padding: 12px 26px 72px; }
+      .slide { position: relative; width: min(calc(100vw - 52px), 1440px); height: auto; min-height: calc(100vh - 100px); aspect-ratio: auto; overflow: visible; margin: 0 auto 15px; padding: clamp(14px, 4vh, 22px); border-radius: 14px; }
+      .slide:not(.active) { display: none; }
+      .slide.active { display: flex; }
+      .slide-head { margin-bottom: 10px; }
+      .slide-head .eyebrow { margin-bottom: 5px; }
+      h1 { margin-bottom: 8px; font-size: clamp(22px, 7vh, 34px); }
+      h2 { font-size: clamp(22px, 6vh, 30px); }
+      h3 { margin-bottom: 5px; font-size: clamp(12px, 3.4vh, 16px); }
+      p, li { font-size: clamp(10px, 2.8vh, 13px); line-height: 1.35; }
+      .cover .eyebrow { margin-bottom: 10px; }
+      .cover-mark { display: none; }
+      .cover-meta { margin-top: 8px; padding: 7px 11px; font-size: 10px; }
+      .footer { padding-top: 7px; font-size: 9px; }
+      .card { padding: 10px; border-radius: 11px; }
+      .number { width: 26px; height: 26px; margin-bottom: 6px; border-radius: 8px; font-size: 11px; }
+      .metric { padding: 10px; }
+      .metric strong { font-size: clamp(18px, 5vh, 27px); }
+      .metric span { margin-top: 4px; font-size: 9px; }
+      .timeline { gap: 5px 8px; }
+      .track { height: 27px; }
+      .milestone-strip { margin-top: 9px; }
+      .milestone { padding: 7px 9px; }
+      th, td { padding: 8px; font-size: 10px; }
+      .controls { bottom: 8px; }
+      .control-btn { width: 30px; height: 30px; }
+    }
+
+    @media (max-width: 450px) {
+      .two, .three, .four, .communication, .deliverables, .resource-layout { grid-template-columns: 1fr; }
+      .resource-layout .budget { grid-column: auto; }
+      .scope-card { min-height: 0; }
+      .wbs { grid-template-columns: 55px 1fr; }
+      .wbs > div { padding: 10px; }
+      .timeline { grid-template-columns: 75px repeat(4, 1fr); }
+      .timeline .head { font-size: 8px; }
+      .bar { padding: 0 4px; font-size: 8px; }
+      .milestone-strip { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+    }
+
+    @media print {
+      @page { size: 13.333in 7.5in; margin: 0; }
+      html, body { width: auto; height: auto; overflow: visible; background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .deck { display: block; width: auto; height: auto; padding: 0; }
+      .slide, .slide:not(.active), .slide.active {
+        position: relative;
+        display: flex !important;
+        width: 13.333in;
+        height: 7.5in;
+        aspect-ratio: 16 / 9;
+        margin: 0;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+        animation: none;
+      }
+      .slide + .slide { break-before: page; page-break-before: always; }
+      .controls { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck" aria-label="Bài trình bày kế hoạch dự án SmartKitchen">
+    <section class="slide cover active" aria-label="Slide 1: Tổng quan dự án">
+      <div class="cover-copy">
+        <div class="cover-mark" aria-hidden="true">⌂</div>
+        <p class="eyebrow">Capstone 1 · 2026—2027</p>
+        <h1>Dự Án SmartKitchen</h1>
+        <p class="subtitle">Hệ Sinh Thái Quản Lý Bếp Thông Minh</p>
+        <div class="cover-meta"><span>Nhóm 5 thành viên</span><span aria-hidden="true">·</span><span>Trường Đại Học Duy Tân (DTU)</span></div>
+      </div>
+      <div class="footer"><span>Kế hoạch phát triển dự án</span><span>01 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 2: Mục tiêu dự án">
+      <header class="slide-head">
+        <p class="eyebrow">01 · Định hướng</p>
+        <h2>Mục tiêu dự án</h2>
+        <p>Ba trụ cột sản phẩm, cùng các chỉ số mục tiêu để đo lường chất lượng.</p>
+      </header>
+      <div class="grid four" style="flex:1">
+        <article class="card accent-card">
+          <div class="number">01</div>
+          <h3>Backend mở rộng</h3>
+          <p class="muted">Microservices độc lập, có ranh giới dịch vụ rõ ràng và dễ mở rộng.</p>
+        </article>
+        <article class="card accent-card">
+          <div class="number">02</div>
+          <h3>Xác thực an toàn</h3>
+          <p class="muted">Email OTP, JWT và API Gateway làm điểm vào thống nhất.</p>
+        </article>
+        <article class="card accent-card">
+          <div class="number">03</div>
+          <h3>Trải nghiệm mobile</h3>
+          <p class="muted">Quản lý thực phẩm và thực đơn gia đình trên Android / iOS.</p>
+        </article>
+        <article class="metric">
+          <span class="tag" style="background:#ffffff20;color:#fff">CHỈ SỐ MỤC TIÊU</span>
+          <strong>100%</strong><span>API đi qua Gateway · mục tiêu</span>
+          <strong style="margin-top:15px">&lt; 200ms</strong><span>Thời gian phản hồi mục tiêu</span>
+          <strong style="margin-top:15px">&gt; 80%</strong><span>Độ phủ kiểm thử mục tiêu</span>
+        </article>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>02 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 3: Phạm vi dự án">
+      <header class="slide-head">
+        <p class="eyebrow">02 · Ranh giới dự án</p>
+        <h2>Phạm vi dự án</h2>
+        <p>Tập trung vào nền tảng số và tích hợp dịch vụ; giới hạn rõ các phần chưa triển khai thực tế.</p>
+      </header>
+      <div class="grid two" style="flex:1">
+        <article class="card scope-card accent-card">
+          <h3><span class="scope-icon">✓</span> Trong phạm vi</h3>
+          <ul>
+            <li>Microservices: Auth, Family, Inventory, Recipe, Meal-Diary, Shopping-List, Payment.</li>
+            <li>API Gateway: định tuyến và xác thực JWT.</li>
+            <li>Ứng dụng React Native / Expo cho Android và iOS.</li>
+            <li>Docker Compose cho môi trường phát triển và tích hợp.</li>
+          </ul>
+        </article>
+        <article class="card scope-card out">
+          <h3><span class="scope-icon">↗</span> Ngoài phạm vi</h3>
+          <ul>
+            <li>Thiết bị IoT phần cứng thực tế — chỉ mô phỏng API.</li>
+            <li>Thanh toán trực tiếp qua ngân hàng nội địa — chỉ dùng Payment Sandbox.</li>
+          </ul>
+          <p class="small muted" style="margin-top:22px">Ưu tiên hoàn thiện luồng phần mềm và tích hợp an toàn.</p>
+        </article>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>03 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 4: Cơ cấu nhóm">
+      <header class="slide-head">
+        <p class="eyebrow">03 · Tổ chức nhóm</p>
+        <h2>Cơ cấu nhóm 5 thành viên</h2>
+        <p>Phân công theo năng lực chuyên môn, phối hợp qua API contract và Pull Request.</p>
+      </header>
+      <div class="grid three" style="flex:1">
+        <article class="card role-card">
+          <span class="tag">LEAD · BACKEND</span>
+          <h3 class="member">Châu Y Kazan</h3>
+          <p>API Gateway · Auth · OTP · Bảo mật · Tích hợp hệ thống</p>
+        </article>
+        <article class="card role-card">
+          <span class="tag amber">DEVOPS · ARCHITECT</span>
+          <h3>Member 2</h3>
+          <p>Docker · CI/CD · Prisma Migrations · Hạ tầng dữ liệu</p>
+        </article>
+        <article class="card role-card">
+          <span class="tag">MOBILE LEAD</span>
+          <h3>Member 3</h3>
+          <p>React Native · UI/UX · State Management · Session / Navigation</p>
+        </article>
+        <article class="card role-card">
+          <span class="tag">BACKEND · INVENTORY</span>
+          <h3>Member 4</h3>
+          <p>Inventory Service · Shopping List · Đồng bộ dữ liệu</p>
+        </article>
+        <article class="card role-card">
+          <span class="tag amber">BACKEND · QA</span>
+          <h3>Member 5</h3>
+          <p>Recipe · Meal-Diary · Kiểm thử tự động</p>
+        </article>
+        <article class="card role-card" style="justify-content:center;background:#e8f0eb">
+          <span class="tag">CÁCH PHỐI HỢP</span>
+          <h3>Contract trước · Tích hợp sớm</h3>
+          <p>Thống nhất schema, API và tiêu chí nghiệm thu trước khi ghép dịch vụ.</p>
+        </article>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>04 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 5: Cấu trúc phân rã công việc">
+      <header class="slide-head">
+        <p class="eyebrow">04 · Work Breakdown Structure</p>
+        <h2>WBS · 4 giai đoạn triển khai</h2>
+        <p>Phân rã theo đầu ra để theo dõi tiến độ và bàn giao theo từng chặng.</p>
+      </header>
+      <div class="wbs" role="table" aria-label="Bảng phân rã công việc">
+        <div class="wbs-head">Giai đoạn</div><div class="wbs-head">Trọng tâm</div><div class="wbs-head">Đầu ra chính</div>
+        <div class="phase">01</div><div><b>Architecture &amp; Setup</b><br><span class="muted">Monorepo · hạ tầng · dữ liệu</span></div><div class="task-list">Khởi tạo Monorepo · Dockerize 7 services · PostgreSQL</div>
+        <div class="phase">02</div><div><b>Core Services &amp; Auth</b><br><span class="muted">API · xác thực · định tuyến</span></div><div class="task-list">Auth OTP/JWT · Gateway prefix routing · Core APIs</div>
+        <div class="phase">03</div><div><b>Mobile &amp; Integration</b><br><span class="muted">App · session · luồng gia đình</span></div><div class="task-list">Kết nối Gateway · Đăng ký/OTP · Quản lý gia đình</div>
+        <div class="phase">04</div><div><b>Testing &amp; Deployment</b><br><span class="muted">Chất lượng · phát hành · demo</span></div><div class="task-list">Integration tests · sửa lỗi · CI/CD · Demo cuối kỳ</div>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>05 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 6: Lịch trình và mốc quan trọng">
+      <header class="slide-head">
+        <p class="eyebrow">05 · Lịch trình</p>
+        <h2>Timeline &amp; Milestones</h2>
+        <p>Kế hoạch 8 tuần theo 4 Sprint · Sprint 3 là giai đoạn hiện tại trong kế hoạch.</p>
+      </header>
+      <div class="timeline" role="table" aria-label="Timeline Gantt theo Sprint">
+        <div></div><div class="head">Tuần 1—2</div><div class="head">Tuần 3—4</div><div class="head">Tuần 5—6</div><div class="head">Tuần 7—8</div>
+        <div class="sprint-label">Sprint 1</div><div class="track"><span class="bar s1">Hạ tầng · Schema</span></div><div class="track"></div><div class="track"></div><div class="track"></div>
+        <div class="sprint-label">Sprint 2</div><div class="track"></div><div class="track"><span class="bar s2">Core APIs · Wireframe</span></div><div class="track"></div><div class="track"></div>
+        <div class="sprint-label">Sprint 3 <span class="tag" style="margin-left:5px">CURRENT</span></div><div class="track"></div><div class="track"></div><div class="track"><span class="bar s3">OTP · Docker · Gateway</span></div><div class="track"></div>
+        <div class="sprint-label">Sprint 4</div><div class="track"></div><div class="track"></div><div class="track"></div><div class="track"><span class="bar s4">E2E · Tối ưu · Bàn giao</span></div>
+      </div>
+      <div class="milestone-strip">
+        <div class="milestone"><b>S1 · Nền tảng</b><span>Monorepo, Docker, Prisma</span></div>
+        <div class="milestone"><b>S2 · Core</b><span>Inventory / Recipe APIs</span></div>
+        <div class="milestone"><b>S3 · Tích hợp</b><span>Email OTP, non-root, routing</span></div>
+        <div class="milestone"><b>S4 · Nghiệm thu</b><span>E2E, hiệu năng, bàn giao</span></div>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>06 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 7: Nguồn lực và ngân sách">
+      <header class="slide-head">
+        <p class="eyebrow">06 · Nguồn lực</p>
+        <h2>Resource &amp; Budget Plan</h2>
+        <p>Ưu tiên công cụ sẵn có, hạ tầng miễn phí và thời gian nhóm có thể phân bổ.</p>
+      </header>
+      <div class="resource-layout">
+        <article class="card resource-card">
+          <div><span class="tag">NHÂN LỰC</span><h3 style="margin-top:12px">5 kỹ sư · 750 giờ</h3><p class="muted">150 giờ / người cho toàn dự án</p></div>
+          <div class="pills"><span class="pill">Backend</span><span class="pill">DevOps</span><span class="pill">Mobile</span><span class="pill">QA</span></div>
+        </article>
+        <article class="card resource-card">
+          <div><span class="tag">CÔNG NGHỆ &amp; CÔNG CỤ</span><h3 style="margin-top:12px">Stack dự án</h3></div>
+          <div class="pills">
+            <span class="pill">Node.js</span><span class="pill">Express</span><span class="pill">TypeScript</span><span class="pill">Prisma</span><span class="pill">PostgreSQL</span><span class="pill">Docker</span><span class="pill">React Native</span><span class="pill">pnpm</span><span class="pill">VS Code</span><span class="pill">GitHub</span><span class="pill">Postman</span><span class="pill">Figma</span>
+          </div>
+        </article>
+        <article class="card budget">
+          <span class="tag" style="background:#ffffff20;color:#fff">NGÂN SÁCH HẠ TẦNG</span>
+          <strong>$0</strong>
+          <p>Docker local · GitHub Actions miễn phí · Gmail SMTP free tier</p>
+        </article>
+      </div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>07 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 8: Quản lý rủi ro">
+      <header class="slide-head">
+        <p class="eyebrow">07 · Quản trị rủi ro</p>
+        <h2>Risk Management</h2>
+        <p>Ưu tiên phòng ngừa sớm ở điểm giao giữa nhánh code, hạ tầng và tích hợp.</p>
+      </header>
+      <table aria-label="Ma trận rủi ro và phương án xử lý">
+        <thead><tr><th>Rủi ro</th><th>Mức độ</th><th>Phương án xử lý</th></tr></thead>
+        <tbody>
+          <tr><td>Git conflict / code drift khi merge</td><td><span class="tag red">CAO</span></td><td>Stash công việc chưa commit · rebase / đồng bộ main · review PR kỹ</td></tr>
+          <tr><td>Docker BOM / chạy bằng root</td><td><span class="tag amber">TRUNG BÌNH</span></td><td>Chuẩn hóa encoding · `USER node` · `COPY --chown=node:node`</td></tr>
+          <tr><td>Gateway 404 / lỗi CORS</td><td><span class="tag red">CAO</span></td><td>Kiểm thử prefix routing · hỗ trợ root và `/api/auth` · cấu hình CORS</td></tr>
+          <tr><td>Chậm tiến độ Sprint</td><td><span class="tag amber">TRUNG BÌNH</span></td><td>Daily Scrum 15 phút · theo dõi task / blocker trên GitHub Projects</td></tr>
+        </tbody>
+      </table>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>08 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 9: Giao tiếp và theo dõi">
+      <header class="slide-head">
+        <p class="eyebrow">08 · Nhịp làm việc</p>
+        <h2>Communication &amp; Monitoring</h2>
+        <p>Trao đổi nhanh hằng ngày; quyết định và chất lượng được lưu vết qua GitHub.</p>
+      </header>
+      <div class="communication">
+        <article class="card comms-card"><div class="number">↔</div><div><span class="tag">KÊNH GIAO TIẾP</span><h3 style="margin-top:9px">Discord / Zalo</h3><p>Trao đổi hằng ngày, xử lý blocker và đồng bộ ngắn.</p></div></article>
+        <article class="card comms-card"><div class="number">◎</div><div><span class="tag">QUẢN LÝ CÔNG VIỆC</span><h3 style="margin-top:9px">GitHub Issues</h3><p>Ghi nhận bug, task, người phụ trách và trạng thái.</p></div></article>
+        <article class="card comms-card"><div class="number">15</div><div><span class="tag">TẦN SUẤT HỌP</span><h3 style="margin-top:9px">Daily Standup · 15 phút</h3><p>Online mỗi ngày; Sprint Review &amp; Planning vào cuối Sprint.</p></div></article>
+        <article class="card comms-card"><div class="number">CI</div><div><span class="tag">THEO DÕI CHẤT LƯỢNG</span><h3 style="margin-top:9px">Pull Request · CI</h3><p>Review diff, theo dõi CI build và kiểm tra trước khi tích hợp.</p></div></article>
+      </div>
+      <div class="approval"><b>✓</b><span>Quy ước nhóm: yêu cầu ít nhất 1 phê duyệt trước khi merge vào main.</span></div>
+      <div class="footer"><span>SmartKitchen · Kế hoạch dự án</span><span>09 / 10</span></div>
+    </section>
+
+    <section class="slide content" aria-label="Slide 10: Bàn giao và kết luận">
+      <header class="slide-head">
+        <p class="eyebrow">09 · Đầu ra dự án</p>
+        <h2>Deliverables &amp; Conclusion</h2>
+        <p>Đầu ra hướng tới một hệ thống có thể chạy, kiểm thử và bàn giao lại cho nhóm.</p>
+      </header>
+      <div class="deliverables">
+        <div class="deliverable"><b>01</b><span>Mã nguồn Monorepo trên GitHub · cấu trúc rõ ràng</span></div>
+        <div class="deliverable"><b>02</b><span>7 Microservices chạy bằng Docker Compose</span></div>
+        <div class="deliverable"><b>03</b><span>Mobile App / APK với luồng Auth và OTP</span></div>
+        <div class="deliverable"><b>04</b><span>Tài liệu API · Database ERD · hướng dẫn cài đặt</span></div>
+      </div>
+      <div class="conclusion">
+        <div class="stamp" aria-hidden="true">✓</div>
+        <div><strong>Đang theo kế hoạch Sprint 3</strong><span>Tiếp tục hoàn thiện tích hợp, kiểm thử toàn diện và chuẩn bị nghiệm thu.</span></div>
+      </div>
+      <div class="footer"><span>SmartKitchen · Capstone 1 · DTU</span><span>10 / 10</span></div>
+    </section>
+  </main>
+
+  <nav class="controls" aria-label="Điều khiển slide">
+    <div class="control-group">
+      <button class="control-btn" id="prev" type="button" aria-label="Slide trước" title="Slide trước (←)">←</button>
+      <button class="control-btn" id="next" type="button" aria-label="Slide tiếp theo" title="Slide tiếp theo (→)">→</button>
+      <span id="counter" aria-live="polite">01 / 10</span>
+    </div>
+    <span class="key-hint">Dùng ← → hoặc Space để chuyển slide · Nhấn F để toàn màn hình · In để lưu PDF</span>
+    <div class="progress" aria-hidden="true"><span id="progress"></span></div>
+  </nav>
+
+  <script>
+    (() => {
+      const slides = Array.from(document.querySelectorAll(".slide"));
+      const previous = document.getElementById("prev");
+      const next = document.getElementById("next");
+      const counter = document.getElementById("counter");
+      const progress = document.getElementById("progress");
+      let current = 0;
+
+      const show = (index) => {
+        current = Math.max(0, Math.min(slides.length - 1, index));
+        slides.forEach((slide, i) => {
+          slide.classList.toggle("active", i === current);
+          slide.setAttribute("aria-hidden", String(i !== current));
+        });
+        counter.textContent = `${String(current + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}`;
+        progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+        previous.disabled = current === 0;
+        next.disabled = current === slides.length - 1;
+        history.replaceState(null, "", `#slide-${current + 1}`);
+      };
+
+      previous.addEventListener("click", () => show(current - 1));
+      next.addEventListener("click", () => show(current + 1));
+      document.addEventListener("keydown", (event) => {
+        if (event.altKey || event.ctrlKey || event.metaKey) return;
+        if (["ArrowRight", "PageDown", " "].includes(event.key)) {
+          event.preventDefault();
+          show(current + 1);
+        } else if (["ArrowLeft", "PageUp"].includes(event.key)) {
+          event.preventDefault();
+          show(current - 1);
+        } else if (event.key === "Home") {
+          show(0);
+        } else if (event.key === "End") {
+          show(slides.length - 1);
+        } else if (event.key.toLowerCase() === "f") {
+          if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+          else document.exitFullscreen?.();
+        }
+      });
+
+      const initialSlide = Number(location.hash.match(/^#slide-(\d+)$/)?.[1]);
+      show(Number.isInteger(initialSlide) && initialSlide > 0 ? initialSlide - 1 : 0);
+    })();
+  </script>
+</body>
+</html>
