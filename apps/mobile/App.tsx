@@ -74,6 +74,15 @@ const apiBaseUrl =
     ? "http://10.0.2.2:4000"
     : "http://localhost:4000");
 
+function NoticeBanner({ message }: { message: string }): React.JSX.Element {
+  const { width } = useWindowDimensions();
+  return (
+    <View pointerEvents="none" style={styles.authNoticeContainer}>
+      <Text accessibilityRole="alert" style={[styles.authNotice, { maxWidth: Math.min(480, width - spacing.md * 2) }]}>{message}</Text>
+    </View>
+  );
+}
+
 export function resolveNutritionUserId(
   sessionUserId?: string | null,
 ): string | undefined {
@@ -113,6 +122,13 @@ function AppContent(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [notice]);
 
+  const withNotice = (screen: React.JSX.Element): React.JSX.Element => (
+    <View style={styles.container}>
+      {screen}
+      {!!notice && <NoticeBanner message={notice} />}
+    </View>
+  );
+
   if (!session.ready) {
     return (
       <SafeAreaView style={styles.loading as any}>
@@ -144,10 +160,9 @@ function AppContent(): React.JSX.Element {
 
   if (!session.user) {
     if (authView === "otp" && session.pendingVerificationEmail) {
-      return (
+      return withNotice(
         <OtpVerificationScreen
           email={session.pendingVerificationEmail}
-          notice={notice}
           initialCooldownSeconds={otpInitialCooldown}
           onVerify={async (code) => {
             await session.verifyOtp(code);
@@ -162,13 +177,13 @@ function AppContent(): React.JSX.Element {
       );
     }
     if (authView === "forgot") {
-      return <ForgotPasswordScreen onBack={() => setAuthView("login")} onSuccess={() => {
+      return withNotice(<ForgotPasswordScreen onBack={() => setAuthView("login")} onSuccess={() => {
         setNotice("Đổi mật khẩu thành công. Vui lòng đăng nhập lại.");
         setAuthView("login");
-      }} />;
+      }} />);
     }
     if (authView === "register") {
-      return (
+      return withNotice(
         <RegisterScreen
           navigation={{ navigate: () => setAuthView("login") }}
           onSubmit={async (fullName, email, password) => {
@@ -180,12 +195,11 @@ function AppContent(): React.JSX.Element {
         />
       );
     }
-    return (
+    return withNotice(
       <LoginScreen
         navigation={{
           navigate: () => { setNotice(null); setAuthView("register"); },
         }}
-        notice={notice}
         onSubmit={async (email, password) => {
           await session.signIn(email, password);
           setNotice("Đăng nhập thành công.");
@@ -257,11 +271,7 @@ function AppContent(): React.JSX.Element {
           </TouchableOpacity>
         </View>
       )}
-      {!!notice && (
-        <View pointerEvents="none" style={styles.authNoticeContainer}>
-          <Text accessibilityRole="alert" style={styles.authNotice}>{notice}</Text>
-        </View>
-      )}
+      {!!notice && <NoticeBanner message={notice} />}
 
       <Modal transparent animationType="fade" visible={menuOpen && !isAdmin} onRequestClose={() => setMenuOpen(false)}>
         <View style={styles.sheetOverlay}>
@@ -366,7 +376,7 @@ const styles = StyleSheet.create({
     left: spacing.md,
     right: spacing.md,
     zIndex: 20,
-    alignItems: "center",
+    alignItems: "flex-end",
   },
   authNotice: {
     ...textStyles.bodySmall,
@@ -375,11 +385,10 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     color: "#20594F",
-    maxWidth: 480,
     overflow: "hidden",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    textAlign: "center",
+    textAlign: "left",
   },
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },

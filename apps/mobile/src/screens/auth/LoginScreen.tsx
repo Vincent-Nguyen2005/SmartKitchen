@@ -22,7 +22,6 @@ type Props = {
   onSubmit?: (email: string, password: string) => Promise<void>;
   onVerificationRequired?: () => void;
   onForgotPassword?: () => void;
-  notice?: string | null;
 };
 
 export default function LoginScreen({
@@ -30,7 +29,6 @@ export default function LoginScreen({
   onSubmit,
   onVerificationRequired,
   onForgotPassword,
-  notice,
 }: Props): React.JSX.Element {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -106,7 +104,6 @@ export default function LoginScreen({
           <Pressable accessibilityRole="button" onPress={onForgotPassword}>
             <Text style={styles.forgotPassword}>Quên mật khẩu?</Text>
           </Pressable>
-          {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
           {!!error && (
             <Text accessibilityRole="alert" style={styles.error}>
               {error}
@@ -144,7 +141,6 @@ export default function LoginScreen({
 
 const styles = StyleSheet.create({
   forgotPassword: { alignSelf: "flex-end", color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", paddingVertical: 12 },
-  notice: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, marginVertical: 8 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1 },
   content: { flexGrow: 1, justifyContent: "space-between", maxWidth: 560, padding: 24, width: "100%", alignSelf: "center" },

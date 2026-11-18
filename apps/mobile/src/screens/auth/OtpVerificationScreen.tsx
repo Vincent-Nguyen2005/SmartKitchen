@@ -16,7 +16,6 @@ import { colors, typography } from "../../theme";
 
 type Props = {
   email: string;
-  notice?: string | null;
   initialCooldownSeconds?: number;
   onVerify: (otpCode: string) => Promise<void>;
   onResend: () => Promise<void>;
@@ -25,7 +24,6 @@ type Props = {
 
 export default function OtpVerificationScreen({
   email,
-  notice,
   initialCooldownSeconds = 60,
   onVerify,
   onResend,
@@ -85,7 +83,6 @@ export default function OtpVerificationScreen({
             Mã 6 số cho{"\n"}
             <Text style={styles.email}>{email}</Text>
           </Text>
-          {!!notice && <Text accessibilityRole="alert" style={styles.notice}>{notice}</Text>}
           <TextInput
             accessibilityLabel="Mã xác minh email gồm 6 chữ số"
             autoComplete="one-time-code"
@@ -118,7 +115,6 @@ export default function OtpVerificationScreen({
 }
 
 const styles = StyleSheet.create({
-  notice: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, marginBottom: 12 },
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1 },
   content: { alignSelf: "center", flexGrow: 1, justifyContent: "center", maxWidth: 560, padding: 24, width: "100%" },
