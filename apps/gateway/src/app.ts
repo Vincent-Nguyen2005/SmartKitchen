@@ -175,6 +175,10 @@ export const createApp = (options: AppOptions = {}): express.Express => {
   for (const route of gatewayRoutes) {
     app.use(route.prefix, createServiceProxy(route));
   }
+  const nutritionRoute = gatewayRoutes.find((route) => route.prefix === "/api/nutrition");
+  if (nutritionRoute) {
+    app.use("/api/nutrition-profile", createServiceProxy(nutritionRoute));
+  }
   const menuRoute = gatewayRoutes.find((route) => route.prefix === "/api/menus");
   if (menuRoute) {
     app.use("/api/menu", createServiceProxy(menuRoute));
