@@ -26,7 +26,7 @@ beforeAll(async () => {
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => res.json({ body: Buffer.concat(chunks).toString("utf8"), contentType: req.headers["content-type"], requestId: req.headers["x-request-id"] }));
   });
-  app.use((req, res) => res.json({ path: req.originalUrl, requestId: req.headers["x-request-id"] ?? null }));
+  app.use((req, res) => res.json({ method: req.method, path: req.originalUrl, requestId: req.headers["x-request-id"] ?? null }));
   upstream = await listen(app);
   upstreamUrl = urlOf(upstream);
   const hanging = express();
@@ -83,6 +83,20 @@ describe("proxying", () => {
     const response = await request(createApp({ jwtSecret: null })).post("/api/menu/generate").send({ periodType: "DAY" });
     expect(response.status).toBe(200);
     expect(response.body.path).toBe("/generate");
+  });
+
+  it("forwards GET, POST, and PUT on the nutrition profile alias to nutrition-service", async () => {
+    const app = createApp({ jwtSecret: null });
+    const getResponse = await request(app).get("/api/nutrition-profile");
+    const postResponse = await request(app).post("/api/nutrition-profile").send({ height: 170 });
+    const putResponse = await request(app).put("/api/nutrition-profile").send({ height: 170 });
+
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.body).toMatchObject({ method: "GET", path: "/" });
+    expect(postResponse.status).toBe(200);
+    expect(postResponse.body).toMatchObject({ method: "POST", path: "/" });
+    expect(putResponse.status).toBe(200);
+    expect(putResponse.body).toMatchObject({ method: "PUT", path: "/" });
   });
 
   it("propagates an incoming x-request-id to the service and the response", async () => {
