@@ -109,6 +109,7 @@ function AppContent(): React.JSX.Element {
   // Derived (not synced in an effect) so no other tab renders for a frame after the role changes.
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
+  const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
 
   // Register this device's Expo push token once per signed-in user; fails silently (Huy, #61).
   useEffect(() => {
@@ -245,17 +246,19 @@ function AppContent(): React.JSX.Element {
         <View style={[styles.tabBar, styles.memberTabRow]}>
           {memberTabs.map(({ key, label, icon: Icon }) => {
             const active = menuKeys.has(key) ? menuKeys.has(activeTab) : activeTab === key;
+            const displayedTab = key === "menu" ? selectedMenuTab : { label, icon: Icon };
+            const DisplayedIcon = displayedTab.icon;
             return (
               <TouchableOpacity
-                accessibilityLabel={label}
+                accessibilityLabel={key === "menu" ? `Mở danh mục ${displayedTab.label}` : label}
                 accessibilityRole={key === "menu" ? "button" : "tab"}
                 accessibilityState={key === "menu" ? { expanded: menuOpen } : { selected: active }}
                 key={key}
                 onPress={() => { if (key === "menu") setMenuOpen(true); else setTab(key); }}
                 style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
               >
-                <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
-                <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
+                <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{displayedTab.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -285,9 +288,11 @@ function AppContent(): React.JSX.Element {
             </View>
             {menuTabs.map(({ key, label, icon: Icon }) => (
               <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" key={key}
-                onPress={() => { setTab(key); setMenuOpen(false); }} style={styles.sheetItem}>
+                accessibilityState={{ selected: activeTab === key }}
+                onPress={() => { setTab(key); setMenuOpen(false); }}
+                style={[styles.sheetItem, activeTab === key && styles.sheetItemActive]}>
                 <AppIcon icon={Icon} size="md" color={colors.primary} />
-                <Text style={styles.sheetItemText}>{label}</Text>
+                <Text style={[styles.sheetItemText, activeTab === key && styles.sheetItemTextActive]}>{label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -440,7 +445,9 @@ const styles = StyleSheet.create({
   sheetTitle: { ...textStyles.subheading, flex: 1 },
   sheetClose: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   sheetItem: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  sheetItemActive: { backgroundColor: colors.background, borderRadius: 12 },
   sheetItemText: { ...textStyles.body, color: colors.text },
+  sheetItemTextActive: { color: colors.primary, fontWeight: "700" },
   sheetSignOutText: { ...textStyles.body, color: colors.danger },
   profileLabel: { ...textStyles.caption, marginTop: spacing.sm },
   profileValue: { ...textStyles.body, marginBottom: spacing.xs },
