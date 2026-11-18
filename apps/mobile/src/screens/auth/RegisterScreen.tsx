@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Eye, EyeOff } from "lucide-react-native";
+import { ArrowLeft, Eye, EyeOff } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   ActivityIndicator,
@@ -13,7 +13,7 @@ import {
   View,
 } from "react-native";
 import { authErrorMessage } from "./authError";
-import { colors, typography } from "../../theme";
+import { AppIcon, colors, typography } from "../../theme";
 
 type AuthNavigation = { navigate: (screen: "Login") => void };
 type Props = {
@@ -69,8 +69,9 @@ export default function RegisterScreen({
       >
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
-          <Pressable onPress={() => navigation?.navigate("Login")}>
-            <Text style={styles.back}>Đăng nhập</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đăng nhập" onPress={() => navigation?.navigate("Login")} style={styles.backButton}>
+            <AppIcon icon={ArrowLeft} color="#2F6B5F" />
+            <Text style={styles.backText}>Quay lại</Text>
           </Pressable>
           <Text style={styles.title}>Đăng ký</Text>
           <TextInput
@@ -176,8 +177,9 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#F7F8F4" },
   container: { flex: 1 },
   content: { alignSelf: "center", flexGrow: 1, maxWidth: 560, padding: 24, width: "100%" },
-  back: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700", marginBottom: 28 },
-  title: { ...typography.pageTitle, color: colors.text, marginBottom: 24 },
+  backButton: { alignItems: "center", alignSelf: "flex-start", backgroundColor: "#FFFFFF", borderColor: "#DCE3DE", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 8, minHeight: 44, paddingHorizontal: 12 },
+  backText: { color: "#2F6B5F", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
+  title: { ...typography.pageTitle, color: colors.text, marginBottom: 24, marginTop: 30 },
   input: {
     backgroundColor: "#FFFFFF",
     borderColor: "#DCE3DE",
