@@ -3,6 +3,8 @@ import {
   Archive,
   Bell,
   BookOpen,
+  Check,
+  ChevronDown,
   CircleUserRound,
   LogOut,
   Salad,
@@ -257,7 +259,14 @@ function AppContent(): React.JSX.Element {
                 onPress={() => { if (key === "menu") setMenuOpen(true); else setTab(key); }}
                 style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
               >
-                <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                {key === "menu" ? (
+                  <View style={styles.menuTabIcons}>
+                    <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                    <AppIcon icon={ChevronDown} size="sm" color={active ? colors.primary : colors.muted} />
+                  </View>
+                ) : (
+                  <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                )}
                 <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{displayedTab.label}</Text>
               </TouchableOpacity>
             );
@@ -279,22 +288,28 @@ function AppContent(): React.JSX.Element {
       <Modal transparent animationType="fade" visible={menuOpen && !isAdmin} onRequestClose={() => setMenuOpen(false)}>
         <View style={styles.sheetOverlay}>
           <Pressable accessibilityLabel="Đóng danh mục thực đơn" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={StyleSheet.absoluteFill} />
-          <View accessibilityViewIsModal style={styles.sheetPanel}>
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Thực đơn</Text>
-              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={styles.sheetClose}>
+          <View accessibilityViewIsModal style={[styles.sheetPanel, styles.menuSheetPanel]}>
+            <View style={styles.menuSheetTop}>
+              <View style={styles.menuSheetHandle} />
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setMenuOpen(false)} style={[styles.sheetClose, styles.menuSheetClose]}>
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
-            {menuTabs.map(({ key, label, icon: Icon }) => (
-              <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" key={key}
-                accessibilityState={{ selected: activeTab === key }}
-                onPress={() => { setTab(key); setMenuOpen(false); }}
-                style={[styles.sheetItem, activeTab === key && styles.sheetItemActive]}>
-                <AppIcon icon={Icon} size="md" color={colors.primary} />
-                <Text style={[styles.sheetItemText, activeTab === key && styles.sheetItemTextActive]}>{label}</Text>
-              </TouchableOpacity>
-            ))}
+            {menuTabs.map(({ key, label, icon: Icon }) => {
+              const selected = activeTab === key;
+              return (
+                <TouchableOpacity accessibilityLabel={label} accessibilityRole="button" key={key}
+                  accessibilityState={{ selected }}
+                  onPress={() => { setTab(key); setMenuOpen(false); }}
+                  style={[styles.menuSheetItem, selected && styles.menuSheetItemActive]}>
+                  <View style={[styles.menuSheetIcon, selected && styles.menuSheetIconActive]}>
+                    <AppIcon icon={Icon} size="md" color={colors.primary} />
+                  </View>
+                  <Text style={[styles.sheetItemText, selected && styles.sheetItemTextActive]}>{label}</Text>
+                  {selected && <AppIcon icon={Check} size="sm" color={colors.primary} />}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
       </Modal>
@@ -430,6 +445,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tabTextActive: { color: colors.primary },
+  menuTabIcons: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   sheetPanel: {
     alignSelf: "center",
@@ -442,11 +458,28 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   sheetHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm },
+  menuSheetPanel: { paddingTop: spacing.xs, paddingBottom: spacing.lg },
+  menuSheetTop: { alignItems: "center", flexDirection: "row", justifyContent: "center", minHeight: touchTarget },
+  menuSheetClose: { position: "absolute", right: 0, top: 0 },
+  menuSheetHandle: { backgroundColor: colors.border, borderRadius: 3, height: 4, width: 36 },
+  menuSheetItem: {
+    alignItems: "center",
+    borderColor: colors.border,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    marginBottom: spacing.xs,
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+  },
+  menuSheetItemActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  menuSheetIcon: { alignItems: "center", justifyContent: "center", minHeight: 36, minWidth: 36 },
+  menuSheetIconActive: { backgroundColor: colors.surface, borderRadius: 10 },
   sheetTitle: { ...textStyles.subheading, flex: 1 },
   sheetClose: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   sheetItem: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.sm },
-  sheetItemActive: { backgroundColor: colors.background, borderRadius: 12 },
-  sheetItemText: { ...textStyles.body, color: colors.text },
+  sheetItemText: { ...textStyles.body, color: colors.text, flex: 1 },
   sheetItemTextActive: { color: colors.primary, fontWeight: "700" },
   sheetSignOutText: { ...textStyles.body, color: colors.danger },
   profileLabel: { ...textStyles.caption, marginTop: spacing.sm },
