@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   StyleSheet,
   View,
   useWindowDimensions,
 } from "react-native";
-import { CalendarDays, RefreshCw, Sparkles } from "lucide-react-native";
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, RefreshCw, Sparkles } from "lucide-react-native";
 import { AppIcon, AppText, breakpoints, colors, radius, spacing, touchTarget } from "../../theme";
 import { inventoryApi } from "../inventory/inventoryApi";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
@@ -60,7 +61,7 @@ function utcDate(year: number, month: number, day: number): Date {
 }
 
 function dateRange(period: PeriodType, now = new Date()): { startDate: string; endDate: string } {
-  const today = utcDate(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const today = utcDate(now.getFullYear(), now.getMonth(), now.getDate());
   if (period === "DAY") return { startDate: today.toISOString(), endDate: today.toISOString() };
   if (period === "WEEK") {
     const start = new Date(today);
@@ -75,8 +76,37 @@ function dateRange(period: PeriodType, now = new Date()): { startDate: string; e
   };
 }
 
-function dayOfWeek(date = new Date()): number {
+function dayOfWeek(date: Date): number {
   return ((date.getUTCDay() + 6) % 7) + 1;
+}
+
+function formatDate(date: Date): string {
+  return `${String(date.getUTCDate()).padStart(2, "0")}/${String(date.getUTCMonth() + 1).padStart(2, "0")}/${date.getUTCFullYear()}`;
+}
+
+function calendarDays(startDate: string, endDate: string): Date[] {
+  const days: Date[] = [];
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  while (current <= end) {
+    days.push(new Date(current));
+    current.setUTCDate(current.getUTCDate() + 1);
+  }
+  return days;
+}
+
+function shiftPeriod(date: Date, period: PeriodType, direction: -1 | 1): Date {
+  const shifted = new Date(date);
+  if (period === "DAY") shifted.setDate(shifted.getDate() + direction);
+  else if (period === "WEEK") shifted.setDate(shifted.getDate() + direction * 7);
+  else {
+    const day = shifted.getDate();
+    shifted.setDate(1);
+    shifted.setMonth(shifted.getMonth() + direction);
+    const lastDay = new Date(shifted.getFullYear(), shifted.getMonth() + 1, 0).getDate();
+    shifted.setDate(Math.min(day, lastDay));
+  }
+  return shifted;
 }
 
 export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: Props): React.JSX.Element {
@@ -84,6 +114,9 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
   const isWide = width >= breakpoints.wide;
   const horizontalPadding = width < 360 ? spacing.sm : isWide ? spacing.xl : spacing.lg;
   const [period, setPeriod] = useState<PeriodType>("DAY");
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [followToday, setFollowToday] = useState(true);
+  const [collapsedDates, setCollapsedDates] = useState<string[]>([]);
   const [menus, setMenus] = useState<MenuRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<"generate" | "refresh" | null>(null);
@@ -114,6 +147,15 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
     void loadMenus();
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!followToday) return;
+    const timer = setInterval(() => setSelectedDate(new Date()), 60_000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") setSelectedDate(new Date());
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [followToday]);
+
   const generate = async (): Promise<void> => {
     if (!accessToken || busy) return;
     setBusy("generate");
@@ -122,7 +164,7 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
     try {
       const result = await api.post<MenuRecord>("/api/menu/generate", {
         periodType: period,
-        ...dateRange(period),
+        ...dateRange(period, selectedDate),
       });
       setMenus((current) => [result, ...current.filter((menu) => menu.id !== result.id)]);
       setNotice("Đã tạo thực đơn gợi ý.");
@@ -175,14 +217,16 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
     }
   };
 
-  const menu = menus[0];
-  const todaysWeekday = dayOfWeek();
-  const items = (menu?.items ?? [])
-    .filter((item) => period !== "DAY" || item.dayOfWeek === todaysWeekday)
-    .sort((left, right) => left.dayOfWeek - right.dayOfWeek || mealOrder.indexOf(left.mealType) - mealOrder.indexOf(right.mealType));
-  const groupedItems = period === "DAY"
-    ? [[todaysWeekday, items] as const]
-    : [...new Set(items.map((item) => item.dayOfWeek))].map((weekday) => [weekday, items.filter((item) => item.dayOfWeek === weekday)] as const);
+  const range = dateRange(period, selectedDate);
+  const menu = menus.find((entry) => entry.periodType === period && entry.startDate.slice(0, 10) === range.startDate.slice(0, 10) && entry.endDate.slice(0, 10) === range.endDate.slice(0, 10));
+  const visibleDays = calendarDays(range.startDate, range.endDate).map((date) => ({
+    date,
+    key: date.toISOString().slice(0, 10),
+    items: (menu?.items ?? []).filter((item) => item.dayOfWeek === dayOfWeek(date))
+      .sort((left, right) => mealOrder.indexOf(left.mealType) - mealOrder.indexOf(right.mealType)),
+  }));
+  const daysWithMeals = visibleDays.filter((day) => day.items.length > 0);
+  const rangeLabel = period === "DAY" ? formatDate(visibleDays[0].date) : `${formatDate(visibleDays[0].date)} – ${formatDate(visibleDays[visibleDays.length - 1].date)}`;
   let scheduleContent: React.ReactNode;
   if (loading) {
     scheduleContent = (
@@ -198,21 +242,22 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
         <AppText variant="bodySmall" color={colors.muted}>Tạo gợi ý để bắt đầu lên lịch bữa ăn.</AppText>
       </View>
     );
-  } else if (items.length === 0) {
+  } else if (daysWithMeals.length === 0) {
     scheduleContent = (
       <View style={styles.emptyState}>
-        <AppText variant="bodySmall" color={colors.muted}>Chưa có món ăn cho ngày này.</AppText>
+        <AppText variant="bodySmall" color={colors.muted}>Chưa có món ăn trong khoảng ngày này.</AppText>
       </View>
     );
   } else {
     scheduleContent = (
-      <View style={[styles.mealList, isWide && period !== "DAY" && styles.mealListWide]}>
-        {groupedItems.map(([weekday, weekdayItems]) => (
-          <View key={weekday} style={[styles.weekdayGroup, isWide && period !== "DAY" && styles.weekdayGroupWide]}>
-            {period !== "DAY" && (
-              <AppText variant="label" style={styles.weekdayHeading}>{weekdayLabels[weekday - 1]}</AppText>
-            )}
-            {weekdayItems.map((item) => (
+      <View style={styles.mealList}>
+        {daysWithMeals.map(({ date, key, items: dayItems }) => (
+          <View key={key} style={styles.dayGroup}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`${weekdayLabels[dayOfWeek(date) - 1]}, ${formatDate(date)}, ${dayItems.length} món`} accessibilityState={{ expanded: !collapsedDates.includes(key) }} onPress={() => setCollapsedDates((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])} style={styles.dayHeading}>
+              <AppText variant="label" color={colors.primaryText}>{weekdayLabels[dayOfWeek(date) - 1]}, {formatDate(date)}</AppText>
+              <View style={styles.dayCount}><AppText variant="labelSmall" color={colors.primaryText}>{dayItems.length} món</AppText><AppIcon icon={collapsedDates.includes(key) ? ChevronDown : ChevronUp} size="sm" color={colors.primaryText} /></View>
+            </Pressable>
+            {!collapsedDates.includes(key) && dayItems.map((item) => (
               <View key={item.id} style={styles.mealRow}>
                 <View style={styles.mealMarker} />
                 <View style={styles.mealDetails}>
@@ -250,7 +295,7 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
               accessibilityRole="tab"
               accessibilityState={{ selected }}
               key={option.value}
-              onPress={() => setPeriod(option.value)}
+              onPress={() => { setPeriod(option.value); setCollapsedDates([]); }}
               style={[styles.periodTab, selected && styles.periodTabSelected]}
             >
               <AppText variant="labelSmall" color={selected ? colors.primaryText : colors.muted}>
@@ -260,6 +305,28 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
           );
         })}
       </View>
+
+      <View style={styles.periodNavigation}>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Lùi ${period === "DAY" ? "một ngày" : period === "WEEK" ? "một tuần" : "một tháng"}`} onPress={() => { setFollowToday(false); setSelectedDate((date) => shiftPeriod(date, period, -1)); setCollapsedDates([]); }} style={styles.navigationButton}>
+          <AppIcon icon={ChevronLeft} size="sm" color={colors.primary} />
+          <AppText variant="labelSmall" color={colors.primary}>Lùi</AppText>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Đang xem ${rangeLabel}. Về hôm nay`} onPress={() => { setSelectedDate(new Date()); setFollowToday(true); setCollapsedDates([]); }} style={styles.rangeButton}>
+          <AppText variant="labelSmall" color={colors.text} style={styles.rangeText}>{rangeLabel}</AppText>
+        </Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel={`Tiếp ${period === "DAY" ? "một ngày" : period === "WEEK" ? "một tuần" : "một tháng"}`} onPress={() => { setFollowToday(false); setSelectedDate((date) => shiftPeriod(date, period, 1)); setCollapsedDates([]); }} style={styles.navigationButton}>
+          <AppText variant="labelSmall" color={colors.primary}>Tiếp</AppText>
+          <AppIcon icon={ChevronRight} size="sm" color={colors.primary} />
+        </Pressable>
+      </View>
+
+      <View style={styles.sectionHeading}>
+        <AppText variant="heading">Lịch món ăn</AppText>
+        <Pressable accessibilityRole="button" accessibilityLabel="Tải lại thực đơn" onPress={() => void loadMenus()} style={styles.reloadButton}>
+          <AppIcon icon={RefreshCw} size="sm" color={colors.muted} />
+        </Pressable>
+      </View>
+      {scheduleContent}
 
       <View style={styles.actions}>
         <Pressable
@@ -314,14 +381,6 @@ export default function MenuScreen({ accessToken, familyId, onPaymentStarted }: 
       {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger} style={styles.message}>{error}</AppText>}
       {!!notice && <AppText accessibilityRole="status" variant="bodySmall" color={colors.success} style={styles.message}>{notice}</AppText>}
 
-      <View style={styles.sectionHeading}>
-        <AppText variant="heading">{period === "DAY" ? "Bữa ăn hôm nay" : "Lịch món trong tuần"}</AppText>
-        <Pressable accessibilityRole="button" accessibilityLabel="Tải lại thực đơn" onPress={() => void loadMenus()} style={styles.reloadButton}>
-          <AppIcon icon={RefreshCw} size="sm" color={colors.muted} />
-        </Pressable>
-      </View>
-
-      {scheduleContent}
     </ScrollView>
   );
 }
@@ -331,9 +390,13 @@ const styles = StyleSheet.create({
   headingRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, marginBottom: spacing.xl },
   headingIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.md, height: 48, justifyContent: "center", width: 48 },
   headingText: { flex: 1, gap: spacing.xs },
-  periodTabs: { backgroundColor: colors.border, borderRadius: radius.sm, flexDirection: "row", gap: 2, marginBottom: spacing.lg, padding: 3 },
+  periodTabs: { backgroundColor: colors.border, borderRadius: radius.sm, flexDirection: "row", gap: 2, marginBottom: spacing.md, padding: 3 },
   periodTab: { alignItems: "center", borderRadius: radius.sm, flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },
   periodTabSelected: { backgroundColor: colors.primary },
+  periodNavigation: { alignItems: "center", flexDirection: "row", gap: spacing.xs, marginBottom: spacing.lg },
+  navigationButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, minWidth: 62 },
+  rangeButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },
+  rangeText: { textAlign: "center" },
   actions: { gap: spacing.sm, marginBottom: spacing.lg },
   checkoutCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.lg, padding: spacing.md },
   checkoutActions: { flexDirection: "row", gap: spacing.sm },
@@ -347,12 +410,11 @@ const styles = StyleSheet.create({
   reloadButton: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   loading: { alignItems: "center", flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xl },
   emptyState: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.xl },
-  mealList: { paddingBottom: spacing.md },
-  mealListWide: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
-  weekdayGroup: { width: "100%" },
-  weekdayGroupWide: { width: "48%" },
-  weekdayHeading: { paddingBottom: spacing.xs, paddingTop: spacing.md },
-  mealRow: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 68, paddingVertical: spacing.sm },
-  mealMarker: { backgroundColor: colors.primary, borderRadius: radius.pill, height: 8, width: 8 },
+  mealList: { gap: spacing.lg, marginBottom: spacing.lg },
+  dayGroup: { gap: spacing.sm },
+  dayHeading: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.md, flexDirection: "row", justifyContent: "space-between", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  dayCount: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
+  mealRow: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", gap: spacing.md, minHeight: 72, padding: spacing.md },
+  mealMarker: { alignSelf: "stretch", backgroundColor: colors.primary, borderRadius: radius.pill, width: 4 },
   mealDetails: { flex: 1, gap: spacing.xs },
 });
