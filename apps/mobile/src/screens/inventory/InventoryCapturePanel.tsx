@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +11,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { Camera, Check, FileImage, Mic, ScanBarcode, Search, X } from "lucide-react-native";
@@ -18,9 +21,10 @@ import { inventoryApi, InventoryUnit, ReceiptMimeType } from "./inventoryApi";
 
 export type InventoryCaptureMode = "photo" | "scan" | "voice";
 type Mode = InventoryCaptureMode;
-type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void; initialMode?: Mode; embedded?: boolean };
+type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void; initialMode?: Mode; embedded?: boolean; autoStart?: boolean };
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
+type CaptureAsset = { uri: string; base64?: string | null; mimeType?: string | null; fileName?: string | null };
 
 const units: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const unitLabels: Record<InventoryUnit, string> = {
@@ -39,7 +43,7 @@ function parseVoiceDraft(text: string): { name: string; quantity: string; unit: 
   return { name: match[3].trim(), quantity: match[1].replace(",", "."), unit };
 }
 
-export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false }: Props): React.JSX.Element {
+export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false, autoStart = false }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -49,7 +53,13 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [barcode, setBarcode] = useState("");
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
+  const [photoCameraActive, setPhotoCameraActive] = useState(false);
+  const [photoCameraReady, setPhotoCameraReady] = useState(false);
+  const [takingPhoto, setTakingPhoto] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const photoCamera = useRef<CameraView>(null);
+  const galleryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
@@ -59,6 +69,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const speechModule = useRef<SpeechModule | null>(null);
   const speechSubscriptions = useRef<Array<{ remove: () => void }>>([]);
   const lastScannedBarcode = useRef("");
+  const autoStarted = useRef(false);
 
   const clearSpeechSubscriptions = () => {
     speechSubscriptions.current.forEach((subscription) => subscription.remove());
@@ -67,6 +78,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
   useEffect(() => () => {
     clearSpeechSubscriptions();
+    if (galleryTimer.current) clearTimeout(galleryTimer.current);
     try { speechModule.current?.abort(); } catch { /* Native speech module may be unavailable in Expo Go. */ }
   }, []);
 
@@ -74,6 +86,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setMode(nextMode);
     setNote(null);
     setCameraActive(false);
+    setPhotoCameraActive(false);
+    setPhotoUri(null);
     setName("");
     setBarcodeResult(null);
   };
@@ -126,6 +140,21 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
+  const startPhotoCamera = async () => {
+    setNote(null);
+    setPhotoCameraReady(false);
+    try {
+      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
+      if (!permission.granted) {
+        setNote("Chưa được cấp quyền camera. Bạn có thể chọn ảnh đã chụp từ thư viện.");
+        return;
+      }
+      setPhotoCameraActive(true);
+    } catch {
+      setNote("Không mở được camera. Bạn có thể chọn ảnh từ thư viện.");
+    }
+  };
+
   const handleBarcodeScanned = (value: string) => {
     if (!value || lastScannedBarcode.current === value) return;
     lastScannedBarcode.current = value;
@@ -169,29 +198,21 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setBarcode("");
     setBarcodeResult(null);
     setVoiceText("");
+    setPhotoUri(null);
     setNote("Đã xác nhận và thêm thực phẩm vào kho.");
   };
 
-  const scanReceipt = async (source: "camera" | "library", productPhoto = false) => {
+  const processImage = async (asset: CaptureAsset, productPhoto = false) => {
     setNote(null);
-    if (!productPhoto) {
+    if (productPhoto) {
+      setPhotoUri(asset.uri);
+      setName("");
+    } else {
       setName("");
       setBarcodeResult(null);
       setCameraActive(false);
     }
     try {
-      if (source === "camera") {
-        const permission = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permission.granted) { setNote("Chưa được cấp quyền camera. Hãy cấp quyền rồi thử lại."); return; }
-      } else {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permission.granted) { setNote("Chưa được cấp quyền ảnh. Hãy chụp hóa đơn bằng camera."); return; }
-      }
-      const result = source === "camera"
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 });
-      if (result.canceled) return;
-      const asset = result.assets[0];
       const imageBase64 = asset?.base64;
       if (!imageBase64) { setNote("Không đọc được dữ liệu ảnh. Hãy chụp lại."); return; }
       if (imageBase64.length > 7_000_000) { setNote("Ảnh quá lớn. Hãy chụp ảnh nhỏ hơn 5 MB."); return; }
@@ -235,6 +256,52 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       setBusy(false);
     }
   };
+
+  const scanReceipt = async (source: "camera" | "library", productPhoto = false) => {
+    setNote(null);
+    try {
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) { setNote("Chưa được cấp quyền camera. Hãy cấp quyền rồi thử lại."); return; }
+      }
+      const result = source === "camera"
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 });
+      if (!result.canceled && result.assets[0]) await processImage(result.assets[0], productPhoto);
+    } catch {
+      setNote("Không mở được camera hoặc thư viện ảnh. Hãy thử lại.");
+    }
+  };
+
+  const takeProductPhoto = async () => {
+    if (takingPhoto || !photoCameraReady) return;
+    setTakingPhoto(true);
+    try {
+      const asset = await photoCamera.current?.takePictureAsync({ base64: true, quality: 0.65 });
+      if (!asset) throw new Error("No camera image");
+      setPhotoCameraActive(false);
+      await processImage({ ...asset, mimeType: "image/jpeg" }, true);
+    } catch {
+      setNote("Không chụp được ảnh. Hãy thử lại hoặc chọn ảnh từ thư viện.");
+    } finally {
+      setTakingPhoto(false);
+    }
+  };
+
+  const choosePhotoFromCamera = () => {
+    setPhotoCameraActive(false);
+    galleryTimer.current = setTimeout(() => { void scanReceipt("library", true); }, 350);
+  };
+
+  useEffect(() => {
+    if (!autoStart || !embedded || !familyId || !accessToken || autoStarted.current) return;
+    const timer = setTimeout(() => {
+      autoStarted.current = true;
+      if (initialMode === "photo") void startPhotoCamera();
+      if (initialMode === "scan") void startBarcodeCamera();
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [autoStart, embedded, familyId, accessToken, initialMode]);
 
   const updateReceiptDraft = (id: string, field: "name" | "quantity" | "unit", value: string) => {
     setReceiptDrafts((current) => current.map((draft) => draft.id !== id ? draft : {
@@ -300,7 +367,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
-  const showMainDraft = !!name.trim() && (mode === "photo" || mode === "scan" || mode === "voice");
+  const showMainDraft = (mode === "photo" && !!photoUri) || (!!name.trim() && (mode === "scan" || mode === "voice"));
 
   return (
     <View style={[styles.panel, embedded && styles.embeddedPanel, { padding: isCompact ? spacing.md : spacing.lg }]}>
@@ -314,7 +381,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
             {([
               ["photo", "Chụp ảnh"], ["scan", "Mã vạch / hóa đơn"], ["voice", "Giọng nói"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
-              <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void scanReceipt("camera", true); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
+              <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void startPhotoCamera(); if (value === "scan") void startBarcodeCamera(); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <View style={styles.modeContent}>
                   {value === "photo" ? <AppIcon icon={Camera} size="sm" color={mode === value ? colors.surface : colors.muted} />
                     : value === "scan" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
@@ -328,13 +395,46 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
           {mode === "photo" && (
             <View style={styles.section}>
               <View style={styles.actionsRow}>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera", true)} style={styles.secondaryButton}>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void startPhotoCamera()} style={styles.secondaryButton}>
                   <View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chụp sản phẩm</Text></View>
                 </Pressable>
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library", true)} style={styles.secondaryButton}>
                   <View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></View>
                 </Pressable>
               </View>
+              {photoCameraActive && <Modal visible animationType="fade" onRequestClose={() => setPhotoCameraActive(false)}>
+                <View style={styles.scannerScreen}>
+                  <CameraView
+                    ref={photoCamera}
+                    style={StyleSheet.absoluteFill}
+                    facing="back"
+                    onCameraReady={() => setPhotoCameraReady(true)}
+                    onMountError={() => {
+                      setPhotoCameraActive(false);
+                      setNote("Không khởi chạy được camera. Bạn có thể chọn ảnh từ thư viện.");
+                    }}
+                  />
+                  <SafeAreaView style={styles.photoOverlay}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Đóng camera" onPress={() => setPhotoCameraActive(false)} style={styles.scannerClose}>
+                      <AppIcon icon={X} size="md" color={colors.surface} />
+                    </Pressable>
+                    <View style={styles.scannerCenter}>
+                      <View pointerEvents="none" style={styles.photoTarget} />
+                      <Text style={styles.scannerHint}>Đưa sản phẩm vào khung để chụp rõ tên</Text>
+                    </View>
+                    <View style={styles.photoControls}>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Chọn ảnh đã chụp" onPress={choosePhotoFromCamera} style={styles.galleryButton}>
+                        <AppIcon icon={FileImage} size="md" color={colors.surface} />
+                        <Text style={styles.photoControlLabel}>Thư viện</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Chụp ảnh sản phẩm" disabled={!photoCameraReady || takingPhoto} onPress={() => { void takeProductPhoto(); }} style={[styles.shutterButton, (!photoCameraReady || takingPhoto) && styles.disabledButton]}>
+                        {takingPhoto ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={Camera} size="lg" color={colors.primary} />}
+                      </Pressable>
+                      <View style={styles.galleryButton} />
+                    </View>
+                  </SafeAreaView>
+                </View>
+              </Modal>}
             </View>
           )}
 
@@ -345,8 +445,9 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                 <TextInput accessibilityLabel="Mã vạch gồm 8 đến 14 chữ số" value={barcode} onChangeText={setBarcode} placeholder="8–14 chữ số" keyboardType="number-pad" style={[styles.input, styles.barcodeInput]} />
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void lookupBarcode(barcode)} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={Search} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Tra cứu</Text></View></Pressable>
               </View>
-              {cameraActive ? (
-                <View style={styles.cameraFrame}>
+              <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={ScanBarcode} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></View></Pressable>
+              {cameraActive && <Modal visible animationType="fade" onRequestClose={() => setCameraActive(false)}>
+                <View style={styles.scannerScreen}>
                   <CameraView
                     style={StyleSheet.absoluteFill}
                     facing="back"
@@ -354,14 +455,20 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                     onBarcodeScanned={({ data }) => handleBarcodeScanned(data)}
                     onMountError={() => {
                       setCameraActive(false);
-                      setNote("Không khởi chạy được máy quét. Bạn có thể nhập mã vạch bằng tay bên dưới.");
+                      setNote("Không khởi chạy được máy quét. Bạn có thể nhập mã vạch bằng tay.");
                     }}
                   />
-                  <Pressable accessibilityRole="button" onPress={() => setCameraActive(false)} style={styles.cameraClose}><View style={styles.actionContent}><AppIcon icon={X} size="sm" color={colors.surface} /><Text style={styles.cameraCloseText}>Đóng camera</Text></View></Pressable>
+                  <SafeAreaView style={styles.scannerOverlay}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Đóng máy quét" onPress={() => setCameraActive(false)} style={styles.scannerClose}>
+                      <AppIcon icon={X} size="md" color={colors.surface} />
+                    </Pressable>
+                    <View style={styles.scannerCenter}>
+                      <View pointerEvents="none" style={styles.scannerTarget} />
+                      <Text style={styles.scannerHint}>Đưa mã vạch sản phẩm vào khung</Text>
+                    </View>
+                  </SafeAreaView>
                 </View>
-              ) : (
-                <Pressable accessibilityRole="button" onPress={() => void startBarcodeCamera()} style={styles.secondaryButton}><View style={styles.actionContent}><AppIcon icon={ScanBarcode} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{cameraPermission?.granted ? "Mở máy quét" : "Cấp quyền và quét mã"}</Text></View></Pressable>
-              )}
+              </Modal>}
               {barcodeResult && <Text style={styles.helper}>{barcodeResult}</Text>}
               <View style={styles.scanDivider} />
               <Text style={styles.label}>Đọc hóa đơn (ảnh JPEG, PNG hoặc WebP, tối đa 5 MB)</Text>
@@ -397,8 +504,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
           {showMainDraft && (
             <View style={styles.section}>
-              <Text style={styles.label}>Sản phẩm nhận diện</Text>
-              <Text style={styles.recognizedName}>{name}</Text>
+              {mode === "photo" && photoUri && <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="contain" accessibilityLabel="Ảnh sản phẩm đã chọn" />}
+              <Text style={styles.label}>{mode === "photo" ? "Tên thực phẩm (kiểm tra và sửa nếu cần)" : "Sản phẩm nhận diện"}</Text>
+              {mode === "photo"
+                ? <TextInput accessibilityLabel="Tên thực phẩm" value={name} onChangeText={setName} placeholder="Nhập tên thực phẩm" style={styles.input} />
+                : <Text style={styles.recognizedName}>{name}</Text>}
               <Text style={styles.label}>Số lượng</Text>
               <TextInput accessibilityLabel="Số lượng thực phẩm" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
               <UnitButtons value={unit} onChange={setUnit} />
@@ -451,9 +561,19 @@ const styles = StyleSheet.create({
   secondaryButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
   secondaryButtonText: { color: colors.primary, ...typography.labelSmall },
   actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  cameraFrame: { backgroundColor: colors.text, borderRadius: 8, height: 220, overflow: "hidden", position: "relative" },
-  cameraClose: { alignSelf: "flex-end", backgroundColor: colors.overlay, borderRadius: 6, justifyContent: "center", margin: spacing.md, minHeight: touchTarget, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  cameraCloseText: { color: colors.surface, ...typography.labelSmall },
+  scannerScreen: { backgroundColor: colors.text, flex: 1 },
+  scannerOverlay: { flex: 1, justifyContent: "space-between" },
+  scannerClose: { alignItems: "center", alignSelf: "flex-end", backgroundColor: colors.overlay, borderRadius: 24, height: 48, justifyContent: "center", margin: spacing.lg, width: 48 },
+  scannerCenter: { alignItems: "center", flex: 1, justifyContent: "center", paddingHorizontal: spacing.lg },
+  scannerTarget: { borderColor: colors.surface, borderRadius: 16, borderWidth: 2, height: 200, maxWidth: 340, width: "100%" },
+  scannerHint: { backgroundColor: colors.overlay, borderRadius: 8, color: colors.surface, marginTop: spacing.lg, padding: spacing.md, textAlign: "center", ...typography.labelSmall },
+  photoOverlay: { flex: 1, justifyContent: "space-between" },
+  photoTarget: { borderColor: colors.surface, borderRadius: 24, borderWidth: 2, height: 260, maxWidth: 340, width: "100%" },
+  photoControls: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingBottom: spacing.lg, paddingHorizontal: spacing.lg },
+  galleryButton: { alignItems: "center", gap: spacing.xs, justifyContent: "center", minHeight: 72, width: 90 },
+  photoControlLabel: { color: colors.surface, ...typography.labelSmall },
+  shutterButton: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 44, borderWidth: 5, height: 82, justifyContent: "center", width: 82 },
+  photoPreview: { alignSelf: "center", backgroundColor: colors.background, borderRadius: 8, height: 170, width: "100%" },
   helper: { color: colors.muted, ...typography.bodySmall },
   ocrText: { backgroundColor: colors.background, borderRadius: 6, color: colors.muted, ...typography.bodySmall, padding: spacing.md },
   receiptCard: { backgroundColor: colors.background, borderRadius: 8, gap: spacing.sm, marginTop: spacing.xs, padding: spacing.md },

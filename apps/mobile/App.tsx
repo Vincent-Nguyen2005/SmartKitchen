@@ -116,6 +116,7 @@ function AppContent(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [captureMode, setCaptureMode] = useState<InventoryCaptureMode | null>(null);
+  const [captureReady, setCaptureReady] = useState(false);
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
@@ -259,6 +260,7 @@ function AppContent(): React.JSX.Element {
 
   const signOut = () => {
     setCaptureMode(null);
+    setCaptureReady(false);
     void session.signOut();
   };
   const renderTab = ({ key, label, icon: Icon }: (typeof tabs)[number]) => {
@@ -377,13 +379,13 @@ function AppContent(): React.JSX.Element {
         </View>
       </Modal>
 
-      <Modal transparent animationType="slide" visible={captureMode !== null && !isAdmin} onRequestClose={() => setCaptureMode(null)}>
+      <Modal transparent animationType="slide" visible={captureMode !== null && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={() => { setCaptureReady(false); setCaptureMode(null); }}>
         <KeyboardAvoidingView style={styles.captureOverlay} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <Pressable accessibilityLabel="Đóng thêm thực phẩm" accessibilityRole="button" onPress={() => setCaptureMode(null)} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel="Đóng thêm thực phẩm" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={StyleSheet.absoluteFill} />
           <View style={styles.captureSheet}>
             <View style={styles.captureHeader}>
               <Text style={styles.captureTitle}>Thêm vào kho</Text>
-              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setCaptureMode(null)} style={styles.sheetClose}>
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={styles.sheetClose}>
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
@@ -393,13 +395,14 @@ function AppContent(): React.JSX.Element {
                   key={captureMode}
                   initialMode={captureMode}
                   embedded
+                  autoStart={captureReady}
                   familyId={session.family?.id ?? null}
                   accessToken={session.accessToken}
                   onSaved={() => setInventoryRefreshKey((current) => current + 1)}
                 />
               )}
               {!session.family?.id && (
-                <TouchableOpacity accessibilityRole="button" onPress={() => { setCaptureMode(null); setTab("family"); }} style={styles.captureFamilyButton}>
+                <TouchableOpacity accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); setTab("family"); }} style={styles.captureFamilyButton}>
                   <Text style={styles.captureFamilyText}>Đến Gia đình</Text>
                 </TouchableOpacity>
               )}
@@ -448,7 +451,7 @@ function AppContent(): React.JSX.Element {
         <View style={styles.captureBar}>
           {captureActions.map(({ key, label, icon: Icon }) => (
             <TouchableOpacity key={key} accessibilityLabel={label} accessibilityRole="button"
-              onPress={() => setCaptureMode(key)} style={styles.captureAction}>
+              onPress={() => { setCaptureReady(false); setCaptureMode(key); }} style={styles.captureAction}>
               <View style={[styles.captureActionIcon, key === "scan" && styles.captureActionIconPrimary]}>
                 <AppIcon icon={Icon} size="md" color={key === "scan" ? colors.surface : colors.primary} />
               </View>
