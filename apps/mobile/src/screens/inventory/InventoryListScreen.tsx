@@ -18,7 +18,6 @@ import { RadioDropdown } from "../../components/RadioDropdown";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
-import InventoryCapturePanel from "./InventoryCapturePanel";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
@@ -42,11 +41,13 @@ function formatDateDdMmYyyy(value: string): string {
 type Props = {
   onItemPress?: (item: FoodItem) => void;
   onOpenFamily?: () => void;
+  refreshKey?: number;
 };
 
 export default function InventoryListScreen({
   onItemPress,
   onOpenFamily,
+  refreshKey,
 }: Props): React.JSX.Element {
   const { user, family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
@@ -109,7 +110,7 @@ export default function InventoryListScreen({
 
   useEffect(() => {
     void loadItems();
-  }, [user?.id, family?.id, accessToken, ready]);
+  }, [user?.id, family?.id, accessToken, ready, refreshKey]);
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -246,9 +247,6 @@ export default function InventoryListScreen({
         contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
         keyboardShouldPersistTaps="handled"
       >
-        {family?.id && accessToken && (
-          <InventoryCapturePanel familyId={family.id} accessToken={accessToken} onSaved={() => void loadItems()} />
-        )}
         {family && !loading && (
           <View style={styles.alertPanel}>
             <View style={styles.alertHeader}>
@@ -411,7 +409,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   searchInput: { color: colors.text, flex: 1, fontFamily, fontSize: typography.body.fontSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  listContent: { alignSelf: "center", paddingBottom: spacing.xl, width: "100%" },
+  listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: spacing.lg, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
     color: colors.muted,

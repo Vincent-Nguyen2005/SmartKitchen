@@ -3,11 +3,14 @@ import {
   Archive,
   Bell,
   BookOpen,
+  Camera,
   Check,
   ChevronDown,
   CircleUserRound,
   LogOut,
+  Mic,
   Salad,
+  ScanBarcode,
   Settings,
   ShoppingBasket,
   Utensils,
@@ -18,8 +21,10 @@ import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTar
 import {
   ActivityIndicator,
   BackHandler,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
+  ScrollView,
   View,
   Text,
   TouchableOpacity,
@@ -34,6 +39,7 @@ import OtpVerificationScreen from "./src/screens/auth/OtpVerificationScreen";
 import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
+import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/inventory/InventoryCapturePanel";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
 import { SessionProvider, useSession } from "./src/services/session";
@@ -69,6 +75,11 @@ const memberNavigationKeys: ReadonlySet<Tab> = new Set(["inventory", "shopping",
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
+const captureActions = [
+  { key: "photo", label: "Chụp ảnh", icon: Camera },
+  { key: "scan", label: "Mã vạch / hóa đơn", icon: ScanBarcode },
+  { key: "voice", label: "Giọng nói", icon: Mic },
+] as const;
 
 // Logic lấy API và User ID của Hùng
 const apiBaseUrl =
@@ -104,6 +115,8 @@ function AppContent(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [captureMode, setCaptureMode] = useState<InventoryCaptureMode | null>(null);
+  const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
@@ -114,6 +127,7 @@ function AppContent(): React.JSX.Element {
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
+  const showCaptureBar = !isAdmin && activeTab !== "notifications" && !profileOpen && !paymentUrl;
   const availableWidth = width - insets.left - insets.right;
   const menuTabPixelWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : availableWidth / 6;
   const dropdownWidth = Math.min(220, availableWidth - spacing.sm * 2);
@@ -244,6 +258,7 @@ function AppContent(): React.JSX.Element {
   }
 
   const signOut = () => {
+    setCaptureMode(null);
     void session.signOut();
   };
   const renderTab = ({ key, label, icon: Icon }: (typeof tabs)[number]) => {
@@ -362,6 +377,37 @@ function AppContent(): React.JSX.Element {
         </View>
       </Modal>
 
+      <Modal transparent animationType="slide" visible={captureMode !== null && !isAdmin} onRequestClose={() => setCaptureMode(null)}>
+        <KeyboardAvoidingView style={styles.captureOverlay} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+          <Pressable accessibilityLabel="Đóng thêm thực phẩm" accessibilityRole="button" onPress={() => setCaptureMode(null)} style={StyleSheet.absoluteFill} />
+          <View style={styles.captureSheet}>
+            <View style={styles.captureHeader}>
+              <Text style={styles.captureTitle}>Thêm vào kho</Text>
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => setCaptureMode(null)} style={styles.sheetClose}>
+                <AppIcon icon={X} size="md" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
+              {captureMode && (
+                <InventoryCapturePanel
+                  key={captureMode}
+                  initialMode={captureMode}
+                  embedded
+                  familyId={session.family?.id ?? null}
+                  accessToken={session.accessToken}
+                  onSaved={() => setInventoryRefreshKey((current) => current + 1)}
+                />
+              )}
+              {!session.family?.id && (
+                <TouchableOpacity accessibilityRole="button" onPress={() => { setCaptureMode(null); setTab("family"); }} style={styles.captureFamilyButton}>
+                  <Text style={styles.captureFamilyText}>Đến Gia đình</Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Nội dung hiển thị theo Tab */}
       <View style={styles.content}>
         {paymentUrl ? (
@@ -375,7 +421,7 @@ function AppContent(): React.JSX.Element {
           />
         ) : null}
         {!paymentUrl && activeTab === "inventory" && (
-          <InventoryScreen onOpenFamily={() => setTab("family")} />
+          <InventoryScreen onOpenFamily={() => setTab("family")} refreshKey={inventoryRefreshKey} />
         )}
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
@@ -398,6 +444,19 @@ function AppContent(): React.JSX.Element {
           />
         )}
       </View>
+      {showCaptureBar && (
+        <View style={styles.captureBar}>
+          {captureActions.map(({ key, label, icon: Icon }) => (
+            <TouchableOpacity key={key} accessibilityLabel={label} accessibilityRole="button"
+              onPress={() => setCaptureMode(key)} style={styles.captureAction}>
+              <View style={[styles.captureActionIcon, key === "scan" && styles.captureActionIconPrimary]}>
+                <AppIcon icon={Icon} size="md" color={key === "scan" ? colors.surface : colors.primary} />
+              </View>
+              <Text numberOfLines={2} style={styles.captureActionLabel}>{label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -513,6 +572,26 @@ const styles = StyleSheet.create({
   profileLabel: { ...textStyles.caption, marginTop: spacing.sm },
   profileValue: { ...textStyles.body, marginBottom: spacing.xs },
   content: { flex: 1 },
+  captureBar: {
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  captureAction: { alignItems: "center", flex: 1, gap: spacing.xs, justifyContent: "center", minHeight: 72, paddingHorizontal: spacing.xs },
+  captureActionIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 24, height: 40, justifyContent: "center", width: 40 },
+  captureActionIconPrimary: { backgroundColor: colors.primary, height: 48, width: 48 },
+  captureActionLabel: { ...textStyles.labelSmall, color: colors.text, fontSize: 12, lineHeight: 15, textAlign: "center" },
+  captureOverlay: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
+  captureSheet: { alignSelf: "center", backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "86%", maxWidth: 760, width: "100%" },
+  captureHeader: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  captureTitle: { ...textStyles.subheading, color: colors.text },
+  captureScroll: { flexShrink: 1 },
+  captureFamilyButton: { alignItems: "center", alignSelf: "center", backgroundColor: colors.primary, borderRadius: 10, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xl },
+  captureFamilyText: { ...textStyles.label, color: colors.surface },
   restoreError: {
     backgroundColor: colors.background,
     flex: 1,

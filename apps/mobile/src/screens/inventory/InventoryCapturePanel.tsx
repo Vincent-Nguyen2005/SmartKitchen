@@ -16,8 +16,9 @@ import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typograp
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { inventoryApi, InventoryUnit, ReceiptMimeType } from "./inventoryApi";
 
-type Mode = "photo" | "scan" | "voice";
-type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void };
+export type InventoryCaptureMode = "photo" | "scan" | "voice";
+type Mode = InventoryCaptureMode;
+type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void; initialMode?: Mode; embedded?: boolean };
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
 
@@ -38,10 +39,10 @@ function parseVoiceDraft(text: string): { name: string; quantity: string; unit: 
   return { name: match[3].trim(), quantity: match[1].replace(",", "."), unit };
 }
 
-export default function InventoryCapturePanel({ familyId, accessToken, onSaved }: Props): React.JSX.Element {
+export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
-  const [mode, setMode] = useState<Mode>("photo");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unit, setUnit] = useState<InventoryUnit>("PIECE");
@@ -302,9 +303,9 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
   const showMainDraft = !!name.trim() && (mode === "photo" || mode === "scan" || mode === "voice");
 
   return (
-    <View style={[styles.panel, { padding: isCompact ? spacing.md : spacing.lg }]}>
-      <Text style={styles.panelTitle}>Thêm thực phẩm</Text>
-      <Text style={styles.panelSubtitle}>Chụp sản phẩm hoặc quét mã để nhận diện tên, rồi nhập số lượng và đơn vị.</Text>
+    <View style={[styles.panel, embedded && styles.embeddedPanel, { padding: isCompact ? spacing.md : spacing.lg }]}>
+      {!embedded && <Text style={styles.panelTitle}>Thêm thực phẩm</Text>}
+      {!embedded && <Text style={styles.panelSubtitle}>Chụp sản phẩm hoặc quét mã để nhận diện tên, rồi nhập số lượng và đơn vị.</Text>}
       {!familyId || !accessToken ? (
         <Text style={styles.helper}>Đăng nhập và tạo hoặc tham gia gia đình để thêm thực phẩm vào kho.</Text>
       ) : (
@@ -323,6 +324,19 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved }
               </Pressable>
             ))}
           </View>
+
+          {mode === "photo" && (
+            <View style={styles.section}>
+              <View style={styles.actionsRow}>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("camera", true)} style={styles.secondaryButton}>
+                  <View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chụp sản phẩm</Text></View>
+                </Pressable>
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library", true)} style={styles.secondaryButton}>
+                  <View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></View>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
           {mode === "scan" && (
             <View style={styles.section}>
@@ -416,6 +430,7 @@ function UnitButtons({ value, onChange }: { value: InventoryUnit; onChange: (uni
 
 const styles = StyleSheet.create({
   panel: { alignSelf: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 1, marginTop: spacing.lg, maxWidth: 860, width: "100%" },
+  embeddedPanel: { borderWidth: 0, marginTop: 0 },
   panelTitle: { ...textStyles.subheading, color: colors.text },
   panelSubtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.xs },
   modeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, paddingVertical: spacing.lg },
