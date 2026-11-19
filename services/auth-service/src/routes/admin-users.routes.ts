@@ -26,9 +26,9 @@ export const createAdminUsersRouter = (prisma: PrismaClient): Router => {
     try {
       const users = await prisma.user.findMany({
         where: { id: { in: parsed.data.ids } },
-        select: { id: true, email: true, fullName: true },
+        select: { id: true, email: true, fullName: true, avatarUrl: true },
       });
-      res.json({ items: users.map((user) => ({ id: user.id, email: user.email, name: user.fullName })) });
+      res.json({ items: users.map((user) => ({ id: user.id, email: user.email, name: user.fullName, avatarUrl: user.avatarUrl })) });
     } catch (error) {
       console.error("[auth-service] admin user profiles failed", error);
       const unavailable = isDatabaseUnavailable(error);

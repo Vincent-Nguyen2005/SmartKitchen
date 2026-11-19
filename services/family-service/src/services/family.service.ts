@@ -54,8 +54,9 @@ export class FamilyService {
       ...membership.family,
       members: membership.family.members.map((member) => ({
         ...member,
-        displayName: profiles.get(member.userId)?.name ?? null,
+        displayName: profiles.get(member.userId)?.name?.trim() || profiles.get(member.userId)?.email.split("@")[0] || null,
         email: profiles.get(member.userId)?.email ?? null,
+        avatarUrl: profiles.get(member.userId)?.avatarUrl ?? null,
       })),
       currentUserRole: membership.role,
     };

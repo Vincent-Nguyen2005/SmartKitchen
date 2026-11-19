@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 const profileResult = z.object({
-  items: z.array(z.object({ id: z.string(), email: z.string(), name: z.string().nullable() })),
+  items: z.array(z.object({ id: z.string(), email: z.string(), name: z.string().nullable(), avatarUrl: z.string().nullable().optional() })),
 });
 export type Profile = z.infer<typeof profileResult>["items"][number];
 export class ProfileLookupError extends Error {}

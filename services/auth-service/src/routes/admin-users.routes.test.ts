@@ -16,7 +16,7 @@ test("admin users API checks role, paginates and never returns credentials", asy
       findUnique: async ({ where }: { where: { id: string } }) => ({ role: where.id === adminId ? Role.ADMIN : Role.USER }),
       findMany: async (args: Record<string, unknown>) => {
         findManyArgs = args;
-        return [{ id: userId, email: "member@example.com", fullName: "Member", role: Role.USER,
+        return [{ id: userId, email: "member@example.com", fullName: "Member", avatarUrl: "https://example.com/avatar.jpg", role: Role.USER,
           isVerified: true, createdAt: new Date("2026-01-01"), passwordHash: "must-not-leak", token: "must-not-leak" }];
       },
       count: async () => 1,
@@ -54,7 +54,7 @@ test("admin users API checks role, paginates and never returns credentials", asy
       body: JSON.stringify({ ids: [userId] }),
     });
     assert.equal(profiles.status, 200);
-    assert.deepEqual(await profiles.json(), { items: [{ id: userId, email: "member@example.com", name: "Member" }] });
+    assert.deepEqual(await profiles.json(), { items: [{ id: userId, email: "member@example.com", name: "Member", avatarUrl: "https://example.com/avatar.jpg" }] });
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     if (oldKey === undefined) delete process.env.INTERNAL_API_KEY;

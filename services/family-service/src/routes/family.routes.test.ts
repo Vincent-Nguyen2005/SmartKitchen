@@ -13,6 +13,7 @@ test("family routes work after the gateway strips /api/families", async () => {
   const secret = "family-route-test-secret-with-at-least-32-characters";
   process.env.JWT_SECRET = secret;
   const userId = "11111111-1111-1111-1111-111111111111";
+  const memberId = "33333333-3333-3333-3333-333333333333";
   let databaseDown = false;
   let profileStatus = 200;
   let requestedIds: string[] = [];
@@ -24,7 +25,10 @@ test("family routes work after the gateway strips /api/families", async () => {
     requestedIds = (JSON.parse(Buffer.concat(chunks).toString()) as { ids: string[] }).ids;
     res.statusCode = profileStatus;
     res.setHeader("Content-Type", "application/json");
-    res.end(JSON.stringify({ items: [{ id: userId, email: "testuser@example.com", name: "testuser" }] }));
+    res.end(JSON.stringify({ items: [
+      { id: userId, email: "testuser@example.com", name: "testuser", avatarUrl: "https://example.com/owner.jpg" },
+      { id: memberId, email: "member@example.com", name: null, avatarUrl: null },
+    ] }));
   });
   await new Promise<void>((resolve) => profileServer.listen(0, "127.0.0.1", resolve));
   const profileAddress = profileServer.address();
@@ -35,7 +39,10 @@ test("family routes work after the gateway strips /api/families", async () => {
     familyMember: {
       findFirst: async () => {
         if (databaseDown) throw Object.assign(new Error("Database unavailable"), { code: "P1001" });
-        return { role: "OWNER", family: { id: "22222222-2222-2222-2222-222222222222", name: "Home", members: [{ id: "membership-1", userId, role: "OWNER" }] } };
+        return { role: "OWNER", family: { id: "22222222-2222-2222-2222-222222222222", name: "Home", members: [
+          { id: "membership-1", userId, role: "OWNER" },
+          { id: "membership-2", userId: memberId, role: "MEMBER" },
+        ] } };
       },
     },
   } as unknown as PrismaClient;
@@ -57,11 +64,13 @@ test("family routes work after the gateway strips /api/families", async () => {
     assert.equal((await fetch(`${base}/me`, { headers: { Authorization: "Bearer invalid" } })).status, 401);
     const gatewayPath = await fetch(`${base}/me`, { headers });
     assert.equal(gatewayPath.status, 200);
-    const family = (await gatewayPath.json() as { data: { family: { currentUserRole: string; members: Array<{ displayName: string; email: string; role: string }> } } }).data.family;
+    const family = (await gatewayPath.json() as { data: { family: { currentUserRole: string; members: Array<{ displayName: string; email: string; avatarUrl: string | null; role: string }> } } }).data.family;
     assert.equal(family.currentUserRole, "OWNER");
-    assert.deepEqual(family.members.map(({ displayName, email, role }) => ({ displayName, email, role })),
-      [{ displayName: "testuser", email: "testuser@example.com", role: "OWNER" }]);
-    assert.deepEqual(requestedIds, [userId]);
+    assert.deepEqual(family.members.map(({ displayName, email, avatarUrl, role }) => ({ displayName, email, avatarUrl, role })), [
+      { displayName: "testuser", email: "testuser@example.com", avatarUrl: "https://example.com/owner.jpg", role: "OWNER" },
+      { displayName: "member", email: "member@example.com", avatarUrl: null, role: "MEMBER" },
+    ]);
+    assert.deepEqual(requestedIds, [userId, memberId]);
     assert.equal(forwardedKey, process.env.INTERNAL_API_KEY);
     assert.equal((await fetch(`${base}/api/family/me`, { headers })).status, 200);
     assert.equal((await fetch(`${base}/unknown`)).status, 404);

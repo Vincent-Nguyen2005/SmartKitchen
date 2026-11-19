@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, AppState, SafeAreaView, StyleSheet, Text } from "react-native";
 import { useSession } from "../../services/session";
 import { typography } from "../../theme";
 import CreateOrJoinFamilyScreen from "./CreateOrJoinFamilyScreen";
@@ -15,6 +15,19 @@ export default function FamilyScreenFlow(): React.JSX.Element {
   const [view, setView] = useState<View>("overview");
   const [familyError, setFamilyError] = useState("");
 
+  useEffect(() => {
+    if (!session.ready || !session.user) return;
+    const refresh = () => { void session.loadFamily().catch(() => undefined); };
+    refresh();
+    const timer = setInterval(() => {
+      if (AppState.currentState === "active") refresh();
+    }, 15000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") refresh();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [session.ready, session.user?.id, session.loadFamily]);
+
   if (!session.ready) {
     return <SafeAreaView style={styles.loading}><ActivityIndicator color="#2F6B5F" size="large" /></SafeAreaView>;
   }
@@ -27,7 +40,7 @@ export default function FamilyScreenFlow(): React.JSX.Element {
   const family = session.family && {
     ...session.family,
     members: session.family.members.map((member) => member.userId === currentUser.id
-      ? { ...member, displayName: currentUser.fullName?.trim() || "Chưa cập nhật" }
+      ? { ...member, displayName: currentUser.fullName?.trim() || member.displayName || currentUser.email.split("@")[0], avatarUrl: currentUser.avatarUrl || member.avatarUrl }
       : member),
   };
 

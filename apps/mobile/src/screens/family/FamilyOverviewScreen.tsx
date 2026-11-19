@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { RefreshCw } from "lucide-react-native";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
+import MemberAvatar from "./MemberAvatar";
 import { colors, typography } from "../../theme";
 
 export type FamilyRole = "OWNER" | "ADMIN" | "MEMBER";
-export type FamilyMemberSummary = { id: string; userId: string; role: FamilyRole; joinedAt?: string; displayName?: string; email?: string };
+export type FamilyMemberSummary = { id: string; userId: string; role: FamilyRole; joinedAt?: string; displayName?: string | null; email?: string | null; avatarUrl?: string | null };
 export type FamilySummary = { id: string; name: string; code: string; members: FamilyMemberSummary[]; currentUserRole?: FamilyRole };
 
 type Props = {
@@ -95,7 +96,7 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
             <View style={styles.card}>
               {family.members.map((member, index) => (
                 <View key={member.id} style={[styles.memberRow, index > 0 && styles.memberDivider]}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{member.displayName?.trim().charAt(0).toUpperCase() || "?"}</Text></View>
+                  <MemberAvatar name={member.displayName} avatarUrl={member.avatarUrl} />
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{member.displayName?.trim() || "Chưa có tên"}</Text>
                   </View>
@@ -153,8 +154,6 @@ const styles = StyleSheet.create({
   card: { backgroundColor: "#FFFFFF", borderColor: "#E3E9E4", borderRadius: 16, borderWidth: 1, paddingHorizontal: 16 },
   memberRow: { alignItems: "center", flexDirection: "row", minHeight: 72, paddingVertical: 12 },
   memberDivider: { borderTopColor: "#EDF0ED", borderTopWidth: 1 },
-  avatar: { alignItems: "center", backgroundColor: "#E4F0E9", borderRadius: 20, height: 40, justifyContent: "center", marginRight: 12, width: 40 },
-  avatarText: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
   memberInfo: { flex: 1 },
   memberName: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "600" },
   badge: { backgroundColor: "#EFF2EF", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6 },

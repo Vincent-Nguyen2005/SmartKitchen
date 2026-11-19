@@ -79,7 +79,7 @@ export const authApi = {
 export type AuthUser = { id: string; email: string; fullName: string | null; avatarUrl: string | null; role: string; isVerified: boolean };
 
 export type ApiFamilyRole = "OWNER" | "ADMIN" | "MEMBER";
-export type ApiFamilyMember = { id: string; userId: string; role: ApiFamilyRole; joinedAt: string; displayName?: string; email?: string };
+export type ApiFamilyMember = { id: string; userId: string; role: ApiFamilyRole; joinedAt: string; displayName?: string | null; email?: string | null; avatarUrl?: string | null };
 export type ApiFamily = { id: string; name: string; code: string; codeExpiresAt: string; members: ApiFamilyMember[]; currentUserRole: ApiFamilyRole };
 export type ApiFamilySettings = {
   id: string;

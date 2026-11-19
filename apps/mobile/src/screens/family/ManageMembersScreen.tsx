@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react-native";
 import { ActivityIndicator, Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import { FamilyMemberSummary, FamilyRole } from "./FamilyOverviewScreen";
 import { AppIcon, colors, typography } from "../../theme";
+import MemberAvatar from "./MemberAvatar";
 
 type Props = {
   members: FamilyMemberSummary[];
@@ -76,7 +77,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
             return (
               <View key={member.id} style={[styles.member, index > 0 && styles.divider]}>
                 <View style={styles.memberTop}>
-                  <View style={styles.avatar}><Text style={styles.avatarText}>{displayName.trim().charAt(0).toUpperCase()}</Text></View>
+                  <MemberAvatar name={displayName} avatarUrl={member.avatarUrl} />
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{displayName}{isSelf ? " (Bạn)" : ""}</Text>
                     <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{member.role === "OWNER" ? "Chủ gia đình" : member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text></View>
@@ -150,8 +151,6 @@ const styles = StyleSheet.create({
   member: { paddingBottom: 16, paddingTop: 16 },
   divider: { borderTopColor: "#EDF0ED", borderTopWidth: 1 },
   memberTop: { alignItems: "center", flexDirection: "row" },
-  avatar: { alignItems: "center", backgroundColor: "#E4F0E9", borderRadius: 20, height: 40, justifyContent: "center", marginRight: 12, width: 40 },
-  avatarText: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
   memberInfo: { flex: 1 },
   memberName: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "600", marginBottom: 6 },
   badge: { alignSelf: "flex-start", backgroundColor: "#EFF2EF", borderRadius: 16, paddingHorizontal: 9, paddingVertical: 4 },
