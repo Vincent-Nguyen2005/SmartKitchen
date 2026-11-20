@@ -165,6 +165,30 @@ const availableInventory = (items: InventoryItem[]) => {
 };
 
 const normalizePurchaseName = (value: string): string => normalizedName(value);
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000; // Asia/Ho_Chi_Minh, no daylight saving
+
+/** Vietnam calendar day `days` after today, YYYY-MM-DD (inventory expiry from catalog shelf-life days). */
+export const vnDayFromToday = (days: number, now: Date = new Date()): string => {
+  const date = new Date(now.getTime() + VN_OFFSET_MS);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+export type PriceSnapshot = { unitPrice?: number | null; discountPercent?: number | null; productId?: string | null; imageUrl?: string | null };
+export type PurchaseExtras = { categoryName?: string; expiryDate?: string };
+export type CheckoutLine = { id: string; categoryName?: string; shelfLifeDays?: number };
+export type CheckoutResult = {
+  purchased: Array<{ id: string; name: string; inventoryItemId: string | null }>;
+  failed: Array<{ id: string; name: string; code: string; message: string }>;
+  listCompleted: boolean;
+};
+
+const snapshotData = (snapshot: PriceSnapshot) => ({
+  ...(snapshot.unitPrice !== undefined ? { unitPrice: snapshot.unitPrice } : {}),
+  ...(snapshot.discountPercent !== undefined ? { discountPercent: snapshot.discountPercent } : {}),
+  ...(snapshot.productId !== undefined ? { productId: snapshot.productId } : {}),
+  ...(snapshot.imageUrl !== undefined ? { imageUrl: snapshot.imageUrl } : {}),
+});
 
 export class ShoppingListService {
   static async generateFromMenu(familyId: string, authorization: string) {
@@ -266,7 +290,12 @@ export class ShoppingListService {
     });
   }
 
-  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null }) {
+  /**
+   * Adds an item to the active list (Giỏ hàng). The same product (catalog id, else name) with the same unit that is
+   * still in the cart only gets its quantity raised, so the cart never holds duplicates. A price snapshot from the
+   * market is stored (or refreshed) on the row.
+   */
+  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null } & PriceSnapshot) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         return await prisma.$transaction(async (transaction) => {
@@ -280,6 +309,18 @@ export class ShoppingListService {
               data: { familyId: data.familyId, activeFamilyId: data.familyId, name: "Danh sách đi chợ", status: LIST_STATUS.ACTIVE },
             });
           }
+          const inCart = await transaction.shoppingItem.findMany({
+            where: { shoppingListId: list.id, unit: data.unit, isPurchased: false, inventoryAppliedAt: null },
+          });
+          const key = normalizedName(data.name);
+          const existing = inCart.find((item) =>
+            (data.productId && item.productId ? item.productId === data.productId : normalizedName(item.name) === key));
+          if (existing) {
+            return transaction.shoppingItem.update({
+              where: { id: existing.id },
+              data: { quantity: roundQuantity(existing.quantity + data.quantity), ...snapshotData(data) },
+            });
+          }
           return transaction.shoppingItem.create({
             data: {
               shoppingListId: list.id,
@@ -287,6 +328,7 @@ export class ShoppingListService {
               quantity: data.quantity,
               unit: data.unit,
               note: data.note,
+              ...snapshotData(data),
             },
           });
         });
@@ -425,7 +467,7 @@ export class ShoppingListService {
     await prisma.shoppingItem.delete({ where: { id } });
   }
 
-  static async confirmPurchase(id: string, familyId: string, userId: string) {
+  static async confirmPurchase(id: string, familyId: string, userId: string, extras: PurchaseExtras = {}) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
       include: { shoppingList: { select: { status: true } } },
@@ -448,6 +490,8 @@ export class ShoppingListService {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
+          ...(extras.categoryName ? { categoryName: extras.categoryName } : {}),
+          ...(extras.expiryDate ? { expiryDate: extras.expiryDate } : {}),
         },
         { headers: { "x-internal-api-key": PURCHASE_SYNC_API_KEY }, timeout: 8000 },
       );
@@ -501,6 +545,50 @@ export class ShoppingListService {
       alreadyApplied: inventoryResult.data?.alreadyApplied ?? false,
       alreadyPurchased: item.isPurchased,
     };
+  }
+
+  /**
+   * "Mua" in Giỏ hàng: every cart line (not yet in inventory) goes through the existing per-item purchase path
+   * (inventory internal purchase, idempotent per item), one after another. A failed line stays in the cart and is
+   * reported; the rest are purchased. When nothing is left in the cart the list is completed, so the next add
+   * starts a fresh cart.
+   */
+  static async checkout(familyId: string, userId: string, lines: CheckoutLine[] = []): Promise<CheckoutResult> {
+    const list = await prisma.shoppingList.findFirst({ where: { activeFamilyId: familyId }, orderBy: { createdAt: "desc" } });
+    if (!list) return { purchased: [], failed: [], listCompleted: false };
+    const cart = await prisma.shoppingItem.findMany({
+      where: { shoppingListId: list.id, inventoryAppliedAt: null },
+      orderBy: { createdAt: "asc" },
+    });
+    const extrasById = new Map(lines.map((line) => [line.id, line]));
+    const result: CheckoutResult = { purchased: [], failed: [], listCompleted: false };
+    for (const item of cart) {
+      const line = extrasById.get(item.id);
+      const extras: PurchaseExtras = {
+        ...(line?.categoryName ? { categoryName: line.categoryName } : {}),
+        ...(typeof line?.shelfLifeDays === "number" ? { expiryDate: vnDayFromToday(line.shelfLifeDays) } : {}),
+      };
+      try {
+        const purchase = await this.confirmPurchase(item.id, familyId, userId, extras);
+        result.purchased.push({ id: item.id, name: item.name, inventoryItemId: purchase.inventoryItemId ?? null });
+      } catch (error) {
+        const appError = error instanceof AppError ? error : null;
+        result.failed.push({
+          id: item.id,
+          name: item.name,
+          code: appError?.code ?? "PURCHASE_FAILED",
+          message: appError?.message ?? "The item could not be added to inventory.",
+        });
+      }
+    }
+    if (result.failed.length === 0 && result.purchased.length > 0) {
+      const remaining = await prisma.shoppingItem.findMany({ where: { shoppingListId: list.id, inventoryAppliedAt: null }, select: { id: true } });
+      if (remaining.length === 0) {
+        await prisma.shoppingList.update({ where: { id: list.id }, data: { status: LIST_STATUS.COMPLETED, activeFamilyId: null } });
+        result.listCompleted = true;
+      }
+    }
+    return result;
   }
 
   static async complete(id: string, familyId: string) {

@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { BadgePercent, ImageOff, Minus, Plus, Search, X } from "lucide-react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { BadgePercent, ImageOff, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
-import { Badge, Field, Pagination, ScreenState, Segmented, styles as ui, useGridCell, useLayout } from "../notifications/ui";
+import { Badge, Pagination, ScreenState, Segmented, styles as ui, useGridCell, useLayout } from "../notifications/ui";
+import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inventory/inventoryApi";
-import { normalizeVi, unitFromCatalog } from "../inventory/catalogSuggest";
-import { shoppingApi, shoppingUnitLabels, type ShoppingList, type ShoppingUnit } from "./shoppingApi";
+import { unitFromCatalog } from "../inventory/catalogSuggest";
+import { shoppingUnitLabels } from "./shoppingApi";
+import { addToCart, shoppingUnitFor } from "./cart";
 
 const PAGE_SIZE = 20;
 const ALL_GROUPS = "__all__";
@@ -14,10 +16,12 @@ const ALL_GROUPS = "__all__";
 type Props = {
   accessToken: string | null;
   familyId: string | null;
-  /** Active shopping lists, used to merge a product that is already on the list. */
-  lists: ShoppingList[];
-  /** Called after an item is added or merged, with the toast text. */
+  /** Called after a product is added to Giỏ hàng (or its quantity raised), with the toast text. */
   onAdded: (message: string) => void;
+  /** Pull-to-refresh for the product list (owned by the screen). */
+  refreshControl?: React.ReactElement;
+  /** Same horizontal padding as Kho, so the search box and grid line up the same way. */
+  horizontalPadding: number;
   onOpenFamily?: () => void;
   /** Changing this reloads the current page in place (auto refresh / pull-to-refresh), keeping search and page. */
   refreshSignal?: number;
@@ -25,15 +29,13 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
 };
 
-/** Shopping-list unit for a catalog product; admin units are codes or older labels such as "g". */
-const shoppingUnitFor = (product: CatalogIngredient): ShoppingUnit => unitFromCatalog(product.unit) ?? "PIECE";
 const unitText = (product: CatalogIngredient): string => {
   const code = unitFromCatalog(product.unit);
   return code ? shoppingUnitLabels[code] : product.unit;
 };
 
 /** Image link set by the admin, or a neutral placeholder when there is none or it fails to load. */
-function ProductImage({ uri, style }: { uri: string | null; style: object }): React.JSX.Element {
+export function ProductImage({ uri, style }: { uri: string | null | undefined; style: object }): React.JSX.Element {
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [uri]);
   if (!uri || failed) {
@@ -57,10 +59,10 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
 }
 
 /**
- * "Sản phẩm" segment of Đi chợ: active products from Quản trị > Nguyên liệu, 20 per page, added to the family
- * shopping list. Plain mapped Views (no FlatList) because the parent screen is a ScrollView.
+ * Đi chợ: active products from Quản trị > Nguyên liệu, 20 per page, added to Giỏ hàng. The search box stays on
+ * top (like Kho); the grid scrolls below it as plain mapped Views.
  */
-export default function MarketProducts({ accessToken, familyId, lists, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange }: Props): React.JSX.Element {
+export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
   const layout = useLayout();
   const columns = layout.columns + 1; // 2 on phones, 3 on wide, 4 on extra-wide screens
   const grid = useGridCell(columns, spacing.md);
@@ -124,24 +126,17 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
   };
   const closeSheet = () => { if (!adding) setSelected(null); };
 
-  /** Adds the product, or raises the quantity of the same unpurchased item (same name and unit) already listed. */
-  const addToList = async () => {
+  /** "Thêm vào giỏ": the server raises the quantity when the same product + unit is already in the cart. */
+  const addSelectedToCart = async () => {
     if (!selected || !accessToken || !familyId) return;
-    const unit = shoppingUnitFor(selected);
-    const name = normalizeVi(selected.name);
-    const existing = lists
-      .filter((list) => list.status === "ACTIVE")
-      .flatMap((list) => list.items)
-      .find((item) => !item.isPurchased && item.unit === unit && normalizeVi(item.name) === name);
     setAdding(true);
     setAddError(null);
     try {
-      if (existing) await shoppingApi.updateItem(accessToken, familyId, existing.id, { quantity: existing.quantity + quantity });
-      else await shoppingApi.addItem(accessToken, { familyId, name: selected.name, quantity, unit });
+      await addToCart(accessToken, familyId, { name: selected.name, quantity, product: selected });
       setSelected(null);
-      onAdded("Đã thêm vào Cần mua");
+      onAdded("Đã thêm vào giỏ hàng");
     } catch (requestError) {
-      setAddError(requestError instanceof Error ? requestError.message : "Chưa thêm được vào danh sách. Thử lại nhé.");
+      setAddError(requestError instanceof Error ? requestError.message : "Chưa thêm được vào giỏ hàng. Thử lại nhé.");
     } finally {
       setAdding(false);
     }
@@ -152,7 +147,14 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
 
   return (
     <View style={local.container}>
-      <Field label="Tìm sản phẩm" icon={Search} placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} autoCorrect={false} returnKeyType="search" />
+      <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
+        <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} />
+      </View>
+      <ScrollView
+        contentContainerStyle={[local.content, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={refreshControl}
+      >
       {/* Group chips only help when there is more than one group. */}
       {groups.length > 1 && (
         <Segmented<string>
@@ -197,6 +199,7 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
         </View>
       )}
       {data && <Pagination page={data.page} totalPages={data.totalPages} onChange={setPage} disabled={loading} />}
+      </ScrollView>
 
       <Modal animationType="slide" transparent visible={selected !== null} onRequestClose={closeSheet}>
         <View style={local.backdrop}>
@@ -219,7 +222,7 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
               </View>
               {!familyId ? (
                 <View style={local.familyBox}>
-                  <Text style={local.helper}>Tạo hoặc tham gia gia đình để thêm sản phẩm vào danh sách đi chợ.</Text>
+                  <Text style={local.helper}>Tạo hoặc tham gia gia đình để thêm sản phẩm vào giỏ hàng.</Text>
                   {onOpenFamily && (
                     <Pressable accessibilityRole="button" onPress={() => { setSelected(null); onOpenFamily(); }} style={local.primaryButton}>
                       <Text style={local.primaryButtonText}>Mở tab Gia đình</Text>
@@ -246,8 +249,8 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
                     <Text style={local.unit}>{shoppingUnitLabels[shoppingUnitFor(selected)]}</Text>
                   </View>
                   {addError && <Text accessibilityRole="alert" style={local.error}>{addError}</Text>}
-                  <Pressable accessibilityRole="button" accessibilityState={{ busy: adding, disabled: adding }} disabled={adding} onPress={() => void addToList()} style={[local.primaryButton, adding && local.dimmed]}>
-                    {adding ? <ActivityIndicator color={colors.primaryText} /> : <Text style={local.primaryButtonText}>Thêm vào danh sách</Text>}
+                  <Pressable accessibilityRole="button" accessibilityState={{ busy: adding, disabled: adding }} disabled={adding} onPress={() => void addSelectedToCart()} style={[local.primaryButton, adding && local.dimmed]}>
+                    {adding ? <ActivityIndicator color={colors.primaryText} /> : <View style={local.buttonContent}><AppIcon icon={ShoppingCart} size="sm" color={colors.primaryText} /><Text style={local.primaryButtonText}>Thêm vào giỏ</Text></View>}
                   </Pressable>
                 </>
               )}
@@ -260,7 +263,13 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
 }
 
 const local = StyleSheet.create({
-  container: { gap: spacing.md },
+  container: { flex: 1 },
+  // Same placement as Kho's search box (top padding, centred max width on wide screens).
+  searchHeader: { paddingTop: spacing.xl, width: "100%" },
+  wide: { alignSelf: "center", maxWidth: 920, width: "100%" },
+  // SEARCH_CONTENT_GAP above the grid like Kho's list; bottom room for the floating cart button.
+  content: { gap: spacing.md, paddingBottom: 96, paddingTop: SEARCH_CONTENT_GAP },
+  buttonContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   dimmed: { opacity: 0.6 },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },

@@ -16,6 +16,19 @@ export type ShoppingItem = {
   inventoryAppliedAt: string | null;
   inventoryItemId: string | null;
   note?: string | null;
+  /** Price snapshot when added from the market (whole VND before discount); null for older/manual items. */
+  unitPrice?: number | null;
+  discountPercent?: number | null;
+  productId?: string | null;
+  imageUrl?: string | null;
+};
+/** Optional market snapshot sent when adding to the cart. */
+export type CartSnapshot = { unitPrice?: number | null; discountPercent?: number | null; productId?: string | null; imageUrl?: string | null };
+export type CheckoutLine = { id: string; categoryName?: string; shelfLifeDays?: number };
+export type CheckoutResult = {
+  purchased: Array<{ id: string; name: string; inventoryItemId: string | null }>;
+  failed: Array<{ id: string; name: string; code: string; message: string }>;
+  listCompleted: boolean;
 };
 export type ShoppingList = { id: string; familyId: string; name: string; status: string; items: ShoppingItem[] };
 export type ShoppingSuggestion = {
@@ -33,9 +46,9 @@ export type ShoppingSuggestion = {
 
 type ApiPayload<T> = { success?: boolean; data?: T; lists?: T; message?: string; code?: string; error?: string };
 
-async function request<T>(accessToken: string, path: string, method: RequestInit["method"] = "GET", body?: unknown): Promise<T> {
+async function request<T>(accessToken: string, path: string, method: RequestInit["method"] = "GET", body?: unknown, timeoutMs?: number): Promise<T> {
   // Shared gateway transport: ngrok header, Bearer token, timeout and the network error message.
-  const response = await gatewayFetch(path, { method, accessToken, body: body === undefined ? undefined : JSON.stringify(body) });
+  const response = await gatewayFetch(path, { method, accessToken, timeoutMs, body: body === undefined ? undefined : JSON.stringify(body) });
   const payload = await response.json().catch(() => ({})) as ApiPayload<T>;
   if (!response.ok || payload.success === false) {
     throw new Error(payload.message || payload.code || payload.error || `Yêu cầu thất bại (${response.status})`);
@@ -52,8 +65,13 @@ export const shoppingApi = {
   suggestions: (token: string, familyId: string) => request<ShoppingSuggestion[]>(token, `/api/shopping-list/suggestions${familyQuery(familyId)}`),
   generateFromMenu: (token: string, familyId: string) =>
     request<{ menuId: string; message: string; items: ShoppingItem[]; listId: string | null }>(token, "/api/shopping-list/generate", "POST", { familyId }),
-  addItem: (token: string, input: { familyId: string; name: string; quantity: number; unit: ShoppingUnit }) =>
+  /** Adds to Giỏ hàng; the same product + unit already in the cart only gets a higher quantity (server-side). */
+  addItem: (token: string, input: { familyId: string; name: string; quantity: number; unit: ShoppingUnit } & CartSnapshot) =>
     request<ShoppingItem>(token, "/api/shopping-list/items", "POST", input),
+  /** "Mua": every cart line goes into Kho; failed lines stay in the cart and are listed in `failed`. */
+  checkout: (token: string, familyId: string, items: CheckoutLine[]) =>
+    // One inventory call per line on the server, so allow more time than the default 15 s.
+    request<CheckoutResult>(token, "/api/shopping-list/checkout", "POST", { familyId, items }, 90_000),
   updateItem: (token: string, familyId: string, itemId: string, changes: { quantity?: number; note?: string | null }) =>
     request<ShoppingItem>(token, `/api/shopping-list/items/${encodeURIComponent(itemId)}${familyQuery(familyId)}`, "PATCH", changes),
   deleteItem: (token: string, familyId: string, itemId: string) =>

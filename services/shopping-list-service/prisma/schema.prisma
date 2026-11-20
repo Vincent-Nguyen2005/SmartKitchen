@@ -33,6 +33,12 @@ model ShoppingItem {
   generatedKey       String?
   sourceMenuId       String?   @db.Uuid
   note               String?
+  /// Price snapshot taken when the item was added from the market (all optional; older rows have none).
+  /// unitPrice: whole VND before discount; discountPercent: 1-100 at add time; productId: admin catalog id.
+  unitPrice          Int?
+  discountPercent    Int?
+  productId          String?
+  imageUrl           String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 

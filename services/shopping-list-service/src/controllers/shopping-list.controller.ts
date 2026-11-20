@@ -5,8 +5,7 @@ import {
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
-  updateItemBodySchema,
-} from "../validators/shopping-list.validator";
+  updateItemBodySchema, checkoutBodySchema } from "../validators/shopping-list.validator";
 import { ShoppingAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
 
@@ -52,6 +51,18 @@ export class ShoppingListController {
       await requireFamilyMembership(auth(req), input.familyId);
       const item = await ShoppingListService.addItem(input);
       res.status(201).json({ success: true, data: item });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async checkout(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { familyId, items } = checkoutBodySchema.parse(req.body);
+      const request = auth(req);
+      await requireFamilyMembership(request, familyId);
+      const result = await ShoppingListService.checkout(familyId, request.authUser.userId, items);
+      res.json({ success: true, data: result });
     } catch (err) {
       next(err);
     }

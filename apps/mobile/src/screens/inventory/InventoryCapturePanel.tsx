@@ -21,7 +21,7 @@ import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typograp
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { DateField } from "../admin/DateField";
 import { inventoryApi, type CatalogIngredient, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
-import { CAMERA_PERMISSION_TEXT, prepareUploadPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
+import { CAMERA_PERMISSION_TEXT, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { dayFromToday, matchCatalog, unitFromCatalog } from "./catalogSuggest";
 
 const isWeb = Platform.OS === "web";
@@ -29,8 +29,21 @@ const UPLOAD_FAILED_NOTE = "Đã lưu, nhưng chưa tải được ảnh. Thử 
 
 export type InventoryCaptureMode = "photo" | "scan" | "voice";
 type Mode = InventoryCaptureMode;
-/** onClose closes the surrounding sheet (used when the user cancels the camera before taking a photo). */
-type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void; initialMode?: Mode; embedded?: boolean; autoStart?: boolean; onClose?: () => void };
+/**
+ * onClose closes the surrounding sheet (camera cancelled before any photo). initialPhoto / initialVoiceText come
+ * from the bottom bar, which opens the camera or starts listening before this panel is shown.
+ */
+type Props = {
+  familyId: string | null;
+  accessToken: string | null;
+  onSaved: () => void;
+  initialMode?: Mode;
+  embedded?: boolean;
+  autoStart?: boolean;
+  onClose?: () => void;
+  initialPhoto?: UploadPhoto | null;
+  initialVoiceText?: string;
+};
 type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
 type CaptureAsset = { uri: string; base64?: string | null; mimeType?: string | null; fileName?: string | null };
@@ -52,7 +65,7 @@ function parseVoiceDraft(text: string): { name: string; quantity: string; unit: 
   return { name: match[3].trim(), quantity: match[1].replace(",", "."), unit };
 }
 
-export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false, autoStart = false, onClose }: Props): React.JSX.Element {
+export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false, autoStart = false, onClose, initialPhoto = null, initialVoiceText }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -62,11 +75,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [barcode, setBarcode] = useState("");
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  const [photoCameraActive, setPhotoCameraActive] = useState(false);
-  const [photoCameraReady, setPhotoCameraReady] = useState(false);
-  const [takingPhoto, setTakingPhoto] = useState(false);
   // Product photo: only a picture stored with the item. Nothing is recognized from it.
-  const [photo, setPhoto] = useState<UploadPhoto | null>(null);
+  const [photo, setPhoto] = useState<UploadPhoto | null>(initialPhoto);
   const [cameraDenied, setCameraDenied] = useState(false);
   const [expiryDay, setExpiryDay] = useState("");
   const [group, setGroup] = useState("");
@@ -76,7 +86,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [pendingUpload, setPendingUpload] = useState<{ itemId: string; itemName: string; photo: UploadPhoto } | null>(null);
   const photoUri = photo?.uri ?? null;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
-  const photoCamera = useRef<CameraView>(null);
   const galleryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -105,7 +114,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setMode(nextMode);
     setNote(null);
     setCameraActive(false);
-    setPhotoCameraActive(false);
     setPhoto(null);
     setCameraDenied(false);
     setSuggestionApplied(false);
@@ -207,30 +215,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   };
 
   /**
-   * "Chụp ảnh" opens the camera directly: the in-app camera on phones; on web, the camera file input
-   * (accept="image/*" capture="environment"). No photo library and no entry without a photo in this flow.
+   * "Chụp ảnh" / retake: the phone's camera right away (web: the camera file input, opened inside this tap, so
+   * nothing may be awaited before takeItemPhoto). No photo library and no entry without a photo in this flow.
    */
   const startPhotoCamera = async () => {
     setNote(null);
-    if (isWeb) { handlePick(await takeItemPhoto()); return; }
-    setPhotoCameraReady(false);
-    try {
-      const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
-      if (!permission.granted) {
-        setCameraDenied(true);
-        return;
-      }
-      setCameraDenied(false);
-      setPhotoCameraActive(true);
-    } catch {
-      setNote("Không mở được camera. Hãy thử lại.");
-    }
-  };
-
-  /** Closing the in-app camera: with no photo yet this is a cancel, so the sheet closes. */
-  const closePhotoCamera = () => {
-    setPhotoCameraActive(false);
-    if (!photo) onClose?.();
+    handlePick(await takeItemPhoto());
   };
 
   const handleBarcodeScanned = (value: string) => {
@@ -372,25 +362,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
-  const takeProductPhoto = async () => {
-    if (takingPhoto || !photoCameraReady) return;
-    setTakingPhoto(true);
-    try {
-      const asset = await photoCamera.current?.takePictureAsync({ quality: 0.7, exif: false });
-      if (!asset) throw new Error("No camera image");
-      setPhotoCameraActive(false);
-      handlePick({ status: "picked", photo: await prepareUploadPhoto({ uri: asset.uri, mimeType: "image/jpeg", width: asset.width, height: asset.height }) });
-    } catch {
-      setNote("Không chụp được ảnh. Hãy thử lại hoặc chọn ảnh từ thư viện.");
-    } finally {
-      setTakingPhoto(false);
-    }
-  };
-
   useEffect(() => {
     if (!autoStart || !embedded || !familyId || !accessToken || autoStarted.current) return;
-    // Browsers only open the camera input from a tap, so web waits for the user to press "Chụp ảnh".
-    if (initialMode === "photo" && isWeb) return;
+    // Browsers only open the camera input from a tap; and a photo from the bottom bar needs no new shot.
+    if (initialMode === "photo" && (isWeb || initialPhoto)) return;
     const timer = setTimeout(() => {
       autoStarted.current = true;
       if (initialMode === "photo") void startPhotoCamera();
@@ -423,6 +398,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setQuantity(parsed.quantity);
     setUnit(parsed.unit);
   };
+
+  // Transcript heard by the bottom-bar voice overlay: same draft as speaking inside this panel.
+  useEffect(() => {
+    if (initialVoiceText) setVoiceDraft(initialVoiceText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startVoice = async () => {
     setNote(null);
@@ -490,7 +471,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
           {mode === "photo" && (
             <View style={styles.section}>
-              {!photoUri && !photoCameraActive && !cameraDenied && (
+              {!photoUri && !cameraDenied && (
                 <Pressable accessibilityRole="button" disabled={busy} onPress={() => void startPhotoCamera()} style={styles.saveButton}>
                   <View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>Chụp ảnh</Text></View>
                 </Pressable>
@@ -508,36 +489,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   </View>
                 </View>
               )}
-              {photoCameraActive && <Modal visible animationType="fade" onRequestClose={closePhotoCamera}>
-                <View style={styles.scannerScreen}>
-                  <CameraView
-                    ref={photoCamera}
-                    style={StyleSheet.absoluteFill}
-                    facing="back"
-                    onCameraReady={() => setPhotoCameraReady(true)}
-                    onMountError={() => {
-                      setPhotoCameraActive(false);
-                      setNote("Không khởi chạy được camera. Hãy thử lại.");
-                    }}
-                  />
-                  <SafeAreaView style={styles.photoOverlay}>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Đóng camera" onPress={closePhotoCamera} style={styles.scannerClose}>
-                      <AppIcon icon={X} size="md" color={colors.surface} />
-                    </Pressable>
-                    <View style={styles.scannerCenter}>
-                      <View pointerEvents="none" style={styles.photoTarget} />
-                      <Text style={styles.scannerHint}>Đưa thực phẩm vào khung rồi bấm chụp</Text>
-                    </View>
-                    <View style={styles.photoControls}>
-                      <View style={styles.galleryButton} />
-                      <Pressable accessibilityRole="button" accessibilityLabel="Chụp ảnh sản phẩm" disabled={!photoCameraReady || takingPhoto} onPress={() => { void takeProductPhoto(); }} style={[styles.shutterButton, (!photoCameraReady || takingPhoto) && styles.disabledButton]}>
-                        {takingPhoto ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={Camera} size="lg" color={colors.primary} />}
-                      </Pressable>
-                      <View style={styles.galleryButton} />
-                    </View>
-                  </SafeAreaView>
-                </View>
-              </Modal>}
             </View>
           )}
 
