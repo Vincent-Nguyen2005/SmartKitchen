@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, ImageOff, Minus, Plus, Search, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
@@ -19,6 +19,10 @@ type Props = {
   /** Called after an item is added or merged, with the toast text. */
   onAdded: (message: string) => void;
   onOpenFamily?: () => void;
+  /** Changing this reloads the current page in place (auto refresh / pull-to-refresh), keeping search and page. */
+  refreshSignal?: number;
+  /** Reports whether a catalog request is running, so the parent never starts an overlapping refresh. */
+  onLoadingChange?: (loading: boolean) => void;
 };
 
 /** Shopping-list unit for a catalog product; admin units are codes or older labels such as "g". */
@@ -56,14 +60,13 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
  * "Sản phẩm" segment of Đi chợ: active products from Quản trị > Nguyên liệu, 20 per page, added to the family
  * shopping list. Plain mapped Views (no FlatList) because the parent screen is a ScrollView.
  */
-export default function MarketProducts({ accessToken, familyId, lists, onAdded, onOpenFamily }: Props): React.JSX.Element {
+export default function MarketProducts({ accessToken, familyId, lists, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange }: Props): React.JSX.Element {
   const layout = useLayout();
   const columns = layout.columns + 1; // 2 on phones, 3 on wide, 4 on extra-wide screens
   const grid = useGridCell(columns, spacing.md);
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [group, setGroup] = useState<string>(ALL_GROUPS);
-  const [onSale, setOnSale] = useState(false);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CatalogPage | null>(null);
   const [groups, setGroups] = useState<string[]>([]);
@@ -81,26 +84,38 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
     return () => clearTimeout(timer);
   }, [search]);
 
+  const lastSignal = useRef(refreshSignal);
+  const loadingChange = useRef(onLoadingChange);
+  loadingChange.current = onLoadingChange;
+
   useEffect(() => {
     if (!accessToken) { setLoading(false); setError("Đăng nhập để xem sản phẩm."); return; }
+    // A refresh signal reloads quietly: the grid stays as it is (no dimming, no error over existing data).
+    const background = lastSignal.current !== refreshSignal && data !== null;
+    lastSignal.current = refreshSignal;
     let active = true;
-    setLoading(true);
-    setError(null);
-    inventoryApi.ingredientCatalog(accessToken, { search: term, group: group === ALL_GROUPS ? undefined : group, onSale, page, limit: PAGE_SIZE })
+    if (!background) { setLoading(true); setError(null); }
+    loadingChange.current?.(true);
+    inventoryApi.ingredientCatalog(accessToken, { search: term, group: group === ALL_GROUPS ? undefined : group, page, limit: PAGE_SIZE })
       .then((result) => {
         if (!active) return;
         setData(result);
+        setError(null);
         if (Array.isArray(result.groups)) setGroups(result.groups);
       })
       .catch((requestError: unknown) => {
-        if (active) setError(requestError instanceof Error ? requestError.message : "Không tải được sản phẩm.");
+        if (active && !background) setError(requestError instanceof Error ? requestError.message : "Không tải được sản phẩm.");
       })
-      .finally(() => { if (active) setLoading(false); });
+      .finally(() => {
+        loadingChange.current?.(false);
+        if (active) setLoading(false);
+      });
     return () => { active = false; };
-  }, [accessToken, term, group, onSale, page, reloadKey]);
+    // `data` only decides quiet vs. visible loading; it must not trigger a reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, term, group, page, reloadKey, refreshSignal]);
 
   const chooseGroup = (value: string) => { setGroup(value); setPage(1); };
-  const toggleSale = () => { setOnSale((current) => !current); setPage(1); };
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
@@ -138,33 +153,22 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
   return (
     <View style={local.container}>
       <Field label="Tìm sản phẩm" icon={Search} placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} autoCorrect={false} returnKeyType="search" />
-      <View style={local.filters}>
-        {groups.length > 0 && (
-          <Segmented<string>
-            label="Nhóm sản phẩm"
-            value={group}
-            onChange={chooseGroup}
-            options={[{ value: ALL_GROUPS, label: "Tất cả" }, ...groups.map((name) => ({ value: name, label: name }))]}
-          />
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Chỉ hiện sản phẩm đang giảm giá"
-          accessibilityState={{ selected: onSale }}
-          onPress={toggleSale}
-          style={[ui.segment, local.saleChip, onSale && ui.segmentSelected]}
-        >
-          <AppIcon icon={BadgePercent} size="sm" color={onSale ? colors.primaryText : colors.text} />
-          <Text style={[ui.segmentText, onSale && ui.segmentTextSelected]}>Đang giảm giá</Text>
-        </Pressable>
-      </View>
+      {/* Group chips only help when there is more than one group. */}
+      {groups.length > 1 && (
+        <Segmented<string>
+          label="Nhóm sản phẩm"
+          value={group}
+          onChange={chooseGroup}
+          options={[{ value: ALL_GROUPS, label: "Tất cả" }, ...groups.map((name) => ({ value: name, label: name }))]}
+        />
+      )}
 
       {loading && !data ? (
         <ScreenState loading />
       ) : error ? (
         <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />
       ) : items.length === 0 ? (
-        <ScreenState empty emptyText={term || onSale || group !== ALL_GROUPS ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
+        <ScreenState empty emptyText={term || group !== ALL_GROUPS ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
       ) : (
         <View onLayout={grid.onLayout} style={[local.grid, { gap: grid.gap }, loading && local.dimmed]}>
           {items.map((product) => (
@@ -257,8 +261,6 @@ export default function MarketProducts({ accessToken, familyId, lists, onAdded, 
 
 const local = StyleSheet.create({
   container: { gap: spacing.md },
-  filters: { gap: spacing.sm },
-  saleChip: { alignSelf: "flex-start", flexDirection: "row", gap: spacing.xs },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   dimmed: { opacity: 0.6 },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },

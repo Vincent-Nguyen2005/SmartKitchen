@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -19,7 +20,7 @@ import { RadioDropdown } from "../../components/RadioDropdown";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
-import { InventoryPhoto, pickItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
+import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
@@ -217,7 +218,16 @@ export default function InventoryListScreen({
 
   const uploadPickedPhoto = async (item: FoodItem, result: PhotoPickResult) => {
     if (!accessToken) return;
-    if (result.status === "denied") { setPhotoError("Chưa có quyền dùng camera. Hãy chọn ảnh từ thư viện hoặc bật quyền trong Cài đặt."); return; }
+    if (result.status === "denied") {
+      setPhotoError(CAMERA_PERMISSION_TEXT);
+      if (Platform.OS !== "web") {
+        Alert.alert(CAMERA_PERMISSION_TEXT, undefined, [
+          { text: "Đóng", style: "cancel" },
+          { text: "Mở cài đặt", onPress: () => { void Linking.openSettings(); } },
+        ]);
+      }
+      return;
+    }
     if (result.status === "error") { setPhotoError(result.message); return; }
     if (result.status !== "picked") return;
     setPhotoBusy(true);
@@ -233,15 +243,10 @@ export default function InventoryListScreen({
   };
 
   /** "Đổi ảnh": camera or library on phones, the library on web. */
+  /** "Đổi ảnh" / "Thêm ảnh": camera only (system camera on phones, camera file input on web). */
   const changePhoto = (item: FoodItem) => {
     setPhotoError(null);
-    const pick = (source: "camera" | "library") => { void pickItemPhoto(source).then((result) => uploadPickedPhoto(item, result)); };
-    if (Platform.OS === "web") { pick("library"); return; }
-    Alert.alert(item.imageUrl ? "Đổi ảnh" : "Thêm ảnh", "Ảnh chỉ được lưu cùng món này và chỉ thành viên gia đình xem được.", [
-      { text: "Chụp ảnh", onPress: () => pick("camera") },
-      { text: "Chọn từ thư viện", onPress: () => pick("library") },
-      { text: "Hủy", style: "cancel" },
-    ]);
+    void takeItemPhoto().then((result) => uploadPickedPhoto(item, result));
   };
 
   const removePhoto = (item: FoodItem) => {

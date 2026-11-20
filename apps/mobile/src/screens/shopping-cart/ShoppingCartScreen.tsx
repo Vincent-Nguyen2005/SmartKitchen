@@ -2,8 +2,10 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Modal,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -12,24 +14,28 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Check, ClipboardList, Plus, RefreshCw, Store } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { Check, ChevronLeft, Plus, ShoppingCart } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useSession } from "../../services/session";
-import { Segmented } from "../notifications/ui";
 import MarketProducts from "./MarketProducts";
 import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi, shoppingUnitLabels, shoppingUnits } from "./shoppingApi";
 
 const unitChoices = shoppingUnits;
 const unitLabels = shoppingUnitLabels;
 
-type Segment = "products" | "list";
+/** "market" = products grid (main view); "list" = the existing "Cần mua" shopping list, opened from the cart button. */
+type View_ = "market" | "list";
 type Props = { onOpenFamily?: () => void };
+const AUTO_REFRESH_MS = 30_000;
 
 export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
-  // "Sản phẩm" (admin market products) first; "Cần mua" is the existing shopping list, unchanged.
-  const [segment, setSegment] = useState<Segment>("products");
+  const [view, setView] = useState<View_>("market");
+  // Bumped to make the product grid reload in place (same search text and page).
+  const [productsRefresh, setProductsRefresh] = useState(0);
+  const productsLoading = useRef(false);
+  const [pulling, setPulling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width } = useWindowDimensions();
@@ -52,7 +58,7 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const fetchData = async (showLoading = false) => {
+  const loadData = async (showLoading = false) => {
     if (!ready) return;
     if (!family?.id || !accessToken) {
       setLists([]);
@@ -82,7 +88,42 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
     }
   };
 
+  const listRequest = useRef<Promise<void> | null>(null);
+  /** Loads lists and suggestions; never overlaps another load (waits for it, then loads fresh data). */
+  const fetchData = async (showLoading = false): Promise<void> => {
+    if (listRequest.current) await listRequest.current.catch(() => undefined);
+    const run = loadData(showLoading);
+    listRequest.current = run;
+    try { await run; } finally { if (listRequest.current === run) listRequest.current = null; }
+  };
+  const fetchRef = useRef(fetchData);
+  fetchRef.current = fetchData;
+
   useEffect(() => { void fetchData(true); }, [family?.id, accessToken, ready]);
+
+  // Auto refresh every 30 s while this tab is mounted (= focused) and the app is in the foreground.
+  // A tick is skipped while a list or product request is still running, so requests never overlap.
+  useEffect(() => {
+    let appState = AppState.currentState;
+    const tick = () => {
+      if (appState !== "active" || listRequest.current || productsLoading.current) return;
+      void fetchRef.current(false);
+      setProductsRefresh((value) => value + 1);
+    };
+    const timer = setInterval(tick, AUTO_REFRESH_MS);
+    const subscription = AppState.addEventListener("change", (next) => {
+      const resumed = appState !== "active" && next === "active";
+      appState = next;
+      if (resumed) tick();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [family?.id, accessToken]);
+
+  const pullToRefresh = async () => {
+    setPulling(true);
+    setProductsRefresh((value) => value + 1);
+    try { await fetchData(false); } finally { setPulling(false); }
+  };
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   const showToast = (message: string) => {
@@ -94,7 +135,10 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
   const handleProductAdded = (message: string) => {
     showToast(message);
     void fetchData(false);
+    setProductsRefresh((value) => value + 1);
   };
+
+  const cartCount = lists.reduce((count, list) => count + list.items.filter((item) => !item.isPurchased).length, 0);
 
   const addItem = async () => {
     if (!family?.id || !accessToken) { setError("Đăng nhập và tạo hoặc tham gia gia đình trước."); return; }
@@ -291,37 +335,56 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
     );
   };
 
-  if (!ready || loading) {
-    return <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.helper}>Đang tải danh sách...</Text></View>;
-  }
+  const contentStyle = [styles.content, { padding: isCompact ? spacing.md : spacing.lg }, isWide && styles.wideContent];
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={[styles.header, { paddingHorizontal: isCompact ? spacing.md : isWide ? spacing.xl : spacing.xl }, isWide && styles.wideContent]}>
-        <View style={styles.headerTitle}>
-          <Text style={styles.title}>Đi chợ</Text>
-        </View>
-        <Pressable accessibilityRole="button" accessibilityLabel="Làm mới danh sách đi chợ" onPress={() => void fetchData(true)} style={styles.refreshButton}>
-          <View style={styles.inlineAction}><AppIcon icon={RefreshCw} size="sm" color={colors.primary} /><Text style={styles.refreshText}>Làm mới</Text></View>
-        </Pressable>
-      </View>
-
-      <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? spacing.md : spacing.lg }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
-        <Segmented<Segment>
-          label="Đi chợ"
-          value={segment}
-          onChange={setSegment}
-          options={[{ value: "products", label: "Sản phẩm", icon: Store }, { value: "list", label: "Cần mua", icon: ClipboardList }]}
-        />
-        {segment === "products" ? (
-          <MarketProducts
-            accessToken={accessToken}
-            familyId={family?.id ?? null}
-            lists={lists}
-            onAdded={handleProductAdded}
-            onOpenFamily={onOpenFamily}
-          />
-        ) : !family ? (
+      {view === "market" ? (
+        <>
+          <ScrollView
+            contentContainerStyle={[contentStyle, styles.marketContent]}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={<RefreshControl colors={[colors.primary]} tintColor={colors.primary} refreshing={pulling} onRefresh={() => void pullToRefresh()} />}
+          >
+            <MarketProducts
+              accessToken={accessToken}
+              familyId={family?.id ?? null}
+              lists={lists}
+              onAdded={handleProductAdded}
+              onOpenFamily={onOpenFamily}
+              refreshSignal={productsRefresh}
+              onLoadingChange={(value) => { productsLoading.current = value; }}
+            />
+          </ScrollView>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={cartCount ? `Mở Cần mua, ${cartCount} món chưa mua` : "Mở Cần mua"}
+            onPress={() => setView("list")}
+            style={({ pressed }) => [styles.cartButton, pressed && styles.disabled]}
+          >
+            <AppIcon icon={ShoppingCart} size="lg" color={colors.primaryText} />
+            {cartCount > 0 && (
+              <View style={styles.cartBadge}>
+                <Text style={styles.cartBadgeText}>{cartCount > 99 ? "99+" : cartCount}</Text>
+              </View>
+            )}
+          </Pressable>
+        </>
+      ) : (
+        <>
+          <View style={[styles.listHeader, isWide && styles.wideContent]}>
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại Đi chợ" color={colors.text} onPress={() => setView("market")} />
+            <Text style={styles.listHeaderTitle}>Cần mua</Text>
+          </View>
+          {!ready || loading ? (
+            <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.helper}>Đang tải danh sách...</Text></View>
+          ) : (
+      <ScrollView
+        contentContainerStyle={contentStyle}
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl colors={[colors.primary]} tintColor={colors.primary} refreshing={pulling} onRefresh={() => void pullToRefresh()} />}
+      >
+        {!family ? (
           <View style={styles.emptyBox}><Text style={styles.emptyText}>Tạo hoặc tham gia gia đình để dùng danh sách đi chợ.</Text></View>
         ) : (
           <>
@@ -380,6 +443,9 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
           </>
         )}
       </ScrollView>
+          )}
+        </>
+      )}
       <Modal animationType="slide" onRequestClose={() => { if (!busyItemId) setEditingItem(null); }} transparent visible={editingItem !== null}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
@@ -406,12 +472,7 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
 const styles = StyleSheet.create({
   container: { backgroundColor: colors.background, flex: 1 },
   wideContent: { alignSelf: "center", maxWidth: 900, width: "100%" },
-  header: { alignItems: "center", alignSelf: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.lg, width: "100%" },
-  headerTitle: { flex: 1, minWidth: 0 },
-  title: { ...textStyles.pageTitle, color: colors.text },
-  refreshButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 7, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
   inlineAction: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "center" },
-  refreshText: { color: colors.primary, ...typography.labelSmall },
   content: { alignSelf: "center", gap: spacing.lg, paddingBottom: spacing.xl, width: "100%" },
   addCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 11, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
   sectionTitle: { ...textStyles.subheading, color: colors.text },
@@ -461,6 +522,13 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
   cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
   center: { alignItems: "center", backgroundColor: colors.background, flex: 1, gap: spacing.md, justifyContent: "center", padding: spacing.xl },
+  marketContent: { paddingBottom: 96 },
+  // Floating cart: bottom-right inside the screen, so it sits above the app's bottom action bar.
+  cartButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 28, bottom: spacing.lg, elevation: 4, height: 56, justifyContent: "center", position: "absolute", right: spacing.lg, shadowColor: colors.text, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4, width: 56 },
+  cartBadge: { alignItems: "center", backgroundColor: colors.danger, borderColor: colors.surface, borderRadius: 11, borderWidth: 2, justifyContent: "center", minWidth: 22, paddingHorizontal: spacing.xs, position: "absolute", right: -2, top: -2 },
+  cartBadgeText: { ...textStyles.caption, color: colors.surface, fontWeight: "700", lineHeight: 14 },
+  listHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  listHeaderTitle: { ...textStyles.heading },
   toastWrap: { alignItems: "center", bottom: spacing.xl, left: spacing.lg, position: "absolute", right: spacing.lg },
   toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
 });
