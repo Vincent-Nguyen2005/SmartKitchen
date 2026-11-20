@@ -3,10 +3,12 @@ import { gatewayFetch } from "../../services/api";
 export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
 export type MealSource = "HOME" | "EATING_OUT" | "DELIVERY";
 
+/** Matches meal-diary-service MealDiaryItem. */
 export type MealLogItem = {
   id: string;
-  mealLogId: string;
+  mealDiaryId: string;
   foodName: string;
+  unit: string;
   calories: number;
   protein: number | null;
   carbs: number | null;
@@ -19,7 +21,10 @@ export type MealLog = {
   userId: string;
   mealType: MealType;
   source: MealSource;
+  /** Calendar day of the meal (the API returns YYYY-MM-DDT00:00:00.000Z). */
+  date: string;
   loggedAt: string;
+  notes: string | null;
   createdAt: string;
   items: MealLogItem[];
 };
@@ -38,6 +43,8 @@ export type MealHistory = {
 };
 
 export type MealLogInput = {
+  /** Selected calendar day, YYYY-MM-DD (Vietnam time); the service files the meal under this day. */
+  date: string;
   mealType: MealType;
   source: MealSource;
   loggedAt?: string;
@@ -83,25 +90,22 @@ export function createMealDiaryApi(accessToken: string | null) {
         method: "POST",
         body: JSON.stringify({
           ...meal,
-          date: meal.loggedAt?.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
           items: meal.items.map((item) => ({
             ...item,
             unit: item.unit ?? "serving",
           })),
         }),
       }),
+    /**
+     * Daily calorie goal = `tdee` from the nutrition profile (GET /api/nutrition, nutrition-service).
+     * null = the user has no nutrition profile yet (404). Other failures throw.
+     */
     getCalorieGoal: async (): Promise<number | null> => {
-      try {
-        const result = await request<{ tdee?: number }>("/");
-        return typeof result.tdee === "number" && Number.isFinite(result.tdee)
-          ? result.tdee
-          : null;
-      } catch (error) {
-        if (error instanceof MealDiaryApiError && error.status === 404) {
-          return null;
-        }
-        throw error;
-      }
+      const response = await gatewayFetch("/api/nutrition", { accessToken });
+      const result = (await response.json().catch(() => ({}))) as { tdee?: unknown; error?: string };
+      if (response.status === 404) return null;
+      if (!response.ok) throw new MealDiaryApiError(result.error ?? "Unable to load the nutrition profile.", response.status);
+      return typeof result.tdee === "number" && Number.isFinite(result.tdee) && result.tdee > 0 ? result.tdee : null;
     },
   };
 }

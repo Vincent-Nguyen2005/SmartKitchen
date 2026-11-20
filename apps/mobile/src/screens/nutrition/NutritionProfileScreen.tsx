@@ -1,3 +1,4 @@
+import { useSession } from "../../services/session";
 import React, { useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Check } from "lucide-react-native";
@@ -26,7 +27,6 @@ import {
   NutritionProfileResult,
 } from "./nutritionProfileApi";
 
-type Props = { apiBaseUrl: string; accessToken?: string };
 
 const activityOptions: {
   value: ActivityLevel;
@@ -56,18 +56,16 @@ const activityOptions: {
   },
 ];
 
-export default function NutritionProfileScreen({
-  apiBaseUrl,
-  accessToken,
-}: Props): React.JSX.Element {
+export default function NutritionProfileScreen(): React.JSX.Element {
+  const accessToken = useSession().accessToken ?? undefined;
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
   const api = useMemo(
     () =>
       accessToken
-        ? createNutritionProfileApi(apiBaseUrl, accessToken)
+        ? createNutritionProfileApi(accessToken)
         : undefined,
-    [accessToken, apiBaseUrl],
+    [accessToken],
   );
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
@@ -345,7 +343,6 @@ export default function NutritionProfileScreen({
           {accessToken ? (
             <HealthPreferencesSection
               compact={isCompact}
-              apiBaseUrl={apiBaseUrl}
               accessToken={accessToken}
             />
           ) : null}
@@ -357,14 +354,12 @@ export default function NutritionProfileScreen({
 
 function HealthPreferencesSection({
   compact,
-  apiBaseUrl,
   accessToken,
 }: {
   compact: boolean;
-  apiBaseUrl: string;
   accessToken: string;
 }): React.JSX.Element {
-  const api = createHealthPreferencesApi(apiBaseUrl, accessToken);
+  const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
   const [conditions, setConditions] = useState<HealthOption[]>([]);
   const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
@@ -392,7 +387,7 @@ function HealthPreferencesSection({
     return () => {
       active = false;
     };
-  }, [apiBaseUrl, accessToken]);
+  }, [accessToken]);
 
   const toggle = (
     id: string,

@@ -15,13 +15,9 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import {
-  Calendar,
-  ChevronLeft,
-  ChevronRight,
-  Plus,
-  X,
-} from "lucide-react-native";
+import { Plus, X } from "lucide-react-native";
+import { DaySwitcher, vnToday } from "../nutrition/DaySwitcher";
+import { ProfileMissingCard } from "../nutrition/ProfileMissingCard";
 import {
   AppIcon,
   IconButton,
@@ -39,7 +35,8 @@ import {
   MealType,
 } from "./mealDiaryApi";
 
-type Props = { apiBaseUrl: string; userId: string };
+/** onOpenProfile switches the Dinh dưỡng tab to the "Hồ sơ" segment. */
+type Props = { onOpenProfile?: () => void };
 
 const mealTypes: { value: MealType; label: string }[] = [
   { value: "BREAKFAST", label: "Bữa sáng" },
@@ -68,39 +65,24 @@ const emptySummary = (date: string): DailyMealSummary => ({
   fat: 0,
 });
 
-function utcDateString(date: Date): string {
-  return date.toISOString().slice(0, 10);
-}
-
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString("vi-VN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  });
-}
-
 function formatNumber(value: number): string {
   return Math.round(value).toLocaleString("vi-VN");
 }
 
-export default function MealDiaryScreen({
-  apiBaseUrl,
-  userId,
-}: Props): React.JSX.Element {
+export default function MealDiaryScreen({ onOpenProfile }: Props): React.JSX.Element {
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
   const { accessToken } = useSession();
   const api = createMealDiaryApi(accessToken);
-  const [selectedDate, setSelectedDate] = useState(() =>
-    utcDateString(new Date()),
-  );
+  // Selected calendar day, YYYY-MM-DD; defaults to today in Vietnam time.
+  const [selectedDate, setSelectedDate] = useState(() => vnToday());
   const [meals, setMeals] = useState<MealLog[]>([]);
   const [summary, setSummary] = useState(() =>
-    emptySummary(utcDateString(new Date())),
+    emptySummary(vnToday()),
   );
   const [calorieGoal, setCalorieGoal] = useState(2000);
+  // true when GET /api/nutrition answers 404: no profile, so no personal calorie goal.
+  const [profileMissing, setProfileMissing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
@@ -125,7 +107,9 @@ export default function MealDiaryScreen({
     try {
       const [history, goal] = await Promise.all([
         api.getHistory(date),
-        api.getCalorieGoal().catch(() => null),
+        api.getCalorieGoal()
+          .then((tdee) => ({ tdee, missing: tdee === null }))
+          .catch(() => ({ tdee: null, missing: false })),
       ]);
       if (currentRequestId !== requestId.current) return;
       setMeals(history.meals);
@@ -134,7 +118,8 @@ export default function MealDiaryScreen({
           (dailySummary) => dailySummary.date === date,
         ) ?? emptySummary(date),
       );
-      setCalorieGoal(goal && goal > 0 ? Math.round(goal) : 2000);
+      setCalorieGoal(goal.tdee !== null ? Math.round(goal.tdee) : 2000);
+      setProfileMissing(goal.missing);
     } catch {
       if (currentRequestId === requestId.current) {
         setError("Không thể tải nhật ký. Kiểm tra kết nối rồi thử lại.");
@@ -152,13 +137,7 @@ export default function MealDiaryScreen({
     return () => {
       requestId.current += 1;
     };
-  }, [accessToken, apiBaseUrl, userId, selectedDate]);
-
-  const moveDate = (amount: number): void => {
-    const date = new Date(`${selectedDate}T00:00:00.000Z`);
-    date.setUTCDate(date.getUTCDate() + amount);
-    setSelectedDate(utcDateString(date));
-  };
+  }, [accessToken, selectedDate]);
 
   const openForm = (selectedMealType: MealType = "BREAKFAST"): void => {
     setFoodName("");
@@ -204,7 +183,7 @@ export default function MealDiaryScreen({
       await api.logMeal({
         mealType,
         source,
-        loggedAt: `${selectedDate}T${new Date().toISOString().slice(11, 19)}.000Z`,
+        date: selectedDate,
         items: [
           {
             foodName: foodName.trim(),
@@ -228,7 +207,7 @@ export default function MealDiaryScreen({
   const proteinGoal = Math.round((calorieGoal * 0.2) / 4);
   const carbsGoal = Math.round((calorieGoal * 0.5) / 4);
   const fatGoal = Math.round((calorieGoal * 0.3) / 9);
-  const isToday = selectedDate === utcDateString(new Date());
+  const isToday = selectedDate === vnToday();
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
@@ -252,32 +231,7 @@ export default function MealDiaryScreen({
           </Text>
         </View>
 
-        <View style={styles.dateBar}>
-          <IconButton
-            accessibilityLabel="Ngày trước"
-            onPress={() => moveDate(-1)}
-            icon={ChevronLeft}
-            color={colors.text}
-            style={styles.dateArrow}
-          />
-          <View style={styles.dateCopy}>
-            <View style={styles.dateLabelRow}>
-              <AppIcon icon={Calendar} size="sm" color={colors.primary} />
-              <Text style={styles.dateLabel}>
-                {isToday ? "Hôm nay" : "Ngày đã chọn"}
-              </Text>
-            </View>
-            <Text style={styles.dateValue}>{formatDay(selectedDate)}</Text>
-          </View>
-          <IconButton
-            accessibilityLabel="Ngày tiếp theo"
-            disabled={isToday}
-            onPress={() => moveDate(1)}
-            icon={ChevronRight}
-            color={colors.text}
-            style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
-          />
-        </View>
+        <DaySwitcher value={selectedDate} onChange={setSelectedDate} />
 
         <View style={styles.summaryPanel}>
           <View style={[styles.calorieHeading, isCompact && styles.calorieHeadingCompact]}>
@@ -291,29 +245,35 @@ export default function MealDiaryScreen({
             <View style={[styles.goalCopy, isCompact && styles.goalCopyCompact]}>
               <Text style={styles.panelEyebrow}>Mục tiêu</Text>
               <Text style={styles.goalText}>
-                {formatNumber(calorieGoal)} kcal
+                {profileMissing ? "Chưa có" : `${formatNumber(calorieGoal)} kcal`}
               </Text>
             </View>
           </View>
 
-          <View style={styles.calorieTrack}>
-            <View
-              style={[
-                styles.calorieFill,
-                { width: `${calorieProgress * 100}%` },
-              ]}
-            />
-          </View>
-          <View style={[styles.progressCaption, isCompact && styles.progressCaptionCompact]}>
-            <Text style={styles.progressText}>
-              {Math.round((summary.calories / calorieGoal) * 100)}% mục tiêu
-            </Text>
-            <Text style={styles.progressText}>
-              {summary.calories > calorieGoal
-                ? `Vượt ${formatNumber(summary.calories - calorieGoal)} kcal`
-                : `Còn ${formatNumber(calorieGoal - summary.calories)} kcal`}
-            </Text>
-          </View>
+          {profileMissing ? (
+            <ProfileMissingCard onOpenProfile={onOpenProfile} />
+          ) : (
+            <>
+            <View style={styles.calorieTrack}>
+              <View
+                style={[
+                  styles.calorieFill,
+                  { width: `${calorieProgress * 100}%` },
+                ]}
+              />
+            </View>
+            <View style={[styles.progressCaption, isCompact && styles.progressCaptionCompact]}>
+              <Text style={styles.progressText}>
+                {Math.round((summary.calories / calorieGoal) * 100)}% mục tiêu
+              </Text>
+              <Text style={styles.progressText}>
+                {summary.calories > calorieGoal
+                  ? `Vượt ${formatNumber(summary.calories - calorieGoal)} kcal`
+                  : `Còn ${formatNumber(calorieGoal - summary.calories)} kcal`}
+              </Text>
+            </View>
+            </>
+          )}
 
           <View style={styles.macroDivider} />
           <Text style={styles.macroHeading}>Dinh dưỡng trong ngày</Text>
@@ -341,8 +301,8 @@ export default function MealDiaryScreen({
             />
           </View>
           <Text style={styles.goalNote}>
-            {calorieGoal === 2000
-              ? "Mục tiêu tạm tính · cập nhật hồ sơ để cá nhân hóa"
+            {profileMissing || calorieGoal === 2000
+              ? "Mục tiêu đạm, tinh bột, chất béo đang tạm tính theo 2.000 kcal"
               : "Mục tiêu theo hồ sơ dinh dưỡng"}
           </Text>
         </View>
@@ -803,47 +763,6 @@ const styles = StyleSheet.create({
     ...textStyles.bodySmall,
     color: colors.muted,
     marginTop: spacing.xs,
-  },
-  dateBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderWidth: 1,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-  },
-  dateArrow: {
-    borderRadius: radius.sm,
-  },
-  dateArrowDisabled: {
-    opacity: 0.35,
-  },
-  dateCopy: {
-    alignItems: "center",
-    flex: 1,
-    minWidth: 0,
-    paddingHorizontal: spacing.xs,
-  },
-  dateLabelRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  dateLabel: {
-    ...textStyles.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  dateValue: {
-    ...textStyles.labelSmall,
-    flexShrink: 1,
-    color: colors.text,
-    marginTop: spacing.xs,
-    textAlign: "center",
   },
   summaryPanel: {
     backgroundColor: colors.surface,

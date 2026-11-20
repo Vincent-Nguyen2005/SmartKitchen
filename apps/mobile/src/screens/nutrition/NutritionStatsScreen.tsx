@@ -1,8 +1,9 @@
 import { useSession } from "../../services/session";
 import React, { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Calendar, ChevronLeft, ChevronRight } from "lucide-react-native";
-import { AppIcon, IconButton, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
+import { colors, radius, spacing, textStyles, touchTarget } from "../../theme";
+import { DaySwitcher, vnToday } from "./DaySwitcher";
+import { ProfileMissingCard } from "./ProfileMissingCard";
 import {
   ActivityIndicator,
   Pressable,
@@ -19,31 +20,20 @@ import {
   NutritionStatsApiError,
 } from "./nutritionStatsApi";
 
-type Props = { apiBaseUrl: string; userId: string };
-
-const today = (): string => new Date().toISOString().slice(0, 10);
-
-function formatDay(date: string): string {
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString("vi-VN", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  });
-}
+/** onOpenProfile switches the Dinh dưỡng tab to the "Hồ sơ" segment. */
+type Props = { onOpenProfile?: () => void };
 
 function formatNumber(value: number): string {
   return Math.round(value).toLocaleString("vi-VN");
 }
 
-export default function NutritionStatsScreen({
-  apiBaseUrl,
-  userId,
-}: Props): React.JSX.Element {
+export default function NutritionStatsScreen({ onOpenProfile }: Props): React.JSX.Element {
   const { accessToken } = useSession();
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
-  const [date, setDate] = useState(today);
+  // Selected calendar day, YYYY-MM-DD; defaults to today in Vietnam time.
+  const [date, setDate] = useState(() => vnToday());
+  const [profileMissing, setProfileMissing] = useState(false);
   const [stats, setStats] = useState<DailyNutritionStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +44,7 @@ export default function NutritionStatsScreen({
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setError("");
+      setProfileMissing(false);
       try {
         const result = await createNutritionStatsApi(accessToken).getDailyStats(date);
         setStats(result);
@@ -62,7 +53,8 @@ export default function NutritionStatsScreen({
           requestError instanceof NutritionStatsApiError &&
           requestError.status === 404
         ) {
-          setError("Hãy tạo hồ sơ dinh dưỡng để xem mục tiêu cá nhân.");
+          setProfileMissing(true);
+          setStats(null);
         } else {
           setError("Không thể tải thống kê. Vui lòng kiểm tra kết nối và thử lại.");
         }
@@ -71,20 +63,12 @@ export default function NutritionStatsScreen({
         setRefreshing(false);
       }
     },
-    [accessToken, apiBaseUrl, date, userId],
+    [accessToken, date],
   );
 
   useEffect(() => {
     void loadStats();
   }, [loadStats]);
-
-  const moveDate = (days: number): void => {
-    const selected = new Date(`${date}T00:00:00.000Z`);
-    selected.setUTCDate(selected.getUTCDate() + days);
-    setDate(selected.toISOString().slice(0, 10));
-  };
-
-  const isToday = date === today();
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
@@ -107,35 +91,12 @@ export default function NutritionStatsScreen({
           </Text>
         </View>
 
-        <View style={styles.dateBar}>
-          <IconButton
-            accessibilityLabel="Ngày trước"
-            onPress={() => moveDate(-1)}
-            icon={ChevronLeft}
-            color={colors.text}
-            style={styles.dateArrow}
-          />
-          <View style={styles.dateCopy}>
-            <View style={styles.dateLabelRow}>
-              <AppIcon icon={Calendar} size="sm" color={colors.primary} />
-              <Text style={styles.dateLabel}>
-                {isToday ? "Hôm nay" : "Ngày đã chọn"}
-              </Text>
-            </View>
-            <Text style={styles.dateText}>{formatDay(date)}</Text>
-          </View>
-          <IconButton
-            accessibilityLabel="Ngày tiếp theo"
-            disabled={date >= today()}
-            onPress={() => moveDate(1)}
-            icon={ChevronRight}
-            color={colors.text}
-            style={[styles.dateArrow, date >= today() && styles.disabled]}
-          />
-        </View>
+        <DaySwitcher value={date} onChange={setDate} />
 
         {loading ? (
           <ActivityIndicator color={colors.primary} size="large" style={styles.loader} />
+        ) : profileMissing ? (
+          <ProfileMissingCard onOpenProfile={onOpenProfile} />
         ) : error ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>Chưa thể tải thống kê</Text>
@@ -284,37 +245,6 @@ const styles = StyleSheet.create({
     ...textStyles.bodySmall,
     color: colors.muted,
     marginTop: spacing.xs,
-  },
-  dateBar: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  dateArrow: { borderRadius: radius.sm },
-  dateCopy: { alignItems: "center", flex: 1, minWidth: 0, paddingHorizontal: spacing.xs },
-  dateLabelRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.xs,
-  },
-  dateLabel: {
-    ...textStyles.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  dateText: {
-    ...textStyles.labelSmall,
-    flexShrink: 1,
-    color: colors.text,
-    marginTop: spacing.xs,
-    textAlign: "center",
   },
   summaryCard: {
     backgroundColor: colors.surface,

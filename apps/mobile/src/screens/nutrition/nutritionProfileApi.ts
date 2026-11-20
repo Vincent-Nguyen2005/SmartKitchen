@@ -139,12 +139,8 @@ function resolveUserId(accessToken: string, explicitUserId?: string): string {
   return userId.trim();
 }
 
-export function createHealthPreferencesApi(
-  fallbackBaseUrl: string,
-  accessToken: string,
-) {
-  // Base URL, ngrok header and Bearer token come from the shared gatewayFetch; fallbackBaseUrl is kept for callers.
-  void fallbackBaseUrl;
+// Base URL, ngrok header and Bearer token come from the shared gatewayFetch (services/api.ts).
+export function createHealthPreferencesApi(accessToken: string) {
   const token = requireAccessToken(accessToken);
 
   async function request<T>(
@@ -180,12 +176,7 @@ export function createHealthPreferencesApi(
   };
 }
 
-export function createNutritionProfileApi(
-  fallbackBaseUrl: string,
-  accessToken: string,
-  userId?: string,
-) {
-  void fallbackBaseUrl;
+export function createNutritionProfileApi(accessToken: string, userId?: string) {
 
   async function request(
     method: "GET" | "POST" | "PUT",
