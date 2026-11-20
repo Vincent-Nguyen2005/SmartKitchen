@@ -88,20 +88,50 @@ export type PhotoPickResult =
   | { status: "denied" }
   | { status: "error"; message: string };
 
-/** Camera on phones, photo library on web (and when `source` is "library"). */
-export async function pickItemPhoto(source: "camera" | "library"): Promise<PhotoPickResult> {
+export const CAMERA_PERMISSION_TEXT = "Cần quyền camera để chụp sản phẩm";
+
+/**
+ * Web (localhost testing): a file input with accept="image/*" and capture="environment", so mobile browsers open
+ * the rear camera. Must run from a tap; browsers block a programmatic picker otherwise.
+ */
+const captureOnWeb = (): Promise<PhotoPickResult> => new Promise((resolve) => {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = "image/*";
+  input.setAttribute("capture", "environment");
+  input.style.display = "none";
+  let settled = false;
+  const finish = (result: PhotoPickResult) => {
+    if (settled) return;
+    settled = true;
+    input.remove();
+    resolve(result);
+  };
+  input.addEventListener("cancel", () => finish({ status: "cancelled" }));
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (!file) { finish({ status: "cancelled" }); return; }
+    const uri = URL.createObjectURL(file);
+    prepareUploadPhoto({ uri, mimeType: file.type || "image/jpeg", fileName: file.name })
+      .then((photo) => finish({ status: "picked", photo }))
+      .catch((error: unknown) => finish({ status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không đọc được ảnh. Hãy chụp lại." }))
+      .finally(() => URL.revokeObjectURL(uri));
+  });
+  document.body.appendChild(input);
+  input.click();
+});
+
+/** Takes a product photo with the camera only: the system camera on phones, the camera file input on web. */
+export async function takeItemPhoto(): Promise<PhotoPickResult> {
+  if (Platform.OS === "web") return captureOnWeb();
   try {
-    const useCamera = source === "camera" && Platform.OS !== "web";
-    if (useCamera) {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) return { status: "denied" };
-    }
-    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.7, exif: false };
-    const result = useCamera ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) return { status: "denied" };
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.7, exif: false });
     if (result.canceled || !result.assets[0]) return { status: "cancelled" };
     return { status: "picked", photo: await prepareUploadPhoto(result.assets[0]) };
   } catch (error) {
-    return { status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không mở được camera hoặc thư viện ảnh. Hãy thử lại." };
+    return { status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không mở được camera. Hãy thử lại." };
   }
 }
 

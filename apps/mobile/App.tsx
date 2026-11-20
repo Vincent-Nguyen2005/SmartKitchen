@@ -402,6 +402,7 @@ function AppContent(): React.JSX.Element {
                   familyId={session.family?.id ?? null}
                   accessToken={session.accessToken}
                   onSaved={() => setInventoryRefreshKey((current) => current + 1)}
+                  onClose={() => { setCaptureReady(false); setCaptureMode(null); }}
                 />
               )}
               {!session.family?.id && (
