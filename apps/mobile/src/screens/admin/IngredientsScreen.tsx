@@ -7,6 +7,7 @@ import { errorMessage, GatewayApiError, query, type Page } from "../notification
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { DateField, toDisplayDate } from "./DateField";
+import { formatVnd } from "../../services/format";
 
 type Ingredient = {
   id: string;
@@ -22,6 +23,8 @@ type Ingredient = {
   discountPercent: number | null;
   /** ISO date (the API returns YYYY-MM-DDT00:00:00.000Z). */
   promoEndDate: string | null;
+  /** Optional price in whole VND, shown in the user market (Đi chợ). */
+  price: number | null;
 };
 type SavedIngredient = Ingredient & { promotionSync?: "synced" | "failed" | "none" };
 
@@ -45,12 +48,13 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 // Allergens field hidden from the form: no service reads allergens yet (data, API and stored values kept).
 const SHOW_ALLERGENS = false;
 
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string };
-const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "" };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string };
+const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "" };
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
+  price: item.price?.toString() ?? "",
 });
 const DEFAULT_PROMO_DAYS = 7;
 const PROMOTION_SYNC_FAILED = "Đã lưu nguyên liệu, nhưng chưa tạo được khuyến mãi. Thử lưu lại.";
@@ -137,12 +141,14 @@ export default function IngredientsScreen(): React.JSX.Element {
     if (!draft.name.trim() || !draft.category.trim() || !draft.defaultUnit.trim()) return setFormError("Tên, nhóm và đơn vị là bắt buộc.");
     if (calories !== null && (Number.isNaN(calories) || calories < 0)) return setFormError("Calo phải là số không âm.");
     if (shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 1 || shelfLife > 3650)) return setFormError("Hạn dùng là số ngày nguyên từ 1 đến 3650.");
+    const price = draft.price.trim() === "" ? null : Number(draft.price.trim());
+    if (price !== null && (!Number.isInteger(price) || price < 0 || price > 1_000_000_000)) return setFormError("Giá là số đồng nguyên, không âm.");
     const promoProblem = imageUrlError(draft.imageUrl) ?? percentError(draft.discountPercent) ?? dateError(draft.promoEndDate);
     if (promoProblem) return setFormError(promoProblem);
     const discount = draft.discountPercent.trim() ? Number(draft.discountPercent.trim()) : null;
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
-      caloriesPer100g: calories, shelfLifeDays: shelfLife,
+      caloriesPer100g: calories, shelfLifeDays: shelfLife, price,
       // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
       // (partial update) and a new ingredient gets the server default []. A typed "Khác" value is saved when shown.
       ...(SHOW_ALLERGENS ? { allergenTags: withTag(draft.allergenTags, draft.otherAllergen) } : {}),
@@ -247,7 +253,7 @@ export default function IngredientsScreen(): React.JSX.Element {
               <RemoteImage uri={item.imageUrl} size={48} />
               <View style={[local.flex, local.rowText]}>
                 <Text style={styles.title}>{item.name}</Text>
-                <Text style={styles.muted}>{item.category} · {unitLabel(item.defaultUnit)}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}</Text>
+                <Text style={styles.muted}>{item.category} · {unitLabel(item.defaultUnit)}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}{item.price !== null && item.price !== undefined ? ` · ${formatVnd(item.price)}` : ""}</Text>
                 {item.discountPercent !== null ? (
                   <Badge label={`Đang khuyến mãi ${item.discountPercent}%`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />
                 ) : null}
@@ -279,6 +285,7 @@ export default function IngredientsScreen(): React.JSX.Element {
                     <Dropdown<string> label="Đơn vị" value={draft.defaultUnit} options={unitOptionsFor(draft.defaultUnit)} onChange={(defaultUnit) => setDraft({ ...draft, defaultUnit })} />
                   </View>
                 </View>
+                <Field label="Giá (đ)" keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
                 <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
                 <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
                 <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}

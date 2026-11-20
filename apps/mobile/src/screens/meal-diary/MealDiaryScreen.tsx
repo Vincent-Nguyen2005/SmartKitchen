@@ -1,3 +1,4 @@
+import { useSession } from "../../services/session";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -90,7 +91,8 @@ export default function MealDiaryScreen({
 }: Props): React.JSX.Element {
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
-  const api = createMealDiaryApi(apiBaseUrl, userId);
+  const { accessToken } = useSession();
+  const api = createMealDiaryApi(accessToken);
   const [selectedDate, setSelectedDate] = useState(() =>
     utcDateString(new Date()),
   );
@@ -150,7 +152,7 @@ export default function MealDiaryScreen({
     return () => {
       requestId.current += 1;
     };
-  }, [apiBaseUrl, userId, selectedDate]);
+  }, [accessToken, apiBaseUrl, userId, selectedDate]);
 
   const moveDate = (amount: number): void => {
     const date = new Date(`${selectedDate}T00:00:00.000Z`);

@@ -1,3 +1,4 @@
+import { useSession } from "../../services/session";
 import React, { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Leaf, ShieldCheck, Sparkles } from "lucide-react-native";
@@ -36,6 +37,7 @@ export default function SuggestionsScreen({
   apiBaseUrl,
   userId,
 }: Props): React.JSX.Element {
+  const { accessToken } = useSession();
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
   const isDesktop = screenWidth >= 1100;
@@ -50,7 +52,7 @@ export default function SuggestionsScreen({
       else setLoading(true);
       setError("");
       try {
-        setResult(await createSuggestionsApi(apiBaseUrl, userId).get());
+        setResult(await createSuggestionsApi(accessToken).get());
       } catch (requestError) {
         if (
           requestError instanceof SuggestionsApiError &&
@@ -65,7 +67,7 @@ export default function SuggestionsScreen({
         setRefreshing(false);
       }
     },
-    [apiBaseUrl, userId],
+    [accessToken, apiBaseUrl, userId],
   );
 
   useEffect(() => {

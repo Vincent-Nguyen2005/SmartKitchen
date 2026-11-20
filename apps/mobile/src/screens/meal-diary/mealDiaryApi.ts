@@ -1,3 +1,5 @@
+import { gatewayFetch } from "../../services/api";
+
 export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
 export type MealSource = "HOME" | "EATING_OUT" | "DELIVERY";
 
@@ -59,19 +61,10 @@ export class MealDiaryApiError extends Error {
   }
 }
 
-export function createMealDiaryApi(baseUrl: string, userId: string) {
-  async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await fetch(
-      `${baseUrl.replace(/\/$/, "")}/api/meal-diary${path}`,
-      {
-        ...init,
-        headers: {
-          "Content-Type": "application/json",
-          "X-User-Id": userId,
-          ...init.headers,
-        },
-      },
-    );
+// Shared gateway transport: base URL, ngrok header and Bearer token (the gateway sets the user from it).
+export function createMealDiaryApi(accessToken: string | null) {
+  async function request<T>(path: string, init: { method?: string; body?: string } = {}): Promise<T> {
+    const response = await gatewayFetch(`/api/meal-diary${path}`, { ...init, accessToken });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new MealDiaryApiError(

@@ -1,3 +1,5 @@
+import { gatewayFetch } from "../../services/api";
+
 export type DailyNutritionStats = {
   date: string;
   totalCalories: number;
@@ -27,13 +29,11 @@ export class NutritionStatsApiError extends Error {
   }
 }
 
-export function createNutritionStatsApi(baseUrl: string, userId: string) {
+// Shared gateway transport: base URL, ngrok header and Bearer token (the gateway sets the user from it).
+export function createNutritionStatsApi(accessToken: string | null) {
   return {
     async getDailyStats(date: string): Promise<DailyNutritionStats> {
-      const response = await fetch(
-        `${baseUrl.replace(/\/$/, "")}/api/nutrition/daily-stats?date=${encodeURIComponent(date)}`,
-        { headers: { "X-User-Id": userId } },
-      );
+      const response = await gatewayFetch(`/api/nutrition/daily-stats?date=${encodeURIComponent(date)}`, { accessToken });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new NutritionStatsApiError(

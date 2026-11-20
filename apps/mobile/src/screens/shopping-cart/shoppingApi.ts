@@ -1,11 +1,11 @@
-import { Platform } from "react-native";
-
-const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
-  (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
-).replace(/\/+$/, "");
+import { gatewayFetch } from "../../services/api";
 
 export type ShoppingUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
+export const shoppingUnits: ShoppingUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
+export const shoppingUnitLabels: Record<ShoppingUnit, string> = {
+  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
+  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
+};
 export type ShoppingItem = {
   id: string;
   shoppingListId: string;
@@ -34,25 +34,8 @@ export type ShoppingSuggestion = {
 type ApiPayload<T> = { success?: boolean; data?: T; lists?: T; message?: string; code?: string; error?: string };
 
 async function request<T>(accessToken: string, path: string, method: RequestInit["method"] = "GET", body?: unknown): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      method,
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
-        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
-      },
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: controller.signal,
-    });
-  } catch {
-    throw new Error("Không kết nối được máy chủ. Kiểm tra mạng và địa chỉ gateway rồi thử lại.");
-  } finally {
-    clearTimeout(timer);
-  }
+  // Shared gateway transport: ngrok header, Bearer token, timeout and the network error message.
+  const response = await gatewayFetch(path, { method, accessToken, body: body === undefined ? undefined : JSON.stringify(body) });
   const payload = await response.json().catch(() => ({})) as ApiPayload<T>;
   if (!response.ok || payload.success === false) {
     throw new Error(payload.message || payload.code || payload.error || `Yêu cầu thất bại (${response.status})`);

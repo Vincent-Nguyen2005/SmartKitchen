@@ -429,7 +429,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen />}
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} />}
         {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}

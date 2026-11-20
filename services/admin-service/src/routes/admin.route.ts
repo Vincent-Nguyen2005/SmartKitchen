@@ -5,7 +5,7 @@ import { adminUserId, requireAdmin } from "../middleware/require-admin";
 import { requireUser } from "../middleware/require-user";
 import { defaultWeights, knownWeightKeys } from "../config/weights";
 import { imageUrlProblem } from "../lib/image-url";
-import { addDays, DEFAULT_PROMO_DAYS, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
+import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
 
 const router = Router();
 // Promotion fields: "" from a cleared form field means "none".
@@ -15,9 +15,11 @@ const imageUrlSchema = z.preprocess(emptyToNull, z.string().trim().superRefine((
   if (problem) context.addIssue({ code: z.ZodIssueCode.custom, message: problem });
 }).nullable().optional());
 const discountPercentSchema = z.preprocess(emptyToNull, z.number().int().min(1).max(100).nullable().optional());
+/** Optional price in whole VND; "" from a cleared form field means "no price". */
+const priceSchema = z.preprocess(emptyToNull, z.number().int("Giá phải là số nguyên (đồng)").nonnegative("Giá không được âm").max(1_000_000_000).nullable().optional());
 const isCalendarDay = (day: string): boolean => !Number.isNaN(Date.parse(`${day}T00:00:00Z`)) && new Date(`${day}T00:00:00Z`).toISOString().startsWith(day);
 const promoEndDateSchema = z.preprocess(emptyToNull, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").refine(isCalendarDay, "Not a valid date").refine((day) => day >= vnToday(), "Must be today or later").nullable().optional());
-const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, discountPercent: discountPercentSchema, promoEndDate: promoEndDateSchema });
+const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, discountPercent: discountPercentSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
 type IngredientInput = z.infer<typeof ingredientSchema>;
 type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null } | null;
 
@@ -42,17 +44,61 @@ const resultError = (response: { status: (code: number) => { json: (body: unknow
 const audit = (userId: string, action: string, targetId: string | null, metadata: unknown) => prisma.auditLog.create({ data: { adminUserId: userId, action, targetType: "MasterIngredient", targetId, metadata: metadata as object } });
 
 router.get("/weights/effective", async (_request, response) => { const weights = await prisma.recommendationWeight.findMany(); return response.json({ weights: Object.fromEntries(weights.map((weight) => [weight.key, weight.value])), version: weights.reduce((max, weight) => Math.max(max, weight.version), 0), updatedAt: weights.reduce((latest, weight) => weight.updatedAt > latest ? weight.updatedAt : latest, new Date(0)) }); });
-// Read-only catalog for any signed-in user (mobile add-item suggestions): active rows, public fields only.
+/** A discount counts only while its last day (Vietnam time) has not passed; no end date = rolling default. */
+const activeDiscountWhere = (today: Date) => ({ discountPercent: { not: null }, OR: [{ promoEndDate: null }, { promoEndDate: { gte: today } }] });
+const catalogQuerySchema = z.object({
+  search: z.string().optional(),
+  q: z.string().optional(), // older name of `search` (Kho add-item suggestions)
+  group: z.string().trim().max(80).optional(),
+  onSale: z.enum(["true", "false"]).optional(),
+  page: z.coerce.number().int().min(1).catch(1).default(1),
+  limit: z.coerce.number().int().min(1).catch(20).default(20).transform((value) => Math.min(value, 50)),
+});
+
+/**
+ * Read-only market catalog for any signed-in user (Đi chợ products, Kho add-item suggestions): active rows only,
+ * public fields only. A discount (and its end date) is returned only while the promotion is still valid.
+ */
 router.get("/catalog/ingredients", requireUser, async (request, response) => {
-  const query = typeof request.query.q === "string" ? normalize(request.query.q).slice(0, 80) : "";
-  const take = Math.min(Math.max(Number(request.query.limit) || 1000, 1), 1000);
-  const items = await prisma.masterIngredient.findMany({
-    where: { isActive: true, ...(query ? { nameNormalized: { contains: query } } : {}) },
-    select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true },
-    orderBy: { nameNormalized: "asc" },
-    take,
+  const parsed = catalogQuerySchema.safeParse(request.query);
+  if (!parsed.success) return resultError(response, parsed.error.flatten());
+  const { page, limit, group, onSale } = parsed.data;
+  const search = normalize(parsed.data.search ?? parsed.data.q ?? "").slice(0, 80);
+  const todayDay = vnToday();
+  const today = new Date(`${todayDay}T00:00:00.000Z`);
+  const where = {
+    isActive: true,
+    ...(search ? { nameNormalized: { contains: search } } : {}),
+    ...(group ? { category: { equals: group, mode: "insensitive" as const } } : {}),
+    ...(onSale === "true" ? activeDiscountWhere(today) : {}),
+  };
+  const [rows, total, groups] = await prisma.$transaction([
+    prisma.masterIngredient.findMany({
+      where,
+      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, discountPercent: true, promoEndDate: true, price: true },
+      orderBy: { nameNormalized: "asc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.masterIngredient.count({ where }),
+    prisma.masterIngredient.findMany({ where: { isActive: true }, distinct: ["category"], select: { category: true }, orderBy: { category: "asc" } }),
+  ]);
+  const items = rows.map((row) => {
+    const endDay = row.promoEndDate ? dayOf(row.promoEndDate) : null;
+    const onPromotion = row.discountPercent !== null && (endDay === null || endDay >= todayDay);
+    return {
+      id: row.id,
+      name: row.name,
+      group: row.category,
+      unit: row.defaultUnit,
+      shelfLifeDays: row.shelfLifeDays,
+      imageUrl: row.imageUrl,
+      discountPercent: onPromotion ? row.discountPercent : null,
+      promoEndDate: onPromotion ? endDay : null,
+      price: row.price,
+    };
   });
-  return response.json({ items });
+  return response.json({ items, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), groups: groups.map((row) => row.category) });
 });
 router.use(requireAdmin);
 router.get("/ingredients", async (request, response) => {

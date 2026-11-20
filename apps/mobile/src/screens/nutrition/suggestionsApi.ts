@@ -1,3 +1,5 @@
+import { gatewayFetch } from "../../services/api";
+
 export type RecipeSuggestion = {
   id: string;
   name: string;
@@ -35,13 +37,11 @@ export class SuggestionsApiError extends Error {
   }
 }
 
-export function createSuggestionsApi(baseUrl: string, userId: string) {
+// Shared gateway transport: base URL, ngrok header and Bearer token (the gateway sets the user from it).
+export function createSuggestionsApi(accessToken: string | null) {
   return {
     async get(): Promise<PersonalizedSuggestions> {
-      const response = await fetch(
-        `${baseUrl.replace(/\/$/, "")}/api/nutrition/suggestions`,
-        { headers: { "X-User-Id": userId } },
-      );
+      const response = await gatewayFetch("/api/nutrition/suggestions", { accessToken });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
         throw new SuggestionsApiError(

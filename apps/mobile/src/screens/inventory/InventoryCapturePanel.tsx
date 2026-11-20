@@ -113,24 +113,28 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setBarcodeResult(null);
   };
 
-  // Admin ingredient catalog for name suggestions; loaded once, and suggestions are simply hidden if it fails.
+  // Admin catalog suggestions: the server searches accent-insensitively (paged, max 50), so ask per typed name,
+  // debounced. Suggestions are simply hidden if the request fails.
   useEffect(() => {
-    if (mode !== "photo" || !accessToken || catalog) return;
+    const typed = name.trim();
+    if (mode !== "photo" || !accessToken || !nameFocused || suggestionApplied || !typed) { setCatalog(null); return; }
     let active = true;
-    inventoryApi.ingredientCatalog(accessToken)
-      .then((result) => { if (active) setCatalog(Array.isArray(result.items) ? result.items : []); })
-      .catch(() => { if (active) setCatalog([]); });
-    return () => { active = false; };
-  }, [mode, accessToken, catalog]);
+    const timer = setTimeout(() => {
+      inventoryApi.ingredientCatalog(accessToken, { search: typed, limit: 20 })
+        .then((result) => { if (active) setCatalog(Array.isArray(result.items) ? result.items : []); })
+        .catch(() => { if (active) setCatalog([]); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [mode, accessToken, name, nameFocused, suggestionApplied]);
 
   const suggestions = mode === "photo" && nameFocused && !suggestionApplied && catalog ? matchCatalog(catalog, name) : [];
 
   const applySuggestion = (entry: CatalogIngredient) => {
     setName(entry.name);
-    const catalogUnit = unitFromCatalog(entry.defaultUnit);
+    const catalogUnit = unitFromCatalog(entry.unit);
     if (catalogUnit) setUnit(catalogUnit);
     if (entry.shelfLifeDays !== null && entry.shelfLifeDays !== undefined) setExpiryDay(dayFromToday(entry.shelfLifeDays));
-    if (entry.category?.trim()) setGroup(entry.category.trim());
+    if (entry.group?.trim()) setGroup(entry.group.trim());
     setSuggestionApplied(true);
   };
 
@@ -370,7 +374,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       const asset = await photoCamera.current?.takePictureAsync({ quality: 0.7, exif: false });
       if (!asset) throw new Error("No camera image");
       setPhotoCameraActive(false);
-      handlePick({ status: "picked", photo: await prepareUploadPhoto({ uri: asset.uri, mimeType: "image/jpeg" }) });
+      handlePick({ status: "picked", photo: await prepareUploadPhoto({ uri: asset.uri, mimeType: "image/jpeg", width: asset.width, height: asset.height }) });
     } catch {
       setNote("Không chụp được ảnh. Hãy thử lại hoặc chọn ảnh từ thư viện.");
     } finally {
@@ -637,7 +641,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   {suggestions.map((entry) => (
                     <Pressable accessibilityRole="button" accessibilityLabel={`Chọn ${entry.name}`} key={entry.id} onPress={() => applySuggestion(entry)} style={styles.suggestionRow}>
                       <Text style={styles.suggestionName}>{entry.name}</Text>
-                      {!!entry.category && <Text style={styles.suggestionMeta}>{entry.category}{entry.shelfLifeDays !== null ? ` · ${entry.shelfLifeDays} ngày` : ""}</Text>}
+                      {!!entry.group && <Text style={styles.suggestionMeta}>{entry.group}{entry.shelfLifeDays !== null ? ` · ${entry.shelfLifeDays} ngày` : ""}</Text>}
                     </Pressable>
                   ))}
                 </View>
