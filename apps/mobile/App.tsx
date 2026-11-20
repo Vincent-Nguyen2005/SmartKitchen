@@ -10,7 +10,7 @@ import {
   LogOut,
   Mic,
   Salad,
-  ScanBarcode,
+  QrCode,
   Settings,
   ShoppingBasket,
   Utensils,
@@ -40,6 +40,7 @@ import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/inventory/InventoryCapturePanel";
+import ReceiptQrCapturePanel from "./src/screens/inventory/ReceiptQrCapturePanel";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
@@ -77,7 +78,7 @@ const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
 const captureActions = [
   { key: "photo", label: "Chụp ảnh", icon: Camera },
-  { key: "scan", label: "Mã vạch / hóa đơn", icon: ScanBarcode },
+  { key: "scan", label: "QR hóa đơn", icon: QrCode },
   { key: "voice", label: "Giọng nói", icon: Mic },
 ] as const;
 
@@ -375,16 +376,24 @@ function AppContent(): React.JSX.Element {
 
       <Modal transparent animationType="slide" visible={captureMode !== null && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={() => { setCaptureReady(false); setCaptureMode(null); }}>
         <KeyboardAvoidingView style={styles.captureOverlay} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <Pressable accessibilityLabel="Đóng thêm thực phẩm" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel="Đóng chức năng" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={StyleSheet.absoluteFill} />
           <View style={styles.captureSheet}>
             <View style={styles.captureHeader}>
-              <Text style={styles.captureTitle}>Thêm vào kho</Text>
+              <Text style={styles.captureTitle}>{captureMode === "scan" ? "Quét QR hóa đơn" : captureMode === "voice" ? "Thêm bằng giọng nói" : "Chụp ảnh sản phẩm"}</Text>
               <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={styles.sheetClose}>
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
-              {captureMode && (
+              {captureMode === "scan" ? (
+                <ReceiptQrCapturePanel
+                  key="receipt-qr"
+                  autoStart={captureReady}
+                  familyId={session.family?.id ?? null}
+                  accessToken={session.accessToken}
+                  onSaved={() => setInventoryRefreshKey((current) => current + 1)}
+                />
+              ) : captureMode && (
                 <InventoryCapturePanel
                   key={captureMode}
                   initialMode={captureMode}

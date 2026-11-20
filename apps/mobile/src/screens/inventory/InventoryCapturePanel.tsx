@@ -473,7 +473,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         <Text style={styles.helper}>Đăng nhập và tạo hoặc tham gia gia đình để thêm thực phẩm vào kho.</Text>
       ) : (
         <>
-          <View style={styles.modeRow}>
+          {!embedded && <View style={styles.modeRow}>
             {([
               ["photo", "Chụp ảnh"], ["scan", "Mã vạch / hóa đơn"], ["voice", "Giọng nói"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
@@ -486,7 +486,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                 </View>
               </Pressable>
             ))}
-          </View>
+          </View>}
 
           {mode === "photo" && (
             <View style={styles.section}>
