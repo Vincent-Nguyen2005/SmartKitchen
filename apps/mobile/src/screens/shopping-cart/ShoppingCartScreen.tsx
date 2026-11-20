@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -12,20 +12,26 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Check, Plus, RefreshCw } from "lucide-react-native";
+import { Check, ClipboardList, Plus, RefreshCw, Store } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useSession } from "../../services/session";
-import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi } from "./shoppingApi";
+import { Segmented } from "../notifications/ui";
+import MarketProducts from "./MarketProducts";
+import { ShoppingItem, ShoppingList, ShoppingSuggestion, ShoppingUnit, shoppingApi, shoppingUnitLabels, shoppingUnits } from "./shoppingApi";
 
-const unitChoices: ShoppingUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-const unitLabels: Record<ShoppingUnit, string> = {
-  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
-  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
-};
+const unitChoices = shoppingUnits;
+const unitLabels = shoppingUnitLabels;
 
-export default function ShoppingCartScreen(): React.JSX.Element {
+type Segment = "products" | "list";
+type Props = { onOpenFamily?: () => void };
+
+export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
+  // "Sản phẩm" (admin market products) first; "Cần mua" is the existing shopping list, unchanged.
+  const [segment, setSegment] = useState<Segment>("products");
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const isWide = width >= 720;
@@ -77,6 +83,18 @@ export default function ShoppingCartScreen(): React.JSX.Element {
   };
 
   useEffect(() => { void fetchData(true); }, [family?.id, accessToken, ready]);
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 2500);
+  };
+
+  const handleProductAdded = (message: string) => {
+    showToast(message);
+    void fetchData(false);
+  };
 
   const addItem = async () => {
     if (!family?.id || !accessToken) { setError("Đăng nhập và tạo hoặc tham gia gia đình trước."); return; }
@@ -289,7 +307,21 @@ export default function ShoppingCartScreen(): React.JSX.Element {
       </View>
 
       <ScrollView contentContainerStyle={[styles.content, { padding: isCompact ? spacing.md : spacing.lg }, isWide && styles.wideContent]} keyboardShouldPersistTaps="handled">
-        {!family ? (
+        <Segmented<Segment>
+          label="Đi chợ"
+          value={segment}
+          onChange={setSegment}
+          options={[{ value: "products", label: "Sản phẩm", icon: Store }, { value: "list", label: "Cần mua", icon: ClipboardList }]}
+        />
+        {segment === "products" ? (
+          <MarketProducts
+            accessToken={accessToken}
+            familyId={family?.id ?? null}
+            lists={lists}
+            onAdded={handleProductAdded}
+            onOpenFamily={onOpenFamily}
+          />
+        ) : !family ? (
           <View style={styles.emptyBox}><Text style={styles.emptyText}>Tạo hoặc tham gia gia đình để dùng danh sách đi chợ.</Text></View>
         ) : (
           <>
@@ -362,6 +394,11 @@ export default function ShoppingCartScreen(): React.JSX.Element {
           </View>
         </View>
       </Modal>
+      {toast && (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -424,4 +461,6 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
   cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
   center: { alignItems: "center", backgroundColor: colors.background, flex: 1, gap: spacing.md, justifyContent: "center", padding: spacing.xl },
+  toastWrap: { alignItems: "center", bottom: spacing.xl, left: spacing.lg, position: "absolute", right: spacing.lg },
+  toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
 });

@@ -1,3 +1,4 @@
+import { gatewayFetch } from "../../services/api";
 export type Gender = "MALE" | "FEMALE";
 export type ActivityLevel =
   | "SEDENTARY"
@@ -52,21 +53,11 @@ export class NutritionApiError extends Error {
   }
 }
 
-function resolveApiBaseUrl(fallbackBaseUrl: string): string {
-  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || fallbackBaseUrl;
-  return baseUrl.trim().replace(/\/+$/, "");
-}
-
-function createAuthHeaders(accessToken: string): Record<string, string> {
+function requireAccessToken(accessToken: string): string {
   if (!accessToken.trim()) {
     throw new Error("An access token is required for nutrition requests.");
   }
-  return {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${accessToken}`,
-    // Avoid the ngrok browser warning page for API calls during development.
-    "ngrok-skip-browser-warning": "true",
-  };
+  return accessToken;
 }
 
 function getErrorMessage(result: unknown): string | undefined {
@@ -152,17 +143,18 @@ export function createHealthPreferencesApi(
   fallbackBaseUrl: string,
   accessToken: string,
 ) {
-  const baseUrl = resolveApiBaseUrl(fallbackBaseUrl);
-  const headers = createAuthHeaders(accessToken);
+  // Base URL, ngrok header and Bearer token come from the shared gatewayFetch; fallbackBaseUrl is kept for callers.
+  void fallbackBaseUrl;
+  const token = requireAccessToken(accessToken);
 
   async function request<T>(
     path: string,
     method = "GET",
     body?: unknown,
   ): Promise<T> {
-    const response = await fetch(`${baseUrl}/api/nutrition${path}`, {
+    const response = await gatewayFetch(`/api/nutrition${path}`, {
       method,
-      headers,
+      accessToken: token,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const result: unknown = await response.json().catch(() => ({}));
@@ -193,21 +185,21 @@ export function createNutritionProfileApi(
   accessToken: string,
   userId?: string,
 ) {
-  const baseUrl = resolveApiBaseUrl(fallbackBaseUrl);
+  void fallbackBaseUrl;
 
   async function request(
     method: "GET" | "POST" | "PUT",
     body?: NutritionProfileInput,
   ): Promise<NutritionProfileResult> {
     const headers = {
-      ...createAuthHeaders(accessToken),
       "X-User-Id": resolveUserId(accessToken, userId),
     };
 
     // SCRUM-270: profile API has its own route; do not use /api/nutrition.
-    const response = await fetch(`${baseUrl}/api/nutrition-profile`, {
+    const response = await gatewayFetch("/api/nutrition-profile", {
       method,
       headers,
+      accessToken: requireAccessToken(accessToken),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const responseText = await response.text();

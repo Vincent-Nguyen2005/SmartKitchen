@@ -26,6 +26,36 @@ export class ApiError extends Error {
 
 export type ApiRequestOptions = Omit<RequestInit, "headers"> & { headers?: Record<string, string> };
 
+export type GatewayFetchInit = Omit<RequestInit, "headers" | "signal"> & {
+  headers?: Record<string, string>;
+  /** Sent as `Authorization: Bearer …`; the gateway derives the user from it (client x-user-id is stripped). */
+  accessToken?: string | null;
+  timeoutMs?: number;
+};
+
+export const NETWORK_ERROR_MESSAGE = "Không kết nối được máy chủ. Kiểm tra mạng và địa chỉ gateway rồi thử lại.";
+
+/**
+ * The one transport every screen API client uses: gateway origin, ngrok header, Bearer token, JSON content type
+ * for string bodies (FormData sets its own), a timeout, and one Vietnamese message when the network fails.
+ * Callers keep their own response parsing, because each service shapes its JSON differently.
+ */
+export const gatewayFetch = async (path: string, init: GatewayFetchInit = {}): Promise<Response> => {
+  const { accessToken, timeoutMs = 15_000, headers: extra, ...rest } = init;
+  const headers: Record<string, string> = { Accept: "application/json", ...gatewayHeaders(), ...extra };
+  if (typeof rest.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(`${gatewayBaseUrl}${path}`, { ...rest, headers, credentials: "omit", signal: controller.signal });
+  } catch {
+    throw new ApiError(NETWORK_ERROR_MESSAGE, 0, undefined, "NETWORK_ERROR");
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const request = async <T>(baseUrl: string, path: string, options: ApiRequestOptions = {}, accessToken?: string): Promise<T> => {
   const headers: Record<string, string> = { Accept: "application/json", ...options.headers };
   if (baseUrl.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";

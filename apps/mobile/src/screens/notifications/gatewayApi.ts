@@ -1,16 +1,12 @@
-import { Platform } from "react-native";
+import { gatewayFetch } from "../../services/api";
 
 /**
  * Small API client for the notification and admin screens (owner: Huy).
  * All calls go through the gateway, which verifies the access token and sets the trusted
  * x-user-id / x-user-role headers for notification-service and admin-service.
- * Base URL: EXPO_PUBLIC_API_BASE_URL — the same gateway variable and fallback App.tsx uses.
- * No secrets live in the app: the only credential is the user's access token from useSession().
+ * Transport: the shared gatewayFetch (services/api.ts), so base URL, ngrok header and Bearer token match
+ * every other screen. No secrets live in the app: the only credential is the user's access token.
  */
-export const GATEWAY_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
-  (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
-).replace(/\/+$/, "");
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 
@@ -50,24 +46,11 @@ export const errorMessage = (error: unknown): string => {
 
 export const createGatewayClient = (accessToken: string | null, timeoutMs = DEFAULT_TIMEOUT_MS): GatewayClient => {
   const request = async <T>(method: Method, path: string, body?: unknown): Promise<T> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    const headers: Record<string, string> = { Accept: "application/json" };
-    if (GATEWAY_BASE_URL.includes("ngrok")) headers["ngrok-skip-browser-warning"] = "1";
-    if (body !== undefined) headers["Content-Type"] = "application/json";
-    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     let response: Response;
     try {
-      response = await fetch(`${GATEWAY_BASE_URL}${path}`, {
-        method,
-        headers,
-        body: body === undefined ? undefined : JSON.stringify(body),
-        signal: controller.signal,
-      });
+      response = await gatewayFetch(path, { method, accessToken, timeoutMs, body: body === undefined ? undefined : JSON.stringify(body) });
     } catch {
       throw new GatewayApiError("Network error or timeout", 0, "NETWORK_ERROR");
-    } finally {
-      clearTimeout(timer);
     }
     if (response.status === 204) return undefined as T;
     const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;

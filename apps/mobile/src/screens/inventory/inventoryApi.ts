@@ -1,8 +1,6 @@
 import { Platform } from "react-native";
-import { GATEWAY_BASE_URL, gatewayHeaders } from "../../services/api";
+import { GATEWAY_BASE_URL, gatewayFetch, gatewayHeaders } from "../../services/api";
 
-// Same gateway resolution as auth/family (services/api.ts): a separate copy here skipped the ngrok
-// header and the web dev host, so the Kho screen failed with "Không kết nối được máy chủ".
 const API_BASE_URL = GATEWAY_BASE_URL;
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
@@ -32,28 +30,9 @@ export type ProductCatalogResult = {
 
 type ApiEnvelope<T> = { success?: boolean; data?: T; error?: string; message?: string };
 
-async function request<T>(accessToken: string, path: string, options: RequestInit = {}, timeoutMs = 15_000): Promise<T> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  let response: Response;
-  try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
-      ...options,
-      headers: {
-        Accept: "application/json",
-        ...gatewayHeaders(),
-        // FormData sets its own multipart boundary.
-        ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
-        Authorization: `Bearer ${accessToken}`,
-        ...options.headers,
-      },
-      signal: controller.signal,
-    });
-  } catch {
-    throw new Error("Không kết nối được máy chủ. Kiểm tra mạng và địa chỉ gateway rồi thử lại.");
-  } finally {
-    clearTimeout(timer);
-  }
+async function request<T>(accessToken: string, path: string, options: Omit<RequestInit, "headers" | "signal"> = {}, timeoutMs = 15_000): Promise<T> {
+  // Shared gateway transport (services/api.ts); FormData keeps its own multipart content type.
+  const response = await gatewayFetch(path, { ...options, accessToken, timeoutMs });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T> & { code?: string };
   if (!response.ok || payload.success === false) {
     throw new Error(payload.message || payload.error || payload.code || `Yêu cầu thất bại (${response.status})`);
@@ -66,7 +45,23 @@ const query = (values: Record<string, string | number>) =>
 
 /** A photo ready to upload: `blob` on web, a file `uri` on native. */
 export type UploadPhoto = { uri: string; mimeType: ReceiptMimeType; name: string; blob?: Blob };
-export type CatalogIngredient = { id: string; name: string; category: string; defaultUnit: string; shelfLifeDays: number | null };
+/** One active product from the admin catalog (GET /api/admin/catalog/ingredients). */
+export type CatalogIngredient = {
+  id: string;
+  name: string;
+  group: string;
+  /** Unit code (GRAM, KILOGRAM, ...) or an older free-text label such as "g". */
+  unit: string;
+  shelfLifeDays: number | null;
+  imageUrl: string | null;
+  /** Set only while the promotion is still valid. */
+  discountPercent: number | null;
+  promoEndDate: string | null;
+  /** Whole VND, or null when the admin set no price. */
+  price: number | null;
+};
+export type CatalogPage = { items: CatalogIngredient[]; page: number; limit: number; total: number; totalPages: number; groups: string[] };
+export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number };
 
 /** Absolute URL and auth headers for an item photo; external URLs (e.g. Open Food Facts) need no headers. */
 export const photoRequest = (imageUrl: string, accessToken: string | null): { uri: string; headers?: Record<string, string> } => {
@@ -132,9 +127,14 @@ export const inventoryApi = {
   },
   deletePhoto: (accessToken: string, itemId: string) =>
     request<{ id: string; imageUrl: null }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "DELETE" }),
-  /** Admin ingredient catalog (active rows; name, group, unit, shelf-life days) readable by any signed-in user. */
-  ingredientCatalog: (accessToken: string) =>
-    request<{ items: CatalogIngredient[] }>(accessToken, "/api/admin/catalog/ingredients"),
+  /** Admin product catalog (active rows only), readable by any signed-in user; search is accent-insensitive. */
+  ingredientCatalog: (accessToken: string, options: CatalogQuery = {}) => {
+    const params: Record<string, string | number> = { page: options.page ?? 1, limit: options.limit ?? 20 };
+    if (options.search?.trim()) params.search = options.search.trim();
+    if (options.group) params.group = options.group;
+    if (options.onSale) params.onSale = "true";
+    return request<CatalogPage>(accessToken, `/api/admin/catalog/ingredients${query(params)}`);
+  },
   recognizeReceipt: (accessToken: string, imageBase64: string, mimeType: ReceiptMimeType) =>
     request<{ rawText: string; items: Array<{ name: string; quantity: number; unit: InventoryUnit; sourceText: string }> }>(
       accessToken,

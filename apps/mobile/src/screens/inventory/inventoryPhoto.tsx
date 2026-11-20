@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Image, Platform, StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Package } from "lucide-react-native";
 import { AppIcon, colors } from "../../theme";
 import { photoRequest, type ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
@@ -11,7 +12,7 @@ const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 /** A problem with the picked image itself; its message is shown to the user. */
 class PhotoPrepareError extends Error {}
 
-type PickedAsset = { uri: string; mimeType?: string | null; fileName?: string | null; fileSize?: number | null };
+type PickedAsset = { uri: string; mimeType?: string | null; fileName?: string | null; fileSize?: number | null; width?: number | null; height?: number | null };
 
 const mimeFrom = (asset: PickedAsset): ReceiptMimeType | null => {
   const reported = asset.mimeType?.toLowerCase();
@@ -37,9 +38,32 @@ const downscaleOnWeb = (uri: string): Promise<Blob> => new Promise((resolve, rej
   image.src = uri;
 });
 
+/** Longer edge to MAX_UPLOAD_EDGE (the other follows the aspect ratio); null = already small enough. */
+const resizeFor = (width: number, height: number): { width: number } | { height: number } | null => {
+  if (Math.max(width, height) <= MAX_UPLOAD_EDGE) return null;
+  return width >= height ? { width: MAX_UPLOAD_EDGE } : { height: MAX_UPLOAD_EDGE };
+};
+
+/** Phones: resize to MAX_UPLOAD_EDGE and save as JPEG ~0.8 with expo-image-manipulator (also drops EXIF). */
+const downscaleOnDevice = async (asset: PickedAsset): Promise<string> => {
+  let width = asset.width ?? 0;
+  let height = asset.height ?? 0;
+  if (!width || !height) {
+    const probe = await ImageManipulator.manipulate(asset.uri).renderAsync();
+    width = probe.width;
+    height = probe.height;
+  }
+  const context = ImageManipulator.manipulate(asset.uri);
+  const size = resizeFor(width, height);
+  if (size) context.resize(size);
+  const image = await context.renderAsync();
+  const saved = await image.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
+  return saved.uri;
+};
+
 /**
- * Turns a picked or captured image into an upload. Web downscales to MAX_UPLOAD_EDGE here; native sends the
- * picker's compressed JPEG and the server re-encodes it to 1024 px (on-device resize needs expo-image-manipulator).
+ * Turns a picked or captured image into an upload: at most MAX_UPLOAD_EDGE px, JPEG ~0.8, on every platform
+ * (canvas on web, expo-image-manipulator on phones). The server re-encodes again to 1024 px.
  */
 export async function prepareUploadPhoto(asset: PickedAsset): Promise<UploadPhoto> {
   const mimeType = mimeFrom(asset);
@@ -49,8 +73,13 @@ export async function prepareUploadPhoto(asset: PickedAsset): Promise<UploadPhot
     if (blob.size > MAX_UPLOAD_BYTES) throw new PhotoPrepareError("Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn 5 MB.");
     return { uri: URL.createObjectURL(blob), blob, mimeType: "image/jpeg", name: "photo.jpg" };
   }
-  if (asset.fileSize && asset.fileSize > MAX_UPLOAD_BYTES) throw new PhotoPrepareError("Ảnh quá lớn. Hãy chụp lại hoặc chọn ảnh nhỏ hơn 5 MB.");
-  return { uri: asset.uri, mimeType, name: mimeType === "image/png" ? "photo.png" : mimeType === "image/webp" ? "photo.webp" : "photo.jpg" };
+  let uri: string;
+  try {
+    uri = await downscaleOnDevice(asset);
+  } catch {
+    throw new PhotoPrepareError("Không xử lý được ảnh. Hãy chụp lại hoặc chọn ảnh khác.");
+  }
+  return { uri, mimeType: "image/jpeg", name: "photo.jpg" };
 }
 
 export type PhotoPickResult =

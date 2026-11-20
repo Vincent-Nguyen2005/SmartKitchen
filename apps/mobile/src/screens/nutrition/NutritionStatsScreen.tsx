@@ -1,3 +1,4 @@
+import { useSession } from "../../services/session";
 import React, { useCallback, useEffect, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Calendar, ChevronLeft, ChevronRight } from "lucide-react-native";
@@ -39,6 +40,7 @@ export default function NutritionStatsScreen({
   apiBaseUrl,
   userId,
 }: Props): React.JSX.Element {
+  const { accessToken } = useSession();
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
   const [date, setDate] = useState(today);
@@ -53,7 +55,7 @@ export default function NutritionStatsScreen({
       else setLoading(true);
       setError("");
       try {
-        const result = await createNutritionStatsApi(apiBaseUrl, userId).getDailyStats(date);
+        const result = await createNutritionStatsApi(accessToken).getDailyStats(date);
         setStats(result);
       } catch (requestError) {
         if (
@@ -69,7 +71,7 @@ export default function NutritionStatsScreen({
         setRefreshing(false);
       }
     },
-    [apiBaseUrl, date, userId],
+    [accessToken, apiBaseUrl, date, userId],
   );
 
   useEffect(() => {
