@@ -6,15 +6,15 @@ Owner: Huy. Responsibility: notification center, promotions and user notificatio
 
 | File | What it does |
 |---|---|
-| `NotificationsHome.tsx` | Entry point of the "Thông báo" tab: Thông báo / Khuyến mãi / Cài đặt |
-| `NotificationListScreen.tsx` | Inbox: paging (load more on scroll), pull-to-refresh, unread highlight + filter, tap to mark as read |
-| `PromotionsScreen.tsx` | Active promotions with debounced search (accent-insensitive on the server), paging, pull-to-refresh |
-| `NotificationPreferencesScreen.tsx` | Push / promotion toggles, quiet hours (HH:mm, overnight allowed), save |
+| `NotificationsHome.tsx` | Entry point of the "Thông báo" tab: one list, no title, segments or read filter |
+| `NotificationFeed.tsx` | The list: notifications (paging on scroll, unread dot + bold title, tap marks read), expiry alerts from the inventory alerts API (expired or within 3 days; tap opens Kho with the item's edit dialog) and active promotions (hidden when a promotion notification exists). Expiry first, then unread, then newest. Pull-to-refresh |
+| `PromotionDetail.tsx` | Promotion detail with "Mua" (adds to Giỏ hàng) |
+| `NotificationPreferencesScreen.tsx` | Push / promotion toggles, quiet hours (HH:mm, overnight allowed), save. Opened from Hồ sơ > "Cài đặt thông báo" |
 | `registerDeviceToken.ts` | Registers the Expo push token after sign-in; never throws |
 
 Shared by the admin screens too: `gatewayApi.ts` (API client), `useGatewayApi.ts` (session → client), `ui.tsx` (layout, states, buttons, segmented tabs, fields, badges). Colours, spacing, font sizes and the icon wrapper come from `../../theme/` (see its README).
 
-Icons are Lucide, named imports only. Section tabs: Bell (Thông báo), Tag (Khuyến mãi), Settings (Cài đặt). Each inbox card shows its type icon (Tag, Clock, ShoppingCart, Info); loading / empty / error states show an icon, and the error state has "Thử lại".
+Icons are Lucide, named imports only. Every card has the same style: a type icon (Tag, Clock, ShoppingCart, Info) or the promotion image; loading / empty / error states show an icon, and the error state has "Thử lại".
 
 ## How it talks to the backend
 

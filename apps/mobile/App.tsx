@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   Bell,
@@ -6,6 +6,8 @@ import {
   Camera,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleUserRound,
   LogOut,
   Mic,
@@ -20,6 +22,7 @@ import {
 import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
 import {
   ActivityIndicator,
+  AppState,
   BackHandler,
   KeyboardAvoidingView,
   Modal,
@@ -53,6 +56,9 @@ import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
+import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
+import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
+import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 
 type Tab =
@@ -113,6 +119,14 @@ function AppContent(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).
+  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  // Thông báo expiry alert tapped: Kho opens that item's edit dialog.
+  const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
+  // Thông báo tab badge = unread notifications + current expiry alerts.
+  const [notificationBadge, setNotificationBadge] = useState(0);
+  const badgeRunning = useRef(false);
+  const badgePending = useRef(false);
   const [captureMode, setCaptureMode] = useState<InventoryCaptureMode | null>(null);
   const [captureReady, setCaptureReady] = useState(false);
   // Result of the bottom-bar camera / microphone, handed to the capture panel when its sheet opens.
@@ -152,6 +166,34 @@ function AppContent(): React.JSX.Element {
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
   const showCaptureBar = !isAdmin && activeTab !== "notifications" && !profileOpen && !paymentUrl;
+
+  /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */
+  const refreshNotificationBadge = useCallback(async (): Promise<void> => {
+    const token = session.accessToken;
+    if (isAdmin || !token) { setNotificationBadge(0); return; }
+    if (badgeRunning.current) { badgePending.current = true; return; }
+    badgeRunning.current = true;
+    try {
+      const [unread, expiring] = await Promise.allSettled([
+        createGatewayClient(token).get<{ total?: number }>("/api/notifications/notifications?status=SENT&limit=1"),
+        session.family?.id ? inventoryApi.expiring(token, session.family.id, EXPIRY_ALERT_DAYS) : Promise.resolve(null),
+      ]);
+      const unreadCount = unread.status === "fulfilled" ? unread.value.total ?? 0 : 0;
+      const expiryCount = expiring.status === "fulfilled" ? expiring.value?.items.length ?? 0 : 0;
+      setNotificationBadge(unreadCount + expiryCount);
+    } finally {
+      badgeRunning.current = false;
+      if (badgePending.current) { badgePending.current = false; void refreshNotificationBadge(); }
+    }
+  }, [isAdmin, session.accessToken, session.family?.id]);
+
+  // On sign-in, tab changes and every minute while the app is in the foreground.
+  useEffect(() => { void refreshNotificationBadge(); }, [refreshNotificationBadge, activeTab]);
+  useEffect(() => {
+    const timer = setInterval(() => { if (AppState.currentState === "active") void refreshNotificationBadge(); }, 60_000);
+    const subscription = AppState.addEventListener("change", (next) => { if (next === "active") void refreshNotificationBadge(); });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [refreshNotificationBadge]);
   const availableWidth = width - insets.left - insets.right;
   const menuTabPixelWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : availableWidth / 6;
   const dropdownWidth = Math.min(220, availableWidth - spacing.sm * 2);
@@ -318,7 +360,7 @@ function AppContent(): React.JSX.Element {
             const DisplayedIcon = displayedTab.icon;
             return (
               <TouchableOpacity
-                accessibilityLabel={key === "menu" ? `Mở danh mục ${displayedTab.label}` : label}
+                accessibilityLabel={key === "menu" ? `Mở danh mục ${displayedTab.label}` : key === "notifications" && notificationBadge > 0 ? `${label}, ${notificationBadge} mục mới` : label}
                 accessibilityRole={key === "menu" ? "button" : "tab"}
                 accessibilityState={key === "menu" ? { expanded: menuOpen } : { selected: active }}
                 key={key}
@@ -331,7 +373,14 @@ function AppContent(): React.JSX.Element {
                     <AppIcon icon={ChevronDown} size="sm" color={active ? colors.primary : colors.muted} />
                   </View>
                 ) : (
-                  <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                  <View>
+                    <AppIcon icon={DisplayedIcon} size="md" color={active ? colors.primary : colors.muted} />
+                    {key === "notifications" && notificationBadge > 0 && (
+                      <View style={styles.tabBadge} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                        <Text style={styles.tabBadgeText}>{notificationBadge > 99 ? "99+" : notificationBadge}</Text>
+                      </View>
+                    )}
+                  </View>
                 )}
                 <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{displayedTab.label}</Text>
               </TouchableOpacity>
@@ -393,6 +442,12 @@ function AppContent(): React.JSX.Element {
             <Text style={styles.profileValue}>{session.user.email}</Text>
             <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
             <Text style={styles.profileValue}>{session.family?.currentUserRole === "OWNER" ? "Chủ gia đình" : session.family?.currentUserRole === "ADMIN" ? "Quản trị viên" : session.family?.currentUserRole === "MEMBER" ? "Thành viên" : "Chưa tham gia gia đình"}</Text>
+            <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
+              onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
+              <AppIcon icon={Bell} size="md" color={colors.primary} />
+              <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
+              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+            </TouchableOpacity>
             <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
               onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
               <AppIcon icon={LogOut} size="md" color={colors.danger} />
@@ -400,6 +455,18 @@ function AppContent(): React.JSX.Element {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal animationType="slide" visible={notificationSettingsOpen && !isAdmin} onRequestClose={() => setNotificationSettingsOpen(false)}>
+        <SafeAreaView style={styles.settingsScreen}>
+          <View style={styles.settingsHeader}>
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setNotificationSettingsOpen(false)} />
+            <Text style={styles.settingsTitle}>Cài đặt thông báo</Text>
+          </View>
+          <View style={styles.settingsBody}>
+            <NotificationPreferencesScreen />
+          </View>
+        </SafeAreaView>
       </Modal>
 
       <Modal animationType="fade" visible={captureMode === "scan" && !isAdmin} onRequestClose={() => setCaptureMode(null)}>
@@ -459,7 +526,7 @@ function AppContent(): React.JSX.Element {
           />
         ) : null}
         {!paymentUrl && activeTab === "inventory" && (
-          <InventoryScreen onOpenFamily={() => setTab("family")} refreshKey={inventoryRefreshKey} />
+          <InventoryScreen onOpenFamily={() => setTab("family")} refreshKey={inventoryRefreshKey} focusItemId={inventoryFocusId} onFocusHandled={() => setInventoryFocusId(null)} />
         )}
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
@@ -473,7 +540,12 @@ function AppContent(): React.JSX.Element {
           />
         )}
         {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
-        {!paymentUrl && activeTab === "notifications" && <NotificationsHome />}
+        {!paymentUrl && activeTab === "notifications" && (
+          <NotificationsHome
+            onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
+            onChanged={() => void refreshNotificationBadge()}
+          />
+        )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
         {/* Hồ sơ / Nhật ký / Thống kê / Gợi ý; never for ADMIN accounts (they only see Quản trị). */}
         {!paymentUrl && activeTab === "nutrition" && !isAdmin && <NutritionHome />}
@@ -563,6 +635,12 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   tabTextActive: { color: colors.primary },
+  tabBadge: { alignItems: "center", backgroundColor: colors.danger, borderColor: colors.surface, borderRadius: 9, borderWidth: 1, justifyContent: "center", minWidth: 18, paddingHorizontal: 3, position: "absolute", right: -10, top: -6 },
+  tabBadgeText: { ...textStyles.caption, color: colors.surface, fontWeight: "700", lineHeight: 14 },
+  settingsScreen: { backgroundColor: colors.background, flex: 1 },
+  settingsHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  settingsTitle: { ...textStyles.heading },
+  settingsBody: { flex: 1, paddingTop: spacing.md },
   menuTabIcons: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },
   sheetPanel: {
