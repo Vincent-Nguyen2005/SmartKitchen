@@ -41,7 +41,7 @@ import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/inventory/InventoryCapturePanel";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
-import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import AdminHome from "./src/screens/admin/AdminHome";
@@ -82,12 +82,6 @@ const captureActions = [
 ] as const;
 
 // Logic lấy API và User ID của Hùng
-const apiBaseUrl =
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
-  (Platform.OS === "android"
-    ? "http://10.0.2.2:4000"
-    : "http://localhost:4000");
-
 function NoticeBanner({ message }: { message: string }): React.JSX.Element {
   const { width } = useWindowDimensions();
   return (
@@ -440,12 +434,8 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
         {!paymentUrl && activeTab === "notifications" && <NotificationsHome />}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
-        {!paymentUrl && activeTab === "nutrition" && (
-          <NutritionProfileScreen
-            apiBaseUrl={apiBaseUrl}
-            accessToken={session.accessToken ?? undefined}
-          />
-        )}
+        {/* Hồ sơ / Nhật ký / Thống kê / Gợi ý; never for ADMIN accounts (they only see Quản trị). */}
+        {!paymentUrl && activeTab === "nutrition" && !isAdmin && <NutritionHome />}
       </View>
       {showCaptureBar && (
         <View style={styles.captureBar}>

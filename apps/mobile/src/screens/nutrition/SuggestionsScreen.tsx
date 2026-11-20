@@ -25,18 +25,17 @@ import {
   PersonalizedSuggestions,
   SuggestionsApiError,
 } from "./suggestionsApi";
+import { ProfileMissingCard } from "./ProfileMissingCard";
 
-type Props = { apiBaseUrl: string; userId: string };
+/** onOpenProfile switches the Dinh dưỡng tab to the "Hồ sơ" segment. */
+type Props = { onOpenProfile?: () => void };
 type SuggestedRecipe = PersonalizedSuggestions["suggestions"][number];
 
 function format(value: number): string {
   return Math.round(value).toLocaleString("vi-VN");
 }
 
-export default function SuggestionsScreen({
-  apiBaseUrl,
-  userId,
-}: Props): React.JSX.Element {
+export default function SuggestionsScreen({ onOpenProfile }: Props): React.JSX.Element {
   const { accessToken } = useSession();
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
@@ -45,12 +44,14 @@ export default function SuggestionsScreen({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
+  const [profileMissing, setProfileMissing] = useState(false);
 
   const load = useCallback(
     async (refresh = false): Promise<void> => {
       if (refresh) setRefreshing(true);
       else setLoading(true);
       setError("");
+      setProfileMissing(false);
       try {
         setResult(await createSuggestionsApi(accessToken).get());
       } catch (requestError) {
@@ -58,16 +59,18 @@ export default function SuggestionsScreen({
           requestError instanceof SuggestionsApiError &&
           requestError.status === 404
         ) {
-          setError("Hãy tạo hồ sơ dinh dưỡng để nhận gợi ý cá nhân hóa.");
+          setProfileMissing(true);
         } else {
-          setError("Không thể tải gợi ý món ăn. Vui lòng thử lại.");
+          // 502 is expected today: nutrition-service asks recipe-service for GET /api/recipe with nutrition
+          // fields recipe-service does not have, so treat any failure as "no suggestions yet" with a retry.
+          setError("Gợi ý món ăn đang được chuẩn bị. Bạn có thể thử lại sau ít phút.");
         }
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [accessToken, apiBaseUrl, userId],
+    [accessToken],
   );
 
   useEffect(() => {
@@ -101,10 +104,12 @@ export default function SuggestionsScreen({
             size="large"
             style={styles.loader}
           />
+        ) : profileMissing ? (
+          <ProfileMissingCard onOpenProfile={onOpenProfile} />
         ) : error ? (
           <View style={styles.empty}>
             <AppIcon icon={Leaf} size="sm" color={colors.primary} />
-            <Text style={styles.emptyTitle}>Chưa thể tải gợi ý</Text>
+            <Text style={styles.emptyTitle}>Chưa có gợi ý</Text>
             <Text accessibilityRole="alert" style={styles.emptyCopy}>
               {error}
             </Text>
