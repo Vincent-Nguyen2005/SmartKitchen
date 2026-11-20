@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { adminUserId, requireAdmin } from "../middleware/require-admin";
+import { requireUser } from "../middleware/require-user";
 import { defaultWeights, knownWeightKeys } from "../config/weights";
 import { imageUrlProblem } from "../lib/image-url";
 import { addDays, DEFAULT_PROMO_DAYS, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
@@ -41,6 +42,18 @@ const resultError = (response: { status: (code: number) => { json: (body: unknow
 const audit = (userId: string, action: string, targetId: string | null, metadata: unknown) => prisma.auditLog.create({ data: { adminUserId: userId, action, targetType: "MasterIngredient", targetId, metadata: metadata as object } });
 
 router.get("/weights/effective", async (_request, response) => { const weights = await prisma.recommendationWeight.findMany(); return response.json({ weights: Object.fromEntries(weights.map((weight) => [weight.key, weight.value])), version: weights.reduce((max, weight) => Math.max(max, weight.version), 0), updatedAt: weights.reduce((latest, weight) => weight.updatedAt > latest ? weight.updatedAt : latest, new Date(0)) }); });
+// Read-only catalog for any signed-in user (mobile add-item suggestions): active rows, public fields only.
+router.get("/catalog/ingredients", requireUser, async (request, response) => {
+  const query = typeof request.query.q === "string" ? normalize(request.query.q).slice(0, 80) : "";
+  const take = Math.min(Math.max(Number(request.query.limit) || 1000, 1), 1000);
+  const items = await prisma.masterIngredient.findMany({
+    where: { isActive: true, ...(query ? { nameNormalized: { contains: query } } : {}) },
+    select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true },
+    orderBy: { nameNormalized: "asc" },
+    take,
+  });
+  return response.json({ items });
+});
 router.use(requireAdmin);
 router.get("/ingredients", async (request, response) => {
   const take = Math.min(Math.max(Number(request.query.limit) || 20, 1), 100); const currentPage = Math.max(Number(request.query.page) || 1, 1);

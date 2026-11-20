@@ -1,9 +1,9 @@
 import { Platform } from "react-native";
+import { GATEWAY_BASE_URL, gatewayHeaders } from "../../services/api";
 
-const API_BASE_URL = (
-  process.env.EXPO_PUBLIC_API_BASE_URL ??
-  (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
-).replace(/\/+$/, "");
+// Same gateway resolution as auth/family (services/api.ts): a separate copy here skipped the ngrok
+// header and the web dev host, so the Kho screen failed with "Không kết nối được máy chủ".
+const API_BASE_URL = GATEWAY_BASE_URL;
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
@@ -15,6 +15,10 @@ export type NewFoodItem = {
   unit: InventoryUnit;
   storageLocation: InventoryLocation;
   barcode?: string;
+  /** ISO date-time, e.g. 2026-12-31T00:00:00.000Z. */
+  expiryDate?: string;
+  /** Free-text group ("Nhóm"). */
+  categoryName?: string;
 };
 export type UpdateFoodItem = Partial<Omit<NewFoodItem, "familyId" | "expiryDate">> & { expiryDate?: string | null; status?: string };
 export type ExpiringInventoryItem = import("./types").FoodItem & { daysLeft: number };
@@ -28,16 +32,18 @@ export type ProductCatalogResult = {
 
 type ApiEnvelope<T> = { success?: boolean; data?: T; error?: string; message?: string };
 
-async function request<T>(accessToken: string, path: string, options: RequestInit = {}): Promise<T> {
+async function request<T>(accessToken: string, path: string, options: RequestInit = {}, timeoutMs = 15_000): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 15_000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
       ...options,
       headers: {
         Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...gatewayHeaders(),
+        // FormData sets its own multipart boundary.
+        ...(options.body && !(options.body instanceof FormData) ? { "Content-Type": "application/json" } : {}),
         Authorization: `Bearer ${accessToken}`,
         ...options.headers,
       },
@@ -57,6 +63,19 @@ async function request<T>(accessToken: string, path: string, options: RequestIni
 
 const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
+
+/** A photo ready to upload: `blob` on web, a file `uri` on native. */
+export type UploadPhoto = { uri: string; mimeType: ReceiptMimeType; name: string; blob?: Blob };
+export type CatalogIngredient = { id: string; name: string; category: string; defaultUnit: string; shelfLifeDays: number | null };
+
+/** Absolute URL and auth headers for an item photo; external URLs (e.g. Open Food Facts) need no headers. */
+export const photoRequest = (imageUrl: string, accessToken: string | null): { uri: string; headers?: Record<string, string> } => {
+  if (/^https?:\/\//i.test(imageUrl)) return { uri: imageUrl };
+  return {
+    uri: `${API_BASE_URL}${imageUrl}`,
+    headers: { ...gatewayHeaders(), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+  };
+};
 
 export const inventoryApi = {
   list: async (accessToken: string, familyId: string) => {
@@ -104,6 +123,18 @@ export const inventoryApi = {
       accessToken,
       `/api/inventory/items/catalog/search${query({ q: queryText })}`,
     ),
+  uploadPhoto: (accessToken: string, itemId: string, photo: UploadPhoto) => {
+    const form = new FormData();
+    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
+    // React Native's FormData reads the file from `uri`; the object form is RN-specific.
+    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
+    return request<{ id: string; imageUrl: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "POST", body: form }, 60_000);
+  },
+  deletePhoto: (accessToken: string, itemId: string) =>
+    request<{ id: string; imageUrl: null }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "DELETE" }),
+  /** Admin ingredient catalog (active rows; name, group, unit, shelf-life days) readable by any signed-in user. */
+  ingredientCatalog: (accessToken: string) =>
+    request<{ items: CatalogIngredient[] }>(accessToken, "/api/admin/catalog/ingredients"),
   recognizeReceipt: (accessToken: string, imageBase64: string, mimeType: ReceiptMimeType) =>
     request<{ rawText: string; items: Array<{ name: string; quantity: number; unit: InventoryUnit; sourceText: string }> }>(
       accessToken,

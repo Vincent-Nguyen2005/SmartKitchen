@@ -12,14 +12,14 @@ const config: ExpoConfig = {
   web: { bundler: "metro" },
   plugins: [
     ["expo-camera", {
-      cameraPermission: "SmartKitchen cần camera để quét mã vạch thực phẩm.",
+      cameraPermission: "SmartKitchen dùng camera để quét mã vạch và chụp ảnh thực phẩm bạn thêm vào kho. Ảnh chỉ lưu cùng món và chỉ gia đình bạn xem được.",
       microphonePermission: false,
       recordAudioAndroid: false,
       barcodeScannerEnabled: true,
     }],
     ["expo-image-picker", {
-      photosPermission: "SmartKitchen cần truy cập ảnh để đọc hóa đơn khi bạn chọn ảnh.",
-      cameraPermission: "SmartKitchen cần camera để chụp hóa đơn khi bạn chọn chụp ảnh.",
+      photosPermission: "SmartKitchen cần truy cập ảnh khi bạn chọn ảnh thực phẩm hoặc ảnh hóa đơn để thêm vào kho.",
+      cameraPermission: "SmartKitchen dùng camera khi bạn chụp ảnh thực phẩm hoặc hóa đơn. Ảnh thực phẩm chỉ lưu cùng món và chỉ gia đình bạn xem được.",
       microphonePermission: "SmartKitchen dùng micro cho tính năng nhận dạng tên thực phẩm bằng giọng nói.",
     }],
     ["expo-speech-recognition", {

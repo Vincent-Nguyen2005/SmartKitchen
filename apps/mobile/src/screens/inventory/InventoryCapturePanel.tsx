@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -14,10 +15,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { Camera, Check, FileImage, Mic, ScanBarcode, Search, X } from "lucide-react-native";
+import { Camera, Check, FileImage, Mic, PencilLine, RotateCcw, ScanBarcode, Search, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
-import { inventoryApi, InventoryUnit, ReceiptMimeType } from "./inventoryApi";
+import { DateField } from "../admin/DateField";
+import { inventoryApi, type CatalogIngredient, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
+import { pickItemPhoto, prepareUploadPhoto, type PhotoPickResult } from "./inventoryPhoto";
+import { dayFromToday, matchCatalog, unitFromCatalog } from "./catalogSuggest";
+
+const isWeb = Platform.OS === "web";
+const UPLOAD_FAILED_NOTE = "Đã lưu, nhưng chưa tải được ảnh. Thử lại";
 
 export type InventoryCaptureMode = "photo" | "scan" | "voice";
 type Mode = InventoryCaptureMode;
@@ -56,12 +63,23 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [photoCameraActive, setPhotoCameraActive] = useState(false);
   const [photoCameraReady, setPhotoCameraReady] = useState(false);
   const [takingPhoto, setTakingPhoto] = useState(false);
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  // Product photo: only a picture stored with the item. Nothing is recognized from it.
+  const [photo, setPhoto] = useState<UploadPhoto | null>(null);
+  const [manualEntry, setManualEntry] = useState(false);
+  const [cameraDenied, setCameraDenied] = useState(false);
+  const [expiryDay, setExpiryDay] = useState("");
+  const [group, setGroup] = useState("");
+  const [catalog, setCatalog] = useState<CatalogIngredient[] | null>(null);
+  const [nameFocused, setNameFocused] = useState(false);
+  const [suggestionApplied, setSuggestionApplied] = useState(false);
+  const [pendingUpload, setPendingUpload] = useState<{ itemId: string; itemName: string; photo: UploadPhoto } | null>(null);
+  const photoUri = photo?.uri ?? null;
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const photoCamera = useRef<CameraView>(null);
   const galleryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
   const [receiptDrafts, setReceiptDrafts] = useState<ReceiptDraft[]>([]);
   const [recognizing, setRecognizing] = useState(false);
@@ -87,9 +105,57 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setNote(null);
     setCameraActive(false);
     setPhotoCameraActive(false);
-    setPhotoUri(null);
+    setPhoto(null);
+    setManualEntry(false);
+    setCameraDenied(false);
+    setSuggestionApplied(false);
     setName("");
     setBarcodeResult(null);
+  };
+
+  // Admin ingredient catalog for name suggestions; loaded once, and suggestions are simply hidden if it fails.
+  useEffect(() => {
+    if (mode !== "photo" || !accessToken || catalog) return;
+    let active = true;
+    inventoryApi.ingredientCatalog(accessToken)
+      .then((result) => { if (active) setCatalog(Array.isArray(result.items) ? result.items : []); })
+      .catch(() => { if (active) setCatalog([]); });
+    return () => { active = false; };
+  }, [mode, accessToken, catalog]);
+
+  const suggestions = mode === "photo" && nameFocused && !suggestionApplied && catalog ? matchCatalog(catalog, name) : [];
+
+  const applySuggestion = (entry: CatalogIngredient) => {
+    setName(entry.name);
+    const catalogUnit = unitFromCatalog(entry.defaultUnit);
+    if (catalogUnit) setUnit(catalogUnit);
+    if (entry.shelfLifeDays !== null && entry.shelfLifeDays !== undefined) setExpiryDay(dayFromToday(entry.shelfLifeDays));
+    if (entry.category?.trim()) setGroup(entry.category.trim());
+    setSuggestionApplied(true);
+  };
+
+  const handlePick = (result: PhotoPickResult) => {
+    if (result.status === "picked") {
+      setPhoto(result.photo);
+      setCameraDenied(false);
+      setManualEntry(false);
+    } else if (result.status === "denied") {
+      setCameraDenied(true);
+    } else if (result.status === "error") {
+      setNote(result.message);
+    }
+  };
+
+  const pickFromLibrary = async () => {
+    setNote(null);
+    handlePick(await pickItemPhoto("library"));
+  };
+
+  const enterWithoutPhoto = () => {
+    setPhoto(null);
+    setCameraDenied(false);
+    setManualEntry(true);
+    setNote(null);
   };
 
   const lookupBarcode = async (rawBarcode: string) => {
@@ -140,15 +206,18 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
+  /** Phones open the camera; web opens the photo library. A refused permission offers library or no photo. */
   const startPhotoCamera = async () => {
     setNote(null);
+    if (isWeb) { await pickFromLibrary(); return; }
     setPhotoCameraReady(false);
     try {
       const permission = cameraPermission?.granted ? cameraPermission : await requestCameraPermission();
       if (!permission.granted) {
-        setNote("Chưa được cấp quyền camera. Bạn có thể chọn ảnh đã chụp từ thư viện.");
+        setCameraDenied(true);
         return;
       }
+      setCameraDenied(false);
       setPhotoCameraActive(true);
     } catch {
       setNote("Không mở được camera. Bạn có thể chọn ảnh từ thư viện.");
@@ -163,27 +232,54 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     void lookupBarcode(value);
   };
 
-  const saveItem = async (itemName: string, itemQuantity: string, itemUnit: InventoryUnit, itemBarcode?: string) => {
+  const saveItem = async (
+    itemName: string,
+    itemQuantity: string,
+    itemUnit: InventoryUnit,
+    extras: { barcode?: string; expiryDay?: string; group?: string } = {},
+  ) => {
     const parsedQuantity = Number(itemQuantity.replace(",", "."));
-    if (!familyId || !accessToken) { setNote("Đăng nhập và tạo hoặc tham gia gia đình để lưu vào kho."); return false; }
-    if (!itemName.trim()) { setNote("Nhập tên thực phẩm trước khi lưu."); return false; }
-    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) { setNote("Số lượng phải lớn hơn 0."); return false; }
+    if (!familyId || !accessToken) { setNote("Đăng nhập và tạo hoặc tham gia gia đình để lưu vào kho."); return null; }
+    if (!itemName.trim()) { setNote("Nhập tên thực phẩm trước khi lưu."); return null; }
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) { setNote("Số lượng phải lớn hơn 0."); return null; }
     setBusy(true);
     setNote(null);
+    setSuccess(null);
     try {
-      await inventoryApi.create(accessToken, {
+      const created = await inventoryApi.create(accessToken, {
         familyId,
         name: itemName.trim(),
         quantity: parsedQuantity,
         unit: itemUnit,
         storageLocation: "PANTRY",
-        ...(itemBarcode ? { barcode: itemBarcode } : {}),
+        ...(extras.barcode ? { barcode: extras.barcode } : {}),
+        ...(extras.expiryDay ? { expiryDate: `${extras.expiryDay}T00:00:00.000Z` } : {}),
+        ...(extras.group?.trim() ? { categoryName: extras.group.trim().slice(0, 50) } : {}),
       });
       onSaved();
-      return true;
+      return created;
     } catch (error) {
       setNote(error instanceof Error ? error.message : "Không lưu được thực phẩm. Thử lại nhé.");
-      return false;
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Uploads the photo of an item that is already saved; a failure keeps the item and offers a retry. */
+  const uploadPhotoFor = async (itemId: string, itemName: string, itemPhoto: UploadPhoto) => {
+    if (!accessToken) return;
+    setBusy(true);
+    try {
+      await inventoryApi.uploadPhoto(accessToken, itemId, itemPhoto);
+      setPendingUpload(null);
+      onSaved();
+      setNote(null);
+      setSuccess(`Đã thêm ${itemName} kèm ảnh vào kho.`);
+    } catch {
+      setPendingUpload({ itemId, itemName, photo: itemPhoto });
+      setSuccess(null);
+      setNote(UPLOAD_FAILED_NOTE);
     } finally {
       setBusy(false);
     }
@@ -191,27 +287,29 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
   const saveMainDraft = async () => {
     const itemBarcode = mode === "scan" ? barcode : undefined;
-    const saved = await saveItem(name, quantity, unit, itemBarcode);
-    if (!saved) return;
+    const itemPhoto = mode === "photo" ? photo : null;
+    const itemName = name.trim();
+    const created = await saveItem(name, quantity, unit, { barcode: itemBarcode, expiryDay, group });
+    if (!created) return;
     setName("");
     setQuantity("1");
     setBarcode("");
     setBarcodeResult(null);
     setVoiceText("");
-    setPhotoUri(null);
-    setNote("Đã xác nhận và thêm thực phẩm vào kho.");
+    setPhoto(null);
+    setManualEntry(false);
+    setExpiryDay("");
+    setGroup("");
+    setSuggestionApplied(false);
+    if (itemPhoto) await uploadPhotoFor(created.id, itemName, itemPhoto);
+    else setSuccess("Đã xác nhận và thêm thực phẩm vào kho.");
   };
 
-  const processImage = async (asset: CaptureAsset, productPhoto = false) => {
+  const processImage = async (asset: CaptureAsset) => {
     setNote(null);
-    if (productPhoto) {
-      setPhotoUri(asset.uri);
-      setName("");
-    } else {
-      setName("");
-      setBarcodeResult(null);
-      setCameraActive(false);
-    }
+    setName("");
+    setBarcodeResult(null);
+    setCameraActive(false);
     try {
       const imageBase64 = asset?.base64;
       if (!imageBase64) { setNote("Không đọc được dữ liệu ảnh. Hãy chụp lại."); return; }
@@ -233,14 +331,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       setReceiptDrafts([]);
       setReceiptText("");
       const recognized = await inventoryApi.recognizeReceipt(accessToken, imageBase64, mimeType);
-      if (productPhoto) {
-        const detectedName = recognized.items[0]?.name.trim() ?? "";
-        setName(detectedName);
-        setQuantity("1");
-        setUnit("PIECE");
-        setNote(detectedName ? "Tên sản phẩm được đọc từ ảnh. Kiểm tra tên, rồi nhập số lượng và đơn vị." : "Không đọc được tên sản phẩm từ ảnh. Hãy chụp rõ mặt trước sản phẩm hoặc quét mã vạch.");
-        return;
-      }
       setReceiptText(recognized.rawText);
       setReceiptDrafts(recognized.items.map((item, index) => ({
         id: `${Date.now()}-${index}`,
@@ -257,7 +347,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
-  const scanReceipt = async (source: "camera" | "library", productPhoto = false) => {
+  const scanReceipt = async (source: "camera" | "library") => {
     setNote(null);
     try {
       if (source === "camera") {
@@ -267,7 +357,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       const result = source === "camera"
         ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 })
         : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], base64: true, quality: 0.65 });
-      if (!result.canceled && result.assets[0]) await processImage(result.assets[0], productPhoto);
+      if (!result.canceled && result.assets[0]) await processImage(result.assets[0]);
     } catch {
       setNote("Không mở được camera hoặc thư viện ảnh. Hãy thử lại.");
     }
@@ -277,10 +367,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     if (takingPhoto || !photoCameraReady) return;
     setTakingPhoto(true);
     try {
-      const asset = await photoCamera.current?.takePictureAsync({ base64: true, quality: 0.65 });
+      const asset = await photoCamera.current?.takePictureAsync({ quality: 0.7, exif: false });
       if (!asset) throw new Error("No camera image");
       setPhotoCameraActive(false);
-      await processImage({ ...asset, mimeType: "image/jpeg" }, true);
+      handlePick({ status: "picked", photo: await prepareUploadPhoto({ uri: asset.uri, mimeType: "image/jpeg" }) });
     } catch {
       setNote("Không chụp được ảnh. Hãy thử lại hoặc chọn ảnh từ thư viện.");
     } finally {
@@ -290,11 +380,13 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
   const choosePhotoFromCamera = () => {
     setPhotoCameraActive(false);
-    galleryTimer.current = setTimeout(() => { void scanReceipt("library", true); }, 350);
+    galleryTimer.current = setTimeout(() => { void pickFromLibrary(); }, 350);
   };
 
   useEffect(() => {
     if (!autoStart || !embedded || !familyId || !accessToken || autoStarted.current) return;
+    // Browsers only open a file picker from a tap, so web waits for the user to press "Chọn ảnh".
+    if (initialMode === "photo" && isWeb) return;
     const timer = setTimeout(() => {
       autoStarted.current = true;
       if (initialMode === "photo") void startPhotoCamera();
@@ -367,7 +459,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
-  const showMainDraft = (mode === "photo" && !!photoUri) || (!!name.trim() && (mode === "scan" || mode === "voice"));
+  const showMainDraft = (mode === "photo" && (!!photoUri || manualEntry)) || (!!name.trim() && (mode === "scan" || mode === "voice"));
 
   return (
     <View style={[styles.panel, embedded && styles.embeddedPanel, { padding: isCompact ? spacing.md : spacing.lg }]}>
@@ -394,14 +486,36 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
           {mode === "photo" && (
             <View style={styles.section}>
+              <Text style={styles.helper}>Dành cho đồ chợ không có mã vạch (rau, thịt, cá). Ảnh chỉ để nhận ra món trong kho, được lưu cùng món và chỉ thành viên gia đình xem được. Bạn tự nhập tên, số lượng và hạn dùng.</Text>
               <View style={styles.actionsRow}>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void startPhotoCamera()} style={styles.secondaryButton}>
-                  <View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chụp sản phẩm</Text></View>
+                {!isWeb && (
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => void startPhotoCamera()} style={styles.secondaryButton}>
+                    <View style={styles.actionContent}><AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{photoUri ? "Chụp lại" : "Chụp sản phẩm"}</Text></View>
+                  </Pressable>
+                )}
+                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void pickFromLibrary()} style={styles.secondaryButton}>
+                  <View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>{isWeb ? "Chọn ảnh từ máy" : "Chọn ảnh"}</Text></View>
                 </Pressable>
-                <Pressable accessibilityRole="button" disabled={busy} onPress={() => void scanReceipt("library", true)} style={styles.secondaryButton}>
-                  <View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chọn ảnh</Text></View>
-                </Pressable>
+                {!photoUri && !manualEntry && (
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={enterWithoutPhoto} style={styles.secondaryButton}>
+                    <View style={styles.actionContent}><AppIcon icon={PencilLine} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Nhập không cần ảnh</Text></View>
+                  </Pressable>
+                )}
               </View>
+              {cameraDenied && (
+                <View accessibilityRole="alert" style={styles.permissionCard}>
+                  <Text style={styles.permissionTitle}>Chưa có quyền dùng camera</Text>
+                  <Text style={styles.helper}>SmartKitchen chỉ dùng camera khi bạn chụp ảnh thực phẩm. Bạn có thể bật lại trong Cài đặt, chọn ảnh có sẵn, hoặc nhập không cần ảnh.</Text>
+                  <View style={styles.actionsRow}>
+                    <Pressable accessibilityRole="button" onPress={() => void pickFromLibrary()} style={styles.secondaryButton}>
+                      <View style={styles.actionContent}><AppIcon icon={FileImage} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Chọn từ thư viện</Text></View>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" onPress={enterWithoutPhoto} style={styles.secondaryButton}>
+                      <View style={styles.actionContent}><AppIcon icon={PencilLine} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Nhập không cần ảnh</Text></View>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
               {photoCameraActive && <Modal visible animationType="fade" onRequestClose={() => setPhotoCameraActive(false)}>
                 <View style={styles.scannerScreen}>
                   <CameraView
@@ -420,7 +534,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                     </Pressable>
                     <View style={styles.scannerCenter}>
                       <View pointerEvents="none" style={styles.photoTarget} />
-                      <Text style={styles.scannerHint}>Đưa sản phẩm vào khung để chụp rõ tên</Text>
+                      <Text style={styles.scannerHint}>Đưa thực phẩm vào khung rồi bấm chụp</Text>
                     </View>
                     <View style={styles.photoControls}>
                       <Pressable accessibilityRole="button" accessibilityLabel="Chọn ảnh đã chụp" onPress={choosePhotoFromCamera} style={styles.galleryButton}>
@@ -504,14 +618,44 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
           {showMainDraft && (
             <View style={styles.section}>
-              {mode === "photo" && photoUri && <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="contain" accessibilityLabel="Ảnh sản phẩm đã chọn" />}
-              <Text style={styles.label}>{mode === "photo" ? "Tên thực phẩm (kiểm tra và sửa nếu cần)" : "Sản phẩm nhận diện"}</Text>
+              {mode === "photo" && photoUri && <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="contain" accessibilityLabel="Ảnh thực phẩm đã chọn" />}
+              <Text style={styles.label}>{mode === "photo" ? "Tên *" : "Sản phẩm nhận diện"}</Text>
               {mode === "photo"
-                ? <TextInput accessibilityLabel="Tên thực phẩm" value={name} onChangeText={setName} placeholder="Nhập tên thực phẩm" style={styles.input} />
+                ? <TextInput
+                    accessibilityLabel="Tên thực phẩm, bắt buộc"
+                    value={name}
+                    onChangeText={(value) => { setName(value); setSuggestionApplied(false); }}
+                    onFocus={() => setNameFocused(true)}
+                    onBlur={() => setTimeout(() => setNameFocused(false), 200)}
+                    placeholder="Ví dụ: rau muống, thịt ba chỉ"
+                    placeholderTextColor={colors.muted}
+                    style={styles.input}
+                  />
                 : <Text style={styles.recognizedName}>{name}</Text>}
-              <Text style={styles.label}>Số lượng</Text>
-              <TextInput accessibilityLabel="Số lượng thực phẩm" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
+              {suggestions.length > 0 && (
+                <View accessibilityLabel="Gợi ý từ danh mục nguyên liệu" style={styles.suggestionList}>
+                  {suggestions.map((entry) => (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Chọn ${entry.name}`} key={entry.id} onPress={() => applySuggestion(entry)} style={styles.suggestionRow}>
+                      <Text style={styles.suggestionName}>{entry.name}</Text>
+                      {!!entry.category && <Text style={styles.suggestionMeta}>{entry.category}{entry.shelfLifeDays !== null ? ` · ${entry.shelfLifeDays} ngày` : ""}</Text>}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {suggestionApplied && <Text style={styles.suggestionCaption}>Gợi ý theo danh mục, sửa nếu cần</Text>}
+              <Text style={styles.label}>Số lượng *</Text>
+              <TextInput accessibilityLabel="Số lượng thực phẩm, bắt buộc" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
               <UnitButtons value={unit} onChange={setUnit} />
+              <DateField
+                label="Hạn dùng"
+                value={expiryDay}
+                onChange={setExpiryDay}
+                minDate={dayFromToday(0)}
+                suggestedDate={dayFromToday(3)}
+                emptyHint="Không bắt buộc. Chọn ngày để được nhắc trước khi hết hạn."
+              />
+              <Text style={styles.label}>Nhóm</Text>
+              <TextInput accessibilityLabel="Nhóm thực phẩm, không bắt buộc" value={group} onChangeText={setGroup} placeholder="Rau củ, thịt, hải sản..." placeholderTextColor={colors.muted} maxLength={50} style={styles.input} />
               <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveMainDraft()} style={[styles.saveButton, busy && styles.disabledButton]}>
                 {busy ? <ActivityIndicator color={colors.surface} /> : <View style={styles.actionContent}><AppIcon icon={Check} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></View>}
               </Pressable>
@@ -520,6 +664,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         </>
       )}
       {note && <Text accessibilityRole="alert" style={styles.notice}>{note}</Text>}
+      {pendingUpload && (
+        <Pressable accessibilityRole="button" accessibilityLabel={`Thử tải lại ảnh cho ${pendingUpload.itemName}`} disabled={busy} onPress={() => void uploadPhotoFor(pendingUpload.itemId, pendingUpload.itemName, pendingUpload.photo)} style={[styles.secondaryButton, styles.retryButton, busy && styles.disabledButton]}>
+          <View style={styles.actionContent}><AppIcon icon={RotateCcw} size="sm" color={colors.primary} /><Text style={styles.secondaryButtonText}>Thử lại</Text></View>
+        </Pressable>
+      )}
+      {success && !note && <Text accessibilityLiveRegion="polite" style={styles.successText}>{success}</Text>}
       {busy && <View style={styles.busyRow}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>Đang xử lý…</Text></View>}
     </View>
   );
@@ -585,4 +735,13 @@ const styles = StyleSheet.create({
   disabledButton: { opacity: 0.65 },
   notice: { color: colors.danger, ...typography.bodySmall, marginTop: spacing.md },
   busyRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  permissionCard: { backgroundColor: colors.warningSoft, borderColor: colors.warning, borderRadius: 8, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
+  permissionTitle: { ...textStyles.label },
+  suggestionList: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 7, borderWidth: 1, overflow: "hidden" },
+  suggestionRow: { borderBottomColor: colors.border, borderBottomWidth: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  suggestionName: { ...textStyles.body },
+  suggestionMeta: { ...textStyles.caption },
+  suggestionCaption: { ...textStyles.caption, color: colors.primary },
+  retryButton: { alignSelf: "flex-start", marginTop: spacing.sm },
+  successText: { ...textStyles.bodySmall, color: colors.success, marginTop: spacing.md },
 });

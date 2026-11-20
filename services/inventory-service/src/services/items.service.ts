@@ -1,12 +1,23 @@
 import { prisma } from "../lib/prisma";
+import { PhotoStorage, managedPhotoFileName } from "./photo-storage.service";
 import {
   CreateItemInput,
   UpdateItemInput,
   ListItemsQuery,
 } from "../validators/items.validator";
 
+type CategoryClient = Pick<typeof prisma, "category">;
+
+/** Category id for a free-text group name, creating the category on first use. */
+const resolveCategoryId = async (client: CategoryClient, name: string | undefined): Promise<string | undefined> => {
+  if (!name) return undefined;
+  const category = await client.category.upsert({ where: { name }, create: { name }, update: {}, select: { id: true } });
+  return category.id;
+};
+
 export class ItemsService {
   static async create(data: CreateItemInput) {
+    const categoryId = data.categoryId ?? await resolveCategoryId(prisma, data.categoryName);
     return prisma.foodItem.create({
       data: {
         familyId: data.familyId,
@@ -15,7 +26,7 @@ export class ItemsService {
         quantity: data.quantity,
         unit: data.unit,
         minQuantity: data.minQuantity,
-        categoryId: data.categoryId,
+        categoryId,
         storageLocation: data.storageLocation,
         expiryDate: data.expiryDate,
         imageUrl: data.imageUrl,
@@ -64,13 +75,19 @@ export class ItemsService {
   }
 
   static async update(id: string, familyId: string, data: UpdateItemInput, userId?: string) {
-    return prisma.$transaction(async (transaction) => {
+    let replacedImageUrl: string | null = null;
+    const result = await prisma.$transaction(async (transaction) => {
       const previous = await transaction.foodItem.findFirst({
         where: { id, familyId, deletedAt: null },
       });
       if (!previous) throw new Error("Item not found");
+      if (data.imageUrl !== undefined && data.imageUrl !== previous.imageUrl && managedPhotoFileName(previous.imageUrl)) {
+        replacedImageUrl = previous.imageUrl;
+      }
 
-      const updateData: UpdateItemInput = { ...data };
+      const { categoryName, ...fields } = data;
+      const updateData: Omit<UpdateItemInput, "categoryName"> = { ...fields };
+      if (categoryName && !fields.categoryId) updateData.categoryId = await resolveCategoryId(transaction, categoryName);
       if (typeof data.quantity === "number" && data.quantity > 0 && previous.status === "CONSUMED" && data.status === undefined) {
         updateData.status = "FRESH";
       }
@@ -96,6 +113,9 @@ export class ItemsService {
       }
       return updated;
     });
+    // An uploaded photo replaced by an external image URL is no longer reachable; remove its file.
+    if (replacedImageUrl) await PhotoStorage.removeByUrl(replacedImageUrl);
+    return result;
   }
 
   static async consume(id: string, familyId: string, quantity: number, userId: string) {
@@ -182,10 +202,12 @@ export class ItemsService {
   }
 
   static async softDelete(id: string, familyId: string) {
-    await this.getById(id, familyId);
-    return prisma.foodItem.update({
+    const item = await this.getById(id, familyId);
+    const deleted = await prisma.foodItem.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: new Date(), imageUrl: null },
     });
+    await PhotoStorage.removeByUrl(item.imageUrl);
+    return deleted;
   }
 }

@@ -15,3 +15,5 @@ prisma/generated/
 *.local
 .DS_Store
 Thumbs.db
+# Local inventory photo uploads (Docker stores them on a named volume)
+services/inventory-service/uploads/

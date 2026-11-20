@@ -80,6 +80,9 @@ services:
       OPENFOODFACTS_USER_AGENT: "${OPENFOODFACTS_USER_AGENT:-SmartKitchen/1.0 (contact@example.com)}"
       TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
       TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
+      INVENTORY_UPLOAD_DIR: /data/uploads/inventory
+    # Item photos; the image creates /data/uploads owned by USER node, which a new named volume inherits.
+    volumes: [inventory-uploads:/data/uploads]
     depends_on:
       inventory-db: { condition: service_healthy }
       family-service: { condition: service_healthy }
@@ -278,6 +281,7 @@ volumes:
   auth-db-data:
   family-db-data:
   inventory-db-data:
+  inventory-uploads:
   nutrition-db-data:
   meal-diary-db-data:
   recipe-db-data:

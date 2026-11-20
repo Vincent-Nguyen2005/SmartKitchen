@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,12 +13,13 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Package, Pencil, Search, Trash2, X } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, IconButton, spacing, touchTarget, typography } from "../../theme";
+import { Camera, ImageMinus, Pencil, Search, Trash2, X } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
+import { InventoryPhoto, pickItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
@@ -70,6 +72,8 @@ export default function InventoryListScreen({
   const [editExpiryDate, setEditExpiryDate] = useState("");
   const [consumeQuantity, setConsumeQuantity] = useState("1");
   const [savingItem, setSavingItem] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   const loadItems = async () => {
     if (!ready) return;
@@ -120,6 +124,7 @@ export default function InventoryListScreen({
   const openEdit = (item: FoodItem) => {
     setDialogMode("edit");
     setActiveItem(item);
+    setPhotoError(null);
     setEditName(item.name);
     setEditQuantity(String(item.quantity));
     setEditUnit(item.unit as InventoryUnit);
@@ -134,7 +139,7 @@ export default function InventoryListScreen({
   };
 
   const closeDialog = () => {
-    if (savingItem) return;
+    if (savingItem || photoBusy) return;
     setActiveItem(null);
   };
 
@@ -202,6 +207,61 @@ export default function InventoryListScreen({
           }
         })();
       } },
+    ]);
+  };
+
+  const applyPhotoChange = (itemId: string, imageUrl: string | null) => {
+    setItems((current) => current.map((entry) => (entry.id === itemId ? { ...entry, imageUrl } : entry)));
+    setActiveItem((current) => (current && current.id === itemId ? { ...current, imageUrl } : current));
+  };
+
+  const uploadPickedPhoto = async (item: FoodItem, result: PhotoPickResult) => {
+    if (!accessToken) return;
+    if (result.status === "denied") { setPhotoError("Chưa có quyền dùng camera. Hãy chọn ảnh từ thư viện hoặc bật quyền trong Cài đặt."); return; }
+    if (result.status === "error") { setPhotoError(result.message); return; }
+    if (result.status !== "picked") return;
+    setPhotoBusy(true);
+    setPhotoError(null);
+    try {
+      const uploaded = await inventoryApi.uploadPhoto(accessToken, item.id, result.photo);
+      applyPhotoChange(item.id, uploaded.imageUrl);
+    } catch {
+      setPhotoError("Chưa tải được ảnh. Kiểm tra mạng rồi thử lại.");
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  /** "Đổi ảnh": camera or library on phones, the library on web. */
+  const changePhoto = (item: FoodItem) => {
+    setPhotoError(null);
+    const pick = (source: "camera" | "library") => { void pickItemPhoto(source).then((result) => uploadPickedPhoto(item, result)); };
+    if (Platform.OS === "web") { pick("library"); return; }
+    Alert.alert(item.imageUrl ? "Đổi ảnh" : "Thêm ảnh", "Ảnh chỉ được lưu cùng món này và chỉ thành viên gia đình xem được.", [
+      { text: "Chụp ảnh", onPress: () => pick("camera") },
+      { text: "Chọn từ thư viện", onPress: () => pick("library") },
+      { text: "Hủy", style: "cancel" },
+    ]);
+  };
+
+  const removePhoto = (item: FoodItem) => {
+    if (!accessToken) return;
+    const run = async () => {
+      setPhotoBusy(true);
+      setPhotoError(null);
+      try {
+        await inventoryApi.deletePhoto(accessToken, item.id);
+        applyPhotoChange(item.id, null);
+      } catch (requestError) {
+        setPhotoError(requestError instanceof Error ? requestError.message : "Không xóa được ảnh.");
+      } finally {
+        setPhotoBusy(false);
+      }
+    };
+    if (Platform.OS === "web") { void run(); return; }
+    Alert.alert("Xóa ảnh?", `Ảnh của “${item.name}” sẽ bị xóa. Món vẫn còn trong kho.`, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Xóa ảnh", style: "destructive", onPress: () => { void run(); } },
     ]);
   };
 
@@ -300,15 +360,13 @@ export default function InventoryListScreen({
                 style={[styles.recipeRow, { gap: isCompact ? spacing.md : spacing.lg }]}
               >
                 <View style={[styles.imageWrap, { width: isCompact ? 76 : 112, height: isCompact ? 96 : 126 }]}>
-                  <View
-                    style={[
-                      styles.placeholderImage,
-                      isExpired && { backgroundColor: colors.dangerSoft },
-                      isNearExpiry && { backgroundColor: colors.warning },
-                    ]}
-                  >
-                    <AppIcon icon={Package} size="lg" color={colors.primary} />
-                  </View>
+                  <InventoryPhoto
+                    imageUrl={item.imageUrl}
+                    accessToken={accessToken}
+                    accessibilityLabel={`Ảnh ${item.name}`}
+                    style={styles.placeholderImage}
+                    placeholderStyle={[isExpired && { backgroundColor: colors.dangerSoft }, isNearExpiry && { backgroundColor: colors.warningSoft }]}
+                  />
                   <Text
                     style={[
                       styles.indexMark,
@@ -363,6 +421,23 @@ export default function InventoryListScreen({
             <Text style={styles.modalTitle}>{dialogMode === "edit" ? `Sửa ${activeItem?.name ?? "nguyên liệu"}` : `Ghi lượng đã dùng`}</Text>
             {dialogMode === "edit" ? (
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
+                {activeItem && (
+                  <View style={styles.photoBlock}>
+                    <InventoryPhoto imageUrl={activeItem.imageUrl} accessToken={accessToken} accessibilityLabel={`Ảnh ${activeItem.name}`} style={styles.detailPhoto} />
+                    <View style={styles.photoActions}>
+                      <Pressable accessibilityRole="button" accessibilityState={{ busy: photoBusy, disabled: photoBusy }} disabled={photoBusy} onPress={() => changePhoto(activeItem)} style={styles.itemAction}>
+                        <AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.itemActionText}>{activeItem.imageUrl ? "Đổi ảnh" : "Thêm ảnh"}</Text>
+                      </Pressable>
+                      {!!activeItem.imageUrl && (
+                        <Pressable accessibilityRole="button" disabled={photoBusy} onPress={() => removePhoto(activeItem)} style={styles.itemAction}>
+                          <AppIcon icon={ImageMinus} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa ảnh</Text>
+                        </Pressable>
+                      )}
+                      {photoBusy && <ActivityIndicator color={colors.primary} />}
+                    </View>
+                    {photoError && <Text accessibilityRole="alert" style={styles.photoErrorText}>{photoError}</Text>}
+                  </View>
+                )}
                 <Text style={styles.fieldLabel}>Tên nguyên liệu</Text>
                 <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
                 <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
@@ -531,4 +606,8 @@ const styles = StyleSheet.create({
   saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
   saveButtonDisabled: { opacity: 0.6 },
   saveButtonText: { color: colors.surface, ...typography.labelSmall },
+  photoBlock: { gap: spacing.sm, marginBottom: spacing.sm },
+  detailPhoto: { alignSelf: "center", height: 180, width: "100%" },
+  photoActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  photoErrorText: { ...textStyles.bodySmall, color: colors.danger },
 });
