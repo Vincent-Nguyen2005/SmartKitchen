@@ -14,9 +14,10 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Camera, ImageMinus, Pencil, Search, Trash2, X } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { Camera, ImageMinus, Pencil, Trash2 } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
+import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
@@ -290,21 +291,7 @@ export default function InventoryListScreen({
         <Text style={styles.subtitle}>
           {items.length} nguyên liệu trong kho
         </Text>
-        <View style={styles.searchBox}>
-          <AppIcon icon={Search} size="md" color={colors.primary} />
-          <TextInput
-            accessibilityLabel="Tìm trong kho thực phẩm"
-            onChangeText={setSearch}
-            placeholder="Gạo, sữa, trứng..."
-            placeholderTextColor={colors.muted}
-            returnKeyType="search"
-            style={styles.searchInput}
-            value={search}
-          />
-          {search.length > 0 && (
-            <IconButton accessibilityLabel="Xóa nội dung tìm kiếm" icon={X} onPress={() => setSearch("")} />
-          )}
-        </View>
+        <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} style={styles.searchSpacing} />
       </View>
 
       <ScrollView
@@ -477,19 +464,8 @@ const styles = StyleSheet.create({
   header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
   subtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.sm },
-  searchBox: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    marginTop: spacing.xl,
-    minHeight: 52,
-    paddingHorizontal: spacing.lg,
-  },
-  searchInput: { color: colors.text, flex: 1, fontFamily, fontSize: typography.body.fontSize, paddingHorizontal: spacing.md, paddingVertical: spacing.md },
-  listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: spacing.lg, width: "100%" },
+  searchSpacing: { marginTop: spacing.xl },
+  listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: SEARCH_CONTENT_GAP, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
     color: colors.muted,

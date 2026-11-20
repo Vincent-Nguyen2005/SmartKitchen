@@ -5,8 +5,8 @@ import { errorMessage, query, type Page } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { useSession } from "../../services/session";
-// Existing shopping-list client (owner: Khanh); used as-is, not modified.
-import { shoppingApi } from "../shopping-cart/shoppingApi";
+// "Mua" adds to Giỏ hàng (the family shopping list) with the catalog price snapshot when the product is known.
+import { addPromotionToCart } from "../shopping-cart/cart";
 import { Button, colors, Field, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "./ui";
 
 type Promotion = {
@@ -127,8 +127,8 @@ export default function PromotionsScreen(): React.JSX.Element {
 type PromotionDetailProps = { promotion: Promotion | null; onClose: () => void };
 
 /**
- * Promotion detail. "Mua" does what the app already does for buying: it adds the product to the family's
- * shopping list (POST /api/shopping-list/items, 1 PIECE; the quantity can be changed in "Đi chợ").
+ * Promotion detail. "Mua" adds the product to Giỏ hàng (POST /api/shopping-list/items, quantity 1; same product
+ * already in the cart = quantity + 1). The unit and price snapshot come from the catalog product with that name.
  */
 function PromotionDetail({ promotion, onClose }: PromotionDetailProps): React.JSX.Element {
   const { accessToken, family } = useSession();
@@ -140,16 +140,16 @@ function PromotionDetail({ promotion, onClose }: PromotionDetailProps): React.JS
   const buy = async () => {
     if (!promotion) return;
     if (!accessToken || !family) {
-      setMessage({ text: "Bạn cần tham gia một gia đình để thêm vào danh sách đi chợ.", tone: "error" });
+      setMessage({ text: "Bạn cần tham gia một gia đình để thêm vào giỏ hàng.", tone: "error" });
       return;
     }
     const name = itemName(promotion.title);
     setBusy(true); setMessage(null);
     try {
-      await shoppingApi.addItem(accessToken, { familyId: family.id, name, quantity: 1, unit: "PIECE" });
-      setMessage({ text: `Đã thêm "${name}" vào danh sách đi chợ.`, tone: "success" });
+      await addPromotionToCart(accessToken, family.id, name);
+      setMessage({ text: `Đã thêm "${name}" vào giỏ hàng.`, tone: "success" });
     } catch (caught) {
-      setMessage({ text: caught instanceof Error ? caught.message : "Không thêm được vào danh sách đi chợ.", tone: "error" });
+      setMessage({ text: caught instanceof Error ? caught.message : "Không thêm được vào giỏ hàng.", tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -179,7 +179,7 @@ function PromotionDetail({ promotion, onClose }: PromotionDetailProps): React.JS
                 <AppText variant="caption">Đến hết ngày {formatDay(promotion.endsAt)}</AppText>
               </View>
               {promotion.description ? <AppText variant="body">{promotion.description}</AppText> : null}
-              <Button label="Mua" icon={ShoppingCart} onPress={() => void buy()} busy={busy} accessibilityLabel={`Mua: thêm ${itemName(promotion.title)} vào danh sách đi chợ`} />
+              <Button label="Mua" icon={ShoppingCart} onPress={() => void buy()} busy={busy} accessibilityLabel={`Mua: thêm ${itemName(promotion.title)} vào giỏ hàng`} />
               {message ? (
                 <View style={[styles.row, local.message]} accessibilityLiveRegion="polite">
                   <AppIcon icon={message.tone === "success" ? CircleCheck : CircleExclamationPoint} size="sm" color={message.tone === "success" ? colors.success : colors.danger} />

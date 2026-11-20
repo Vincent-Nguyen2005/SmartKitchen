@@ -223,6 +223,7 @@ describe("PurchasesService", () => {
     foodItem: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
     inventoryLog: { create: vi.fn() },
     purchaseApplication: { create: vi.fn() },
+    category: { upsert: vi.fn() },
   };
 
   beforeEach(() => {
@@ -247,6 +248,31 @@ describe("PurchasesService", () => {
     }));
     expect(tx.inventoryLog.create).toHaveBeenCalledOnce();
     expect(tx.purchaseApplication.create).toHaveBeenCalledWith({ data: { externalPurchaseId: purchaseId, familyId, itemId } });
+  });
+
+  it("creates the item with the cart's group and expiry day when given", async () => {
+    tx.category.upsert.mockResolvedValue({ id: "cat-1" });
+
+    await PurchasesService.apply({ ...input, categoryName: "Đồ khô", expiryDate: "2026-12-01" });
+
+    expect(tx.category.upsert).toHaveBeenCalledWith({ where: { name: "Đồ khô" }, create: { name: "Đồ khô" }, update: {}, select: { id: true } });
+    expect(tx.foodItem.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ categoryId: "cat-1", expiryDate: new Date("2026-12-01T00:00:00.000Z") }),
+    }));
+  });
+
+  it("fills a missing expiry on restock but keeps an expiry the family already set", async () => {
+    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null });
+    await PurchasesService.apply({ ...input, expiryDate: "2026-12-01" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: { quantity: { increment: 2 }, status: "FRESH", expiryDate: new Date("2026-12-01T00:00:00.000Z") },
+    }));
+
+    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: new Date("2026-11-25T00:00:00.000Z"), categoryId: null });
+    await PurchasesService.apply({ ...input, expiryDate: "2026-12-01" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({
+      data: { quantity: { increment: 2 }, status: "FRESH" },
+    }));
   });
 
   it("restocks a matching active inventory item", async () => {

@@ -41,6 +41,9 @@ import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/inventory/InventoryCapturePanel";
 import ReceiptQrCapturePanel from "./src/screens/inventory/ReceiptQrCapturePanel";
+import { CaptureDialog, MIC_PERMISSION_TEXT, useInstantVoice } from "./src/screens/inventory/InstantCapture";
+import { CAMERA_PERMISSION_TEXT, takeItemPhoto } from "./src/screens/inventory/inventoryPhoto";
+import type { UploadPhoto } from "./src/screens/inventory/inventoryApi";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
@@ -112,6 +115,31 @@ function AppContent(): React.JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false);
   const [captureMode, setCaptureMode] = useState<InventoryCaptureMode | null>(null);
   const [captureReady, setCaptureReady] = useState(false);
+  // Result of the bottom-bar camera / microphone, handed to the capture panel when its sheet opens.
+  const [capturePhoto, setCapturePhoto] = useState<UploadPhoto | null>(null);
+  const [captureVoiceText, setCaptureVoiceText] = useState<string | undefined>(undefined);
+  const [captureDialog, setCaptureDialog] = useState<{ text: string; settings: boolean } | null>(null);
+  const voice = useInstantVoice({
+    onTranscript: (text) => { setCaptureVoiceText(text); setCaptureReady(false); setCaptureMode("voice"); },
+    onPermissionDenied: () => setCaptureDialog({ text: MIC_PERMISSION_TEXT, settings: true }),
+    onMessage: (text) => setCaptureDialog({ text, settings: false }),
+  });
+  const closeCapture = () => { setCaptureReady(false); setCaptureMode(null); setCapturePhoto(null); setCaptureVoiceText(undefined); };
+
+  /**
+   * Bottom bar. "Chụp ảnh": the phone camera opens in this tap (web: the camera file input is clicked synchronously
+   * inside it); after the shot the Kho photo form opens. "Giọng nói": listening starts in this tap with a small
+   * overlay. Without a family the sheet opens instead, to explain why nothing can be saved.
+   */
+  const startCapture = (key: InventoryCaptureMode) => {
+    if (key === "scan" || !session.family?.id || !session.accessToken) { setCaptureReady(false); setCaptureMode(key); return; }
+    if (key === "voice") { voice.start(); return; }
+    void takeItemPhoto().then((result) => {
+      if (result.status === "picked") { setCapturePhoto(result.photo); setCaptureReady(false); setCaptureMode("photo"); }
+      else if (result.status === "denied") setCaptureDialog({ text: CAMERA_PERMISSION_TEXT, settings: true });
+      else if (result.status === "error") setCaptureDialog({ text: result.message, settings: false });
+    });
+  };
   const [inventoryRefreshKey, setInventoryRefreshKey] = useState(0);
   const [otpInitialCooldown, setOtpInitialCooldown] = useState(60);
   const sessionUserId = session.user?.id;
@@ -383,13 +411,13 @@ function AppContent(): React.JSX.Element {
         />
       </Modal>
 
-      <Modal transparent animationType="slide" visible={captureMode !== null && captureMode !== "scan" && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={() => { setCaptureReady(false); setCaptureMode(null); }}>
+      <Modal transparent animationType="slide" visible={captureMode !== null && captureMode !== "scan" && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={closeCapture}>
         <KeyboardAvoidingView style={styles.captureOverlay} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-          <Pressable accessibilityLabel="Đóng chức năng" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel="Đóng chức năng" accessibilityRole="button" onPress={closeCapture} style={StyleSheet.absoluteFill} />
           <View style={styles.captureSheet}>
             <View style={styles.captureHeader}>
               <Text style={styles.captureTitle}>{captureMode === "voice" ? "Thêm bằng giọng nói" : "Chụp ảnh sản phẩm"}</Text>
-              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={() => { setCaptureReady(false); setCaptureMode(null); }} style={styles.sheetClose}>
+              <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={closeCapture} style={styles.sheetClose}>
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
@@ -403,7 +431,9 @@ function AppContent(): React.JSX.Element {
                   familyId={session.family?.id ?? null}
                   accessToken={session.accessToken}
                   onSaved={() => setInventoryRefreshKey((current) => current + 1)}
-                  onClose={() => { setCaptureReady(false); setCaptureMode(null); }}
+                  onClose={closeCapture}
+                  initialPhoto={captureMode === "photo" ? capturePhoto : null}
+                  initialVoiceText={captureMode === "voice" ? captureVoiceText : undefined}
                 />
               )}
               {!session.family?.id && (
@@ -452,7 +482,7 @@ function AppContent(): React.JSX.Element {
         <View style={styles.captureBar}>
           {captureActions.map(({ key, label, icon: Icon }) => (
             <TouchableOpacity key={key} accessibilityLabel={label} accessibilityRole="button"
-              onPress={() => { setCaptureReady(false); setCaptureMode(key); }} style={styles.captureAction}>
+              onPress={() => startCapture(key)} style={styles.captureAction}>
               <View style={[styles.captureActionIcon, key === "scan" && styles.captureActionIconPrimary]}>
                 <AppIcon icon={Icon} size="md" color={key === "scan" ? colors.surface : colors.primary} />
               </View>
@@ -461,6 +491,8 @@ function AppContent(): React.JSX.Element {
           ))}
         </View>
       )}
+      {voice.overlay}
+      <CaptureDialog text={captureDialog?.text ?? null} settings={captureDialog?.settings} onClose={() => setCaptureDialog(null)} />
     </SafeAreaView>
   );
 }

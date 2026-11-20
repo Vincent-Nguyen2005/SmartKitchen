@@ -28,6 +28,10 @@ export class PurchasesService {
 
     try {
       const item = await prisma.$transaction(async (transaction) => {
+        const categoryId = input.categoryName
+          ? (await transaction.category.upsert({ where: { name: input.categoryName }, create: { name: input.categoryName }, update: {}, select: { id: true } })).id
+          : undefined;
+        const expiryDate = input.expiryDate ? new Date(`${input.expiryDate}T00:00:00.000Z`) : undefined;
         const previous = await transaction.foodItem.findFirst({
           where: {
             familyId: input.familyId,
@@ -41,7 +45,13 @@ export class PurchasesService {
         const updated = previous
           ? await transaction.foodItem.update({
               where: { id: previous.id },
-              data: { quantity: { increment: input.quantity }, status: "FRESH" },
+              data: {
+                quantity: { increment: input.quantity },
+                status: "FRESH",
+                // A restock fills a missing expiry/group but never overwrites what the family already set.
+                ...(expiryDate && !previous.expiryDate ? { expiryDate } : {}),
+                ...(categoryId && !previous.categoryId ? { categoryId } : {}),
+              },
               include: { category: true },
             })
           : await transaction.foodItem.create({
@@ -52,6 +62,8 @@ export class PurchasesService {
                 unit: input.unit,
                 storageLocation: "PANTRY",
                 status: "FRESH",
+                ...(expiryDate ? { expiryDate } : {}),
+                ...(categoryId ? { categoryId } : {}),
               },
               include: { category: true },
             });
