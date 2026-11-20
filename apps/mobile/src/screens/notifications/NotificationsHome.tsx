@@ -1,37 +1,23 @@
-import React, { useState } from "react";
+import React from "react";
 import { View } from "react-native";
-import { Bell, Settings, Tag } from "lucide-react-native";
-import NotificationListScreen from "./NotificationListScreen";
-import NotificationPreferencesScreen from "./NotificationPreferencesScreen";
-import PromotionsScreen from "./PromotionsScreen";
-import { PageTitle, Segmented, styles, useLayout } from "./ui";
+import NotificationFeed from "./NotificationFeed";
+import { styles } from "./ui";
 
-type Section = "inbox" | "promotions" | "settings";
+type Props = {
+  /** An expiry alert was tapped: open Kho with that item's edit dialog. */
+  onOpenInventoryItem?: (itemId: string) => void;
+  /** Refresh the tab badge after the list loaded or a notification was read. */
+  onChanged?: () => void;
+};
 
-/** Entry point of the notifications tab: inbox, promotions and preferences. */
-export default function NotificationsHome(): React.JSX.Element {
-  const [section, setSection] = useState<Section>("inbox");
-  const { gutter } = useLayout();
+/**
+ * The "Thông báo" tab: one list (notifications, expiry alerts, active promotions). No page title, no segments and
+ * no read filter; notification settings live in Hồ sơ > "Cài đặt thông báo".
+ */
+export default function NotificationsHome({ onOpenInventoryItem, onChanged }: Props): React.JSX.Element {
   return (
     <View style={styles.screen}>
-      <View style={{ paddingHorizontal: gutter }}>
-        <PageTitle>Thông báo</PageTitle>
-        <Segmented<Section>
-          label="Mục thông báo"
-          value={section}
-          onChange={setSection}
-          options={[
-            { value: "inbox", label: "Thông báo", icon: Bell },
-            { value: "promotions", label: "Khuyến mãi", icon: Tag },
-            { value: "settings", label: "Cài đặt", icon: Settings },
-          ]}
-        />
-      </View>
-      <View style={{ flex: 1 }}>
-        {section === "inbox" && <NotificationListScreen />}
-        {section === "promotions" && <PromotionsScreen />}
-        {section === "settings" && <NotificationPreferencesScreen />}
-      </View>
+      <NotificationFeed onOpenInventoryItem={onOpenInventoryItem} onChanged={onChanged} />
     </View>
   );
 }

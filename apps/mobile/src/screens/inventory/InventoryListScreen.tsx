@@ -46,12 +46,17 @@ type Props = {
   onItemPress?: (item: FoodItem) => void;
   onOpenFamily?: () => void;
   refreshKey?: number;
+  /** From a Thông báo expiry alert: open this item's edit dialog once the list has loaded. */
+  focusItemId?: string | null;
+  onFocusHandled?: () => void;
 };
 
 export default function InventoryListScreen({
   onItemPress,
   onOpenFamily,
   refreshKey,
+  focusItemId,
+  onFocusHandled,
 }: Props): React.JSX.Element {
   const { user, family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
@@ -62,9 +67,6 @@ export default function InventoryListScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [expiringItems, setExpiringItems] = useState<Awaited<ReturnType<typeof inventoryApi.expiring>>["items"]>([]);
-  const [alertError, setAlertError] = useState<string | null>(null);
-  const [alertBusy, setAlertBusy] = useState(false);
   const [dialogMode, setDialogMode] = useState<InventoryDialogMode>("edit");
   const [activeItem, setActiveItem] = useState<FoodItem | null>(null);
   const [editName, setEditName] = useState("");
@@ -100,13 +102,9 @@ export default function InventoryListScreen({
     try {
       setError(null);
       setLoading(true);
-      const [data, alerts] = await Promise.all([
-        inventoryApi.list(accessToken, family.id),
-        inventoryApi.expiring(accessToken, family.id, 3).catch(() => null),
-      ]);
+      // Expiry alerts are shown in Thông báo now (same inventory alerts API), not on this screen.
+      const data = await inventoryApi.list(accessToken, family.id);
       setItems(data.items);
-      setExpiringItems(alerts?.items ?? []);
-      setAlertError(alerts ? null : "Không tải được cảnh báo hạn dùng.");
     } catch (err: any) {
       setError(err.message || "Không kết nối được API");
     } finally {
@@ -117,6 +115,16 @@ export default function InventoryListScreen({
   useEffect(() => {
     void loadItems();
   }, [user?.id, family?.id, accessToken, ready, refreshKey]);
+
+  useEffect(() => {
+    if (!focusItemId || loading) return;
+    const target = items.find((item) => item.id === focusItemId);
+    if (target) openEdit(target);
+    else setError("Không tìm thấy nguyên liệu này trong kho. Có thể nó đã được xóa.");
+    onFocusHandled?.();
+    // openEdit is recreated each render; this only reacts to a new focus request or a finished load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId, loading, items]);
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -271,27 +279,10 @@ export default function InventoryListScreen({
     ]);
   };
 
-  const refreshAlerts = async () => {
-    if (!family?.id || !accessToken) return;
-    setAlertBusy(true);
-    setAlertError(null);
-    try {
-      await inventoryApi.refreshAlerts(accessToken, family.id, 3);
-      await loadItems();
-    } catch (requestError) {
-      setAlertError(requestError instanceof Error ? requestError.message : "Không thể làm mới cảnh báo.");
-    } finally {
-      setAlertBusy(false);
-    }
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
-        <Text style={styles.subtitle}>
-          {items.length} nguyên liệu trong kho
-        </Text>
-        <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} style={styles.searchSpacing} />
+        <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} />
       </View>
 
       <ScrollView
@@ -299,24 +290,6 @@ export default function InventoryListScreen({
         contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
         keyboardShouldPersistTaps="handled"
       >
-        {family && !loading && (
-          <View style={styles.alertPanel}>
-            <View style={styles.alertHeader}>
-              <View style={styles.alertHeading}>
-                <Text style={styles.alertTitle}>Sắp hoặc đã hết hạn</Text>
-                <Text style={styles.alertHint}>Đã quá hạn hoặc hạn trong 3 ngày tới</Text>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Cập nhật trạng thái cảnh báo hạn dùng" accessibilityState={{ busy: alertBusy }} disabled={alertBusy} onPress={() => void refreshAlerts()} style={styles.alertRefresh}>
-                {alertBusy ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.alertRefreshText}>Cập nhật</Text>}
-              </Pressable>
-            </View>
-            {alertError ? <Text accessibilityRole="alert" style={styles.alertError}>{alertError}</Text> : expiringItems.length === 0 ? <Text style={styles.alertHint}>Không có nguyên liệu quá hạn hoặc sắp hết hạn.</Text> : expiringItems.map((item) => (
-              <Text key={item.id} style={item.daysLeft < 0 ? styles.expiredText : styles.nearExpiryText}>
-                {item.name} · {item.daysLeft < 0 ? `Đã quá hạn ${Math.abs(item.daysLeft)} ngày` : item.daysLeft === 0 ? "Hết hạn hôm nay" : `Còn ${item.daysLeft} ngày`}
-              </Text>
-            ))}
-          </View>
-        )}
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -463,8 +436,6 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
   header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
-  subtitle: { color: colors.muted, ...typography.bodySmall, marginTop: spacing.sm },
-  searchSpacing: { marginTop: spacing.xl },
   listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: SEARCH_CONTENT_GAP, width: "100%" },
   resultsScroller: { flex: 1 },
   resultCount: {
@@ -560,16 +531,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
   retryText: { color: colors.surface, ...typography.labelSmall },
-  alertPanel: { backgroundColor: colors.warningSoft, borderColor: colors.warning, borderRadius: 9, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.xl, padding: spacing.md },
-  alertHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: spacing.sm },
-  alertHeading: { flex: 1, minWidth: 0 },
-  alertTitle: { color: colors.warning, ...typography.subheading },
   alertHint: { color: colors.muted, ...typography.bodySmall },
-  alertRefresh: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: 70, paddingHorizontal: spacing.sm },
-  alertRefreshText: { color: colors.primary, ...typography.labelSmall },
-  alertError: { color: colors.danger, ...typography.bodySmall },
-  expiredText: { color: colors.danger, ...typography.bodySmall },
-  nearExpiryText: { color: colors.warning, ...typography.bodySmall },
   itemActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
   itemAction: { alignItems: "center", borderColor: colors.border, borderRadius: 6, borderWidth: 1, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.sm },
   itemActionText: { color: colors.primary, ...typography.labelSmall },
