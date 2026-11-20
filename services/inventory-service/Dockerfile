@@ -18,6 +18,9 @@ COPY --chown=node:node --from=build /app/package*.json ./
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node --from=build /app/prisma ./prisma
+# Photo uploads live on a named volume mounted here; a fresh volume copies this ownership so USER node can write.
+RUN mkdir -p /data/uploads/inventory && chown -R node:node /data/uploads
+ENV INVENTORY_UPLOAD_DIR=/data/uploads/inventory
 EXPOSE 4003
 USER node
 # Apply pending migrations (never migrate dev / db push), then start. Safe to run on every start.

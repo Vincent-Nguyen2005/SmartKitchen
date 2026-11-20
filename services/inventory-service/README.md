@@ -14,6 +14,7 @@
 | `OPENFOODFACTS_USER_AGENT` | recommended | Descriptive User-Agent for barcode catalog lookups. Set a real support/contact address for a deployed app. |
 | `TESSERACT_LANGUAGES` | no | Defaults to `vie+eng` for Vietnamese and English receipt text. |
 | `TESSERACT_LANG_PATH` | no | Custom path or URL for Tesseract trained data. Without it, trained data downloads on the first OCR request and is cached by Tesseract.js. |
+| `INVENTORY_UPLOAD_DIR` | no | Where item photos are stored. Defaults to `./uploads/inventory`; Docker uses `/data/uploads/inventory` on the `inventory-uploads` named volume. |
 
 Production Docker Compose requires `JWT_SECRET` and `PURCHASE_SYNC_API_KEY` from the root `.env`. Copy `.env.example` and set unique random values before starting the services.
 
@@ -38,6 +39,10 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `GET /api/inventory/items?familyId=<uuid>&page=1&limit=20` | List family inventory with pagination; optional `search`, `categoryId`, `status`, and `storageLocation` filters. Returns `items` and `pagination`. |
 | `POST /api/inventory/items` | Add a confirmed inventory item. Body requires `familyId` and `name`; quantity, unit, and storage location have defaults. Supports optional description, minimum quantity, category, expiry date, image URL, and 8–14 digit barcode. Returns the item in `data`. |
 | `GET /api/inventory/items/:id?familyId=<uuid>` | Read one non-deleted item in the family, including recent inventory logs. |
+| `POST /api/inventory/items/:id/photo` | Upload one product photo (multipart/form-data, JPEG/PNG/WebP, max 5 MB) for an item in your family. Re-encoded to JPEG at most 1024 px with metadata (EXIF/GPS) removed, stored under a random name; replaces and deletes the previous photo. Sets `imageUrl`. 413 too large, 400 wrong type, 403 other family. No image recognition. |
+| `DELETE /api/inventory/items/:id/photo` | Remove the photo and its file. Deleting the item also deletes its photo file. |
+| `GET /api/inventory/items/:id/photo/:file` | Serve the item's current photo to members of its family only (the `imageUrl` value). No directory listing; any other file name is 404. |
+| `POST`/`PUT` `categoryName` | Optional free-text group ("Nhóm"); the category is created on first use. |
 | `PUT /api/inventory/items/:id?familyId=<uuid>` | Update allowed item fields for the family. Returns the updated item in `data`. |
 | `DELETE /api/inventory/items/:id?familyId=<uuid>` | Soft-delete a family item; the row is retained. |
 | `GET /api/inventory/items/barcode/:barcode` | Look up a barcode in Open Food Facts. A missing product returns `found: false` for manual entry; catalog data is community-contributed and must be reviewed. |

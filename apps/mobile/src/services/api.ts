@@ -9,6 +9,11 @@ const gatewayBaseUrl = (
   (Platform.OS === "web" ? process.env.EXPO_PUBLIC_WEB_API_BASE_URL?.trim() || webDevGateway : undefined) ||
   (Platform.OS === "android" ? "http://10.0.2.2:4000" : "http://localhost:4000")
 ).replace(/\/+$/, "");
+/** Gateway origin shared by every screen API client (env, web dev host, then emulator default). */
+export const GATEWAY_BASE_URL = gatewayBaseUrl;
+/** Headers every gateway call needs: the free ngrok tunnel serves an HTML warning page (no CORS) without this one. */
+export const gatewayHeaders = (): Record<string, string> =>
+  gatewayBaseUrl.includes("ngrok") ? { "ngrok-skip-browser-warning": "1" } : {};
 const AUTH_BASE_URL = `${gatewayBaseUrl}/api/auth`;
 const FAMILY_BASE_URL = `${gatewayBaseUrl}/api/families`;
 

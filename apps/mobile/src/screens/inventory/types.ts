@@ -7,6 +7,9 @@ export interface FoodItem {
   expiryDate: string | null;
   status: string;
   barcode?: string | null;
+  /** Gateway path of an uploaded photo, an external image URL, or null. */
+  imageUrl?: string | null;
+  category?: { id: string; name: string } | null;
 }
 
 export interface ShoppingItem {

@@ -28,6 +28,8 @@ export const createItemSchema = z.object({
   unit: UnitEnum.default("PIECE"),
   minQuantity: z.number().finite().min(0).optional(),
   categoryId: z.string().uuid().optional(),
+  /** Free-text group ("Nhóm"), e.g. "Rau củ"; the matching category is created on first use. */
+  categoryName: z.string().trim().min(1).max(50).optional(),
   storageLocation: StorageLocationEnum.default("FRIDGE"),
   expiryDate: z
     .string()

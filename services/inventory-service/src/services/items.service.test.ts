@@ -11,6 +11,7 @@ const prismaMock = vi.hoisted(() => ({
     updateMany: vi.fn(),
   },
   inventoryLog: { create: vi.fn() },
+  category: { upsert: vi.fn() },
   purchaseApplication: { findUnique: vi.fn(), create: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -53,6 +54,18 @@ describe("ItemsService", () => {
       data: expect.objectContaining({ familyId, name: "Sữa tươi", quantity: 2, unit: "BOX" }),
       include: { category: true },
     });
+  });
+
+  it("creates the free-text group as a category on first use", async () => {
+    const categoryId = "66666666-6666-4666-8666-666666666666";
+    prismaMock.category.upsert.mockResolvedValue({ id: categoryId });
+    prismaMock.foodItem.create.mockResolvedValue({ id: itemId });
+
+    await ItemsService.create({ familyId, name: "Rau muống", quantity: 1, unit: "PACK", storageLocation: "FRIDGE", categoryName: "Rau củ" });
+
+    expect(prismaMock.category.upsert).toHaveBeenCalledWith({ where: { name: "Rau củ" }, create: { name: "Rau củ" }, update: {}, select: { id: true } });
+    expect(prismaMock.foodItem.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ categoryId }) }));
+    expect(prismaMock.foodItem.create.mock.calls[0][0].data).not.toHaveProperty("categoryName");
   });
 
   it("scopes list results to the family and excludes soft-deleted items", async () => {
@@ -193,7 +206,7 @@ describe("ItemsService", () => {
     const result = await ItemsService.softDelete(itemId, familyId);
 
     expect(result.deletedAt).toBeInstanceOf(Date);
-    expect(prismaMock.foodItem.update).toHaveBeenCalledWith({ where: { id: itemId }, data: { deletedAt: expect.any(Date) } });
+    expect(prismaMock.foodItem.update).toHaveBeenCalledWith({ where: { id: itemId }, data: { deletedAt: expect.any(Date), imageUrl: null } });
   });
 });
 
