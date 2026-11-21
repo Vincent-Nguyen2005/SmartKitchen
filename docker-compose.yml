@@ -120,6 +120,10 @@ services:
       # Kho suggestions read recipes and the family's Kho at request time (no depends_on, like nutrition).
       RECIPE_SERVICE_URL: http://recipe-service:4006
       INVENTORY_API_URL: http://inventory-service:4003
+      FAMILY_SERVICE_URL: http://family-service:4002
+      # AI dishes from Kho; empty = feature off. Values only in the root .env.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
     ports: ["4007:4007"]
     depends_on: { menu-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }

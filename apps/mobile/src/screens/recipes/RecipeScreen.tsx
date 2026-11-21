@@ -7,6 +7,7 @@ import { EmptyState } from "../notifications/ui";
 import { ProductImage } from "../shopping-cart/MarketProducts";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { CardCaption, cardImageStyle, ProductCard, useCardGrid } from "../../components/ProductCard";
+import AiSuggestionsSection from "./AiSuggestions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import { minutesText, totalMinutes, type Recipe } from "./recipeTypes";
@@ -65,6 +66,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={loading && recipes.length > 0} onRefresh={() => void loadRecipes()} tintColor={colors.primary} />}
       >
+        {!search.trim() && <AiSuggestionsSection showSaved />}
         {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger}>{error}</AppText>}
         {loading && recipes.length === 0 ? (
           <View style={styles.loading}><ActivityIndicator color={colors.primary} /></View>

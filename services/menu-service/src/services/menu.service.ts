@@ -187,7 +187,7 @@ function readKhoItems(values: unknown[]): KhoItem[] {
 }
 
 /** The family's Kho (not used up / discarded) from inventory-service, with the caller's token. */
-async function getKhoItems(familyId: string, authorization?: string): Promise<KhoItem[]> {
+export async function getKhoItems(familyId: string, authorization?: string): Promise<KhoItem[]> {
   const baseUrl = (process.env.INVENTORY_API_URL ?? "http://localhost:4003").replace(/\/+$/, "");
   const items: unknown[] = [];
   for (let page = 1; page <= INVENTORY_MAX_PAGES; page += 1) {

@@ -11,3 +11,11 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 - **When a timer ends:** the phone vibrates (React Native `Vibration`) and an alert shows. A local notification with sound is scheduled for the end time (expo-notifications, loaded lazily), so it also sounds in the background.
 - **Screen:** stays awake while cooking (expo-keep-awake, which ships with expo).
 - **Leaving:** asks for confirmation while a timer runs.
+
+## Món gợi ý từ Kho
+
+- **Where:** `AiSuggestions.tsx` is shown in Thực đơn › Theo ngày and in Nấu ăn (Nấu ăn also lists "Món AI đã lưu"). There's no button: it loads `GET /api/menus/ai-suggestions` whenever the tab opens, so a Kho change made in the app shows up when you come back.
+- **While generating:** it shows "Đang chuẩn bị gợi ý..." and polls every 10 s for up to 2 minutes.
+- **Hidden** when the server says `not_configured` or `empty_kho`.
+- **Cards** use the shared ProductCard. Opening one shows the detail with "Nấu món này" (cooking mode), "Lưu món" and "Thêm phần thiếu vào giỏ hàng".
+- **Disclaimer**, always shown: "Công thức do AI gợi ý, hãy kiểm tra độ chín trước khi ăn."
