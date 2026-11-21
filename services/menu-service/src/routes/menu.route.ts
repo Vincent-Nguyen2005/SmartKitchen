@@ -8,9 +8,14 @@ import {
   getMenuController,
   listMenusController,
 } from "../controllers/menu.controller";
+import { aiSuggestionsController, saveAiDishController, savedAiRecipesController } from "../controllers/ai.controller";
 
 const router = Router();
 
+// AI dishes from Kho (before "/:id" so these paths are not read as a menu id).
+router.get("/ai-suggestions", aiSuggestionsController);
+router.post("/ai-suggestions/:dishId/save", saveAiDishController);
+router.get("/ai-recipes", savedAiRecipesController);
 router.post("/generate", generateMenuController);
 router.post("/auto-refresh", autoRefreshController);
 router.post("/checkout", checkoutController);

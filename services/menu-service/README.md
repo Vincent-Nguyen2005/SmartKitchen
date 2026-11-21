@@ -18,6 +18,22 @@ Owner: Cuong. Responsibility: menu planning and meal schedule APIs.
 
 If recipe-service or inventory-service is down, the endpoint returns 503 with a Vietnamese message.
 
+## Món gợi ý từ Kho (AI)
+
+`GET /ai-suggestions?familyId=` (gateway: `/api/menus/ai-suggestions`) returns `{ status, dishes, generatedAt, limitReached }`. `status` is `ready`, `generating`, `not_configured`, `empty_kho` or `error`.
+
+- **Model:** a Gemini text model via `POST …/v1beta/models/${GEMINI_MODEL}:generateContent`, with the key in the `x-goog-api-key` header and structured JSON output. It has a 20 s timeout and uses no SDK.
+- **Configuration:** `GEMINI_API_KEY` and `GEMINI_MODEL` come from the environment. If either is empty, the status is `not_configured` and the app hides the section.
+- **What is sent:** only Kho item names, quantities, units and an "expiring within 3 days" flag. Expired items are left out, and nothing about the user or family is sent.
+- **Validation:** every dish is checked against a schema. Invalid dishes are dropped, and values are clamped: 1–10 servings, step timers 0–7200 s, at most 15 steps, at most 3 dishes. Whether an ingredient is in Kho is recomputed by name.
+- **When it regenerates:** each read loads the family's Kho with the caller's token, which also checks membership, and hashes a snapshot of it.
+  - Same hash as the stored result: the stored dishes are returned and the model is not called.
+  - Different hash: a regeneration runs 2 minutes after the last change seen, so several edits make one call. The previous dishes stay visible with status `generating`.
+  - Nothing stored yet: generation starts right away.
+- **Limits and errors:** at most 8 model calls per family per Vietnam day. After that the last result stays (`limitReached`). Model errors (including 429) keep the previous dishes with status `error`; the same Kho is not retried, and a Kho change tries again.
+- **Storage:** the latest result per family is kept in `AiSuggestion` (dishes, Kho hash, generatedAt, daily count). Pending debounces live in memory, so a restart just reschedules on the next read.
+- **Saved dishes:** `POST /ai-suggestions/:dishId/save { familyId }` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes?familyId=` lists them. Both check membership with family-service.
+
 ## Listing menus
 
 `GET /` (gateway: `/api/menu`) returns the user's menus. Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.

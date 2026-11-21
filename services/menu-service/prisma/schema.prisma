@@ -55,3 +55,35 @@ model MenuItem {
 
   @@index([menuId])
 }
+
+/// Latest AI dish suggestions per family ("Món gợi ý từ Kho"), generated from a Kho snapshot.
+model AiSuggestion {
+  familyId        String   @id
+  /// Validated dishes: [{ id, name, description, servings, totalMinutes, ingredients[], steps[] }].
+  dishes          Json
+  /// sha256 of the Kho snapshot the dishes were made from; the same hash never calls the model again.
+  khoHash         String
+  /// ready | error (the last call failed; `dishes` still holds the previous result).
+  status          String   @default("ready")
+  errorMessage    String?
+  generatedAt     DateTime @default(now())
+  /// Daily limit bookkeeping (Vietnam day YYYY-MM-DD).
+  generationDay   String
+  generationCount Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+/// A dish a family saved to cook again (source "ai" for AI suggestions). Family-only.
+model SavedRecipe {
+  id        String   @id @default(uuid())
+  familyId  String
+  source    String   @default("ai")
+  name      String
+  /// The dish as suggested (ingredients and steps).
+  dish      Json
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([familyId, name])
+  @@index([familyId])
+}

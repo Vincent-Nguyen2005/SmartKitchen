@@ -7,10 +7,21 @@ import { RemoteImage } from "../notifications/ui";
 import { unitLabel } from "../inventory/catalogSuggest";
 import { durationText, minutesText, recipeIngredients, sortedSteps, totalMinutes, type Recipe } from "./recipeTypes";
 
-type Props = { recipe: Recipe | null; onClose: () => void; onStartCooking: (recipe: Recipe) => void };
+type Props = {
+  recipe: Recipe | null;
+  onClose: () => void;
+  onStartCooking: (recipe: Recipe) => void;
+  /** Shown above the ingredients (e.g. the AI disclaimer). */
+  notice?: string;
+  /** Result of an extra action ("Đã lưu món"). */
+  message?: string | null;
+  /** Extra buttons above the start button (AI dishes: "Lưu món", "Thêm phần thiếu vào giỏ hàng"). */
+  actions?: React.ReactNode;
+  startLabel?: string;
+};
 
 /** Món ăn: image, ingredients with quantities, the steps with their times, total time and "Bắt đầu nấu". */
-export default function RecipeDetail({ recipe, onClose, onStartCooking }: Props): React.JSX.Element {
+export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu" }: Props): React.JSX.Element {
   const steps = recipe ? sortedSteps(recipe) : [];
   const total = recipe ? totalMinutes(recipe) : null;
   return (
@@ -34,6 +45,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking }: Props)
               </View>
             </View>
 
+            {!!notice && <Text style={local.notice}>{notice}</Text>}
             <Text style={local.section}>Nguyên liệu</Text>
             <View style={local.card}>
               {recipeIngredients(recipe).map((ingredient) => (
@@ -64,9 +76,11 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking }: Props)
         )}
         {recipe && (
           <View style={local.footer}>
+            {!!message && <Text style={local.message} accessibilityLiveRegion="polite">{message}</Text>}
+            {actions}
             <Pressable accessibilityRole="button" accessibilityState={{ disabled: steps.length === 0 }} disabled={steps.length === 0} onPress={() => onStartCooking(recipe)} style={[local.startButton, steps.length === 0 && local.disabled]}>
               <AppIcon icon={ChefHat} size="md" color={colors.primaryText} />
-              <Text style={local.startText}>Bắt đầu nấu</Text>
+              <Text style={local.startText}>{startLabel}</Text>
             </Pressable>
           </View>
         )}
@@ -96,7 +110,9 @@ const local = StyleSheet.create({
   stepText: { flex: 1, gap: 2 },
   stepInstruction: { ...textStyles.body },
   muted: { ...textStyles.bodySmall, color: colors.muted },
-  footer: { borderTopColor: colors.border, borderTopWidth: 1, padding: spacing.md },
+  footer: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.sm, padding: spacing.md },
+  notice: { ...textStyles.bodySmall, backgroundColor: colors.warningSoft, borderRadius: radius.sm, color: colors.warning, padding: spacing.sm },
+  message: { ...textStyles.bodySmall, color: colors.primary, textAlign: "center" },
   startButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 8 },
   startText: { ...textStyles.label, color: colors.primaryText },
   disabled: { opacity: 0.5 },
