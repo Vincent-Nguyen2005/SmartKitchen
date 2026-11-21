@@ -479,9 +479,10 @@ export function createManualMenu(userId: string, input: ManualMenuInput, client:
   });
 }
 
-export function listMenus(userId: string, client: PrismaClient = prisma) {
+/** The user's menus; with `from`/`to` (YYYY-MM-DD) only those overlapping that range (one request per week/month view). */
+export function listMenus(userId: string, client: PrismaClient = prisma, range?: { from: Date; to: Date }) {
   return client.menu.findMany({
-    where: { userId },
+    where: range ? { userId, startDate: { lte: range.to }, endDate: { gte: range.from } } : { userId },
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });

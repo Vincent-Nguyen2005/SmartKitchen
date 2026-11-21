@@ -85,3 +85,15 @@ test("seed adds only missing names, never touches existing rows, and runs at sta
   assert.equal(await seedMissingRecipes(existing.client), seedRecipes.length - 1);
   assert.ok(!existing.created.some((row) => row.name === "Phở bò"));
 });
+
+test("image links: https public addresses only, at most 2048 characters, updates validated too", async () => {
+  const { updateRecipeSchema } = await import("../services/recipe.service");
+  const base = { name: "Phở bò", ingredients: ["Bánh phở"] };
+  assert.equal(createRecipeSchema.safeParse({ ...base, imageUrl: "https://cdn.example.com/pho.jpg" }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ ...base, imageUrl: null }).success, true);
+  for (const bad of ["http://cdn.example.com/a.jpg", "https://localhost/a.jpg", "https://192.168.1.5/a.jpg", "https://10.0.0.1/a.jpg", "https://[::1]/a.jpg", "https://user:pw@cdn.example.com/a.jpg", `https://cdn.example.com/${"a".repeat(2050)}`, "not a url"]) {
+    assert.equal(createRecipeSchema.safeParse({ ...base, imageUrl: bad }).success, false, bad);
+    assert.equal(updateRecipeSchema.safeParse({ imageUrl: bad }).success, false, `update ${bad}`);
+  }
+  assert.deepEqual(updateRecipeSchema.parse({ isActive: false }), { isActive: false });
+});

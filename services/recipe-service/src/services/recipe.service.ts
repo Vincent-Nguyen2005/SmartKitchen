@@ -1,6 +1,7 @@
 import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-recipe";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
+import { imageUrlProblem, MAX_IMAGE_URL_LENGTH } from "../lib/image-url";
 
 const recipeUnits = ["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"] as const;
 const nutrient = z.number().finite().nonnegative().max(10_000).nullable().optional();
@@ -23,7 +24,11 @@ const recipeFields = z.object({
   tags: z.array(z.string().trim().min(1).max(40)).max(30).default([]),
   preparationMinutes: z.number().int().positive().max(1440).nullable().optional(),
   servings: z.number().int().positive().max(100).nullable().optional(),
-  imageUrl: z.string().trim().url().max(2000).nullable().optional(),
+  /** Pasted https link to a public image; stored as text only, never fetched by the server. */
+  imageUrl: z.string().trim().max(MAX_IMAGE_URL_LENGTH).superRefine((value, context) => {
+    const problem = imageUrlProblem(value);
+    if (problem) context.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+  }).nullable().optional(),
   /** Per serving. */
   calories: nutrient,
   protein: nutrient,

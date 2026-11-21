@@ -1,0 +1,327 @@
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { CookingPot, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { AppIcon, AppText, IconButton } from "../../theme";
+import { errorMessage, query } from "../notifications/gatewayApi";
+import { useGatewayApi } from "../notifications/useGatewayApi";
+import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
+import type { InventoryUnit } from "../inventory/inventoryApi";
+
+type IngredientDetail = { name: string; quantity: number | null; unit: string | null };
+type Recipe = {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  mealTypes: string[];
+  calories: number | null;
+  servings: number | null;
+  preparationMinutes: number | null;
+  ingredients: string[];
+  ingredientDetails: IngredientDetail[] | null;
+  isActive: boolean;
+};
+
+const MEALS = [
+  { value: "breakfast", label: "Bữa sáng" },
+  { value: "lunch", label: "Bữa trưa" },
+  { value: "dinner", label: "Bữa tối" },
+] as const;
+/** Same short Vietnamese unit labels as Kho / Đi chợ. */
+const UNIT_OPTIONS = INVENTORY_UNITS.map((unit) => ({ value: unit, label: UNIT_LABELS[unit] }));
+const PAGE_SIZE = 10;
+
+type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit };
+type Draft = {
+  id?: string; name: string; description: string; imageUrl: string; mealTypes: string[];
+  calories: string; servings: string; preparationMinutes: string; ingredients: IngredientDraft[];
+};
+let ingredientKey = 0;
+const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
+  key: `ing-${ingredientKey += 1}`,
+  name: detail?.name ?? "",
+  quantity: detail?.quantity != null ? String(detail.quantity) : "",
+  unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
+});
+const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()] });
+const toDraft = (recipe: Recipe): Draft => ({
+  id: recipe.id,
+  name: recipe.name,
+  description: recipe.description ?? "",
+  imageUrl: recipe.imageUrl ?? "",
+  mealTypes: [...recipe.mealTypes],
+  calories: recipe.calories?.toString() ?? "",
+  servings: recipe.servings?.toString() ?? "",
+  preparationMinutes: recipe.preparationMinutes?.toString() ?? "",
+  ingredients: (recipe.ingredientDetails?.length ? recipe.ingredientDetails : recipe.ingredients.map((name) => ({ name, quantity: null, unit: null }))).map(newIngredient),
+});
+const imageUrlError = (text: string): string | null =>
+  !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
+const optionalNumber = (value: string): number | null => (value.trim() === "" ? null : Number(value.replace(",", ".")));
+
+/** Quản trị > Món ăn: recipe catalog (recipe-service, admin-guarded routes). Hiding sets isActive=false. */
+export default function RecipesScreen(): React.JSX.Element {
+  const { api } = useGatewayApi();
+  const { columns, gutter, isWide } = useLayout();
+  const grid = useGridCell(columns);
+  const [search, setSearch] = useState("");
+  const [term, setTerm] = useState("");
+  const [active, setActive] = useState<"true" | "all">("all");
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const requestId = useRef(0);
+  const listRef = useRef<FlatList<Recipe>>(null);
+
+  useEffect(() => { const timer = setTimeout(() => setTerm(search.trim()), 400); return () => clearTimeout(timer); }, [search]);
+
+  // recipe-service returns the whole (small) catalog for a search; pages of 10 are cut on the device.
+  const load = useCallback(async (refresh = false) => {
+    const id = ++requestId.current;
+    if (refresh) setRefreshing(true); else setLoading(true);
+    try {
+      const result = await api.get<Recipe[]>(`/api/recipes${query({ search: term, active: active === "true" ? "true" : undefined })}`);
+      if (id !== requestId.current) return;
+      setRecipes(Array.isArray(result) ? result : []);
+      setError(null);
+    } catch (caught) {
+      if (id === requestId.current) setError(errorMessage(caught));
+    } finally {
+      if (id === requestId.current) { setLoading(false); setRefreshing(false); }
+    }
+  }, [active, api, term]);
+
+  useEffect(() => { setPage(1); void load(); }, [load]);
+
+  const totalPages = Math.max(1, Math.ceil(recipes.length / PAGE_SIZE));
+  const shownPage = Math.min(page, totalPages);
+  const pageItems = recipes.slice((shownPage - 1) * PAGE_SIZE, shownPage * PAGE_SIZE);
+
+  const save = async () => {
+    if (!draft) return;
+    const calories = optionalNumber(draft.calories);
+    const servings = optionalNumber(draft.servings);
+    const minutes = optionalNumber(draft.preparationMinutes);
+    const ingredients = draft.ingredients.filter((row) => row.name.trim());
+    if (!draft.name.trim()) return setFormError("Tên món là bắt buộc.");
+    if (ingredients.length === 0) return setFormError("Thêm ít nhất một nguyên liệu.");
+    const problem = imageUrlError(draft.imageUrl);
+    if (problem) return setFormError(problem);
+    if (calories !== null && (Number.isNaN(calories) || calories < 0 || calories > 10_000)) return setFormError("Calo mỗi phần là số từ 0 đến 10000.");
+    if (servings !== null && (!Number.isInteger(servings) || servings < 1 || servings > 100)) return setFormError("Số phần là số nguyên từ 1 đến 100.");
+    if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440)) return setFormError("Thời gian chuẩn bị là số phút nguyên từ 1 đến 1440.");
+    const details: IngredientDetail[] = [];
+    for (const row of ingredients) {
+      const quantity = optionalNumber(row.quantity);
+      if (quantity !== null && (Number.isNaN(quantity) || quantity <= 0)) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
+      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit });
+    }
+    const body = {
+      name: draft.name.trim(),
+      description: draft.description.trim() || null,
+      imageUrl: draft.imageUrl.trim() || null,
+      mealTypes: draft.mealTypes,
+      calories, servings, preparationMinutes: minutes,
+      ingredients: details.map((detail) => detail.name),
+      ingredientDetails: details,
+    };
+    setSaving(true); setFormError(null);
+    try {
+      if (draft.id) await api.put<Recipe>(`/api/recipes/${encodeURIComponent(draft.id)}`, body);
+      else await api.post<Recipe>("/api/recipes", body);
+      setDraft(null);
+      void load();
+    } catch (caught) {
+      setFormError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /** "Ẩn món": isActive=false (never deleted); users and menu suggestions no longer see it. */
+  const setActiveFlag = async (recipe: Recipe, isActive: boolean) => {
+    setRecipes((current) => current.map((entry) => (entry.id === recipe.id ? { ...entry, isActive } : entry)));
+    try {
+      await api.put<Recipe>(`/api/recipes/${encodeURIComponent(recipe.id)}`, { isActive });
+    } catch (caught) {
+      setRecipes((current) => current.map((entry) => (entry.id === recipe.id ? recipe : entry)));
+      setError(errorMessage(caught));
+    }
+  };
+
+  const showState = loading || Boolean(error && recipes.length === 0);
+  const goToPage = (next: number) => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    setPage(next);
+  };
+  const updateIngredient = (key: string, change: Partial<IngredientDraft>) =>
+    setDraft((current) => current && { ...current, ingredients: current.ingredients.map((row) => (row.key === key ? { ...row, ...change } : row)) });
+  const toggleMeal = (meal: string) =>
+    setDraft((current) => current && { ...current, mealTypes: current.mealTypes.includes(meal) ? current.mealTypes.filter((entry) => entry !== meal) : [...current.mealTypes, meal] });
+
+  const toolbar = (
+    <View>
+      <View style={[styles.wrapRow, local.toolbar]}>
+        <View style={local.search}><Field label="Tìm món ăn" icon={Search} placeholder="Nhập tên món..." value={search} onChangeText={setSearch} autoCorrect={false} /></View>
+        <Button label="Thêm món" icon={Plus} onPress={() => { setFormError(null); setImageLoadFailed(false); setDraft(emptyDraft()); }} style={local.addButton} />
+      </View>
+      <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
+        options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
+      {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
+    </View>
+  );
+
+  return (
+    <View style={[styles.screen, { paddingHorizontal: gutter }]}>
+      <FlatList
+        style={local.flex}
+        data={showState ? [] : pageItems}
+        key={`cols-${columns}`}
+        numColumns={columns}
+        onLayout={grid.onLayout}
+        columnWrapperStyle={columns > 1 ? { gap: grid.gap } : undefined}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={local.listContent}
+        ref={listRef}
+        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
+        ListHeaderComponent={toolbar}
+        ListFooterComponent={showState || recipes.length === 0 ? undefined : (
+          <View style={local.footer}>
+            <AppText variant="caption" style={local.pageInfo}>Trang {shownPage} / {totalPages} · {recipes.length} món</AppText>
+            <Pagination page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+          </View>
+        )}
+        ListEmptyComponent={showState
+          ? <ScreenState loading={loading} error={error} onRetry={() => void load()} />
+          : <ScreenState empty emptyIcon={term ? SearchX : CookingPot} emptyText={term || active !== "all" ? "Không tìm thấy món ăn." : "Chưa có món ăn nào. Bấm “Thêm món” để tạo."} />}
+        renderItem={({ item }) => (
+          <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Sửa ${item.name}`}
+              onPress={() => { setFormError(null); setImageLoadFailed(false); setDraft(toDraft(item)); }}
+              style={({ pressed }) => [styles.spaceBetween, local.editArea, pressed && styles.pressed]}
+            >
+              <RemoteImage uri={item.imageUrl} size={48} />
+              <View style={[local.flex, local.rowText]}>
+                <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
+                <Text style={styles.muted}>{item.calories !== null ? `${Math.round(item.calories)} kcal/phần` : "Chưa có calo"}</Text>
+              </View>
+              <AppIcon icon={Pencil} size="sm" color={colors.muted} />
+            </Pressable>
+            <View style={styles.spaceBetween}>
+              <Text style={styles.muted}>{item.isActive ? "Đang dùng" : "Đã ẩn"}</Text>
+              <Switch accessibilityLabel={`${item.name}: đang dùng`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
+            </View>
+          </View>
+        )}
+      />
+
+      <Modal visible={draft !== null} animationType="slide" transparent={isWide} onRequestClose={() => setDraft(null)}>
+        <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
+            <View style={[styles.spaceBetween, local.modalHeader]}>
+              <Text style={[styles.headline, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa món ăn" : "Thêm món ăn"}</Text>
+              <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />
+            </View>
+            {draft ? (
+              <>
+                <Field
+                  label="Dán link ảnh (https://...)"
+                  value={draft.imageUrl}
+                  onChangeText={(imageUrl) => { setImageLoadFailed(false); setDraft({ ...draft, imageUrl }); }}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  placeholder="https://..."
+                  maxLength={2048}
+                />
+                {draft.imageUrl.trim() ? (
+                  looksLikeImageUrl(draft.imageUrl) ? (
+                    <View style={[styles.row, local.preview]}>
+                      <RemoteImage uri={draft.imageUrl.trim()} size={72} accessibilityLabel="Xem trước ảnh" onLoadError={() => setImageLoadFailed(true)} onLoad={() => setImageLoadFailed(false)} />
+                      {imageLoadFailed ? <AppText variant="caption" color={colors.warning} style={local.flex}>Không tải được ảnh, kiểm tra lại link</AppText> : null}
+                    </View>
+                  ) : <AppText variant="caption" color={colors.danger}>{imageUrlError(draft.imageUrl)}</AppText>
+                ) : null}
+                <Field label="Tên món *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} maxLength={160} />
+                <Field label="Mô tả" value={draft.description} onChangeText={(description) => setDraft({ ...draft, description })} multiline maxLength={2000} />
+                <View style={local.formBlock}>
+                  <AppText variant="bodySmall" color={colors.muted}>Bữa ăn</AppText>
+                  <View style={styles.wrapRow} accessibilityLabel="Bữa ăn">
+                    {MEALS.map((meal) => {
+                      const selected = draft.mealTypes.includes(meal.value);
+                      return (
+                        <Pressable key={meal.value} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={meal.label} onPress={() => toggleMeal(meal.value)}
+                          style={({ pressed }) => [styles.segment, selected && styles.segmentSelected, pressed && !selected && styles.segmentPressed]}>
+                          <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{meal.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+                <View style={styles.wrapRow}>
+                  <View style={local.third}><Field label="Calo / phần" keyboardType="decimal-pad" value={draft.calories} onChangeText={(calories) => setDraft({ ...draft, calories })} /></View>
+                  <View style={local.third}><Field label="Số phần" keyboardType="number-pad" value={draft.servings} onChangeText={(servings) => setDraft({ ...draft, servings: servings.replace(/[^0-9]/g, "") })} /></View>
+                  <View style={local.third}><Field label="Chuẩn bị (phút)" keyboardType="number-pad" value={draft.preparationMinutes} onChangeText={(preparationMinutes) => setDraft({ ...draft, preparationMinutes: preparationMinutes.replace(/[^0-9]/g, "") })} /></View>
+                </View>
+                <View style={local.formBlock}>
+                  <AppText variant="bodySmall" color={colors.muted}>Nguyên liệu *</AppText>
+                  {draft.ingredients.map((row, index) => (
+                    <View key={row.key} style={[styles.wrapRow, local.ingredientRow]}>
+                      <View style={local.ingredientName}><Field label={`Nguyên liệu ${index + 1}`} value={row.name} onChangeText={(name) => updateIngredient(row.key, { name })} maxLength={120} /></View>
+                      <View style={local.ingredientQty}><Field label="Số lượng" keyboardType="decimal-pad" value={row.quantity} onChangeText={(quantity) => updateIngredient(row.key, { quantity })} /></View>
+                      <View style={local.unitPill}>
+                        <Dropdown<InventoryUnit> label="Đơn vị" value={row.unit} options={UNIT_OPTIONS} onChange={(unit) => updateIngredient(row.key, { unit })} />
+                      </View>
+                      <IconButton icon={Trash2} accessibilityLabel={`Bỏ nguyên liệu ${index + 1}`} color={colors.danger}
+                        onPress={() => setDraft({ ...draft, ingredients: draft.ingredients.length > 1 ? draft.ingredients.filter((entry) => entry.key !== row.key) : [newIngredient()] })} />
+                    </View>
+                  ))}
+                  <Button variant="secondary" label="Thêm nguyên liệu" icon={Plus} onPress={() => setDraft({ ...draft, ingredients: [...draft.ingredients, newIngredient()] })} />
+                </View>
+              </>
+            ) : null}
+            {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
+            <View style={[styles.wrapRow, local.modalActions]}>
+              <Button variant="secondary" label="Hủy" onPress={() => setDraft(null)} />
+              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} />
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </View>
+  );
+}
+
+const local = StyleSheet.create({
+  toolbar: { alignItems: "flex-end", paddingTop: 8 },
+  search: { flexBasis: 200, flexGrow: 1 },
+  addButton: { marginBottom: 10 },
+  listContent: { gap: 12, paddingBottom: 24 },
+  footer: { gap: 4, paddingTop: 4 },
+  pageInfo: { textAlign: "center" },
+  card: { flex: 1, gap: 8 },
+  editArea: { minHeight: 44 },
+  rowText: { gap: 4 },
+  preview: { marginBottom: 8 },
+  flex: { flex: 1, minWidth: 0 },
+  formBlock: { gap: 6, marginBottom: 10 },
+  third: { flexBasis: 120, flexGrow: 1 },
+  ingredientRow: { alignItems: "flex-end" },
+  ingredientName: { flexBasis: 160, flexGrow: 2 },
+  ingredientQty: { flexBasis: 90, flexGrow: 1 },
+  unitPill: { marginBottom: 10 },
+  modalBackdrop: { flex: 1, justifyContent: "center" },
+  modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 640, padding: 20, width: "100%" },
+  modalHeader: { marginBottom: 8 },
+  modalActions: { justifyContent: "flex-end", marginTop: 12 },
+});
