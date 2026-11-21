@@ -166,7 +166,7 @@ export default function ReceiptQrCapturePanel({ familyId, accessToken, onSaved, 
   return (
     <SafeAreaView style={styles.reviewScreen}>
       <View style={styles.reviewHeader}><Text style={styles.heading}>Quét QR hóa đơn</Text><Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose}><AppIcon icon={X} size="md" color={colors.text} /></Pressable></View>
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.panel}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.panel}>
       {!familyId || !accessToken ? <Text style={styles.info}>Đăng nhập và tham gia gia đình để thêm sản phẩm từ hóa đơn.</Text> : <>
         <Text style={styles.info}>Quét QR trên bill để xem các món. Nếu QR chỉ dẫn đến trang xuất hóa đơn, hãy dùng ảnh bill.</Text>
         <Pressable accessibilityRole="button" disabled={busy} onPress={() => { void openScanner(); }} style={[styles.primaryButton, busy && styles.disabled]}>

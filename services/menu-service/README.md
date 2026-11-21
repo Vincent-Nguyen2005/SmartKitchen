@@ -41,6 +41,8 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
   - **Breakfast** gets light dishes, with a drink as the last dish when there are 2 or more.
   - Each slot takes the best Kho-scored recipe of its role. A dish is never repeated within the day, and dishes the user removed in the last 7 days are skipped while others fit.
 - **Saved menus:** menus are generated once (the app does it the first time a day is opened, today or later) and never change by themselves. `khoHash` is still stored, but nothing regenerates from it. Generating a past day is refused (422).
+- **Week view:** `POST /generate-days { days, familyId }` generates DAY menus in one request for days that are today or later and have no menu. Past days and existing menus are left alone.
+- **Older menus:** `POST /:menuId/top-up` upgrades a day menu made before multi-dish menus (its dishes have no role). It adds only the missing dishes per meal up to "Số món mỗi bữa" and keeps the existing ones. It runs once, because the new dishes carry roles, and past days are refused (422).
 - **Removing one dish:** `POST /:menuId/items/:itemId/remove`
   - The removal is stored in the user's dislike history (`RemovedDish`).
   - The server adds ONE replacement with the same meal and role, ranked by Kho score. It excludes dishes already in that day, dishes removed in the last 7 days and hidden dishes.

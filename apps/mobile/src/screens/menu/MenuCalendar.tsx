@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
+import { Pressable, StyleSheet, Text, View, type LayoutChangeEvent } from "react-native";
 import { colors, radius, spacing, textStyles } from "../../theme";
 
 export type MealType = "BREAKFAST" | "LUNCH" | "DINNER" | "SNACK";
@@ -34,11 +34,6 @@ const MEAL_ROWS: Array<{ meal: MealType; label: string }> = [
   { meal: "LUNCH", label: "Bữa trưa" },
   { meal: "DINNER", label: "Bữa tối" },
 ];
-const LABEL_WIDTH = 76;
-const MIN_DAY_WIDTH = 92;
-const HEADER_HEIGHT = 48;
-const ROW_HEIGHT = 64;
-
 type WeekProps = {
   weekStart: Date;
   todayKey: string;
@@ -47,46 +42,31 @@ type WeekProps = {
 };
 
 /**
- * Theo tuần: a timetable. Rows are the meals (sticky labels on the left), columns the 7 days; narrow phones
- * scroll the day columns sideways. Tapping a cell or a day header opens Theo ngày for that date.
+ * Theo tuần: the 7 days as a vertical list (fits a phone, no sideways scrolling). Each row shows that day's dish
+ * names joined by " · " (up to 3 lines) or "Chưa có thực đơn"; tapping a day opens Theo ngày for it.
  */
-export function WeekTimetable({ weekStart, todayKey, dishesFor, onOpenDay }: WeekProps): React.JSX.Element {
-  const [width, setWidth] = useState(0);
+export function WeekList({ weekStart, todayKey, dishesFor, onOpenDay }: WeekProps): React.JSX.Element {
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
-  const dayWidth = width > 0 ? Math.max(MIN_DAY_WIDTH, Math.floor((width - LABEL_WIDTH) / 7)) : MIN_DAY_WIDTH;
   return (
-    <View onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)} style={local.table}>
-      <View style={[local.labelColumn, { width: LABEL_WIDTH }]}>
-        <View style={[local.headerCell, local.corner]} />
-        {MEAL_ROWS.map((row) => (
-          <View key={row.meal} style={local.labelCell}><Text style={local.labelText}>{row.label}</Text></View>
-        ))}
-      </View>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.dayColumns}>
-        {days.map((date) => {
-          const key = dayKey(date);
-          const isToday = key === todayKey;
-          const dishes = dishesFor(key);
-          return (
-            <View key={key} style={[local.dayColumn, { width: dayWidth }, isToday && local.todayColumn]}>
-              <Pressable accessibilityRole="button" accessibilityLabel={`Xem ngày ${WEEKDAY_SHORT[weekday(date) - 1]} ${dayMonth(date)}`} onPress={() => onOpenDay(key)} style={[local.headerCell, isToday && local.todayHeader]}>
-                <Text style={[local.headerDay, isToday && local.todayText]}>{WEEKDAY_SHORT[weekday(date) - 1]}</Text>
-                <Text style={[local.headerDate, isToday && local.todayText]}>{dayMonth(date)}</Text>
-              </Pressable>
-              {MEAL_ROWS.map((row) => {
-                const mealDishes = dishes.filter((entry) => entry.mealType === row.meal);
-                const first = mealDishes[0];
-                return (
-                  <Pressable key={row.meal} accessibilityRole="button" accessibilityLabel={`${row.label} ${dayMonth(date)}: ${mealDishes.length ? mealDishes.map((entry) => entry.dishName).join(", ") : "chưa có món"}`} onPress={() => onOpenDay(key)} style={({ pressed }) => [local.cell, pressed && local.pressed]}>
-                    <Text style={first ? local.cellText : local.emptyCell} numberOfLines={mealDishes.length > 1 ? 1 : 2}>{first?.dishName ?? "—"}</Text>
-                    {mealDishes.length > 1 && <Text style={local.moreText} numberOfLines={1}>+{mealDishes.length - 1} món</Text>}
-                  </Pressable>
-                );
-              })}
-            </View>
-          );
-        })}
-      </ScrollView>
+    <View style={local.weekList}>
+      {days.map((date) => {
+        const key = dayKey(date);
+        const isToday = key === todayKey;
+        const names = dishesFor(key).map((dish) => dish.dishName);
+        const label = `${WEEKDAY_SHORT[weekday(date) - 1]} ${dayMonth(date)}`;
+        return (
+          <Pressable
+            key={key}
+            accessibilityRole="button"
+            accessibilityLabel={`${label}${isToday ? ", hôm nay" : ""}: ${names.length ? names.join(", ") : "chưa có thực đơn"}`}
+            onPress={() => onOpenDay(key)}
+            style={({ pressed }) => [local.weekRow, isToday && local.todayCell, pressed && local.pressed]}
+          >
+            <Text style={[local.weekDay, isToday && local.todayDay]}>{label}</Text>
+            <Text style={names.length ? local.weekDishes : local.weekEmpty} numberOfLines={3}>{names.length ? names.join(" · ") : "Chưa có thực đơn"}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -153,24 +133,13 @@ export function MonthCalendar({ anchor, todayKey, dishesFor, onOpenDay }: MonthP
 }
 
 const local = StyleSheet.create({
-  table: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", overflow: "hidden" },
-  labelColumn: { borderRightColor: colors.border, borderRightWidth: 1 },
-  corner: { backgroundColor: colors.background },
-  labelCell: { borderTopColor: colors.border, borderTopWidth: 1, height: ROW_HEIGHT, justifyContent: "center", paddingHorizontal: spacing.xs },
-  labelText: { ...textStyles.caption, color: colors.text, fontWeight: "600" },
-  dayColumns: { flexDirection: "row" },
-  dayColumn: { borderLeftColor: colors.border, borderLeftWidth: 1 },
-  todayColumn: { backgroundColor: colors.primarySoft },
-  headerCell: { alignItems: "center", height: HEADER_HEIGHT, justifyContent: "center" },
-  todayHeader: { backgroundColor: colors.primary },
+  weekList: { gap: spacing.xs },
+  weekRow: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: 2, padding: spacing.sm },
+  weekDay: { ...textStyles.caption, color: colors.text, fontWeight: "700" },
+  weekDishes: { ...textStyles.caption, color: colors.text },
+  weekEmpty: { ...textStyles.caption },
   headerDay: { ...textStyles.caption, color: colors.text, fontWeight: "700" },
-  headerDate: { ...textStyles.caption },
-  todayText: { color: colors.primaryText },
   todayDay: { color: colors.primary },
-  cell: { borderTopColor: colors.border, borderTopWidth: 1, height: ROW_HEIGHT, justifyContent: "center", paddingHorizontal: spacing.xs },
-  cellText: { ...textStyles.caption, color: colors.text },
-  moreText: { ...textStyles.caption, color: colors.primary },
-  emptyCell: { ...textStyles.caption, textAlign: "center" },
   pressed: { opacity: 0.7 },
   month: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   monthRow: { flexDirection: "row" },

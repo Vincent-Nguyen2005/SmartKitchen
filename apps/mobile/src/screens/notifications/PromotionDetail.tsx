@@ -66,7 +66,7 @@ export function PromotionDetail({ promotion, onClose }: PromotionDetailProps): R
             <IconButton icon={X} accessibilityLabel="Đóng" onPress={onClose} />
           </View>
           {promotion ? (
-            <ScrollView contentContainerStyle={local.detailBody}>
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={local.detailBody}>
               <View style={local.detailImage}><RemoteImage uri={promotion.imageUrl} size={160} accessibilityLabel={promotion.title} /></View>
               <AppText variant="heading">{promotion.title}</AppText>
               {discount ? (

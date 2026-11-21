@@ -34,7 +34,7 @@ export default function CreateOrJoinFamilyScreen({ onCreate, onJoin, onBack }: P
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           {!!onBack && <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Quay lại</Text></Pressable>}
           <Text style={styles.title}>{mode === "create" ? "Tạo gia đình" : "Tham gia gia đình"}</Text>

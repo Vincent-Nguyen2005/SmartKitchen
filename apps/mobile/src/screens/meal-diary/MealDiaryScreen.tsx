@@ -211,7 +211,7 @@ export default function MealDiaryScreen({ onOpenProfile }: Props): React.JSX.Ele
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
         keyboardShouldPersistTaps="handled"
         refreshControl={
@@ -557,7 +557,7 @@ function MealFormModal({
               />
             </View>
 
-            <ScrollView
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.formContent}
               keyboardShouldPersistTaps="handled"
             >

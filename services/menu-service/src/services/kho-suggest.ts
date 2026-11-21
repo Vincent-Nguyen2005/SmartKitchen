@@ -227,8 +227,19 @@ export function pickMealDishes(
   count: number,
   options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string> },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
+  return pickRoleDishes(recipes, kho, meal, roleSlots(meal, count), options);
+}
+
+/** Same as pickMealDishes for an explicit list of role slots (e.g. only the slots an older menu is missing). */
+export function pickRoleDishes(
+  recipes: SuggestRecipe[],
+  kho: KhoItem[],
+  meal: string,
+  roles: string[],
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string> },
+): Array<{ role: string; suggestion: DishSuggestion }> {
   const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
-  roleSlots(meal, count).forEach((role, index) => {
+  roles.forEach((role, index) => {
     const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id));
     let pool = open.filter((recipe) => fitsRole(recipe.role, role));
     if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");

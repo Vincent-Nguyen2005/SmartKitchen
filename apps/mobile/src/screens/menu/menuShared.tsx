@@ -80,11 +80,12 @@ type CardProps = {
   recipe?: Recipe;
   width: React.ComponentProps<typeof ProductCard>["width"];
   onPress: () => void;
-  onRemove?: () => void;
+  /** "minimal": image and name only (Lịch › Theo ngày). */
+  variant?: "full" | "minimal";
 };
 
 /** A planned dish in the shared card style: image, name, kcal, total time; AI dishes carry the "AI" pill. */
-export function MenuDishCard({ item, recipe, width, onPress, onRemove }: CardProps): React.JSX.Element {
+export function MenuDishCard({ item, recipe, width, onPress, variant = "full" }: CardProps): React.JSX.Element {
   const aiDish = item.details?.ai ? item.details.aiDish : undefined;
   const minutes = recipe ? totalMinutes(recipe) : aiDish ? aiDish.totalMinutes : null;
   const kcal = item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`;
@@ -96,10 +97,8 @@ export function MenuDishCard({ item, recipe, width, onPress, onRemove }: CardPro
       image={aiDish ? <ImagePlaceholder /> : <ProductImage uri={recipe?.imageUrl ?? item.details?.imageUrl ?? null} style={cardImageStyle} />}
       pill={aiDish ? { label: "AI", tone: "ai" } : null}
       name={item.dishName}
-      subtitle={kcal}
-      footer={minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
-      onRemove={onRemove}
-      removeLabel={`Bỏ ${item.dishName} khỏi ${mealLabels[item.mealType].toLocaleLowerCase("vi")}`}
+      subtitle={variant === "full" ? kcal : undefined}
+      footer={variant === "full" && minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
     />
   );
 }

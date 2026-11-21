@@ -244,7 +244,7 @@ export default function RecipesScreen(): React.JSX.Element {
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
-      <FlatList
+      <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={local.flex}
         data={showState ? [] : pageItems}
         key={`cols-${columns}`}
@@ -290,7 +290,7 @@ export default function RecipesScreen(): React.JSX.Element {
 
       <Modal visible={draft !== null} animationType="slide" transparent={isWide} onRequestClose={() => setDraft(null)}>
         <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
             <View style={[styles.spaceBetween, local.modalHeader]}>
               <Text style={[styles.headline, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa món ăn" : "Thêm món ăn"}</Text>
               <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />

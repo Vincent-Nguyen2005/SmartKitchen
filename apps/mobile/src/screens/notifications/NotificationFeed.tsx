@@ -213,7 +213,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
       ) : error && entries.length === 0 ? (
         <ScreenState error={error} onRetry={() => void load(false)} />
       ) : (
-        <FlatList
+        <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           data={entries}
           keyExtractor={(entry) => entry.key}
           renderItem={renderEntry}

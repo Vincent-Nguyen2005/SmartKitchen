@@ -32,7 +32,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
           <IconButton icon={X} accessibilityLabel="Đóng" onPress={onClose} />
         </View>
         {recipe && (
-          <ScrollView contentContainerStyle={local.body}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={local.body}>
             <View style={local.hero}>
               <RemoteImage uri={recipe.imageUrl ?? null} size={120} accessibilityLabel={recipe.name} />
               <View style={local.heroText}>

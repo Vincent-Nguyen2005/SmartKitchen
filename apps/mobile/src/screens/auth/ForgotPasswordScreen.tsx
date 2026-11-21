@@ -67,7 +67,7 @@ export default function ForgotPasswordScreen({ onBack, onSuccess }: Props): Reac
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.container}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đăng nhập" onPress={onBack} style={styles.backButton}>
           <AppIcon icon={ArrowLeft} color="#2F6B5F" />
           <Text style={styles.backText}>Quay lại</Text>

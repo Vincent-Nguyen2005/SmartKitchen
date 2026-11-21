@@ -83,6 +83,19 @@ const tabs = [
   { key: "admin", label: "Quản trị", icon: Settings },
 ] as const;
 const memberNavigationKeys: ReadonlySet<Tab> = new Set(["inventory", "shopping", "menu", "family", "notifications"]);
+
+/**
+ * Phone-first look on web too: hide the browser scrollbars (scrolling still works). Applied once at the app root;
+ * every ScrollView / FlatList also sets showsVertical/HorizontalScrollIndicator={false} for native.
+ */
+type WebDocument = { getElementById: (id: string) => unknown; createElement: (tag: string) => { id: string; textContent: string }; head: { appendChild: (node: unknown) => void } };
+const webDocument = Platform.OS === "web" ? (globalThis as { document?: WebDocument }).document : undefined;
+if (webDocument && !webDocument.getElementById("smartkitchen-hide-scrollbars")) {
+  const style = webDocument.createElement("style");
+  style.id = "smartkitchen-hide-scrollbars";
+  style.textContent = "* { scrollbar-width: none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; width: 0; height: 0; }";
+  webDocument.head.appendChild(style);
+}
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
@@ -509,7 +522,7 @@ function AppContent(): React.JSX.Element {
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
               {captureMode !== "scan" && captureMode && (
                 <InventoryCapturePanel
                   key={captureMode}

@@ -61,10 +61,12 @@ type DetailProps = {
   onClose: () => void;
   onStartCooking: (recipe: Recipe) => void;
   onSaved: () => void;
+  /** More buttons (Lịch: "Đổi món khác"). */
+  extraActions?: React.ReactNode;
 };
 
 /** AI dish detail: the shared recipe detail with the disclaimer, "Nấu món này", "Lưu món" and "Thêm phần thiếu vào giỏ hàng". */
-export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved }: DetailProps): React.JSX.Element {
+export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved, extraActions }: DetailProps): React.JSX.Element {
   const { accessToken, family } = useSession();
   const familyId = family?.id ?? null;
   const [message, setMessage] = useState<string | null>(null);
@@ -119,6 +121,7 @@ export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved }
           {missingCount > 0 && (
             <ActionButton icon={ShoppingCart} label="Thêm phần thiếu vào giỏ hàng" busy={busy === "cart"} disabled={busy !== null} onPress={() => void addMissing(dish)} />
           )}
+          {extraActions}
         </View>
       )}
     />

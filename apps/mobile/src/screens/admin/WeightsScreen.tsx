@@ -69,7 +69,7 @@ export default function WeightsScreen(): React.JSX.Element {
   const sum = weights.reduce((total, weight) => total + weight.value, 0);
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
       contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
     >

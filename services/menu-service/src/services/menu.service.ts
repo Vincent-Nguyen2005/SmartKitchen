@@ -10,6 +10,8 @@ import {
   pickDishes,
   pickMealDishes,
   pickReplacement,
+  pickRoleDishes,
+  roleSlots,
   REPEAT_WINDOW_DAYS,
   type SuggestRecipe,
   usableKho,
@@ -56,6 +58,8 @@ interface GenerateMenuInput {
   mealCounts?: MealCounts;
   /** Recipes the user removed in the last 7 days: not picked (unless nothing else fits a meal). */
   excludeRecipeIds?: string[];
+  /** Already loaded recipes / Kho (several days generated in one request load them once). */
+  preloaded?: { recipes: RecipeCandidate[]; khoItems: KhoItem[] };
 }
 
 interface AutoRefreshInput {
@@ -374,7 +378,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
   const mealTypes = selectedMealTypes(preferences);
   const today = vnDay();
   // Recipes and Kho in parallel; either upstream down → MenuServiceError 503 (no menu is written).
-  const [recipes, khoItems] = await Promise.all([
+  const [recipes, khoItems] = input.preloaded ? [input.preloaded.recipes, input.preloaded.khoItems] : await Promise.all([
     getRecipes(input.recipes),
     input.inventoryItems !== undefined
       ? Promise.resolve(readKhoItems(input.inventoryItems))
@@ -383,7 +387,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
   const kho = usableKho(khoItems, today);
   // Hash of the Kho snapshot these suggestions used (only when a Kho was read); the app compares it with the
   // current Kho hash to regenerate a stale menu for today.
-  const khoHash = input.familyId || input.inventoryItems !== undefined ? snapshotHash(khoSnapshot(khoItems, today)) : null;
+  const khoHash = input.familyId || input.inventoryItems !== undefined || input.preloaded ? snapshotHash(khoSnapshot(khoItems, today)) : null;
   // Constraints from the request (avoid / required ingredients, diets) still filter the pool.
   const pool = recipes.filter((recipe) => {
     const avoid = readStringList(constraints.avoidIngredients);
@@ -693,5 +697,99 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
     client.menuItem.delete({ where: { id: item.id } }),
     ...(replacement ? [client.menuItem.create({ data: replacement })] : []),
   ]);
+  return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
+}
+
+
+const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const DAY_MEALS = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER] as const;
+
+type DaysInput = Omit<GenerateMenuInput, "periodType" | "startDate" | "endDate" | "preloaded"> & { days: string[]; now?: Date };
+
+/**
+ * Theo tuần: generates a DAY menu for each given day that is today or later and has no menu yet (one request,
+ * same rules as a single day; Kho and recipes loaded once). Existing menus and past days are left as they are.
+ */
+export async function generateDays(input: DaysInput, client: PrismaClient = prisma) {
+  const today = vnDay(input.now ?? new Date());
+  const days = [...new Set(input.days)].filter((day) => DAY_PATTERN.test(day) && day >= today).sort();
+  if (days.length === 0) return [];
+  const existing = await client.menu.findMany({
+    where: { userId: input.userId, periodType: PeriodType.DAY, startDate: { in: days.map((day) => new Date(`${day}T00:00:00.000Z`)) } },
+    select: { startDate: true },
+  });
+  const taken = new Set(existing.map((menu) => dayKey(menu.startDate)));
+  const missing = days.filter((day) => !taken.has(day));
+  if (missing.length === 0) return [];
+  const [recipes, khoItems] = await Promise.all([
+    getRecipes(input.recipes),
+    input.inventoryItems !== undefined ? Promise.resolve(readKhoItems(input.inventoryItems))
+      : input.familyId ? getKhoItems(input.familyId, input.authorization) : Promise.resolve([] as KhoItem[]),
+  ]);
+  const created = [];
+  // One day after another, so each day sees the previous days and avoids repeating their dishes.
+  for (const day of missing) {
+    const date = new Date(`${day}T00:00:00.000Z`);
+    created.push(await generateMenu({ ...input, periodType: PeriodType.DAY, startDate: date, endDate: date, preloaded: { recipes, khoItems } }, client));
+  }
+  return created;
+}
+
+type TopUpInput = { userId: string; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
+
+/**
+ * Upgrades a day menu made before multi-dish menus (its dishes carry no role): adds only the missing dishes of each
+ * meal up to "Số món mỗi bữa", keeping the existing ones. Runs once (the new dishes carry roles); newer menus,
+ * full meals and past days are left unchanged.
+ */
+export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma) {
+  const now = input.now ?? new Date();
+  const menu = await client.menu.findFirst({ where: { id: input.menuId, userId: input.userId }, include: { items: true } });
+  if (!menu) throw new MenuServiceError("Menu not found", 404);
+  if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
+  const legacy = menu.periodType === PeriodType.DAY && !menu.items.some((item) => typeof asRecord(item.details).role === "string");
+  if (!legacy) return menu;
+  const short = DAY_MEALS.filter((meal) => menu.items.filter((item) => item.mealType === meal).length < input.mealCounts[meal]);
+  if (short.length === 0) return menu;
+
+  const [recipes, khoItems, removed] = await Promise.all([
+    getRecipes(input.recipes).catch(() => [] as RecipeCandidate[]),
+    input.inventoryItems !== undefined ? Promise.resolve(readKhoItems(input.inventoryItems))
+      : menu.familyId ? getKhoItems(menu.familyId, input.authorization).catch(() => [] as KhoItem[]) : Promise.resolve([] as KhoItem[]),
+    recentlyRemoved(input.userId, client, now),
+  ]);
+  const today = vnDay(now);
+  const kho = usableKho(khoItems, today);
+  const pool = recipes.map(toSuggestRecipe);
+  const usedIds = new Set(menu.items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])));
+  const day = dayKey(normalizeDate(menu.startDate));
+  const creates: Prisma.MenuItemUncheckedCreateInput[] = [];
+  for (const meal of short) {
+    const have = menu.items.filter((item) => item.mealType === meal).length;
+    // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
+    const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
+    const picks = pickRoleDishes(pool, kho, meal, roles, { today, day, recentRecipeIds: new Set(), usedIds, excludeIds: removed.recipeIds });
+    const dayOfWeek = ((normalizeDate(menu.startDate).getUTCDay() + 6) % 7) + 1;
+    for (const { role, suggestion } of picks) {
+      creates.push({
+        menuId: menu.id,
+        recipeId: suggestion.recipe.id,
+        dishName: suggestion.recipe.name,
+        mealType: meal,
+        dayOfWeek,
+        calories: suggestion.recipe.calories,
+        details: {
+          imageUrl: suggestion.recipe.imageUrl,
+          availableIngredients: suggestion.availableIngredients,
+          missingIngredients: suggestion.missingIngredients,
+          availableCount: suggestion.availableCount,
+          totalCount: suggestion.totalCount,
+          reason: suggestion.reason,
+          role,
+        } as Prisma.InputJsonValue,
+      });
+    }
+  }
+  if (creates.length > 0) await client.$transaction(creates.map((data) => client.menuItem.create({ data })));
   return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
 }

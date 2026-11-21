@@ -7,7 +7,9 @@ import type { AiDish } from "../services/ai/gemini";
 import { aiEngine } from "./ai.controller";
 import {
   currentKhoHash,
+  generateDays,
   getMenuSettings,
+  topUpMenu,
   isPastDay,
   recentlyRemoved,
   removeMenuItem,
@@ -281,6 +283,50 @@ export async function removeMenuItemController(request: Request, response: Respo
       itemId: request.params.itemId,
       authorization: request.header("authorization") ?? undefined,
       aiDishes: storedAiDishes,
+    }));
+  } catch (error) {
+    handleError(error, response);
+  }
+}
+
+export const generateDaysSchema = z.object({
+  days: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(14),
+  familyId: z.string().uuid().optional(),
+});
+
+/** POST /generate-days { days, familyId }: Theo tuần fills today and later days that have no menu (past days untouched). */
+export async function generateDaysController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    const input = generateDaysSchema.parse(request.body);
+    const [mealCounts, removed] = await Promise.all([
+      getMenuSettings(userId, settingsClient),
+      recentlyRemoved(userId, settingsClient).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+    ]);
+    response.status(201).json(await generateDays({
+      userId,
+      days: input.days,
+      familyId: input.familyId,
+      authorization: request.header("authorization") ?? undefined,
+      mealCounts,
+      excludeRecipeIds: [...removed.recipeIds],
+    }));
+  } catch (error) {
+    handleError(error, response);
+  }
+}
+
+/** POST /:id/top-up: an older single-dish menu gets its missing dishes (once); anything else is returned unchanged. */
+export async function topUpMenuController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    response.json(await topUpMenu({
+      userId,
+      menuId: request.params.id,
+      authorization: request.header("authorization") ?? undefined,
+      mealCounts: await getMenuSettings(userId, settingsClient),
     }));
   } catch (error) {
     handleError(error, response);

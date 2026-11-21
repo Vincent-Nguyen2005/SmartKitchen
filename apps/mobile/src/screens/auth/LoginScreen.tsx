@@ -60,7 +60,7 @@ export default function LoginScreen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           <Text style={styles.kicker}>SMARTKITCHEN</Text>
           <Text style={styles.title}>Chào mừng trở lại</Text>

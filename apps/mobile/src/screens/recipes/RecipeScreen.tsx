@@ -161,7 +161,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
       <View style={[styles.searchHeader, { paddingHorizontal: horizontalPadding }]}>
         <SearchBar accessibilityLabel="Tìm món ăn" placeholder="Tìm món khác để nấu" value={search} onChangeText={setSearch} />
       </View>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }, styles.fill]}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={loading && !!menu} onRefresh={() => void load()} tintColor={colors.primary} />}

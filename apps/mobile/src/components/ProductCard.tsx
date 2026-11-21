@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View, type DimensionValue } from "react-native";
-import { ImageOff, X } from "lucide-react-native";
+import { ImageOff } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles } from "../theme";
 import { styles as ui, useGridCell, useLayout } from "../screens/notifications/ui";
 
@@ -39,19 +39,16 @@ type Props = {
   image: React.ReactNode;
   pill?: { label: string; tone: CardPillTone } | null;
   name: string;
-  /** Line under the name: unit (Đi chợ) or quantity + unit (Kho). */
-  subtitle: string;
+  /** Line under the name: unit (Đi chợ) or quantity + unit (Kho); omitted = image and name only. */
+  subtitle?: string;
   /** Price row (Đi chợ) or expiry line (Kho). */
   footer?: React.ReactNode;
   onPress: () => void;
   accessibilityLabel: string;
-  /** Small "×" in the image's top-right corner (e.g. remove a dish from a menu). */
-  onRemove?: () => void;
-  removeLabel?: string;
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, onRemove, removeLabel }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel }: Props): React.JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
@@ -66,15 +63,11 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
             <Text style={local.pillText} numberOfLines={1}>{pill.label}</Text>
           </View>
         )}
-        {onRemove && (
-          <Pressable accessibilityRole="button" accessibilityLabel={removeLabel ?? `Bỏ ${name}`} hitSlop={8} onPress={onRemove} style={({ pressed }) => [local.remove, pressed && ui.pressed]}>
-            <AppIcon icon={X} size="sm" color={colors.text} />
-          </Pressable>
-        )}
+
       </View>
       <View style={local.body}>
         <Text style={local.name} numberOfLines={2}>{name}</Text>
-        <Text style={local.subtitle} numberOfLines={1}>{subtitle}</Text>
+        {!!subtitle && <Text style={local.subtitle} numberOfLines={1}>{subtitle}</Text>}
         {footer}
       </View>
     </Pressable>
@@ -108,7 +101,6 @@ const local = StyleSheet.create({
   imageArea: { aspectRatio: 1, backgroundColor: colors.background, width: "100%" },
   placeholder: { alignItems: "center", backgroundColor: colors.background, height: "100%", justifyContent: "center", width: "100%" },
   pill: { borderRadius: radius.pill, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", top: spacing.xs },
-  remove: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, height: 28, justifyContent: "center", position: "absolute", right: spacing.xs, top: spacing.xs, width: 28 },
   pillText: { ...textStyles.caption, color: colors.surface, fontWeight: "700" },
   body: { gap: 2, padding: spacing.xs + 2 },
   name: { ...textStyles.caption, color: colors.text, fontWeight: "600" },

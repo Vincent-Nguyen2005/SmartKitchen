@@ -64,7 +64,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         {!!onBack && <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Gia đình</Text></Pressable>}
         <Text style={styles.title}>Quản lý thành viên</Text>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
@@ -101,7 +101,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Chuyển quyền chủ gia đình</Text>
             <Text style={styles.modalCopy}>Chọn người nhận quyền. Bạn sẽ trở thành quản trị viên.</Text>
-            <ScrollView style={styles.modalList}>
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.modalList}>
               {transferCandidates.map((member) => {
                 const selected = transferTargetId === member.id;
                 return <Pressable key={member.id} onPress={() => setTransferTargetId(member.id)} style={styles.targetRow}>

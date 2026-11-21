@@ -294,7 +294,7 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
           {!ready || loading ? (
             <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.helper}>Đang tải giỏ hàng...</Text></View>
           ) : (
-            <ScrollView
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
               contentContainerStyle={[styles.cartContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
               keyboardShouldPersistTaps="handled"
               refreshControl={refreshControl}

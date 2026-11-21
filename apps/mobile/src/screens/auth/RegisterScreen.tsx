@@ -67,7 +67,7 @@ export default function RegisterScreen({
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
       >
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View>
           <Pressable accessibilityRole="button" accessibilityLabel="Quay lại đăng nhập" onPress={() => navigation?.navigate("Login")} style={styles.backButton}>
             <AppIcon icon={ArrowLeft} color="#2F6B5F" />

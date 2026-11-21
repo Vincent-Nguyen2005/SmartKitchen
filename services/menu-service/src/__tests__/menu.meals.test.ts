@@ -134,3 +134,49 @@ test("past days are never edited or regenerated", async () => {
     (error: unknown) => error instanceof MenuServiceError && error.statusCode === 422);
   assert.deepEqual(writes, []);
 });
+
+test("top-up: an older single-dish menu gets only its missing dishes (keeping the old ones); newer menus and past days are untouched", async () => {
+  const { topUpMenu } = await import("../services/menu.service");
+  const legacy = (id: string, recipeId: string, mealType: MealType): Item => ({ id, recipeId, dishName: recipeId, mealType, dayOfWeek: 2, details: { reason: "Có sẵn 1/1 nguyên liệu" } });
+  const old = removeClient([legacy("a", "xoi", MealType.BREAKFAST), legacy("b", "thitkho", MealType.LUNCH), legacy("c", "cakho", MealType.DINNER)]);
+  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, old.client);
+  const byMeal = (type: MealType) => old.items.filter((entry) => entry.mealType === type);
+  assert.equal(byMeal(MealType.BREAKFAST).length, 3);
+  assert.equal(byMeal(MealType.LUNCH).length, 5);
+  assert.equal(byMeal(MealType.DINNER).length, 5);
+  assert.ok(old.items.some((entry) => entry.id === "a") && old.items.some((entry) => entry.id === "b") && old.items.some((entry) => entry.id === "c"));
+  // The older lunch dish fills the first slot (món mặn); the new ones are canh, rau, xào, tráng miệng.
+  assert.deepEqual(byMeal(MealType.LUNCH).filter((entry) => entry.id !== "b").map((entry) => (entry.details as { role: string }).role), ["canh", "rau", "xao", "trang_mieng"]);
+  assert.equal(new Set(old.items.map((entry) => entry.recipeId)).size, old.items.length);
+
+  // Second call: the menu now carries roles -> nothing more is added.
+  const before = old.items.length;
+  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, old.client);
+  assert.equal(old.items.length, before);
+
+  const newer = removeClient([item("i1", "thitkho", MealType.LUNCH, "man")]);
+  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, newer.client);
+  assert.deepEqual(newer.writes, []);
+
+  const past = removeClient([legacy("a", "xoi", MealType.BREAKFAST)], { startDate: "2026-11-20T00:00:00Z" });
+  await assert.rejects(topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, past.client),
+    (error: unknown) => error instanceof MenuServiceError && error.statusCode === 422);
+  assert.deepEqual(past.writes, []);
+});
+
+test("week generation: one request fills today and later days without a menu; past days and existing menus stay", async () => {
+  const { generateDays } = await import("../services/menu.service");
+  const createdDays: string[] = [];
+  const menu = {
+    findMany: async (args: { select?: unknown }) => (args.select ? [{ startDate: new Date("2026-11-25T00:00:00Z") }] : []),
+    deleteMany: async () => ({ count: 0 }),
+    create: async (args: { data: { startDate: Date; items: { create: unknown[] } } }) => { createdDays.push(args.data.startDate.toISOString().slice(0, 10)); return args.data; },
+  };
+  const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
+  const week = ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"];
+  const result = await generateDays({ userId: "u1", days: week, now, recipes: catalog, inventoryItems: [], mealCounts: counts }, client);
+  // 23/11 is past, 25/11 already has a menu.
+  assert.deepEqual(createdDays, ["2026-11-24", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"]);
+  assert.equal(result.length, 5);
+  assert.deepEqual(await generateDays({ userId: "u1", days: ["2026-11-20"], now, recipes: catalog, inventoryItems: [] }, client), []);
+});

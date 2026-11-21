@@ -123,7 +123,7 @@ export default function DashboardScreen({ onOpenReports }: DashboardScreenProps)
   ];
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
       contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
     >

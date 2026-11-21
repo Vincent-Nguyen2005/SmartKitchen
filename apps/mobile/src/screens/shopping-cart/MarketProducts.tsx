@@ -145,7 +145,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
       <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
         <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} />
       </View>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[local.content, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}
         keyboardShouldPersistTaps="handled"
         refreshControl={refreshControl}
