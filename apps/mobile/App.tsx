@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   Bell,
-  BookOpen,
+  ChefHat,
   Camera,
   Check,
   ChevronDown,
@@ -75,7 +75,7 @@ const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
   { key: "menu", label: "Thực đơn", icon: Utensils },
-  { key: "recipes", label: "Công thức", icon: BookOpen },
+  { key: "recipes", label: "Nấu ăn", icon: ChefHat },
   { key: "family", label: "Gia đình", icon: Users },
   { key: "nutrition", label: "Dinh dưỡng", icon: Salad },
   { key: "notifications", label: "Thông báo", icon: Bell },

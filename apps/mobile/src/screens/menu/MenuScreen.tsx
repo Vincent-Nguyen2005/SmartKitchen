@@ -9,12 +9,14 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { ChevronLeft, ChevronRight, RefreshCw, ShoppingCart } from "lucide-react-native";
+import { ChefHat, ChevronLeft, ChevronRight, RefreshCw, ShoppingCart } from "lucide-react-native";
 import { AppIcon, AppText, breakpoints, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { RemoteImage } from "../notifications/ui";
 import { addToCart, findCatalogProduct, shoppingUnitFor } from "../shopping-cart/cart";
 import { shoppingUnits, type ShoppingUnit } from "../shopping-cart/shoppingApi";
+import CookingMode from "../recipes/CookingMode";
+import type { Recipe } from "../recipes/recipeTypes";
 import { addDays, dayKey, keyToDate, monthGridDays, MonthCalendar, startOfWeek, weekday, WeekTimetable, type MealType } from "./MenuCalendar";
 
 type PeriodType = "DAY" | "WEEK" | "MONTH";
@@ -155,6 +157,8 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
   const [addingItemId, setAddingItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [cooking, setCooking] = useState<Recipe | null>(null);
+  const [openingRecipeId, setOpeningRecipeId] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadId = useRef(0);
   const api = createGatewayClient(accessToken);
@@ -268,6 +272,19 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
       : `Đã thêm ${added}/${missing.length} nguyên liệu. Hãy thử lại phần còn lại.`);
   };
 
+  /** "Nấu món này": loads the dish's recipe (with steps) and opens the cooking mode. */
+  const cookDish = async (item: MenuItem): Promise<void> => {
+    if (!item.recipeId || openingRecipeId) return;
+    setOpeningRecipeId(item.id);
+    try {
+      setCooking(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`));
+    } catch (requestError) {
+      showToast(errorMessage(requestError));
+    } finally {
+      setOpeningRecipeId(null);
+    }
+  };
+
   const openDay = (key: string) => {
     setPeriod("DAY");
     setSelectedDate(keyToDate(key));
@@ -319,6 +336,19 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
             {item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`}
           </AppText>
         </View>
+        {!!item.recipeId && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Nấu món này: ${item.dishName}`}
+            accessibilityState={{ busy: openingRecipeId === item.id, disabled: openingRecipeId !== null }}
+            disabled={openingRecipeId !== null}
+            onPress={() => void cookDish(item)}
+            style={[styles.cookButton, openingRecipeId !== null && styles.disabled]}
+          >
+            {openingRecipeId === item.id ? <ActivityIndicator color={colors.primaryText} /> : <AppIcon icon={ChefHat} size="sm" color={colors.primaryText} />}
+            <AppText variant="labelSmall" color={colors.primaryText}>Nấu món này</AppText>
+          </Pressable>
+        )}
         {missing.length > 0 && (
           <Pressable
             accessibilityRole="button"
@@ -427,6 +457,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
           </Pressable>
         )}
       </ScrollView>
+      <CookingMode recipe={cooking} onClose={() => setCooking(null)} />
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>
           <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
@@ -457,6 +488,7 @@ const styles = StyleSheet.create({
   dishCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
   dishRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.md },
   dishText: { flex: 1, gap: spacing.xs },
+  cookButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
   cartButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
   toastWrap: { alignItems: "center", bottom: spacing.xl + 64, left: spacing.lg, position: "absolute", right: spacing.lg },
   toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },

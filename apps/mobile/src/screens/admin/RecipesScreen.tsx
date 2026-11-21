@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { CookingPot, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
+import { ChevronDown, ChevronUp, CookingPot, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, query } from "../notifications/gatewayApi";
@@ -22,6 +22,7 @@ type Recipe = {
   ingredients: string[];
   ingredientDetails: IngredientDetail[] | null;
   isActive: boolean;
+  steps?: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: IngredientDetail[] }> | null;
 };
 
 const MEALS = [
@@ -32,20 +33,35 @@ const MEALS = [
 /** Same short Vietnamese unit labels as Kho / Đi chợ. */
 const UNIT_OPTIONS = INVENTORY_UNITS.map((unit) => ({ value: unit, label: UNIT_LABELS[unit] }));
 const PAGE_SIZE = 10;
+/** Same limits as recipe-service: at most 30 steps, each timer 0-7200 s. */
+const MAX_STEPS = 30;
+const MAX_STEP_SECONDS = 7200;
 
 type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit };
+/** A cooking step being edited: duration as minutes + seconds, ingredients as names from the dish's list. */
+type StepDraft = { key: string; instruction: string; minutes: string; seconds: string; ingredients: string[] };
 type Draft = {
   id?: string; name: string; description: string; imageUrl: string; mealTypes: string[];
-  calories: string; servings: string; preparationMinutes: string; ingredients: IngredientDraft[];
+  calories: string; servings: string; preparationMinutes: string; ingredients: IngredientDraft[]; steps: StepDraft[];
+  /** The dish already had steps: an emptied list is sent (clears them); otherwise no steps are sent at all. */
+  hadSteps: boolean;
 };
 let ingredientKey = 0;
+let stepKey = 0;
+const newStep = (step?: NonNullable<Recipe["steps"]>[number]): StepDraft => ({
+  key: `step-${stepKey += 1}`,
+  instruction: step?.instruction ?? "",
+  minutes: step?.durationSeconds != null ? String(Math.floor(step.durationSeconds / 60)) : "",
+  seconds: step?.durationSeconds != null ? String(step.durationSeconds % 60) : "",
+  ingredients: step?.ingredients.map((ingredient) => ingredient.name) ?? [],
+});
 const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   key: `ing-${ingredientKey += 1}`,
   name: detail?.name ?? "",
   quantity: detail?.quantity != null ? String(detail.quantity) : "",
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
-const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()] });
+const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false });
 const toDraft = (recipe: Recipe): Draft => ({
   id: recipe.id,
   name: recipe.name,
@@ -56,6 +72,8 @@ const toDraft = (recipe: Recipe): Draft => ({
   servings: recipe.servings?.toString() ?? "",
   preparationMinutes: recipe.preparationMinutes?.toString() ?? "",
   ingredients: (recipe.ingredientDetails?.length ? recipe.ingredientDetails : recipe.ingredients.map((name) => ({ name, quantity: null, unit: null }))).map(newIngredient),
+  steps: [...(recipe.steps ?? [])].sort((left, right) => left.order - right.order).map(newStep),
+  hadSteps: (recipe.steps?.length ?? 0) > 0,
 });
 const imageUrlError = (text: string): string | null =>
   !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
@@ -124,6 +142,21 @@ export default function RecipesScreen(): React.JSX.Element {
       if (quantity !== null && (Number.isNaN(quantity) || quantity <= 0)) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
       details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit });
     }
+    const steps = draft.steps.filter((step) => step.instruction.trim());
+    if (steps.length > MAX_STEPS) return setFormError(`Tối đa ${MAX_STEPS} bước.`);
+    const stepBodies = [];
+    for (const [position, step] of steps.entries()) {
+      const hasTime = step.minutes.trim() !== "" || step.seconds.trim() !== "";
+      const total = Number(step.minutes || 0) * 60 + Number(step.seconds || 0);
+      if (hasTime && (!Number.isInteger(total) || total < 0 || total > MAX_STEP_SECONDS)) return setFormError(`Bước ${position + 1}: thời gian từ 0 đến 120 phút.`);
+      stepBodies.push({
+        order: position + 1,
+        instruction: step.instruction.trim(),
+        durationSeconds: hasTime ? total : null,
+        // Quantity and unit come from the dish's ingredient list.
+        ingredients: step.ingredients.flatMap((name) => details.filter((detail) => detail.name === name).slice(0, 1)),
+      });
+    }
     const body = {
       name: draft.name.trim(),
       description: draft.description.trim() || null,
@@ -132,6 +165,8 @@ export default function RecipesScreen(): React.JSX.Element {
       calories, servings, preparationMinutes: minutes,
       ingredients: details.map((detail) => detail.name),
       ingredientDetails: details,
+      // Untouched dishes without steps keep steps = null, so recipe-service can still add the starter steps.
+      ...(stepBodies.length > 0 || draft.hadSteps ? { steps: stepBodies } : {}),
     };
     setSaving(true); setFormError(null);
     try {
@@ -164,6 +199,18 @@ export default function RecipesScreen(): React.JSX.Element {
   };
   const updateIngredient = (key: string, change: Partial<IngredientDraft>) =>
     setDraft((current) => current && { ...current, ingredients: current.ingredients.map((row) => (row.key === key ? { ...row, ...change } : row)) });
+  const updateStep = (key: string, change: Partial<StepDraft>) =>
+    setDraft((current) => current && { ...current, steps: current.steps.map((step) => (step.key === key ? { ...step, ...change } : step)) });
+  const moveStep = (key: string, direction: -1 | 1) =>
+    setDraft((current) => {
+      if (!current) return current;
+      const from = current.steps.findIndex((step) => step.key === key);
+      const to = from + direction;
+      if (from < 0 || to < 0 || to >= current.steps.length) return current;
+      const steps = [...current.steps];
+      [steps[from], steps[to]] = [steps[to], steps[from]];
+      return { ...current, steps };
+    });
   const toggleMeal = (meal: string) =>
     setDraft((current) => current && { ...current, mealTypes: current.mealTypes.includes(meal) ? current.mealTypes.filter((entry) => entry !== meal) : [...current.mealTypes, meal] });
 
@@ -288,6 +335,45 @@ export default function RecipesScreen(): React.JSX.Element {
                   ))}
                   <Button variant="secondary" label="Thêm nguyên liệu" icon={Plus} onPress={() => setDraft({ ...draft, ingredients: [...draft.ingredients, newIngredient()] })} />
                 </View>
+                <View style={local.formBlock}>
+                  <AppText variant="bodySmall" color={colors.muted}>Các bước nấu ({draft.steps.length}/{MAX_STEPS})</AppText>
+                  {draft.steps.map((step, index) => {
+                    const dishIngredients = [...new Set(draft.ingredients.map((row) => row.name.trim()).filter(Boolean))];
+                    return (
+                      <View key={step.key} style={[styles.card, local.stepCard]}>
+                        <View style={styles.spaceBetween}>
+                          <AppText variant="label">Bước {index + 1}</AppText>
+                          <View style={styles.row}>
+                            <IconButton icon={ChevronUp} accessibilityLabel={`Đưa bước ${index + 1} lên`} onPress={() => moveStep(step.key, -1)} />
+                            <IconButton icon={ChevronDown} accessibilityLabel={`Đưa bước ${index + 1} xuống`} onPress={() => moveStep(step.key, 1)} />
+                            <IconButton icon={Trash2} accessibilityLabel={`Bỏ bước ${index + 1}`} color={colors.danger} onPress={() => setDraft({ ...draft, steps: draft.steps.filter((entry) => entry.key !== step.key) })} />
+                          </View>
+                        </View>
+                        <Field label="Việc cần làm" placeholder="Ví dụ: Phi thơm tỏi" value={step.instruction} onChangeText={(instruction) => updateStep(step.key, { instruction })} multiline maxLength={500} />
+                        <View style={styles.wrapRow}>
+                          <View style={local.third}><Field label="Phút" keyboardType="number-pad" placeholder="0" value={step.minutes} onChangeText={(minutes) => updateStep(step.key, { minutes: minutes.replace(/[^0-9]/g, "") })} /></View>
+                          <View style={local.third}><Field label="Giây" keyboardType="number-pad" placeholder="0" value={step.seconds} onChangeText={(seconds) => updateStep(step.key, { seconds: seconds.replace(/[^0-9]/g, "") })} /></View>
+                        </View>
+                        <AppText variant="caption">Để trống thời gian nếu bước này không cần hẹn giờ.</AppText>
+                        {dishIngredients.length > 0 && (
+                          <View style={styles.wrapRow} accessibilityLabel={`Nguyên liệu dùng ở bước ${index + 1}`}>
+                            {dishIngredients.map((name) => {
+                              const selected = step.ingredients.includes(name);
+                              return (
+                                <Pressable key={name} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={name}
+                                  onPress={() => updateStep(step.key, { ingredients: selected ? step.ingredients.filter((entry) => entry !== name) : [...step.ingredients, name] })}
+                                  style={({ pressed }) => [styles.segment, selected && styles.segmentSelected, pressed && !selected && styles.segmentPressed]}>
+                                  <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{name}</Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                  <Button variant="secondary" label="Thêm bước" icon={Plus} disabled={draft.steps.length >= MAX_STEPS} onPress={() => setDraft({ ...draft, steps: [...draft.steps, newStep()] })} />
+                </View>
               </>
             ) : null}
             {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
@@ -320,6 +406,7 @@ const local = StyleSheet.create({
   ingredientName: { flexBasis: 160, flexGrow: 2 },
   ingredientQty: { flexBasis: 90, flexGrow: 1 },
   unitPill: { marginBottom: 10 },
+  stepCard: { gap: 6 },
   modalBackdrop: { flex: 1, justifyContent: "center" },
   modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 640, padding: 20, width: "100%" },
   modalHeader: { marginBottom: 8 },
