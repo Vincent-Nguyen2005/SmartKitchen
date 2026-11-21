@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client-menu"
 }
 
 datasource db {
@@ -23,6 +24,8 @@ enum MealType {
 model Menu {
   id         String     @id @default(uuid())
   userId     String
+  /// Family whose Kho the suggestions used (also scopes "dish repeated in the last 3 days").
+  familyId   String?
   title      String
   periodType PeriodType @default(WEEK)
   startDate  DateTime
@@ -32,6 +35,7 @@ model Menu {
   updatedAt  DateTime   @updatedAt
 
   @@index([userId])
+  @@index([familyId, startDate])
 }
 
 model MenuItem {
@@ -43,6 +47,9 @@ model MenuItem {
   mealType  MealType @default(LUNCH)
   dayOfWeek Int
   calories  Float?
+  /// Kho suggestion: { imageUrl, availableIngredients: string[], missingIngredients: [{ name, quantity, unit }],
+  /// availableCount, totalCount, reason }. Null for manual items.
+  details   Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

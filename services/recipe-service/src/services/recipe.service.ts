@@ -1,25 +1,60 @@
-import type { Prisma, PrismaClient } from "../../node_modules/.prisma/client-recipe";
+import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-recipe";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 
-export const createRecipeSchema = z.object({
+const recipeUnits = ["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"] as const;
+const nutrient = z.number().finite().nonnegative().max(10_000).nullable().optional();
+const tagList = z.array(z.string().trim().min(1).max(60)).max(30);
+
+export const ingredientDetailSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  quantity: z.number().finite().positive().max(100_000).nullable().optional(),
+  unit: z.enum(recipeUnits).nullable().optional(),
+});
+
+const recipeFields = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).nullable().optional(),
-  ingredients: z.array(z.string().trim().min(1).max(120)).max(100),
+  ingredients: z.array(z.string().trim().min(1).max(120)).max(100).optional(),
+  /** Structured ingredients (name, quantity, unit), used by menu-service to match Kho. */
+  ingredientDetails: z.array(ingredientDetailSchema).max(100).nullable().optional(),
   mealTypes: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
   dietaryTags: z.array(z.string().trim().min(1).max(40)).max(30).default([]),
   tags: z.array(z.string().trim().min(1).max(40)).max(30).default([]),
   preparationMinutes: z.number().int().positive().max(1440).nullable().optional(),
   servings: z.number().int().positive().max(100).nullable().optional(),
+  imageUrl: z.string().trim().url().max(2000).nullable().optional(),
+  /** Per serving. */
+  calories: nutrient,
+  protein: nutrient,
+  carbs: nutrient,
+  fat: nutrient,
+  allergens: tagList.optional(),
+  contraindications: tagList.optional(),
+  isActive: z.boolean().optional(),
 });
 
-export const updateRecipeSchema = createRecipeSchema.partial().refine(
+/** Plain names stay filled for older readers: taken from ingredientDetails when not sent. */
+const withIngredientNames = <T extends { ingredients?: string[]; ingredientDetails?: Array<{ name: string }> | null }>(input: T): T =>
+  input.ingredients === undefined && input.ingredientDetails
+    ? { ...input, ingredients: input.ingredientDetails.map((detail) => detail.name) }
+    : input;
+
+export const createRecipeSchema = recipeFields
+  .refine((input) => input.ingredients !== undefined || input.ingredientDetails != null, "ingredients or ingredientDetails is required")
+  .transform((input) => ({ ...withIngredientNames(input), ingredients: withIngredientNames(input).ingredients ?? [] }));
+
+export const updateRecipeSchema = recipeFields.partial().refine(
   (input) => Object.keys(input).length > 0,
   "At least one field must be provided",
-);
+).transform(withIngredientNames);
 
 export type CreateRecipeInput = z.infer<typeof createRecipeSchema>;
 export type UpdateRecipeInput = z.infer<typeof updateRecipeSchema>;
+
+/** Prisma needs DbNull (not null) to clear a Json column. */
+const toPrismaData = <T extends { ingredientDetails?: unknown }>(data: T) =>
+  (data.ingredientDetails === null ? { ...data, ingredientDetails: Prisma.DbNull } : data);
 
 export class RecipeNotFoundError extends Error {
   constructor() {
@@ -29,7 +64,7 @@ export class RecipeNotFoundError extends Error {
 }
 
 export async function listRecipes(
-  query: { search?: string; mealType?: string } = {},
+  query: { search?: string; mealType?: string; active?: boolean } = {},
   client: PrismaClient = prisma,
 ) {
   const search = query.search?.trim();
@@ -37,6 +72,7 @@ export async function listRecipes(
     where: {
       ...(search ? { name: { contains: search, mode: "insensitive" as const } } : {}),
       ...(query.mealType ? { mealTypes: { has: query.mealType } } : {}),
+      ...(query.active ? { isActive: true } : {}),
     },
     orderBy: { name: "asc" },
   });
@@ -50,14 +86,14 @@ export async function getRecipe(id: string, client: PrismaClient = prisma) {
 
 export function createRecipe(input: unknown, client: PrismaClient = prisma) {
   const data = createRecipeSchema.parse(input);
-  return client.recipe.create({ data });
+  return client.recipe.create({ data: toPrismaData(data) as Prisma.RecipeCreateInput });
 }
 
 export async function updateRecipe(id: string, input: unknown, client: PrismaClient = prisma) {
   const data = updateRecipeSchema.parse(input);
   const result = await client.recipe.updateMany({
     where: { id },
-    data: data as Prisma.RecipeUpdateManyMutationInput,
+    data: toPrismaData(data) as Prisma.RecipeUpdateManyMutationInput,
   });
   if (result.count === 0) throw new RecipeNotFoundError();
   return getRecipe(id, client);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MealType, PeriodType, PrismaClient } from "@prisma/client";
+import { MealType, PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
 import {
   autoRefreshMenu,
   createManualMenu,
@@ -26,16 +26,34 @@ test("menu request schemas reject malformed dates, empty titles and invalid chec
   assert.equal(checkoutSchema.safeParse({ orderId: "order-1", amount: -1, provider: "MOMO" }).success, false);
 });
 
-test("generateMenu selects one suitable recipe per meal and persists weekdays", async () => {
-  let createArgs: unknown;
-  const client = {
-    menu: {
-      create: async (args: unknown) => {
-        createArgs = args;
-        return args;
-      },
+/** Fake Prisma client for generateMenu: records the create call, optional earlier menus, optional DB failure. */
+function generateClient(options: { history?: unknown[]; failCreate?: boolean } = {}) {
+  const calls: { create?: { data: GeneratedData }; deleteMany?: unknown } = {};
+  const menu = {
+    findMany: async () => options.history ?? [],
+    deleteMany: async (args: unknown) => { calls.deleteMany = args; return { count: 0 }; },
+    create: async (args: { data: GeneratedData }) => {
+      if (options.failCreate) throw new Error("database unavailable");
+      calls.create = args;
+      return { id: "menu-1", ...args.data, items: args.data.items.create };
     },
-  } as unknown as PrismaClient;
+  };
+  const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
+  return { client, calls };
+}
+
+type GeneratedItem = {
+  recipeId: string;
+  dishName: string;
+  mealType: MealType;
+  dayOfWeek: number;
+  calories: number;
+  details: { availableIngredients: string[]; missingIngredients: Array<{ name: string; quantity: number | null; unit: string | null }>; availableCount: number; totalCount: number; reason: string };
+};
+type GeneratedData = { userId: string; familyId: string | null; items: { create: GeneratedItem[] } };
+
+test("generateMenu selects one suitable recipe per meal, persists weekdays and replaces the same period", async () => {
+  const { client, calls } = generateClient();
 
   await generateMenu({
     userId: "user-1",
@@ -48,23 +66,23 @@ test("generateMenu selects one suitable recipe per meal and persists weekdays", 
       { id: "lunch", name: "Rice bowl", ingredients: ["rice"], mealTypes: ["lunch"], calories: 520 },
       { id: "dinner", name: "Fish and greens", ingredients: ["fish"], mealTypes: ["dinner"], calories: 460 },
     ],
+    inventoryItems: [{ name: "oats", quantity: 1, unit: "PACK" }],
   }, client);
 
-  const data = (createArgs as { data: { userId: string; items: { create: Array<{ recipeId: string; mealType: MealType; dayOfWeek: number; calories: number }> } } }).data;
+  const data = calls.create!.data;
   assert.equal(data.userId, "user-1");
   assert.equal(data.items.create.length, 6);
   assert.deepEqual(data.items.create.slice(0, 3).map((item) => item.mealType), [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]);
   assert.deepEqual([...new Set(data.items.create.map((item) => item.dayOfWeek))], [1, 2]);
   assert.ok(data.items.create.every((item) => item.calories > 0));
+  // Oats are in Kho: the oatmeal wins breakfast over the dish with no ingredients.
   assert.equal(data.items.create[0].recipeId, "breakfast");
+  assert.equal(data.items.create[0].details.reason, "Có sẵn 1/1 nguyên liệu");
+  assert.deepEqual(calls.deleteMany, { where: { userId: "user-1", periodType: PeriodType.WEEK, startDate: new Date("2026-11-02T00:00:00.000Z"), endDate: new Date("2026-11-03T00:00:00.000Z") } });
 });
 
-test("generateMenu returns a marked mock menu when the catalog and database are unavailable", async () => {
-  const client = {
-    menu: {
-      create: async () => { throw new Error("database unavailable"); },
-    },
-  } as unknown as PrismaClient;
+test("generateMenu returns a marked mock menu when the database is unavailable", async () => {
+  const { client } = generateClient({ failCreate: true });
   const loggedErrors: unknown[][] = [];
   const originalError = console.error;
   console.error = (...args: unknown[]) => loggedErrors.push(args);
@@ -76,7 +94,7 @@ test("generateMenu returns a marked mock menu when the catalog and database are 
       periodType: PeriodType.DAY,
       startDate: new Date("2026-11-06T00:00:00.000Z"),
       endDate: new Date("2026-11-06T00:00:00.000Z"),
-      recipes: [],
+      recipes: [{ id: "r1", name: "Phở bò", ingredients: ["Bánh phở"], mealTypes: [] }],
     }, client);
   } finally {
     console.error = originalError;

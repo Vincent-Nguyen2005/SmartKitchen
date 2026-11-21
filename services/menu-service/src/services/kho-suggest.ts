@@ -1,0 +1,181 @@
+/**
+ * Picks dishes from what the family has in Kho. Pure functions (no I/O) so the scoring is easy to test.
+ *
+ * Score of a recipe for one meal:
+ *   100 × share of its ingredients available in Kho (accent-insensitive names, quantities compared when units allow)
+ * + 15 per available ingredient that uses a Kho item expiring within 3 days (at most 2 counted)
+ * − 10 when the dish was already planned in the 3 previous days
+ * + a deterministic per-day tie-breaker below 1 point, so equal dishes vary from day to day.
+ * With an empty Kho the score is popularity + a per-day rotation, so the fallback menu still varies.
+ */
+
+export const EXPIRING_WITHIN_DAYS = 3;
+export const REPEAT_WINDOW_DAYS = 3;
+const EXPIRING_BONUS = 15;
+const MAX_EXPIRING_COUNTED = 2;
+const REPEAT_PENALTY = 10;
+
+export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null };
+export type DishIngredient = { name: string; quantity: number | null; unit: string | null };
+export type SuggestRecipe = {
+  id: string;
+  name: string;
+  imageUrl: string | null;
+  calories: number | null;
+  mealTypes: string[];
+  tags: string[];
+  ingredients: DishIngredient[];
+};
+export type DishSuggestion = {
+  recipe: SuggestRecipe;
+  score: number;
+  availableIngredients: string[];
+  missingIngredients: DishIngredient[];
+  availableCount: number;
+  totalCount: number;
+  expiringIngredients: string[];
+  reason: string;
+};
+
+/** Lower case, no Vietnamese accents (đ → d), single spaces. */
+export function normalizeName(value: string): string {
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[đĐ]/g, "d")
+    .toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Lower case with accents kept (NFC), single spaces. */
+const accentedName = (value: string): string => value.normalize("NFC").toLocaleLowerCase("vi").replace(/\s+/g, " ").trim();
+
+const containsTokens = (longer: string, shorter: string): boolean => {
+  const words = new Set(longer.split(" "));
+  return shorter.split(" ").every((word) => words.has(word));
+};
+
+/**
+ * Same ingredient when, without accents, the names are equal ("trung ga" = "Trứng gà"); or when every word of
+ * the shorter name is in the longer one: with accents for one-word names ("Trứng" ⊂ "Trứng gà", but "cá" is not
+ * "cà chua"), accent-insensitive from two words on ("thit ba chi" ⊂ "Thịt ba chỉ heo").
+ */
+export function sameIngredient(left: string, right: string): boolean {
+  const [a, b] = [normalizeName(left), normalizeName(right)];
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const [long, short] = a.split(" ").length >= b.split(" ").length ? [a, b] : [b, a];
+  if (short.split(" ").length >= 2) return containsTokens(long, short);
+  const [accLeft, accRight] = [accentedName(left), accentedName(right)];
+  const [accLong, accShort] = accLeft.split(" ").length >= accRight.split(" ").length ? [accLeft, accRight] : [accRight, accLeft];
+  return containsTokens(accLong, accShort);
+}
+
+const unitBase: Record<string, { group: string; factor: number }> = {
+  GRAM: { group: "mass", factor: 1 },
+  KILOGRAM: { group: "mass", factor: 1000 },
+  MILLILITER: { group: "volume", factor: 1 },
+  LITER: { group: "volume", factor: 1000 },
+};
+
+/** Quantity in a base unit (g, ml, or the count unit itself); null when it cannot be compared. */
+function baseQuantity(quantity: number | null, unit: string | null): { group: string; value: number } | null {
+  if (quantity === null || !Number.isFinite(quantity) || quantity <= 0 || !unit) return null;
+  const known = unitBase[unit.toUpperCase()];
+  return known ? { group: known.group, value: quantity * known.factor } : { group: unit.toUpperCase(), value: quantity };
+}
+
+/** Whole days from `today` (YYYY-MM-DD, Vietnam) to the item's expiry day in Vietnam; null without a date. */
+export function daysLeft(expiryDate: string | null, today: string): number | null {
+  if (!expiryDate) return null;
+  const expiry = new Date(expiryDate);
+  if (Number.isNaN(expiry.getTime())) return null;
+  const expiryDay = new Date(expiry.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+  return Math.round((Date.parse(`${expiryDay}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+}
+
+/** Vietnam calendar day (YYYY-MM-DD) of an instant. */
+export const vnDay = (now = new Date()): string => new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+
+/** Items that can be cooked: expired ones are left out (Kho still lists them until they are discarded). */
+export const usableKho = (items: KhoItem[], today: string): KhoItem[] =>
+  items.filter((item) => item.name.trim() && (daysLeft(item.expiryDate, today) ?? 0) >= 0);
+
+const lowerFirst = (value: string): string => value.toLocaleLowerCase("vi");
+
+/** Small, stable number in [0, 1) from a string: the per-day tie-breaker. */
+function jitter(seed: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash ^= seed.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) / 4_294_967_296;
+}
+
+export function evaluateRecipe(recipe: SuggestRecipe, kho: KhoItem[], today: string, recentRecipeIds: ReadonlySet<string>, day: string): DishSuggestion {
+  const availableIngredients: string[] = [];
+  const missingIngredients: DishIngredient[] = [];
+  const expiringIngredients: string[] = [];
+  for (const ingredient of recipe.ingredients) {
+    const matches = kho.filter((item) => sameIngredient(item.name, ingredient.name));
+    if (matches.length === 0) {
+      missingIngredients.push(ingredient);
+      continue;
+    }
+    const need = baseQuantity(ingredient.quantity, ingredient.unit);
+    const comparable = need ? matches.map((item) => baseQuantity(item.quantity, item.unit)).filter((have) => have?.group === need.group) : [];
+    if (need && comparable.length > 0) {
+      const have = comparable.reduce((sum, entry) => sum + (entry?.value ?? 0), 0);
+      if (have < need.value) {
+        // Not enough: the shortfall goes to Giỏ hàng, in the recipe's unit.
+        const factor = unitBase[(ingredient.unit ?? "").toUpperCase()]?.factor ?? 1;
+        const shortfall = Math.ceil(((need.value - have) / factor) * 100) / 100;
+        missingIngredients.push({ ...ingredient, quantity: shortfall });
+        continue;
+      }
+    }
+    availableIngredients.push(ingredient.name);
+    const soonest = Math.min(...matches.map((item) => daysLeft(item.expiryDate, today) ?? Number.POSITIVE_INFINITY));
+    if (soonest >= 0 && soonest <= EXPIRING_WITHIN_DAYS) expiringIngredients.push(ingredient.name);
+  }
+
+  const totalCount = recipe.ingredients.length;
+  const availableCount = availableIngredients.length;
+  const repeated = recentRecipeIds.has(recipe.id);
+  const tieBreak = jitter(`${day}:${recipe.id}`);
+  let score: number;
+  let reason: string;
+  if (kho.length === 0) {
+    score = (recipe.tags.some((tag) => normalizeName(tag) === "pho bien") ? 5 : 0) + tieBreak * 10 - (repeated ? REPEAT_PENALTY : 0);
+    reason = "Kho đang trống, gợi ý món phổ biến";
+  } else {
+    score = (totalCount > 0 ? (availableCount / totalCount) * 100 : 0)
+      + Math.min(expiringIngredients.length, MAX_EXPIRING_COUNTED) * EXPIRING_BONUS
+      - (repeated ? REPEAT_PENALTY : 0)
+      + tieBreak;
+    const parts: string[] = [];
+    if (expiringIngredients.length > 0) parts.push(`Dùng ${expiringIngredients.map(lowerFirst).join(", ")} sắp hết hạn`);
+    parts.push(`Có sẵn ${availableCount}/${totalCount} nguyên liệu`);
+    reason = parts.join(" · ");
+  }
+  return { recipe, score, availableIngredients, missingIngredients, availableCount, totalCount, expiringIngredients, reason };
+}
+
+/**
+ * One dish per meal for `day`, best score first, never the same dish twice in a day.
+ * Recipes without meal types fit any meal. Returns null for a meal with no suitable recipe.
+ */
+export function pickDishes(
+  recipes: SuggestRecipe[],
+  kho: KhoItem[],
+  meals: string[],
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string> },
+): Array<{ meal: string; suggestion: DishSuggestion | null }> {
+  const used = new Set<string>();
+  return meals.map((meal) => {
+    const mealName = meal.toLowerCase();
+    const candidates = recipes.filter((recipe) => !used.has(recipe.id) && (recipe.mealTypes.length === 0 || recipe.mealTypes.includes(mealName)));
+    const best = candidates
+      .map((recipe) => evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, `${options.day}:${mealName}`))
+      .sort((left, right) => right.score - left.score)[0] ?? null;
+    if (best) used.add(best.recipe.id);
+    return { meal, suggestion: best };
+  });
+}
