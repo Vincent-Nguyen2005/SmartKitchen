@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, ImageOff, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
-import { Badge, Pagination, ScreenState, Segmented, styles as ui, useGridCell, useLayout } from "../notifications/ui";
+import { Badge, Pagination, ScreenState, styles as ui, useGridCell, useLayout } from "../notifications/ui";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inventory/inventoryApi";
@@ -11,7 +11,6 @@ import { shoppingUnitLabels } from "./shoppingApi";
 import { addToCart, shoppingUnitFor } from "./cart";
 
 const PAGE_SIZE = 20;
-const ALL_GROUPS = "__all__";
 
 type Props = {
   accessToken: string | null;
@@ -68,10 +67,8 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const grid = useGridCell(columns, spacing.md);
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
-  const [group, setGroup] = useState<string>(ALL_GROUPS);
   const [page, setPage] = useState(1);
   const [data, setData] = useState<CatalogPage | null>(null);
-  const [groups, setGroups] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
@@ -80,7 +77,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
-  // Debounce typing; a new search, group or sale filter starts again at page 1.
+  // Debounce typing; a new search starts again at page 1.
   useEffect(() => {
     const timer = setTimeout(() => { setTerm(search.trim()); setPage(1); }, 300);
     return () => clearTimeout(timer);
@@ -98,12 +95,11 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     let active = true;
     if (!background) { setLoading(true); setError(null); }
     loadingChange.current?.(true);
-    inventoryApi.ingredientCatalog(accessToken, { search: term, group: group === ALL_GROUPS ? undefined : group, page, limit: PAGE_SIZE })
+    inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: PAGE_SIZE })
       .then((result) => {
         if (!active) return;
         setData(result);
         setError(null);
-        if (Array.isArray(result.groups)) setGroups(result.groups);
       })
       .catch((requestError: unknown) => {
         if (active && !background) setError(requestError instanceof Error ? requestError.message : "Không tải được sản phẩm.");
@@ -115,9 +111,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     return () => { active = false; };
     // `data` only decides quiet vs. visible loading; it must not trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, term, group, page, reloadKey, refreshSignal]);
-
-  const chooseGroup = (value: string) => { setGroup(value); setPage(1); };
+  }, [accessToken, term, page, reloadKey, refreshSignal]);
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
@@ -155,22 +149,12 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
         keyboardShouldPersistTaps="handled"
         refreshControl={refreshControl}
       >
-      {/* Group chips only help when there is more than one group. */}
-      {groups.length > 1 && (
-        <Segmented<string>
-          label="Nhóm sản phẩm"
-          value={group}
-          onChange={chooseGroup}
-          options={[{ value: ALL_GROUPS, label: "Tất cả" }, ...groups.map((name) => ({ value: name, label: name }))]}
-        />
-      )}
-
       {loading && !data ? (
         <ScreenState loading />
       ) : error ? (
         <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />
       ) : items.length === 0 ? (
-        <ScreenState empty emptyText={term || group !== ALL_GROUPS ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
+        <ScreenState empty emptyText={term ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
       ) : (
         <View onLayout={grid.onLayout} style={[local.grid, { gap: grid.gap }, loading && local.dimmed]}>
           {items.map((product) => (
