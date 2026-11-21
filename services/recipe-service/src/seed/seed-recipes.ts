@@ -1,5 +1,6 @@
-import type { PrismaClient } from "../../node_modules/.prisma/client-recipe";
+import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-recipe";
 import { ingredientNames, seedRecipes, type SeedRecipe } from "./recipes.data";
+import { stepsFor } from "./recipe-steps.data";
 
 const toData = (recipe: SeedRecipe) => ({
   name: recipe.name,
@@ -18,6 +19,7 @@ const toData = (recipe: SeedRecipe) => ({
   allergens: recipe.allergens ?? [],
   contraindications: recipe.contraindications ?? [],
   isActive: true,
+  steps: stepsFor(recipe) ?? Prisma.DbNull,
 });
 
 /**
@@ -37,4 +39,25 @@ export async function seedMissingRecipes(client: PrismaClient, recipes: SeedReci
 export async function seedRecipesIfEmpty(client: PrismaClient): Promise<number> {
   if ((await client.recipe.count()) > 0) return 0;
   return seedMissingRecipes(client);
+}
+
+const nameKey = (name: string) => name.trim().toLocaleLowerCase("vi");
+
+/**
+ * Data migration for databases seeded before steps existed: gives each starter dish (matched by name) its steps,
+ * only where the row has no steps yet. Never overwrites steps an admin wrote; running it again changes nothing.
+ * Returns how many rows got steps.
+ */
+export async function fillMissingSteps(client: PrismaClient, recipes: SeedRecipe[] = seedRecipes): Promise<number> {
+  const rows = await client.recipe.findMany({ where: { steps: { equals: Prisma.DbNull } }, select: { id: true, name: true } });
+  let filled = 0;
+  for (const row of rows) {
+    const seed = recipes.find((recipe) => nameKey(recipe.name) === nameKey(row.name));
+    const steps = seed ? stepsFor(seed) : null;
+    if (!steps) continue;
+    // The condition is repeated in the update, so a row edited meanwhile is left alone.
+    const result = await client.recipe.updateMany({ where: { id: row.id, steps: { equals: Prisma.DbNull } }, data: { steps } });
+    filled += result.count;
+  }
+  return filled;
 }

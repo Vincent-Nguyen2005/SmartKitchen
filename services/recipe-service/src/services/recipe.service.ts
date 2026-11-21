@@ -13,6 +13,26 @@ export const ingredientDetailSchema = z.object({
   unit: z.enum(recipeUnits).nullable().optional(),
 });
 
+export const MAX_STEPS = 30;
+export const MAX_STEP_SECONDS = 7200;
+
+export const recipeStepSchema = z.object({
+  /** Position (1-based); steps are sorted by it and renumbered 1..n on save. */
+  order: z.number().int().min(1).max(1000).optional(),
+  instruction: z.string().trim().min(1).max(500),
+  /** Timer for this step; null = "do it, then go to the next step". */
+  durationSeconds: z.number().int().min(0).max(MAX_STEP_SECONDS).nullable().optional(),
+  /** Ingredients added in this step (names from the dish, optional quantity/unit). */
+  ingredients: z.array(ingredientDetailSchema).max(30).default([]),
+});
+
+/** Sorted by `order` (then position), renumbered 1..n, duration null when missing. */
+const normalizeSteps = (steps: Array<z.infer<typeof recipeStepSchema>>) =>
+  steps
+    .map((step, index) => ({ step, index }))
+    .sort((left, right) => (left.step.order ?? left.index + 1) - (right.step.order ?? right.index + 1) || left.index - right.index)
+    .map(({ step }, index) => ({ order: index + 1, instruction: step.instruction, durationSeconds: step.durationSeconds ?? null, ingredients: step.ingredients }));
+
 const recipeFields = z.object({
   name: z.string().trim().min(1).max(160),
   description: z.string().trim().max(2000).nullable().optional(),
@@ -37,6 +57,8 @@ const recipeFields = z.object({
   allergens: tagList.optional(),
   contraindications: tagList.optional(),
   isActive: z.boolean().optional(),
+  /** Cooking steps (at most 30, each timer 0-7200 s); null clears them. */
+  steps: z.array(recipeStepSchema).max(MAX_STEPS).transform(normalizeSteps).nullable().optional(),
 });
 
 /** Plain names stay filled for older readers: taken from ingredientDetails when not sent. */
@@ -58,8 +80,11 @@ export type CreateRecipeInput = z.infer<typeof createRecipeSchema>;
 export type UpdateRecipeInput = z.infer<typeof updateRecipeSchema>;
 
 /** Prisma needs DbNull (not null) to clear a Json column. */
-const toPrismaData = <T extends { ingredientDetails?: unknown }>(data: T) =>
-  (data.ingredientDetails === null ? { ...data, ingredientDetails: Prisma.DbNull } : data);
+const toPrismaData = <T extends { ingredientDetails?: unknown; steps?: unknown }>(data: T) => ({
+  ...data,
+  ...(data.ingredientDetails === null ? { ingredientDetails: Prisma.DbNull } : {}),
+  ...(data.steps === null ? { steps: Prisma.DbNull } : {}),
+});
 
 export class RecipeNotFoundError extends Error {
   constructor() {

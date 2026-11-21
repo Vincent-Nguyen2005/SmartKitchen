@@ -14,6 +14,12 @@ A recipe keeps the plain `ingredients` names. It also has `ingredientDetails` (`
 
 `imageUrl` must be an https link to a public host (no localhost, private or link-local addresses, no credentials) and at most 2048 characters. The server only stores it and never fetches it. Admins set it in Quản trị > Món ăn, and hiding a dish there sets `isActive=false` (it is never deleted).
 
+### Cooking steps
+
+`steps` is an optional JSON array: `[{ order, instruction, durationSeconds | null, ingredients: [{ name, quantity, unit }] }]`, with at most 30 steps and each timer 0-7200 s. Steps are sorted by `order` and renumbered on save; `null` means no steps yet.
+
+At start, after the empty-table seed, the service gives each starter dish (matched by name) its Vietnamese steps from `src/seed/recipe-steps.data.ts`. It does this only where `steps` is still null, so steps an admin wrote are never overwritten, and running it again changes nothing.
+
 ## Database
 
 - Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).
