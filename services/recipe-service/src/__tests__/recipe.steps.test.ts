@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { PrismaClient } from "../../node_modules/.prisma/client-recipe";
-import { seedRecipes } from "../seed/recipes.data";
+import { seedRecipes, seedRole } from "../seed/recipes.data";
 import { dishesWithSteps, stepRowsFor, stepsFor } from "../seed/recipe-steps.data";
 import { fillMissingSteps } from "../seed/seed-recipes";
 import { createRecipeSchema, MAX_STEP_SECONDS, MAX_STEPS, updateRecipeSchema } from "../services/recipe.service";
@@ -37,11 +37,12 @@ test("steps validation: durations 0-7200 s, at most 30 steps, instruction requir
   assert.equal(updateRecipeSchema.safeParse({ steps: [{ instruction: " ", durationSeconds: 60 }] }).success, false);
 });
 
-test("starter steps: every seeded dish has 4-6 steps whose ingredients belong to the dish and pass validation", () => {
+test("starter steps: every seeded dish has 4-6 steps (2-6 for desserts and drinks) whose ingredients belong to the dish", () => {
   assert.equal(dishesWithSteps().length, seedRecipes.length);
   for (const recipe of seedRecipes) {
     const rows = stepRowsFor(recipe.name) ?? [];
-    assert.ok(rows.length >= 4 && rows.length <= 6, recipe.name);
+    const light = seedRole(recipe) === "trang_mieng" || seedRole(recipe) === "do_uong";
+    assert.ok(rows.length >= (light ? 2 : 4) && rows.length <= 6, recipe.name);
     const names = new Set(recipe.ingredients.map((ingredient) => ingredient.name));
     for (const [, , used] of rows) used.forEach((name) => assert.ok(names.has(name), `${recipe.name}: ${name}`));
     const parsed = updateRecipeSchema.safeParse({ steps: stepsFor(recipe) });
@@ -80,4 +81,41 @@ test("data migration fills only starter dishes without steps, never overwrites, 
   assert.equal(rows[2].steps, adminSteps);
   assert.equal(rows[3].steps, null);
   assert.equal(await fillMissingSteps(client), 0);
+});
+
+test("roles: validated on input; every starter dish has one; enough variety per meal and role", async () => {
+  const { fillMissingRoles } = await import("../seed/seed-recipes");
+  assert.equal(createRecipeSchema.safeParse({ ...base, role: "canh" }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ ...base, role: null }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ ...base, role: "soup" }).success, false);
+  for (const recipe of seedRecipes) assert.ok(seedRole(recipe), recipe.name);
+  const breakfast = seedRecipes.filter((recipe) => recipe.mealTypes.includes("breakfast"));
+  const mains = seedRecipes.filter((recipe) => (recipe.mealTypes.includes("lunch") || recipe.mealTypes.includes("dinner")) && !["trang_mieng", "do_uong"].includes(seedRole(recipe) ?? ""));
+  assert.ok(breakfast.length >= 12, `breakfast ${breakfast.length}`);
+  assert.ok(mains.length >= 20, `lunch/dinner mains ${mains.length}`);
+  for (const role of ["man", "xao", "canh", "rau", "trang_mieng"]) {
+    assert.ok(seedRecipes.filter((recipe) => seedRole(recipe) === role).length >= 3, role);
+  }
+  assert.ok(breakfast.some((recipe) => seedRole(recipe) === "do_uong"));
+
+  // Data migration: fills only empty roles of starter dishes, never overwrites, idempotent.
+  const rows = [
+    { id: "1", name: "Phở bò", role: null as string | null },
+    { id: "2", name: "Cá kho tộ", role: "canh" as string | null },
+    { id: "3", name: "Món admin", role: null as string | null },
+  ];
+  const client = {
+    recipe: {
+      findMany: async () => rows.filter((row) => row.role === null).map(({ id, name }) => ({ id, name })),
+      updateMany: async ({ where, data }: { where: { id: string }; data: { role: string } }) => {
+        const row = rows.find((entry) => entry.id === where.id && entry.role === null);
+        if (!row) return { count: 0 };
+        row.role = data.role;
+        return { count: 1 };
+      },
+    },
+  } as unknown as PrismaClient;
+  assert.equal(await fillMissingRoles(client), 1);
+  assert.deepEqual(rows.map((row) => row.role), ["mot_mon", "canh", null]);
+  assert.equal(await fillMissingRoles(client), 0);
 });

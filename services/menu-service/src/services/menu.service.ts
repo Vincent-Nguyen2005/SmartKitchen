@@ -1,9 +1,15 @@
 import { MealType, PeriodType, Prisma, PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { randomUUID } from "node:crypto";
+import type { AiDish } from "./ai/gemini";
 import {
+  type DishSuggestion,
   type DishIngredient,
+  DEFAULT_MEAL_COUNTS,
   type KhoItem,
+  type MealCounts,
   pickDishes,
+  pickMealDishes,
+  pickReplacement,
   REPEAT_WINDOW_DAYS,
   type SuggestRecipe,
   usableKho,
@@ -28,6 +34,7 @@ interface RecipeCandidate {
   dietaryTags: string[];
   tags: string[];
   calories?: number;
+  role: string | null;
 }
 
 interface GenerateMenuInput {
@@ -45,6 +52,10 @@ interface GenerateMenuInput {
   authorization?: string;
   /** Kho items supplied directly (tests); otherwise read from inventory-service. */
   inventoryItems?: unknown[];
+  /** Dishes per meal ("Số món mỗi bữa"); without it, one dish per meal (older behaviour). */
+  mealCounts?: MealCounts;
+  /** Recipes the user removed in the last 7 days: not picked (unless nothing else fits a meal). */
+  excludeRecipeIds?: string[];
 }
 
 interface AutoRefreshInput {
@@ -137,6 +148,7 @@ function normalizeRecipes(values: unknown[]): RecipeCandidate[] {
       details: readDetails(record.ingredientDetails, record.ingredients ?? record.ingredientNames),
       imageUrl: typeof record.imageUrl === "string" && record.imageUrl ? record.imageUrl : null,
       isActive: record.isActive !== false,
+      role: typeof record.role === "string" && record.role ? record.role : null,
       mealTypes: readStringList(record.mealTypes ?? record.suitableMealTypes),
       dietaryTags: readStringList(record.dietaryTags ?? record.diets),
       tags: readStringList(record.tags),
@@ -262,6 +274,7 @@ const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
   mealTypes: recipe.mealTypes,
   tags: recipe.tags,
   ingredients: recipe.details,
+  role: recipe.role,
 });
 
 function normalizeDate(date: Date): Date {
@@ -401,9 +414,21 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
     for (let back = 1; back <= REPEAT_WINDOW_DAYS; back += 1) {
       history.get(dayKey(addDays(date, -back)))?.forEach((id) => recentRecipeIds.add(id));
     }
-    const picks = pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds });
     const chosenToday = new Set<string>();
-    for (const { meal, suggestion } of picks) {
+    const excludeIds = new Set(input.excludeRecipeIds ?? []);
+    const picks: Array<{ meal: string; role: string | null; suggestion: DishSuggestion | null }> = input.mealCounts
+      ? mealTypes.flatMap((meal) => {
+        const count = meal in input.mealCounts! ? input.mealCounts![meal as keyof MealCounts] : 1;
+        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday };
+        // Recently removed dishes are skipped, unless that leaves the meal without enough dishes.
+        let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds });
+        if (mealPicks.length < count && excludeIds.size > 0) {
+          mealPicks = [...mealPicks, ...pickMealDishes(pool, kho, meal, count - mealPicks.length, options)];
+        }
+        return mealPicks.map((pick) => ({ meal, role: pick.role, suggestion: pick.suggestion }));
+      })
+      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds }).map((pick) => ({ ...pick, role: pick.suggestion?.recipe.role ?? null }));
+    for (const { meal, role, suggestion } of picks) {
       if (!suggestion) continue;
       chosenToday.add(suggestion.recipe.id);
       items.push({
@@ -419,6 +444,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
           availableCount: suggestion.availableCount,
           totalCount: suggestion.totalCount,
           reason: suggestion.reason,
+          role: role ?? suggestion.recipe.role ?? null,
         },
       });
     }
@@ -550,4 +576,122 @@ export async function autoRefreshMenu(userId: string, input: AutoRefreshInput, c
 
   if (updates.length > 0) await client.$transaction(updates);
   return { scannedMenus: activeMenus.length, replacements };
+}
+
+const DISLIKE_DAYS = 7;
+const AI_MEAL: Record<string, string> = { BREAKFAST: "sang", LUNCH: "trua", DINNER: "toi" };
+
+/** Vietnam day of a stored menu date is the UTC date part (menus store days at UTC midnight). */
+export const isPastDay = (date: Date, now: Date = new Date()): boolean => dayKey(normalizeDate(date)) < vnDay(now);
+
+/** "Số món mỗi bữa" of a user (defaults 3 / 5 / 5). */
+export async function getMenuSettings(userId: string, client: PrismaClient = prisma): Promise<MealCounts> {
+  const row = await client.menuSettings.findUnique({ where: { userId } });
+  return row ? { BREAKFAST: row.breakfast, LUNCH: row.lunch, DINNER: row.dinner } : { ...DEFAULT_MEAL_COUNTS };
+}
+
+export async function updateMenuSettings(userId: string, counts: { breakfast: number; lunch: number; dinner: number }, client: PrismaClient = prisma): Promise<MealCounts> {
+  const row = await client.menuSettings.upsert({ where: { userId }, create: { userId, ...counts }, update: counts });
+  return { BREAKFAST: row.breakfast, LUNCH: row.lunch, DINNER: row.dinner };
+}
+
+/** Recipes and dish names the user removed in the last 7 days (dislike history). */
+export async function recentlyRemoved(userId: string, client: PrismaClient = prisma, now: Date = new Date()): Promise<{ recipeIds: Set<string>; names: Set<string> }> {
+  const rows = await client.removedDish.findMany({ where: { userId, removedAt: { gte: addDays(now, -DISLIKE_DAYS) } } });
+  return {
+    recipeIds: new Set(rows.flatMap((row) => (row.recipeId ? [row.recipeId] : []))),
+    names: new Set(rows.map((row) => normalizeText(row.dishName))),
+  };
+}
+
+type RemoveInput = {
+  userId: string;
+  menuId: string;
+  itemId: string;
+  authorization?: string;
+  now?: Date;
+  /** Recipes supplied directly (tests); otherwise the active recipes from recipe-service. */
+  recipes?: unknown[];
+  /** Kho supplied directly (tests); otherwise read from inventory-service for the menu's family. */
+  inventoryItems?: unknown[];
+  /** Stored AI suggestions for the family (fallback when no catalog dish fits the slot). */
+  aiDishes?: (familyId: string, kho: KhoItem[]) => Promise<AiDish[]>;
+};
+
+/**
+ * Removes one dish from a (today or future) day menu and puts ONE replacement in the same meal and role: the best
+ * Kho-scored catalog dish not already in the day, not removed by the user in the last 7 days and not hidden.
+ * If no catalog dish fits, an AI suggestion for that meal fills the slot; otherwise the slot stays empty.
+ * The removed dish is stored in the user's dislike history. Past days cannot be edited.
+ */
+export async function removeMenuItem(input: RemoveInput, client: PrismaClient = prisma) {
+  const now = input.now ?? new Date();
+  const menu = await client.menu.findFirst({ where: { id: input.menuId, userId: input.userId }, include: { items: true } });
+  if (!menu) throw new MenuServiceError("Menu not found", 404);
+  if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
+  const item = menu.items.find((entry) => entry.id === input.itemId);
+  if (!item) throw new MenuServiceError("Món này không còn trong thực đơn.", 404);
+
+  await client.removedDish.create({ data: { userId: input.userId, recipeId: item.recipeId, dishName: item.dishName } });
+  const removed = await recentlyRemoved(input.userId, client, now);
+
+  const recipes = await getRecipes(input.recipes).catch(() => [] as RecipeCandidate[]);
+  const khoItems = input.inventoryItems !== undefined
+    ? readKhoItems(input.inventoryItems)
+    : menu.familyId ? await getKhoItems(menu.familyId, input.authorization).catch(() => [] as KhoItem[]) : [];
+  const today = vnDay(now);
+  const kho = usableKho(khoItems, today);
+  const details = asRecord(item.details);
+  const role = typeof details.role === "string" ? details.role : null;
+  const others = menu.items.filter((entry) => entry.id !== item.id);
+  const excludeIds = new Set<string>([
+    ...others.flatMap((entry) => (entry.recipeId ? [entry.recipeId] : [])),
+    ...removed.recipeIds,
+    ...(item.recipeId ? [item.recipeId] : []),
+  ]);
+  const day = dayKey(normalizeDate(menu.startDate));
+  const pick = pickReplacement(recipes.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds });
+
+  let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
+  if (pick) {
+    replacement = {
+      menuId: menu.id,
+      recipeId: pick.recipe.id,
+      dishName: pick.recipe.name,
+      mealType: item.mealType,
+      dayOfWeek: item.dayOfWeek,
+      calories: pick.recipe.calories,
+      details: {
+        imageUrl: pick.recipe.imageUrl,
+        availableIngredients: pick.availableIngredients,
+        missingIngredients: pick.missingIngredients,
+        availableCount: pick.availableCount,
+        totalCount: pick.totalCount,
+        reason: pick.reason,
+        role,
+      } as Prisma.InputJsonValue,
+    };
+  } else if (input.aiDishes && menu.familyId) {
+    const dayNames = new Set(others.map((entry) => normalizeText(entry.dishName)));
+    const aiDishes = await input.aiDishes(menu.familyId, khoItems).catch(() => [] as AiDish[]);
+    const aiPick = aiDishes.find((dish) => dish.mealType === AI_MEAL[item.mealType]
+      && !dayNames.has(normalizeText(dish.name)) && !removed.names.has(normalizeText(dish.name)) && normalizeText(dish.name) !== normalizeText(item.dishName));
+    if (aiPick) {
+      replacement = {
+        menuId: menu.id,
+        recipeId: null,
+        dishName: aiPick.name,
+        mealType: item.mealType,
+        dayOfWeek: item.dayOfWeek,
+        calories: null,
+        details: { ai: true, aiDish: aiPick, role } as unknown as Prisma.InputJsonValue,
+      };
+    }
+  }
+
+  await client.$transaction([
+    client.menuItem.delete({ where: { id: item.id } }),
+    ...(replacement ? [client.menuItem.create({ data: replacement })] : []),
+  ]);
+  return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
 }

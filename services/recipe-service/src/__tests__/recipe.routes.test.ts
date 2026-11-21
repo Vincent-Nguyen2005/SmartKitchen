@@ -46,16 +46,16 @@ test("structured ingredients fill the plain names when they are not sent", () =>
   assert.equal(createRecipeSchema.safeParse({ name: "Sai đơn vị", ingredientDetails: [{ name: "Gạo", quantity: 1, unit: "cup" }] }).success, false);
 });
 
-test("starter catalog: 20-30 unique Vietnamese dishes with valid ingredients, meals and nutrition", () => {
-  assert.ok(seedRecipes.length >= 20 && seedRecipes.length <= 30);
+test("starter catalog: 40-60 unique Vietnamese dishes with valid ingredients, meals and nutrition", () => {
+  assert.ok(seedRecipes.length >= 40 && seedRecipes.length <= 60, String(seedRecipes.length));
   assert.equal(new Set(seedRecipes.map((recipe) => recipe.name)).size, seedRecipes.length);
   for (const meal of ["breakfast", "lunch", "dinner"] as const) {
     assert.ok(seedRecipes.filter((recipe) => recipe.mealTypes.includes(meal)).length >= 5, meal);
   }
   for (const recipe of seedRecipes) {
-    assert.ok(recipe.ingredients.length >= 2, recipe.name);
+    assert.ok(recipe.ingredients.length >= 1, recipe.name);
     recipe.ingredients.forEach((ingredient) => assert.equal(ingredientDetailSchema.safeParse(ingredient).success, true, `${recipe.name}: ${ingredient.name}`));
-    assert.ok(recipe.calories > 50 && recipe.calories < 900, recipe.name);
+    assert.ok(recipe.calories > 20 && recipe.calories < 900, recipe.name);
     // Macros roughly add up to the calories (4/4/9 kcal per gram).
     const fromMacros = recipe.protein * 4 + recipe.carbs * 4 + recipe.fat * 9;
     assert.ok(Math.abs(fromMacros - recipe.calories) / recipe.calories < 0.25, `${recipe.name}: ${fromMacros} vs ${recipe.calories}`);

@@ -74,10 +74,12 @@ export function WeekTimetable({ weekStart, todayKey, dishesFor, onOpenDay }: Wee
                 <Text style={[local.headerDate, isToday && local.todayText]}>{dayMonth(date)}</Text>
               </Pressable>
               {MEAL_ROWS.map((row) => {
-                const dish = dishes.find((entry) => entry.mealType === row.meal);
+                const mealDishes = dishes.filter((entry) => entry.mealType === row.meal);
+                const first = mealDishes[0];
                 return (
-                  <Pressable key={row.meal} accessibilityRole="button" accessibilityLabel={`${row.label} ${dayMonth(date)}: ${dish?.dishName ?? "chưa có món"}`} onPress={() => onOpenDay(key)} style={({ pressed }) => [local.cell, pressed && local.pressed]}>
-                    <Text style={dish ? local.cellText : local.emptyCell} numberOfLines={2}>{dish?.dishName ?? "—"}</Text>
+                  <Pressable key={row.meal} accessibilityRole="button" accessibilityLabel={`${row.label} ${dayMonth(date)}: ${mealDishes.length ? mealDishes.map((entry) => entry.dishName).join(", ") : "chưa có món"}`} onPress={() => onOpenDay(key)} style={({ pressed }) => [local.cell, pressed && local.pressed]}>
+                    <Text style={first ? local.cellText : local.emptyCell} numberOfLines={mealDishes.length > 1 ? 1 : 2}>{first?.dishName ?? "—"}</Text>
+                    {mealDishes.length > 1 && <Text style={local.moreText} numberOfLines={1}>+{mealDishes.length - 1} món</Text>}
                   </Pressable>
                 );
               })}
@@ -129,9 +131,18 @@ export function MonthCalendar({ anchor, todayKey, dishesFor, onOpenDay }: MonthP
                 style={({ pressed }) => [local.monthCell, !inMonth && local.outside, isToday && local.todayCell, pressed && local.pressed]}
               >
                 <Text style={[local.monthDay, isToday && local.todayDay]}>{date.getDate()}</Text>
-                {showNames
-                  ? dishes.slice(0, 3).map((dish) => <Text key={dish.id} style={local.monthDish} numberOfLines={1}>{dish.dishName}</Text>)
-                  : dishes.length > 0 && <Text style={local.monthCount} numberOfLines={1}>{dishes.length} món</Text>}
+                {showNames && dishes.length <= 3
+                  ? dishes.map((dish) => <Text key={dish.id} style={local.monthDish} numberOfLines={1}>{dish.dishName}</Text>)
+                  : showNames
+                    ? (
+                      <>
+                        {/* Several dishes per meal: the first dish of each meal, then the total. */}
+                        {MEAL_ROWS.map((row) => dishes.find((dish) => dish.mealType === row.meal)).filter((dish): dish is CalendarDish => !!dish).slice(0, 2)
+                          .map((dish) => <Text key={dish.id} style={local.monthDish} numberOfLines={1}>{dish.dishName}</Text>)}
+                        <Text style={local.monthCount} numberOfLines={1}>{dishes.length} món</Text>
+                      </>
+                    )
+                    : dishes.length > 0 && <Text style={local.monthCount} numberOfLines={1}>{dishes.length} món</Text>}
               </Pressable>
             );
           })}
@@ -158,6 +169,7 @@ const local = StyleSheet.create({
   todayDay: { color: colors.primary },
   cell: { borderTopColor: colors.border, borderTopWidth: 1, height: ROW_HEIGHT, justifyContent: "center", paddingHorizontal: spacing.xs },
   cellText: { ...textStyles.caption, color: colors.text },
+  moreText: { ...textStyles.caption, color: colors.primary },
   emptyCell: { ...textStyles.caption, textAlign: "center" },
   pressed: { opacity: 0.7 },
   month: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },

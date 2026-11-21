@@ -6,6 +6,8 @@
  */
 export type SeedUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type SeedIngredient = { name: string; quantity: number; unit: SeedUnit };
+/** Role in a Vietnamese family meal (see recipe-service README). */
+export type SeedRole = "man" | "xao" | "canh" | "rau" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
 export type SeedRecipe = {
   name: string;
   description: string;
@@ -21,11 +23,14 @@ export type SeedRecipe = {
   tags?: string[];
   allergens?: string[];
   contraindications?: string[];
+  role?: SeedRole;
 };
 
 const g = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "GRAM" });
 const pc = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "PIECE" });
 const ml = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "MILLILITER" });
+const box = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "BOX" });
+const pack = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "PACK" });
 
 export const seedRecipes: SeedRecipe[] = [
   // Bữa sáng
@@ -160,7 +165,133 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [pc("Khổ qua", 3), g("Thịt heo xay", 300), g("Nấm mèo", 20)],
     servings: 4, preparationMinutes: 45, calories: 210, protein: 15, carbs: 8, fat: 13,
   },
+
+  // Thêm món (Bữa sáng, đồ uống, món mặn / xào / canh / rau / tráng miệng)
+  {
+    name: "Xôi gà", description: "Xôi nếp dẻo với gà xé và hành phi.", mealTypes: ["breakfast"], role: "sang",
+    ingredients: [g("Gạo nếp", 300), g("Thịt gà", 300), g("Hành tím", 30)],
+    servings: 3, preparationMinutes: 50, calories: 450, protein: 24, carbs: 62, fat: 11,
+  },
+  {
+    name: "Cháo thịt bằm", description: "Cháo trắng nấu với thịt heo xay, rắc hành lá.", mealTypes: ["breakfast"], role: "sang",
+    ingredients: [g("Gạo", 100), g("Thịt heo xay", 200), g("Hành lá", 20)],
+    servings: 3, preparationMinutes: 30, calories: 300, protein: 16, carbs: 36, fat: 10,
+  },
+  {
+    name: "Bánh mì chảo", description: "Trứng ốp la, xúc xích và pa tê trên chảo nóng, ăn kèm bánh mì.", mealTypes: ["breakfast"], role: "sang",
+    ingredients: [pc("Bánh mì", 2), pc("Trứng gà", 2), pc("Xúc xích", 2), g("Pa tê", 100)],
+    servings: 2, preparationMinutes: 20, calories: 520, protein: 22, carbs: 48, fat: 26, allergens: ["trứng", "gluten"],
+  },
+  {
+    name: "Mì xào trứng", description: "Mì xào nhanh với trứng và cải ngọt.", mealTypes: ["breakfast"], role: "sang",
+    ingredients: [pack("Mì gói", 2), pc("Trứng gà", 2), g("Cải ngọt", 150)],
+    servings: 2, preparationMinutes: 15, calories: 450, protein: 15, carbs: 55, fat: 19, tags: ["nhanh"], allergens: ["trứng", "gluten"],
+  },
+  {
+    name: "Sữa đậu nành", description: "Sữa đậu nành nấu tại nhà, uống nóng hoặc lạnh.", mealTypes: ["breakfast"], role: "do_uong",
+    ingredients: [g("Đậu nành", 150)],
+    servings: 4, preparationMinutes: 40, calories: 130, protein: 8, carbs: 12, fat: 5, dietaryTags: ["vegetarian"], allergens: ["đậu nành"],
+  },
+  {
+    name: "Nước cam", description: "Nước cam vắt tươi.", mealTypes: ["breakfast"], role: "do_uong",
+    ingredients: [pc("Cam", 4)],
+    servings: 2, preparationMinutes: 5, calories: 110, protein: 2, carbs: 26, fat: 0, dietaryTags: ["vegetarian"], tags: ["nhanh"],
+  },
+  {
+    name: "Sinh tố chuối", description: "Chuối xay với sữa tươi.", mealTypes: ["breakfast"], role: "do_uong",
+    ingredients: [pc("Chuối", 2), ml("Sữa tươi", 300)],
+    servings: 2, preparationMinutes: 5, calories: 200, protein: 6, carbs: 34, fat: 4, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["sữa"],
+  },
+  {
+    name: "Cá chiên giòn", description: "Cá basa tẩm bột chiên vàng giòn.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Cá basa", 500), g("Bột chiên giòn", 100)],
+    servings: 4, preparationMinutes: 25, calories: 280, protein: 24, carbs: 12, fat: 15, allergens: ["cá", "gluten"],
+  },
+  {
+    name: "Thịt ba chỉ luộc", description: "Thịt ba chỉ luộc gừng, chấm mắm tỏi ớt.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Thịt ba chỉ", 500), g("Gừng", 20)],
+    servings: 4, preparationMinutes: 35, calories: 400, protein: 18, carbs: 0, fat: 36, contraindications: ["mỡ máu cao"],
+  },
+  {
+    name: "Đậu hũ nhồi thịt", description: "Đậu phụ nhồi thịt heo xay sốt cà chua.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [pc("Đậu phụ", 4), g("Thịt heo xay", 200), pc("Cà chua", 2)],
+    servings: 4, preparationMinutes: 35, calories: 260, protein: 18, carbs: 8, fat: 17, allergens: ["đậu nành"],
+  },
+  {
+    name: "Đậu cô ve xào thịt bò", description: "Đậu cô ve giòn xào thịt bò và tỏi.", mealTypes: ["lunch", "dinner"], role: "xao",
+    ingredients: [g("Đậu cô ve", 300), g("Thịt bò", 200), g("Tỏi", 20)],
+    servings: 3, preparationMinutes: 20, calories: 230, protein: 20, carbs: 10, fat: 12,
+  },
+  {
+    name: "Cải thìa xào nấm", description: "Cải thìa xào nấm hương với tỏi.", mealTypes: ["lunch", "dinner"], role: "xao",
+    ingredients: [g("Cải thìa", 400), g("Nấm hương", 100), g("Tỏi", 20)],
+    servings: 3, preparationMinutes: 15, calories: 110, protein: 5, carbs: 10, fat: 6, dietaryTags: ["vegetarian"],
+  },
+  {
+    name: "Canh cải thịt bằm", description: "Canh cải xanh nấu thịt heo xay.", mealTypes: ["lunch", "dinner"], role: "canh",
+    ingredients: [g("Cải xanh", 300), g("Thịt heo xay", 150)],
+    servings: 4, preparationMinutes: 20, calories: 120, protein: 10, carbs: 5, fat: 6,
+  },
+  {
+    name: "Canh trứng cà chua", description: "Canh cà chua với trứng đánh tan và hành lá.", mealTypes: ["lunch", "dinner"], role: "canh",
+    ingredients: [pc("Trứng gà", 2), pc("Cà chua", 2), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 15, calories: 90, protein: 6, carbs: 5, fat: 5, tags: ["nhanh"], allergens: ["trứng"],
+  },
+  {
+    name: "Rau muống luộc", description: "Rau muống luộc xanh, chấm nước mắm hoặc tương.", mealTypes: ["lunch", "dinner"], role: "rau",
+    ingredients: [g("Rau muống", 500)],
+    servings: 4, preparationMinutes: 10, calories: 40, protein: 3, carbs: 6, fat: 0, dietaryTags: ["vegetarian"], tags: ["nhanh"],
+  },
+  {
+    name: "Bắp cải luộc", description: "Bắp cải luộc ngọt, chấm trứng dầm nước mắm.", mealTypes: ["lunch", "dinner"], role: "rau",
+    ingredients: [g("Bắp cải", 500)],
+    servings: 4, preparationMinutes: 15, calories: 45, protein: 3, carbs: 9, fat: 0, dietaryTags: ["vegetarian"],
+  },
+  {
+    name: "Đậu bắp luộc", description: "Đậu bắp luộc vừa chín, chấm kho quẹt hoặc nước mắm.", mealTypes: ["lunch", "dinner"], role: "rau",
+    ingredients: [g("Đậu bắp", 300)],
+    servings: 3, preparationMinutes: 10, calories: 40, protein: 2, carbs: 7, fat: 0, dietaryTags: ["vegetarian"], tags: ["nhanh"],
+  },
+  {
+    name: "Chuối tráng miệng", description: "Chuối chín ăn sau bữa.", mealTypes: ["lunch", "dinner"], role: "trang_mieng",
+    ingredients: [pc("Chuối", 4)],
+    servings: 4, preparationMinutes: 2, calories: 105, protein: 1, carbs: 27, fat: 0, dietaryTags: ["vegetarian"],
+  },
+  {
+    name: "Dưa hấu", description: "Dưa hấu ướp lạnh cắt miếng.", mealTypes: ["lunch", "dinner"], role: "trang_mieng",
+    ingredients: [g("Dưa hấu", 1000)],
+    servings: 4, preparationMinutes: 5, calories: 80, protein: 2, carbs: 19, fat: 0, dietaryTags: ["vegetarian"],
+  },
+  {
+    name: "Chè đậu xanh", description: "Chè đậu xanh nước cốt dừa.", mealTypes: ["lunch", "dinner"], role: "trang_mieng",
+    ingredients: [g("Đậu xanh", 150), ml("Nước cốt dừa", 200)],
+    servings: 4, preparationMinutes: 45, calories: 250, protein: 7, carbs: 38, fat: 8, dietaryTags: ["vegetarian"], contraindications: ["tiểu đường"],
+  },
+  {
+    name: "Sữa chua", description: "Sữa chua ăn lạnh sau bữa.", mealTypes: ["lunch", "dinner"], role: "trang_mieng",
+    ingredients: [box("Sữa chua", 4)],
+    servings: 4, preparationMinutes: 1, calories: 100, protein: 4, carbs: 14, fat: 3, dietaryTags: ["vegetarian"], allergens: ["sữa"],
+  },
+  {
+    name: "Cam tráng miệng", description: "Cam bổ múi ăn sau bữa.", mealTypes: ["lunch", "dinner"], role: "trang_mieng",
+    ingredients: [pc("Cam", 4)],
+    servings: 4, preparationMinutes: 3, calories: 60, protein: 1, carbs: 14, fat: 0, dietaryTags: ["vegetarian"],
+  },
 ];
 
 /** Plain ingredient names (the older `ingredients` column) for a seed recipe. */
 export const ingredientNames = (recipe: SeedRecipe): string[] => recipe.ingredients.map((ingredient) => ingredient.name);
+
+/** Roles of the first starter dishes (newer starter dishes carry `role` themselves). */
+const STARTER_ROLES: Record<string, SeedRole> = {
+  "Phở bò": "mot_mon", "Bánh mì trứng ốp la": "sang", "Xôi đậu xanh": "sang", "Cháo gà": "sang",
+  "Cháo yến mạch chuối sữa": "sang", "Bún riêu cua": "mot_mon", "Hủ tiếu Nam Vang": "mot_mon", "Bún bò Huế": "mot_mon",
+  "Bò kho": "man", "Thịt kho trứng": "man", "Cá kho tộ": "man", "Canh chua cá": "canh", "Rau muống xào tỏi": "xao",
+  "Canh bí đỏ thịt bằm": "canh", "Gà kho gừng": "man", "Đậu phụ sốt cà chua": "man", "Trứng xào cà chua": "man",
+  "Bò xào bông cải xanh": "xao", "Canh rau ngót thịt bằm": "canh", "Sườn xào chua ngọt": "man", "Tôm rim": "man",
+  "Cơm chiên dương châu": "mot_mon", "Bún chả": "mot_mon", "Gỏi cuốn tôm thịt": "man", "Mực xào cần tây": "xao",
+  "Canh khổ qua nhồi thịt": "canh",
+};
+
+/** Role of a starter dish. */
+export const seedRole = (recipe: SeedRecipe): SeedRole | null => recipe.role ?? STARTER_ROLES[recipe.name] ?? null;

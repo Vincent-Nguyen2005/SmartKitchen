@@ -34,11 +34,18 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
 - **Storage:** the latest result per family is kept in `AiSuggestion` (dishes, Kho hash, generatedAt, daily count). Pending debounces live in memory, so a restart just reschedules on the next read.
 - **Saved dishes:** `POST /ai-suggestions/:dishId/save { familyId }` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes?familyId=` lists them. Both check membership with family-service.
 
-## Stale menus
+## Day menus: several dishes per meal, saved, one-dish replacement
 
-Generated menus store `khoHash`, the same Kho snapshot hash the AI suggestions use. It's null when no Kho was read. `GET /kho-hash?familyId=` returns the current hash; the app regenerates today's menu when the two differ.
-
-AI dishes also carry `mealType` (`sang`, `trua` or `toi`; anything else becomes null, shown as "Món khác").
+- **Meal sizes:** `POST /generate` for a DAY uses the user's "Số món mỗi bữa" (`GET/PUT /settings`, 1–6 each; defaults are 3 breakfast, 5 lunch, 5 dinner).
+  - **Lunch and dinner** are built like a family meal from recipe roles: món mặn, canh, rau, món xào, tráng miệng (the first N roles), then more mặn, xào and canh.
+  - **Breakfast** gets light dishes, with a drink as the last dish when there are 2 or more.
+  - Each slot takes the best Kho-scored recipe of its role. A dish is never repeated within the day, and dishes the user removed in the last 7 days are skipped while others fit.
+- **Saved menus:** menus are generated once (the app does it the first time a day is opened, today or later) and never change by themselves. `khoHash` is still stored, but nothing regenerates from it. Generating a past day is refused (422).
+- **Removing one dish:** `POST /:menuId/items/:itemId/remove`
+  - The removal is stored in the user's dislike history (`RemovedDish`).
+  - The server adds ONE replacement with the same meal and role, ranked by Kho score. It excludes dishes already in that day, dishes removed in the last 7 days and hidden dishes.
+  - If no catalog dish fits, a stored AI suggestion for that meal fills the slot. This uses the same AI limits, and starts a background generation when the Kho changed. Otherwise the slot stays empty.
+  - Past days can't be edited (422).
 
 ## Listing menus
 

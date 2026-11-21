@@ -1,9 +1,9 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { Bookmark, ShoppingCart } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
 import { useSession } from "../../services/session";
-import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
+import { createGatewayClient, errorMessage, type GatewayClient } from "../notifications/gatewayApi";
 import { addMissingToCart } from "../shopping-cart/addMissing";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -21,13 +21,9 @@ export type AiDish = {
   ingredients: AiIngredient[];
   steps: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: string[] }>;
 };
-type AiStatus = "ready" | "generating" | "not_configured" | "empty_kho" | "error";
-type AiResponse = { status: AiStatus; dishes: AiDish[]; limitReached?: boolean };
 type SavedRecipe = { id: string; name: string; dish: AiDish };
 
 export const AI_DISCLAIMER = "Công thức do AI gợi ý, hãy kiểm tra độ chín trước khi ăn.";
-const POLL_MS = 10_000;
-const POLL_FOR_MS = 120_000;
 
 /** An AI dish in the shape the cooking mode and recipe detail use (step ingredients get the dish quantities). */
 export function aiDishToRecipe(dish: AiDish): Recipe {
@@ -52,63 +48,10 @@ export function aiDishToRecipe(dish: AiDish): Recipe {
   };
 }
 
-/**
- * AI dishes for the family: suggestions (GET /api/menus/ai-suggestions, loaded when the tab opens, polled every
- * 10 s for at most 2 minutes while the server is generating) and the dishes the family saved.
- * Suggestions are empty when AI is off (not_configured) or Kho is empty.
- */
-export function useAiDishes() {
-  const { accessToken, family } = useSession();
-  const familyId = family?.id ?? null;
-  const [data, setData] = useState<AiResponse | null>(null);
-  const [saved, setSaved] = useState<AiDish[]>([]);
-  const pollStarted = useRef<number | null>(null);
-  const api = createGatewayClient(accessToken);
-
-  const load = useCallback(async () => {
-    if (!accessToken || !familyId) return;
-    try {
-      setData(await api.get<AiResponse>(`/api/menus/ai-suggestions?familyId=${encodeURIComponent(familyId)}`));
-    } catch {
-      // Optional feature: a failed request keeps what is shown.
-    }
-  }, [accessToken, familyId]);
-
-  const loadSaved = useCallback(async () => {
-    if (!accessToken || !familyId) return;
-    try {
-      const rows = await api.get<SavedRecipe[]>(`/api/menus/ai-recipes?familyId=${encodeURIComponent(familyId)}`);
-      setSaved(rows.map((row) => ({ ...row.dish, id: `saved-${row.id}` })));
-    } catch {
-      setSaved([]);
-    }
-  }, [accessToken, familyId]);
-
-  useEffect(() => {
-    pollStarted.current = null;
-    void load();
-    void loadSaved();
-  }, [load, loadSaved]);
-
-  useEffect(() => {
-    if (data?.status !== "generating") {
-      pollStarted.current = null;
-      return undefined;
-    }
-    pollStarted.current ??= Date.now();
-    if (Date.now() - pollStarted.current >= POLL_FOR_MS) return undefined;
-    const timer = setTimeout(() => void load(), POLL_MS);
-    return () => clearTimeout(timer);
-  }, [data, load]);
-
-  const hidden = !data || data.status === "not_configured" || data.status === "empty_kho";
-  return {
-    suggestions: hidden ? [] : data.dishes,
-    saved,
-    generating: data?.status === "generating",
-    limitReached: !!data?.limitReached,
-    reloadSaved: loadSaved,
-  };
+/** The family's saved AI dishes (cook again, search in Nấu ăn). Ids are prefixed so they never clash with suggestions. */
+export async function loadSavedAiDishes(api: GatewayClient, familyId: string): Promise<AiDish[]> {
+  const rows = await api.get<SavedRecipe[]>(`/api/menus/ai-recipes?familyId=${encodeURIComponent(familyId)}`);
+  return rows.map((row) => ({ ...row.dish, id: `saved-${row.id}` }));
 }
 
 type DetailProps = {

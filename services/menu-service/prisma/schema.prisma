@@ -90,3 +90,23 @@ model SavedRecipe {
   @@unique([familyId, name])
   @@index([familyId])
 }
+
+/// "Số món mỗi bữa" (Hồ sơ): dishes per meal for this user's generated menus, 1-6 each.
+model MenuSettings {
+  userId    String   @id
+  breakfast Int      @default(3)
+  lunch     Int      @default(5)
+  dinner    Int      @default(5)
+  updatedAt DateTime @updatedAt
+}
+
+/// Dishes a user removed from a menu (dislike history): not suggested again for 7 days.
+model RemovedDish {
+  id        String   @id @default(uuid())
+  userId    String
+  recipeId  String?
+  dishName  String
+  removedAt DateTime @default(now())
+
+  @@index([userId, removedAt])
+}

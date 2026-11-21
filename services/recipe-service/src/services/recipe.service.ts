@@ -13,6 +13,8 @@ export const ingredientDetailSchema = z.object({
   unit: z.enum(recipeUnits).nullable().optional(),
 });
 
+/** Dish roles in a Vietnamese family meal (menu-service composes lunch/dinner from them). */
+export const RECIPE_ROLES = ["man", "xao", "canh", "rau", "trang_mieng", "sang", "mot_mon", "do_uong"] as const;
 export const MAX_STEPS = 30;
 export const MAX_STEP_SECONDS = 7200;
 
@@ -57,6 +59,7 @@ const recipeFields = z.object({
   allergens: tagList.optional(),
   contraindications: tagList.optional(),
   isActive: z.boolean().optional(),
+  role: z.enum(RECIPE_ROLES).nullable().optional(),
   /** Cooking steps (at most 30, each timer 0-7200 s); null clears them. */
   steps: z.array(recipeStepSchema).max(MAX_STEPS).transform(normalizeSteps).nullable().optional(),
 });

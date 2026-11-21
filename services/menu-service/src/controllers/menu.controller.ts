@@ -2,8 +2,16 @@ import { MealType, PeriodType } from "../../node_modules/.prisma/client-menu";
 import axios from "axios";
 import { Request, Response } from "express";
 import { z } from "zod";
+import { PrismaClient } from "../../node_modules/.prisma/client-menu";
+import type { AiDish } from "../services/ai/gemini";
+import { aiEngine } from "./ai.controller";
 import {
   currentKhoHash,
+  getMenuSettings,
+  isPastDay,
+  recentlyRemoved,
+  removeMenuItem,
+  updateMenuSettings,
   autoRefreshMenu,
   createManualMenu,
   deleteMenu,
@@ -74,11 +82,23 @@ export async function generateMenuController(request: Request, response: Respons
     const userId = authenticatedUserId(request, response);
     if (!userId) return;
     const input = generateSchema.parse(request.body);
+    const periodType = input.periodType || PeriodType.WEEK;
+    // Past days are never regenerated.
+    if (periodType === PeriodType.DAY && isPastDay(input.startDate)) {
+      response.status(422).json({ error: "Không thể tạo lại thực đơn của ngày đã qua." });
+      return;
+    }
+    const [mealCounts, removed] = await Promise.all([
+      getMenuSettings(userId).catch(() => undefined),
+      recentlyRemoved(userId).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+    ]);
     response.status(201).json(await generateMenu({
       ...input,
-      periodType: input.periodType || PeriodType.WEEK,
+      periodType,
       userId,
       authorization: request.header("authorization") ?? undefined,
+      mealCounts: periodType === PeriodType.DAY ? mealCounts : undefined,
+      excludeRecipeIds: [...removed.recipeIds],
     }));
   } catch (error) {
     console.error("Generate Menu Error:", error);
@@ -210,5 +230,59 @@ export async function checkoutController(request: Request, response: Response): 
     }
     console.error("[menu-service] checkout failed:", error);
     response.status(500).json({ error: "Internal server error" });
+  }
+}
+const settingsClient = new PrismaClient();
+export const settingsSchema = z.object({
+  breakfast: z.number().int().min(1).max(6),
+  lunch: z.number().int().min(1).max(6),
+  dinner: z.number().int().min(1).max(6),
+});
+
+/** GET /settings: "Số món mỗi bữa" of the caller (defaults 3 / 5 / 5). */
+export async function getSettingsController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    const counts = await getMenuSettings(userId, settingsClient);
+    response.json({ breakfast: counts.BREAKFAST, lunch: counts.LUNCH, dinner: counts.DINNER });
+  } catch (error) {
+    handleError(error, response);
+  }
+}
+
+/** PUT /settings { breakfast, lunch, dinner } (1-6 each). */
+export async function updateSettingsController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    const counts = await updateMenuSettings(userId, settingsSchema.parse(request.body), settingsClient);
+    response.json({ breakfast: counts.BREAKFAST, lunch: counts.LUNCH, dinner: counts.DINNER });
+  } catch (error) {
+    handleError(error, response);
+  }
+}
+
+/** Stored AI suggestions of the family (and, in the background, a fresh generation when the Kho changed). */
+async function storedAiDishes(familyId: string, kho: Parameters<typeof aiEngine.getSuggestions>[1]): Promise<AiDish[]> {
+  void aiEngine.getSuggestions(familyId, kho).catch(() => undefined);
+  const row = await settingsClient.aiSuggestion.findUnique({ where: { familyId } });
+  return Array.isArray(row?.dishes) ? row.dishes as unknown as AiDish[] : [];
+}
+
+/** POST /:id/items/:itemId/remove: drop one dish and put one replacement in the same meal and role. */
+export async function removeMenuItemController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    response.json(await removeMenuItem({
+      userId,
+      menuId: request.params.id,
+      itemId: request.params.itemId,
+      authorization: request.header("authorization") ?? undefined,
+      aiDishes: storedAiDishes,
+    }));
+  } catch (error) {
+    handleError(error, response);
   }
 }

@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-recipe";
-import { ingredientNames, seedRecipes, type SeedRecipe } from "./recipes.data";
+import { ingredientNames, seedRecipes, seedRole, type SeedRecipe } from "./recipes.data";
 import { stepsFor } from "./recipe-steps.data";
 
 const toData = (recipe: SeedRecipe) => ({
@@ -20,6 +20,7 @@ const toData = (recipe: SeedRecipe) => ({
   contraindications: recipe.contraindications ?? [],
   isActive: true,
   steps: stepsFor(recipe) ?? Prisma.DbNull,
+  role: seedRole(recipe),
 });
 
 /**
@@ -57,6 +58,23 @@ export async function fillMissingSteps(client: PrismaClient, recipes: SeedRecipe
     if (!steps) continue;
     // The condition is repeated in the update, so a row edited meanwhile is left alone.
     const result = await client.recipe.updateMany({ where: { id: row.id, steps: { equals: Prisma.DbNull } }, data: { steps } });
+    filled += result.count;
+  }
+  return filled;
+}
+
+/**
+ * Gives starter dishes (matched by name) their meal role where the row has no role yet. Never overwrites a role
+ * an admin set; running it again changes nothing. Returns how many rows got a role.
+ */
+export async function fillMissingRoles(client: PrismaClient, recipes: SeedRecipe[] = seedRecipes): Promise<number> {
+  const rows = await client.recipe.findMany({ where: { role: null }, select: { id: true, name: true } });
+  let filled = 0;
+  for (const row of rows) {
+    const seed = recipes.find((recipe) => nameKey(recipe.name) === nameKey(row.name));
+    const role = seed ? seedRole(seed) : null;
+    if (!role) continue;
+    const result = await client.recipe.updateMany({ where: { id: row.id, role: null }, data: { role } });
     filled += result.count;
   }
   return filled;

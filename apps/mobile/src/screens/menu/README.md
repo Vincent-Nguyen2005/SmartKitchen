@@ -5,7 +5,10 @@ Owner: Cuong. Responsibility: meal menu planning and schedule screens.
 ## Lịch (tab key `menu`)
 
 - **Theo ngày:** Bữa sáng, Bữa trưa and Bữa tối are section titles. Each dish uses the shared card (image, name, kcal, total time), and tapping it opens the same recipe detail as Nấu ăn, with "Bắt đầu nấu". The small refresh icon next to the date switcher is "Làm mới theo kho".
-- **Stale menu:** menu-service stores the Kho snapshot hash on each generated menu. When today's menu is open, the app compares that with `GET /api/menu/kho-hash`. If they differ, or it's an older generated menu with no hash, it regenerates today's menu once per Kho state. It never does this for past or future days.
+- **Saved menus:** a day (today or later) is generated once, the first time it's opened in Lịch or Nấu ăn, then kept. It never changes by itself.
+- **Removing a dish:** each card has "×" (with a confirmation). The server swaps that one dish for another of the same meal and role, or leaves the slot empty.
+- **"Làm mới theo kho":** regenerates the whole day after a confirmation. Past days are read-only.
+- **Meal header:** each meal shows its total kcal. "Số món mỗi bữa" is in Hồ sơ.
 - The notes below describe the earlier layout; the week and month views are unchanged.
 
 ## Thực đơn (earlier notes)

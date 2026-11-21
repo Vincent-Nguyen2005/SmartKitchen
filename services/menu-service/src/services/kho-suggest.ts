@@ -25,6 +25,8 @@ export type SuggestRecipe = {
   mealTypes: string[];
   tags: string[];
   ingredients: DishIngredient[];
+  /** Role in a family meal (man, xao, canh, rau, trang_mieng, sang, mot_mon, do_uong); null = not classified. */
+  role?: string | null;
 };
 export type DishSuggestion = {
   recipe: SuggestRecipe;
@@ -178,4 +180,78 @@ export function pickDishes(
     if (best) used.add(best.recipe.id);
     return { meal, suggestion: best };
   });
+}
+
+
+/** Dish counts per meal for a day: "Số món mỗi bữa" (defaults 3 / 5 / 5). */
+export type MealCounts = { BREAKFAST: number; LUNCH: number; DINNER: number };
+export const DEFAULT_MEAL_COUNTS: MealCounts = { BREAKFAST: 3, LUNCH: 5, DINNER: 5 };
+
+/** Lunch / dinner like a Vietnamese family meal: món mặn, canh, rau, món xào, tráng miệng (first N), then more. */
+const FAMILY_MEAL_ROLES = ["man", "canh", "rau", "xao", "trang_mieng"];
+const EXTRA_ROLES = ["man", "xao", "canh"];
+
+/** Role wanted for each dish slot of a meal. Breakfast: light dishes, the last one a drink when there are 2+. */
+export function roleSlots(meal: string, count: number): string[] {
+  if (count <= 0) return [];
+  if (meal.toUpperCase() === "BREAKFAST") {
+    return count === 1 ? ["sang"] : [...Array.from({ length: count - 1 }, () => "sang"), "do_uong"];
+  }
+  return Array.from({ length: count }, (_, index) => FAMILY_MEAL_ROLES[index] ?? EXTRA_ROLES[(index - FAMILY_MEAL_ROLES.length) % EXTRA_ROLES.length]);
+}
+
+/** Recipe fits a slot: same role; a breakfast slot takes light dishes, one-dish meals and unclassified dishes. */
+export function fitsRole(recipeRole: string | null | undefined, slotRole: string | null): boolean {
+  if (slotRole === null) return true;
+  if (slotRole === "sang") return recipeRole === "sang" || recipeRole === "mot_mon" || recipeRole == null;
+  return recipeRole === slotRole;
+}
+
+const fitsMeal = (recipe: SuggestRecipe, meal: string) => recipe.mealTypes.length === 0 || recipe.mealTypes.includes(meal.toLowerCase());
+
+function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string): DishSuggestion | null {
+  return candidates
+    .map((recipe) => evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, seed))
+    .sort((left, right) => right.score - left.score)[0] ?? null;
+}
+
+/**
+ * `count` dishes for one meal, one per role slot, best Kho score first. A slot with no recipe of its role takes an
+ * unclassified (or one-dish) recipe for main roles; desserts, vegetables and drinks are skipped when missing.
+ * Never repeats a dish within the day (`usedIds`, updated) and skips `excludeIds` (removed in the last 7 days).
+ */
+export function pickMealDishes(
+  recipes: SuggestRecipe[],
+  kho: KhoItem[],
+  meal: string,
+  count: number,
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string> },
+): Array<{ role: string; suggestion: DishSuggestion }> {
+  const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
+  roleSlots(meal, count).forEach((role, index) => {
+    const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id));
+    let pool = open.filter((recipe) => fitsRole(recipe.role, role));
+    if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");
+    const pick = best(pool, kho, options, `${options.day}:${meal.toLowerCase()}:${index}`);
+    if (!pick) return;
+    options.usedIds.add(pick.recipe.id);
+    picks.push({ role, suggestion: pick });
+  });
+  return picks;
+}
+
+/**
+ * One replacement for a removed dish: same meal and role (any role when the removed dish had none), best Kho score,
+ * excluding `excludeIds` (dishes already in the day, removed recently, the removed dish). Null when nothing fits.
+ */
+export function pickReplacement(
+  recipes: SuggestRecipe[],
+  kho: KhoItem[],
+  meal: string,
+  role: string | null,
+  options: { today: string; day: string; excludeIds: ReadonlySet<string> },
+): DishSuggestion | null {
+  const pool = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.excludeIds.has(recipe.id)
+    && (role === null ? true : role === "sang" ? fitsRole(recipe.role, "sang") : recipe.role === role));
+  return best(pool, kho, { today: options.today, recentRecipeIds: new Set() }, `${options.day}:${meal.toLowerCase()}:replace`);
 }

@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { createApp } from "./app";
 import { prisma } from "./lib/prisma";
-import { fillMissingSteps, seedRecipesIfEmpty } from "./seed/seed-recipes";
+import { fillMissingRoles, fillMissingSteps, seedMissingRecipes } from "./seed/seed-recipes";
 
 dotenv.config();
 
@@ -10,10 +10,12 @@ createApp().listen(PORT, () => {
   console.log(`[recipe-service] dang chay tai http://localhost:${PORT}`);
 });
 
-// Fresh database: add the starter Vietnamese dishes once (with steps). Then give starter dishes that have no
-// steps yet their cooking steps (older databases). Existing rows and admin-written steps are never overwritten.
-seedRecipesIfEmpty(prisma)
+// Starter Vietnamese dishes: add the ones whose name is missing (new dishes reach older databases too), then
+// give starter dishes their cooking steps and meal role where those are still empty. Never overwrites a row.
+seedMissingRecipes(prisma)
   .then((created) => { if (created > 0) console.log(`[recipe-service] seeded ${created} starter recipes`); })
   .then(() => fillMissingSteps(prisma))
   .then((filled) => { if (filled > 0) console.log(`[recipe-service] added cooking steps to ${filled} recipes`); })
+  .then(() => fillMissingRoles(prisma))
+  .then((filled) => { if (filled > 0) console.log(`[recipe-service] added meal roles to ${filled} recipes`); })
   .catch((error: unknown) => console.error("[recipe-service] starter seed failed:", error));

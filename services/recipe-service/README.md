@@ -14,6 +14,12 @@ A recipe keeps the plain `ingredients` names. It also has `ingredientDetails` (`
 
 `imageUrl` must be an https link to a public host (no localhost, private or link-local addresses, no credentials) and at most 2048 characters. The server only stores it and never fetches it. Admins set it in Quản trị > Món ăn, and hiding a dish there sets `isActive=false` (it is never deleted).
 
+### Meal role
+
+`role` is optional: `man`, `xao`, `canh`, `rau`, `trang_mieng`, `sang`, `mot_mon` or `do_uong`. menu-service builds lunch and dinner from these roles (món mặn, canh, rau, xào, tráng miệng). Starter dishes get their role at start where it's still empty; a role an admin set is never overwritten.
+
+At every start the service adds starter dishes whose name is missing, so new starter dishes reach existing databases. It never updates or deletes existing rows.
+
 ### Cooking steps
 
 `steps` is an optional JSON array: `[{ order, instruction, durationSeconds | null, ingredients: [{ name, quantity, unit }] }]`, with at most 30 steps and each timer 0-7200 s. Steps are sorted by `order` and renumbered on save; `null` means no steps yet.

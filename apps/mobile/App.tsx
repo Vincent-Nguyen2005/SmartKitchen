@@ -57,6 +57,7 @@ import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
+import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -121,6 +122,8 @@ function AppContent(): React.JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false);
   // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
+  const [mealSizeOpen, setMealSizeOpen] = useState(false);
   // Thông báo expiry alert tapped: Kho opens that item's edit dialog.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   // Thông báo tab badge = unread notifications + current expiry alerts.
@@ -448,6 +451,12 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
               <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
             </TouchableOpacity>
+            <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
+              onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
+              <AppIcon icon={Utensils} size="md" color={colors.primary} />
+              <Text style={styles.sheetItemText}>Số món mỗi bữa</Text>
+              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+            </TouchableOpacity>
             <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
               onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
               <AppIcon icon={LogOut} size="md" color={colors.danger} />
@@ -465,6 +474,18 @@ function AppContent(): React.JSX.Element {
           </View>
           <View style={styles.settingsBody}>
             <NotificationPreferencesScreen />
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal animationType="slide" visible={mealSizeOpen && !isAdmin} onRequestClose={() => setMealSizeOpen(false)}>
+        <SafeAreaView style={styles.settingsScreen}>
+          <View style={styles.settingsHeader}>
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setMealSizeOpen(false)} />
+            <Text style={styles.settingsTitle}>Số món mỗi bữa</Text>
+          </View>
+          <View style={styles.settingsBody}>
+            <MealSizeSettings />
           </View>
         </SafeAreaView>
       </Modal>

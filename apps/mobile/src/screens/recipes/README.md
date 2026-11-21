@@ -12,7 +12,12 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 - **Screen:** stays awake while cooking (expo-keep-awake, which ships with expo).
 - **Leaving:** asks for confirmation while a timer runs.
 
-## Nấu ăn grouped by meal
+## Nấu ăn = today's menu (current)
+
+- **Today's menu:** Nấu ăn shows today's menu from Lịch (Bữa sáng, Bữa trưa, Bữa tối, same dishes and order). It's loaded each time the tab opens, and generated once if today has none. AI dishes appear only when they were placed in the menu, with the "AI" pill.
+- **Search:** typing searches all active dishes and the family's saved AI dishes; clearing it returns to today's menu.
+
+## Nấu ăn grouped by meal (earlier version)
 
 - **Sections:** Bữa sáng, Bữa trưa, Bữa tối, then Món khác for dishes with no meal type. A dish with several meal types appears in each matching section.
 - **AI dishes:** AI suggestions (by their `mealType`: sang / trua / toi) and saved AI dishes join those sections with an "AI" pill. The disclaimer shows once at the top whenever an AI dish is visible.
