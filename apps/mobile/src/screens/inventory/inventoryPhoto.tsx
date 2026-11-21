@@ -141,13 +141,15 @@ type PhotoProps = {
   style?: StyleProp<ViewStyle>;
   placeholderStyle?: StyleProp<ViewStyle>;
   accessibilityLabel: string;
+  /** Shown instead of the default placeholder when there is no photo (Kho cards use Đi chợ's placeholder). */
+  placeholder?: React.ReactElement;
 };
 
 /**
  * Item photo or a placeholder. Uploaded photos are family-only, so the request carries the access token:
  * native Image sends headers itself; web Image cannot, so the bytes are fetched and shown from a blob URL.
  */
-export function InventoryPhoto({ imageUrl, accessToken, style, placeholderStyle, accessibilityLabel }: PhotoProps): React.JSX.Element {
+export function InventoryPhoto({ imageUrl, accessToken, style, placeholderStyle, accessibilityLabel, placeholder }: PhotoProps): React.JSX.Element {
   const [webUri, setWebUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const source = imageUrl ? photoRequest(imageUrl, accessToken) : null;
@@ -175,6 +177,7 @@ export function InventoryPhoto({ imageUrl, accessToken, style, placeholderStyle,
 
   const uri = needsWebFetch ? webUri : source?.uri;
   if (!source || failed || !uri) {
+    if (placeholder) return placeholder;
     return (
       <View accessibilityLabel={imageUrl && !failed ? "Đang tải ảnh" : "Chưa có ảnh"} style={[styles.placeholder, style, placeholderStyle]}>
         <AppIcon icon={Package} size="lg" color={colors.primary} />

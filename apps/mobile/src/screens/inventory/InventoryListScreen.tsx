@@ -14,10 +14,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Archive, Camera, ImageMinus, Pencil, Search, Trash2 } from "lucide-react-native";
+import { Archive, Camera, ImageMinus, Search, Trash2 } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { EmptyState } from "../notifications/ui";
+import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid, type CardPillTone } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
@@ -31,14 +32,33 @@ const inventoryUnitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 const inventoryLocationLabels: Record<InventoryLocation, string> = {
   FRIDGE: "Tủ lạnh", FREEZER: "Ngăn đông", PANTRY: "Tủ đựng thực phẩm", COUNTER: "Kệ bếp",
 };
-const itemStatusLabels: Record<string, string> = {
-  FRESH: "Còn dùng được", NEAR_EXPIRY: "Sắp hết hạn", EXPIRED: "Đã hết hạn", CONSUMED: "Đã dùng hết", DISCARDED: "Đã bỏ",
-};
 type InventoryDialogMode = "edit" | "consume";
 
 function formatDateDdMmYyyy(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
+}
+
+const EXPIRING_SOON_DAYS = 3;
+const pad2 = (value: number) => String(value).padStart(2, "0");
+
+/** Card expiry line ("HSD 25/11") and corner pill for expired items or ones expiring within 3 days. */
+function expiryInfo(item: FoodItem): { text: string; warning: boolean; pill: { label: string; tone: CardPillTone } | null } {
+  const match = item.expiryDate ? /^(\d{4})-(\d{2})-(\d{2})/.exec(item.expiryDate) : null;
+  if (!match) {
+    return item.status === "EXPIRED"
+      ? { text: "Đã hết hạn", warning: true, pill: { label: "Hết hạn", tone: "danger" } }
+      : { text: "Chưa có HSD", warning: false, pill: null };
+  }
+  const today = new Date();
+  const days = Math.round((Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86_400_000);
+  const expired = days < 0 || item.status === "EXPIRED";
+  const soon = !expired && days <= EXPIRING_SOON_DAYS;
+  return {
+    text: `HSD ${match[3]}/${match[2]}`,
+    warning: expired || soon,
+    pill: expired ? { label: "Hết hạn", tone: "danger" } : soon ? { label: days === 0 ? "Hôm nay" : `Còn ${days} ngày`, tone: "warning" } : null,
+  };
 }
 
 type Props = {
@@ -62,6 +82,7 @@ export default function InventoryListScreen({
   const isCompact = width < 360;
   const isWide = width >= 720;
   const horizontalPadding = isCompact ? spacing.lg : isWide ? spacing.xl : spacing.xl;
+  const cardGrid = useCardGrid();
   const [items, setItems] = useState<FoodItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -320,67 +341,27 @@ export default function InventoryListScreen({
                 <EmptyState fill icon={Archive} text="Kho chưa có nguyên liệu nào." />
               )
             )}
-            {filteredItems.map((item, index) => {
-            const isNearExpiry = item.status === "NEAR_EXPIRY";
-            const isExpired = item.status === "EXPIRED";
-            return (
-              <View
-                key={item.id}
-                style={[styles.recipeRow, { gap: isCompact ? spacing.md : spacing.lg }]}
-              >
-                <View style={[styles.imageWrap, { width: isCompact ? 76 : 112, height: isCompact ? 96 : 126 }]}>
-                  <InventoryPhoto
-                    imageUrl={item.imageUrl}
-                    accessToken={accessToken}
-                    accessibilityLabel={`Ảnh ${item.name}`}
-                    style={styles.placeholderImage}
-                    placeholderStyle={[isExpired && { backgroundColor: colors.dangerSoft }, isNearExpiry && { backgroundColor: colors.warningSoft }]}
-                  />
-                  <Text
-                    style={[
-                      styles.indexMark,
-                      index % 2 === 0 ? styles.indexWarm : styles.indexCool,
-                    ]}
-                  >
-                    {String(index + 1).padStart(2, "0")}
-                  </Text>
-                </View>
-                <View style={styles.recipeInfo}>
-                  <Text style={styles.recipeCategory}>
-                    {inventoryLocationLabels[item.storageLocation as InventoryLocation] ?? item.storageLocation}
-                  </Text>
-                  <Pressable accessibilityRole={onItemPress ? "button" : undefined} disabled={!onItemPress} onPress={() => onItemPress?.(item)}>
-                    <Text style={styles.recipeTitle}>{item.name}</Text>
-                  </Pressable>
-                  <Text numberOfLines={2} style={styles.recipeDescription}>
-                    {item.quantity} {inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}
-                    {item.expiryDate &&
-                      ` • HSD: ${formatDateDdMmYyyy(item.expiryDate)}`}
-                  </Text>
-                  <View style={styles.recipeMeta}>
-                    <Text style={styles.metaText}>{itemStatusLabels[item.status] ?? item.status}</Text>
-                    <View style={styles.metaDot} />
-                    <Text style={styles.metaText}>
-                      {item.quantity} {inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}
-                    </Text>
-                  </View>
-                  <View style={styles.itemActions}>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Sửa ${item.name}`} onPress={() => openEdit(item)} style={styles.itemAction}>
-                      <AppIcon icon={Pencil} size="sm" color={colors.primary} /><Text style={styles.itemActionText}>Sửa</Text>
-                    </Pressable>
-                    {item.status !== "CONSUMED" && item.quantity > 0 && (
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Ghi nhận đã dùng ${item.name}`} onPress={() => openConsume(item)} style={styles.itemAction}>
-                        <Text style={styles.itemActionText}>Đã dùng</Text>
-                      </Pressable>
-                    )}
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${item.name}`} onPress={() => deleteItem(item)} style={styles.itemAction}>
-                      <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
-                    </Pressable>
-                  </View>
-                </View>
+            {filteredItems.length > 0 && (
+              <View onLayout={cardGrid.onLayout} style={[styles.cardGrid, { gap: cardGrid.gap }]}>
+                {filteredItems.map((item) => {
+                  const expiry = expiryInfo(item);
+                  const quantityText = `${item.quantity} ${inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}`;
+                  return (
+                    <ProductCard
+                      key={item.id}
+                      width={cardGrid.cardWidth}
+                      accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. Mở để sửa, ghi đã dùng hoặc xóa`}
+                      onPress={() => (onItemPress ? onItemPress(item) : openEdit(item))}
+                      image={<InventoryPhoto imageUrl={item.imageUrl} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
+                      pill={expiry.pill}
+                      name={item.name}
+                      subtitle={quantityText}
+                      footer={<CardCaption text={expiry.text} warning={expiry.warning} />}
+                    />
+                  );
+                })}
               </View>
-            );
-            })}
+            )}
           </>
         )}
       </ScrollView>
@@ -405,6 +386,16 @@ export default function InventoryListScreen({
                       {photoBusy && <ActivityIndicator color={colors.primary} />}
                     </View>
                     {photoError && <Text accessibilityRole="alert" style={styles.photoErrorText}>{photoError}</Text>}
+                    <View style={styles.photoActions}>
+                      {activeItem.status !== "CONSUMED" && activeItem.quantity > 0 && (
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Ghi nhận đã dùng ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => openConsume(activeItem)} style={styles.itemAction}>
+                          <Text style={styles.itemActionText}>Đã dùng</Text>
+                        </Pressable>
+                      )}
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => { const item = activeItem; setActiveItem(null); deleteItem(item); }} style={styles.itemAction}>
+                        <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
+                      </Pressable>
+                    </View>
                   </View>
                 )}
                 <Text style={styles.fieldLabel}>Tên nguyên liệu</Text>
@@ -442,67 +433,8 @@ const styles = StyleSheet.create({
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
   listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: SEARCH_CONTENT_GAP, width: "100%" },
   resultsScroller: { flex: 1 },
+  cardGrid: { flexDirection: "row", flexWrap: "wrap" },
   listFill: { flexGrow: 1 },
-  recipeRow: {
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  imageWrap: { height: 126, position: "relative", width: 112 },
-  placeholderImage: {
-    alignItems: "center",
-    backgroundColor: colors.primarySoft,
-    borderRadius: 6,
-    height: "100%",
-    justifyContent: "center",
-    width: "100%",
-  },
-  indexMark: {
-    alignItems: "center",
-    borderRadius: 4,
-    bottom: spacing.xs,
-    color: colors.text,
-    ...typography.caption,
-    overflow: "hidden",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    position: "absolute",
-    right: spacing.xs,
-  },
-  indexWarm: { backgroundColor: colors.warning },
-  indexCool: { backgroundColor: colors.primarySoft },
-  recipeInfo: {
-    flex: 1,
-    justifyContent: "center",
-    minWidth: 0,
-    paddingVertical: spacing.xs,
-  },
-  recipeCategory: {
-    color: colors.primary,
-    ...typography.caption,
-    letterSpacing: 1.1,
-    marginBottom: spacing.xs,
-  },
-  recipeTitle: {
-    color: colors.text,
-    ...typography.subheading,
-  },
-  recipeDescription: {
-    color: colors.muted,
-    ...typography.bodySmall,
-    marginTop: spacing.xs,
-  },
-  recipeMeta: { alignItems: "center", flexDirection: "row", marginTop: spacing.md },
-  metaText: { color: colors.muted, ...typography.caption },
-  metaDot: {
-    backgroundColor: colors.border,
-    borderRadius: 3,
-    height: 4,
-    marginHorizontal: spacing.sm,
-    width: 4,
-  },
   center: {
     alignItems: "center",
     flex: 1,
@@ -526,7 +458,6 @@ const styles = StyleSheet.create({
   },
   retryText: { color: colors.surface, ...typography.labelSmall },
   alertHint: { color: colors.muted, ...typography.bodySmall },
-  itemActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
   itemAction: { alignItems: "center", borderColor: colors.border, borderRadius: 6, borderWidth: 1, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.sm },
   itemActionText: { color: colors.primary, ...typography.labelSmall },
   deleteActionText: { color: colors.danger, ...typography.labelSmall },

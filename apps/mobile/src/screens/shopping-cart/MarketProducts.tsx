@@ -1,16 +1,15 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { BadgePercent, ImageOff, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
+import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
-import { Badge, Pagination, ScreenState, styles as ui, useGridCell, useLayout } from "../notifications/ui";
+import { Badge, Pagination, ScreenState } from "../notifications/ui";
+import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inventory/inventoryApi";
 import { unitLabel } from "../inventory/catalogSuggest";
 import { shoppingUnitLabels } from "./shoppingApi";
 import { addToCart, shoppingUnitFor } from "./cart";
-
-const PAGE_SIZE = 20;
 
 type Props = {
   accessToken: string | null;
@@ -35,7 +34,7 @@ export function ProductImage({ uri, style }: { uri: string | null | undefined; s
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [uri]);
   if (!uri || failed) {
-    return <View style={[local.imagePlaceholder, style]}><AppIcon icon={ImageOff} size="lg" color={colors.muted} /></View>;
+    return <ImagePlaceholder style={style} />;
   }
   return <Image source={{ uri }} onError={() => setFailed(true)} resizeMode="cover" style={[local.image, style]} accessibilityIgnoresInvertColors />;
 }
@@ -55,13 +54,11 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
 }
 
 /**
- * Đi chợ: active products from Quản trị > Nguyên liệu, 20 per page, added to Giỏ hàng. The search box stays on
+ * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid (6 rows per page), added to Giỏ hàng. The search box stays on
  * top (like Kho); the grid scrolls below it as plain mapped Views.
  */
 export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
-  const layout = useLayout();
-  const columns = layout.columns + 1; // 2 on phones, 3 on wide, 4 on extra-wide screens
-  const grid = useGridCell(columns, spacing.md);
+  const { layout, pageSize, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [page, setPage] = useState(1);
@@ -80,6 +77,14 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     return () => clearTimeout(timer);
   }, [search]);
 
+  // A different column count changes the page size: start again at page 1 so pages stay aligned.
+  const lastPageSize = useRef(pageSize);
+  useEffect(() => {
+    if (lastPageSize.current === pageSize) return;
+    lastPageSize.current = pageSize;
+    setPage(1);
+  }, [pageSize]);
+
   const lastSignal = useRef(refreshSignal);
   const loadingChange = useRef(onLoadingChange);
   loadingChange.current = onLoadingChange;
@@ -92,7 +97,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     let active = true;
     if (!background) { setLoading(true); setError(null); }
     loadingChange.current?.(true);
-    inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: PAGE_SIZE })
+    inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: pageSize })
       .then((result) => {
         if (!active) return;
         setData(result);
@@ -108,7 +113,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     return () => { active = false; };
     // `data` only decides quiet vs. visible loading; it must not trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, term, page, reloadKey, refreshSignal]);
+  }, [accessToken, term, page, pageSize, reloadKey, refreshSignal]);
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
@@ -134,7 +139,6 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   };
 
   const items = data?.items ?? [];
-  const cardWidth = grid.cellWidth ?? `${Math.floor(100 / columns) - 2}%`;
 
   return (
     <View style={local.container}>
@@ -153,30 +157,26 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
       ) : items.length === 0 ? (
         <ScreenState empty emptyText={term ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
       ) : (
-        <View onLayout={grid.onLayout} style={[local.grid, { gap: grid.gap }, loading && local.dimmed]}>
-          {items.map((product) => (
-            <Pressable
-              key={product.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${product.name}, ${unitText(product)}${product.price !== null ? `, ${formatVnd(product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price)}` : ""}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
-              onPress={() => openProduct(product)}
-              style={({ pressed }) => [local.card, { width: cardWidth }, pressed && ui.pressed]}
-            >
-              <View>
-                <ProductImage uri={product.imageUrl} style={local.cardImage} />
-                {product.discountPercent !== null && (
-                  <View style={local.badgeSpot}>
-                    <Badge label={`Giảm ${product.discountPercent}%`} color={colors.success} background={colors.successSoft} />
-                  </View>
-                )}
-              </View>
-              <View style={local.cardBody}>
-                <Text style={local.name} numberOfLines={2}>{product.name}</Text>
-                <Text style={local.unit} numberOfLines={1}>{unitText(product)}</Text>
-                <PriceLine product={product} />
-              </View>
-            </Pressable>
-          ))}
+        <View onLayout={onGridLayout} style={[local.grid, { gap }, loading && local.dimmed]}>
+          {items.map((product) => {
+            const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
+            return (
+              <ProductCard
+                key={product.id}
+                width={cardWidth}
+                accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
+                onPress={() => openProduct(product)}
+                image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
+                pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
+                name={product.name}
+                subtitle={unitText(product)}
+                footer={<CardPrice
+                  price={product.price !== null ? formatVnd(product.price) : null}
+                  discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
+                />}
+              />
+            );
+          })}
         </View>
       )}
       {data && <Pagination page={data.page} totalPages={data.totalPages} onChange={setPage} disabled={loading} />}
@@ -253,13 +253,7 @@ const local = StyleSheet.create({
   buttonContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   grid: { flexDirection: "row", flexWrap: "wrap" },
   dimmed: { opacity: 0.6 },
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
-  cardImage: { aspectRatio: 1, width: "100%" },
-  badgeSpot: { left: spacing.xs, position: "absolute", top: spacing.xs },
-  cardBody: { gap: spacing.xs, padding: spacing.sm },
   image: { backgroundColor: colors.background },
-  imagePlaceholder: { alignItems: "center", backgroundColor: colors.background, justifyContent: "center" },
-  name: { ...textStyles.labelSmall },
   unit: { ...textStyles.caption },
   priceRow: { alignItems: "baseline", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   price: { ...textStyles.labelSmall, color: colors.primary },
