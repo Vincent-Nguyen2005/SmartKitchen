@@ -6,7 +6,7 @@ import { useGatewayApi } from "./useGatewayApi";
 import { AppIcon, spacing, type LucideIcon } from "../../theme";
 import { useSession } from "../../services/session";
 import { inventoryApi, type ExpiringInventoryItem } from "../inventory/inventoryApi";
-import { colors, RemoteImage, ScreenState, styles, useLayout } from "./ui";
+import { colors, EmptyState, RemoteImage, ScreenState, styles, useLayout } from "./ui";
 import { discountLabel, itemName, PromotionDetail, type Promotion } from "./PromotionDetail";
 
 export type AppNotification = {
@@ -217,11 +217,11 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
           data={entries}
           keyExtractor={(entry) => entry.key}
           renderItem={renderEntry}
-          contentContainerStyle={[local.listContent, isWide && local.wide]}
+          contentContainerStyle={[local.listContent, isWide && local.wide, entries.length === 0 && local.listFill]}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} colors={[colors.primary]} />}
           onEndReachedThreshold={0.4}
           onEndReached={() => void loadMore()}
-          ListEmptyComponent={<ScreenState empty emptyIcon={Inbox} emptyText="Bạn chưa có thông báo nào." />}
+          ListEmptyComponent={<EmptyState fill icon={Inbox} text="Bạn chưa có thông báo nào." />}
           ListFooterComponent={loadingMore ? <ScreenState loading /> : error ? <Text style={styles.errorText}>{error}</Text> : undefined}
         />
       )}
@@ -264,6 +264,7 @@ function FeedCard({ icon, meta, title, body, unread = false, accessibilityLabel,
 
 const local = StyleSheet.create({
   listContent: { gap: spacing.md, paddingBottom: spacing.xl, paddingTop: spacing.md },
+  listFill: { flexGrow: 1 },
   wide: { alignSelf: "center", maxWidth: 920, width: "100%" },
   card: { flexDirection: "row", gap: spacing.md },
   iconWrap: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 999, height: 40, justifyContent: "center", overflow: "hidden", width: 40 },

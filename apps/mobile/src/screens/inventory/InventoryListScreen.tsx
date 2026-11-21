@@ -14,9 +14,10 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Camera, ImageMinus, Pencil, Trash2 } from "lucide-react-native";
+import { Archive, Camera, ImageMinus, Pencil, Search, Trash2 } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
+import { EmptyState } from "../notifications/ui";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
@@ -285,7 +286,7 @@ export default function InventoryListScreen({
 
       <ScrollView
         style={styles.resultsScroller}
-        contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}
+        contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent, !loading && !error && filteredItems.length === 0 && styles.listFill]}
         keyboardShouldPersistTaps="handled"
       >
         {loading ? (
@@ -310,9 +311,14 @@ export default function InventoryListScreen({
           </View>
         ) : (
           <>
-            <Text style={styles.resultCount}>{filteredItems.length} NGUYÊN LIỆU</Text>
             {filteredItems.length === 0 && (
-              <Text style={styles.emptyText}>{family ? "Chưa có nguyên liệu nào." : "Tạo hoặc tham gia gia đình để bắt đầu quản lý kho."}</Text>
+              !family ? (
+                <EmptyState fill icon={Archive} text="Tạo hoặc tham gia gia đình để bắt đầu quản lý kho." />
+              ) : search.trim() && items.length > 0 ? (
+                <EmptyState fill icon={Search} text="Không tìm thấy nguyên liệu phù hợp." />
+              ) : (
+                <EmptyState fill icon={Archive} text="Kho chưa có nguyên liệu nào." />
+              )
             )}
             {filteredItems.map((item, index) => {
             const isNearExpiry = item.status === "NEAR_EXPIRY";
@@ -436,12 +442,7 @@ const styles = StyleSheet.create({
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
   listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: SEARCH_CONTENT_GAP, width: "100%" },
   resultsScroller: { flex: 1 },
-  resultCount: {
-    color: colors.muted,
-    ...typography.caption,
-    letterSpacing: 1.2,
-    marginBottom: spacing.xs,
-  },
+  listFill: { flexGrow: 1 },
   recipeRow: {
     borderBottomColor: colors.border,
     borderBottomWidth: 1,
@@ -501,11 +502,6 @@ const styles = StyleSheet.create({
     height: 4,
     marginHorizontal: spacing.sm,
     width: 4,
-  },
-  emptyText: {
-    color: colors.muted,
-    ...typography.body,
-    paddingVertical: spacing.xl,
   },
   center: {
     alignItems: "center",
