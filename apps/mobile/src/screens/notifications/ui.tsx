@@ -61,6 +61,23 @@ type StateProps = {
   onRetry?: () => void;
 };
 
+type EmptyStateProps = {
+  text: string;
+  icon?: LucideIcon;
+  /** Grow into the free space so the icon and text sit in its vertical centre (parent content needs flexGrow). */
+  fill?: boolean;
+};
+
+/** Shared empty state (Thông báo, Kho, Đi chợ): a faded centered icon with the text below. */
+export function EmptyState({ text, icon = Inbox, fill = false }: EmptyStateProps): React.JSX.Element {
+  return (
+    <View style={[styles.state, fill && styles.stateFill]}>
+      <AppIcon icon={icon} size="xl" color={colors.muted} />
+      <Text style={styles.mutedText}>{text}</Text>
+    </View>
+  );
+}
+
 /** Loading / error (with retry) / empty states. Renders nothing when there is content to show. */
 export function ScreenState({ loading, error, empty, emptyText = "Chưa có dữ liệu.", emptyIcon = Inbox, onRetry }: StateProps): React.JSX.Element | null {
   if (loading) {
@@ -80,14 +97,7 @@ export function ScreenState({ loading, error, empty, emptyText = "Chưa có dữ
       </View>
     );
   }
-  if (empty) {
-    return (
-      <View style={styles.state}>
-        <AppIcon icon={emptyIcon} size="xl" color={colors.muted} />
-        <Text style={styles.mutedText}>{emptyText}</Text>
-      </View>
-    );
-  }
+  if (empty) return <EmptyState icon={emptyIcon} text={emptyText} />;
   return null;
 }
 
@@ -433,6 +443,7 @@ export function PageTitle({ children }: { children: string }): React.JSX.Element
 export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   state: { alignItems: "center", gap: spacing.md, justifyContent: "center", padding: spacing.xl, minHeight: 160 },
+  stateFill: { flexGrow: 1 },
   errorText: { ...typography.body, color: colors.danger, textAlign: "center" },
   mutedText: { ...typography.bodySmall, color: colors.muted, textAlign: "center" },
   // Typography: the shared scale from src/theme/typography.ts (no hard-coded font sizes, minimum 12).
