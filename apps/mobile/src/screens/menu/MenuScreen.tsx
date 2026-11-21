@@ -3,33 +3,26 @@ import {
   ActivityIndicator,
   AppState,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
-import { ChefHat, ChevronLeft, ChevronRight, RefreshCw, ShoppingCart } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react-native";
 import { AppIcon, AppText, breakpoints, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
-import { RemoteImage } from "../notifications/ui";
-import { addMissingToCart } from "../shopping-cart/addMissing";
+import { ProductImage } from "../shopping-cart/MarketProducts";
+import { CardCaption, cardImageStyle, ProductCard, useCardGrid } from "../../components/ProductCard";
 import CookingMode from "../recipes/CookingMode";
-import AiSuggestionsSection from "../recipes/AiSuggestions";
-import type { Recipe } from "../recipes/recipeTypes";
+import RecipeDetail from "../recipes/RecipeDetail";
+import { minutesText, totalMinutes, type Recipe } from "../recipes/recipeTypes";
 import { addDays, dayKey, keyToDate, monthGridDays, MonthCalendar, startOfWeek, weekday, WeekTimetable, type MealType } from "./MenuCalendar";
 
 type PeriodType = "DAY" | "WEEK" | "MONTH";
-type MissingIngredient = { name: string; quantity: number | null; unit: string | null };
-/** Saved by menu-service with each suggested dish (null for manual items and older menus). */
-type DishDetails = {
-  imageUrl?: string | null;
-  availableIngredients?: string[];
-  missingIngredients?: MissingIngredient[];
-  availableCount?: number;
-  totalCount?: number;
-  reason?: string;
-};
+/** Saved by menu-service with each suggested dish (only the image is shown here now). */
+type DishDetails = { imageUrl?: string | null };
 type MenuItem = {
   id: string;
   recipeId?: string | null;
@@ -45,6 +38,8 @@ type MenuRecord = {
   periodType: PeriodType;
   startDate: string;
   endDate: string;
+  /** Hash of the Kho snapshot the suggestions used (null for older or manual menus). */
+  khoHash?: string | null;
   items: MenuItem[];
 };
 type Props = Readonly<{
@@ -70,10 +65,12 @@ const mealLabels: Record<MealType, string> = {
   SNACK: "Ăn nhẹ",
 };
 const mealOrder: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
+const DAY_MEALS: MealType[] = ["BREAKFAST", "LUNCH", "DINNER"];
 
 /**
- * Days (family + date) already auto-suggested in this app session. Module level so leaving and reopening the tab
- * does not suggest again, and a failed request is not retried in a loop ("Làm mới theo kho" retries).
+ * Auto-suggestions already started in this app session: "family:today" (no menu yet) and
+ * "family:today:khoHash" (stale menu). Module level so reopening the tab does not suggest again, and a failed
+ * request is not retried in a loop ("Làm mới theo kho" retries).
  */
 const autoSuggested = new Set<string>();
 
@@ -96,13 +93,15 @@ function shiftPeriod(date: Date, period: PeriodType, direction: -1 | 1): Date {
   return new Date(target.getFullYear(), target.getMonth(), Math.min(date.getDate(), lastDay));
 }
 
+const ownDayMenu = (menus: MenuRecord[], key: string) => menus.find((menu) => menu.periodType === "DAY" && menu.startDate.slice(0, 10) === key) ?? null;
+
 /**
  * Dishes planned for a day: the day's own menu (Theo ngày suggestions) first, otherwise a week/month menu that
  * covers the day (those store a weekday). Newest menu wins.
  */
 function itemsForDay(menus: MenuRecord[], key: string): MenuItem[] {
   const sorted = (items: MenuItem[]) => [...items].sort((left, right) => mealOrder.indexOf(left.mealType) - mealOrder.indexOf(right.mealType));
-  const own = menus.find((menu) => menu.periodType === "DAY" && menu.startDate.slice(0, 10) === key);
+  const own = ownDayMenu(menus, key);
   if (own) return sorted(own.items);
   const covering = menus.find((menu) => menu.periodType !== "DAY" && menu.startDate.slice(0, 10) <= key && menu.endDate.slice(0, 10) >= key);
   if (!covering) return [];
@@ -110,25 +109,34 @@ function itemsForDay(menus: MenuRecord[], key: string): MenuItem[] {
   return sorted(covering.items.filter((item) => item.dayOfWeek === day));
 }
 
+/**
+ * A generated menu is stale when the Kho changed since: its stored Kho hash differs from the current one.
+ * Older generated menus without a hash (they have suggestion details) count as stale once.
+ */
+const isStale = (menu: MenuRecord, currentHash: string): boolean =>
+  menu.khoHash ? menu.khoHash !== currentHash : menu.items.some((item) => item.details != null);
+
+/** "Lịch": the family's meal calendar (Theo ngày with shared dish cards, Theo tuần timetable, Theo tháng grid). */
 export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isWide = width >= breakpoints.wide;
   const horizontalPadding = width < 360 ? spacing.sm : isWide ? spacing.xl : spacing.lg;
+  const cardGrid = useCardGrid();
   const [period, setPeriod] = useState<PeriodType>("DAY");
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [followToday, setFollowToday] = useState(true);
   const [menus, setMenus] = useState<MenuRecord[]>([]);
-  const [recipeImages, setRecipeImages] = useState<Map<string, string>>(new Map());
+  const [recipes, setRecipes] = useState<Map<string, Recipe>>(new Map());
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [addingItemId, setAddingItemId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState<string | null>(null);
+  const [detail, setDetail] = useState<Recipe | null>(null);
   const [cooking, setCooking] = useState<Recipe | null>(null);
-  const [openingRecipeId, setOpeningRecipeId] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadId = useRef(0);
+  const checkedMenus = useRef(new Set<string>());
   const api = createGatewayClient(accessToken);
   const { from, to } = viewRange(period, selectedDate);
   const todayKey = dayKey(new Date());
@@ -170,15 +178,12 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
     void loadMenus();
   }, [accessToken, from, to]);
 
-  // Current dish images set by the admin (Quản trị > Món ăn); the image saved with the suggestion is the fallback.
+  // Active recipes (image, total time, steps) for the dish cards and the detail screen.
   useEffect(() => {
     if (!accessToken) return;
     let active = true;
-    api.get<Array<{ id: string; imageUrl?: string | null }>>("/api/recipes?active=true")
-      .then((recipes) => {
-        if (!active || !Array.isArray(recipes)) return;
-        setRecipeImages(new Map(recipes.flatMap((recipe) => (recipe.imageUrl ? [[recipe.id, recipe.imageUrl] as [string, string]] : []))));
-      })
+    api.get<Recipe[]>("/api/recipes?active=true")
+      .then((list) => { if (active && Array.isArray(list)) setRecipes(new Map(list.map((recipe) => [recipe.id, recipe]))); })
       .catch(() => undefined);
     return () => { active = false; };
   }, [accessToken]);
@@ -205,6 +210,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
         endDate: day,
         ...(familyId ? { familyId } : {}),
       });
+      checkedMenus.current.add(result.id);
       setMenus((current) => [
         result,
         ...current.filter((entry) => entry.id !== result.id && !(entry.periodType === "DAY" && entry.startDate.slice(0, 10) === result.startDate.slice(0, 10))),
@@ -217,39 +223,18 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
     }
   };
 
-  const addMissing = async (item: MenuItem): Promise<void> => {
-    const missing = item.details?.missingIngredients ?? [];
-    if (!accessToken || addingItemId || missing.length === 0) return;
-    if (!familyId) {
-      showToast("Hãy tham gia gia đình để dùng Giỏ hàng");
+  /** Opens the shared recipe detail for a planned dish (from the loaded recipes, else loaded by id). */
+  const openDish = async (item: MenuItem): Promise<void> => {
+    if (!item.recipeId) {
+      showToast("Món này chưa có công thức.");
       return;
     }
-    setAddingItemId(item.id);
-    let added = 0;
-    for (const ingredient of missing) {
-      try {
-        await addMissingToCart(accessToken, familyId, ingredient);
-        added += 1;
-      } catch {
-        // Keep going; the toast says how many were added.
-      }
-    }
-    setAddingItemId(null);
-    showToast(added === missing.length
-      ? `Đã thêm ${added} nguyên liệu vào giỏ hàng`
-      : `Đã thêm ${added}/${missing.length} nguyên liệu. Hãy thử lại phần còn lại.`);
-  };
-
-  /** "Nấu món này": loads the dish's recipe (with steps) and opens the cooking mode. */
-  const cookDish = async (item: MenuItem): Promise<void> => {
-    if (!item.recipeId || openingRecipeId) return;
-    setOpeningRecipeId(item.id);
+    const known = recipes.get(item.recipeId);
+    if (known) { setDetail(known); return; }
     try {
-      setCooking(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`));
+      setDetail(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`));
     } catch (requestError) {
       showToast(errorMessage(requestError));
-    } finally {
-      setOpeningRecipeId(null);
     }
   };
 
@@ -260,15 +245,34 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
   };
 
   const dayItems = itemsForDay(menus, selectedKey);
+  const todayMenu = selectedKey === todayKey ? ownDayMenu(menus, todayKey) : null;
+  const canAutoSuggest = period === "DAY" && selectedKey === todayKey && !loading && !loadFailed && !busy && !!accessToken;
 
   // Today only (never past or future days): suggest once per family and day when it has no menu, never in a loop.
   useEffect(() => {
-    if (period !== "DAY" || selectedKey !== todayKey || loading || loadFailed || busy || dayItems.length > 0 || !accessToken) return;
+    if (!canAutoSuggest || dayItems.length > 0) return;
     const key = `${familyId ?? "no-family"}:${todayKey}`;
     if (autoSuggested.has(key)) return;
     autoSuggested.add(key);
     void suggest({ announce: false });
-  }, [period, selectedKey, todayKey, loading, loadFailed, busy, dayItems.length, accessToken, familyId]);
+  }, [canAutoSuggest, dayItems.length, familyId, todayKey]);
+
+  // Today's menu was made from another Kho: regenerate once per Kho change (compares the stored and current hash).
+  useEffect(() => {
+    if (!canAutoSuggest || !todayMenu || !familyId || checkedMenus.current.has(todayMenu.id)) return;
+    checkedMenus.current.add(todayMenu.id);
+    let active = true;
+    api.get<{ khoHash: string }>(`/api/menu/kho-hash?familyId=${encodeURIComponent(familyId)}`)
+      .then(({ khoHash }) => {
+        if (!active || !isStale(todayMenu, khoHash)) return;
+        const key = `${familyId}:${todayKey}:${khoHash}`;
+        if (autoSuggested.has(key)) return;
+        autoSuggested.add(key);
+        void suggest({ announce: false });
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [canAutoSuggest, todayMenu?.id, familyId, todayKey]);
 
   const rangeLabel = period === "DAY"
     ? formatDay(selectedDate)
@@ -277,60 +281,21 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
       : `Tháng ${selectedDate.getMonth() + 1}/${selectedDate.getFullYear()}`;
   const steps = stepLabels[period];
 
-  const renderDish = (item: MenuItem) => {
-    const details = item.details ?? null;
-    const missing = details?.missingIngredients ?? [];
-    const hasCounts = typeof details?.availableCount === "number" && typeof details?.totalCount === "number" && details.totalCount > 0;
-    // The counts have their own line; the reason shows the rest (e.g. "Dùng trứng sắp hết hạn").
-    const reason = (details?.reason ?? "").split(" · ").filter((part) => !part.startsWith("Có sẵn")).join(" · ");
-    const imageUrl = (item.recipeId ? recipeImages.get(item.recipeId) : undefined) ?? details?.imageUrl ?? null;
-    const adding = addingItemId === item.id;
+  const dishCard = (item: MenuItem) => {
+    const recipe = item.recipeId ? recipes.get(item.recipeId) : undefined;
+    const minutes = recipe ? totalMinutes(recipe) : null;
+    const kcal = item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`;
     return (
-      <View key={item.id} style={styles.dishCard}>
-        <View style={styles.dishRow}>
-          <RemoteImage uri={imageUrl} size={64} accessibilityLabel={item.dishName} />
-          <View style={styles.dishText}>
-            <AppText variant="labelSmall" color={colors.muted}>{mealLabels[item.mealType]}</AppText>
-            <AppText variant="subheading">{item.dishName}</AppText>
-            {hasCounts && (
-              <AppText variant="bodySmall" color={colors.primary}>Có sẵn {details?.availableCount}/{details?.totalCount} nguyên liệu</AppText>
-            )}
-            {!!reason && <AppText variant="bodySmall" color={colors.muted}>{reason}</AppText>}
-            {missing.length > 0 && (
-              <AppText variant="bodySmall" color={colors.muted}>Thiếu: {missing.map((ingredient) => ingredient.name.toLocaleLowerCase("vi")).join(", ")}</AppText>
-            )}
-          </View>
-          <AppText variant="labelSmall" color={colors.primary}>
-            {item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`}
-          </AppText>
-        </View>
-        {!!item.recipeId && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Nấu món này: ${item.dishName}`}
-            accessibilityState={{ busy: openingRecipeId === item.id, disabled: openingRecipeId !== null }}
-            disabled={openingRecipeId !== null}
-            onPress={() => void cookDish(item)}
-            style={[styles.cookButton, openingRecipeId !== null && styles.disabled]}
-          >
-            {openingRecipeId === item.id ? <ActivityIndicator color={colors.primaryText} /> : <AppIcon icon={ChefHat} size="sm" color={colors.primaryText} />}
-            <AppText variant="labelSmall" color={colors.primaryText}>Nấu món này</AppText>
-          </Pressable>
-        )}
-        {missing.length > 0 && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Thêm ${missing.length} nguyên liệu còn thiếu của ${item.dishName} vào giỏ hàng`}
-            accessibilityState={{ busy: adding, disabled: addingItemId !== null }}
-            disabled={addingItemId !== null}
-            onPress={() => void addMissing(item)}
-            style={[styles.cartButton, addingItemId !== null && styles.disabled]}
-          >
-            {adding ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={ShoppingCart} size="sm" color={colors.primary} />}
-            <AppText variant="labelSmall" color={colors.primary}>Thêm phần thiếu vào giỏ hàng</AppText>
-          </Pressable>
-        )}
-      </View>
+      <ProductCard
+        key={item.id}
+        width={cardGrid.cardWidth}
+        accessibilityLabel={`${mealLabels[item.mealType]}: ${item.dishName}, ${kcal}${minutes !== null ? `, ${minutesText(minutes)}` : ""}. Mở công thức`}
+        onPress={() => void openDish(item)}
+        image={<ProductImage uri={recipe?.imageUrl ?? item.details?.imageUrl ?? null} style={cardImageStyle} />}
+        name={item.dishName}
+        subtitle={kcal}
+        footer={minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
+      />
     );
   };
 
@@ -354,21 +319,33 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
         <AppText variant="bodySmall" color={colors.muted}>Đang gợi ý món theo Kho</AppText>
       </View>
     );
-  } else if (dayItems.length === 0) {
+  } else {
+    const meals = dayItems.some((item) => item.mealType === "SNACK") ? [...DAY_MEALS, "SNACK" as MealType] : DAY_MEALS;
     scheduleContent = (
-      <View style={styles.emptyState}>
-        <AppText variant="subheading">Chưa có thực đơn</AppText>
-        <AppText variant="bodySmall" color={colors.muted}>Bấm "Làm mới theo kho" để gợi ý món từ nguyên liệu đang có.</AppText>
+      <View style={styles.meals}>
+        {meals.map((meal) => {
+          const items = dayItems.filter((item) => item.mealType === meal);
+          return (
+            <View key={meal} style={styles.mealSection}>
+              <Text style={styles.mealTitle} accessibilityRole="header">{mealLabels[meal]}</Text>
+              {items.length === 0 ? (
+                <Text style={styles.muted}>Chưa có món</Text>
+              ) : (
+                <View onLayout={cardGrid.onLayout} style={[styles.grid, { gap: cardGrid.gap }]}>{items.map(dishCard)}</View>
+              )}
+            </View>
+          );
+        })}
       </View>
     );
-  } else {
-    scheduleContent = <View style={styles.mealList}>{dayItems.map(renderDish)}</View>;
   }
 
-  const disabled = !accessToken || busy;
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.content, { maxWidth: isWide ? breakpoints.extraWide : undefined, paddingHorizontal: horizontalPadding }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { maxWidth: isWide ? breakpoints.extraWide : undefined, paddingHorizontal: horizontalPadding }]}
+        refreshControl={<RefreshControl refreshing={loading && menus.length > 0} onRefresh={() => void loadMenus()} tintColor={colors.primary} />}
+      >
         <View accessibilityRole="tablist" style={styles.periodTabs}>
           {periods.map((option) => {
             const selected = period === option.value;
@@ -400,32 +377,24 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
             <AppText variant="labelSmall" color={colors.primary}>{steps.next}</AppText>
             <AppIcon icon={ChevronRight} size="sm" color={colors.primary} />
           </Pressable>
+          {period === "DAY" && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Làm mới theo kho: gợi ý lại món của ngày này từ nguyên liệu trong Kho"
+              accessibilityState={{ busy, disabled: !accessToken || busy }}
+              disabled={!accessToken || busy}
+              onPress={() => void suggest({ announce: true })}
+              style={[styles.refreshButton, (!accessToken || busy) && styles.disabled]}
+            >
+              {busy ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={RefreshCw} size="sm" color={colors.primary} />}
+            </Pressable>
+          )}
         </View>
 
-        <View style={styles.sectionHeading}>
-          <AppText variant="heading">Lịch món ăn</AppText>
-          <Pressable accessibilityRole="button" accessibilityLabel="Tải lại thực đơn" onPress={() => void loadMenus()} style={styles.reloadButton}>
-            {loading ? <ActivityIndicator color={colors.muted} /> : <AppIcon icon={RefreshCw} size="sm" color={colors.muted} />}
-          </Pressable>
-        </View>
         {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger} style={styles.message}>{error}</AppText>}
         {scheduleContent}
-
-        {period === "DAY" && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Làm mới theo kho: gợi ý lại món của ngày này từ nguyên liệu trong Kho"
-            accessibilityState={{ busy, disabled }}
-            disabled={disabled}
-            onPress={() => void suggest({ announce: true })}
-            style={[styles.primaryAction, disabled && styles.disabled]}
-          >
-            {busy ? <ActivityIndicator color={colors.surface} /> : <AppIcon icon={RefreshCw} size="sm" color={colors.surface} />}
-            <AppText variant="labelSmall" color={colors.surface}>Làm mới theo kho</AppText>
-          </Pressable>
-        )}
-        {period === "DAY" && <AiSuggestionsSection />}
       </ScrollView>
+      <RecipeDetail recipe={detail} onClose={() => setDetail(null)} onStartCooking={(recipe) => { setDetail(null); setCooking(recipe); }} />
       <CookingMode recipe={cooking} onClose={() => setCooking(null)} />
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>
@@ -446,19 +415,15 @@ const styles = StyleSheet.create({
   navigationButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, minWidth: 62 },
   rangeButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },
   rangeText: { textAlign: "center" },
-  primaryAction: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", marginBottom: spacing.lg, marginTop: spacing.lg, minHeight: touchTarget + 4, paddingHorizontal: spacing.md },
+  refreshButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.pill, height: touchTarget, justifyContent: "center", width: touchTarget },
   disabled: { opacity: 0.55 },
   message: { marginBottom: spacing.md },
-  sectionHeading: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm, paddingBottom: spacing.sm },
-  reloadButton: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   loading: { alignItems: "center", flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xl },
-  emptyState: { borderBottomColor: colors.border, borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.xl },
-  mealList: { gap: spacing.md },
-  dishCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
-  dishRow: { alignItems: "flex-start", flexDirection: "row", gap: spacing.md },
-  dishText: { flex: 1, gap: spacing.xs },
-  cookButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  cartButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  meals: { gap: spacing.lg },
+  mealSection: { gap: spacing.sm },
+  mealTitle: { ...textStyles.subheading },
+  muted: { ...textStyles.bodySmall, color: colors.muted },
+  grid: { flexDirection: "row", flexWrap: "wrap" },
   toastWrap: { alignItems: "center", bottom: spacing.xl + 64, left: spacing.lg, position: "absolute", right: spacing.lg },
   toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
 });

@@ -6,6 +6,7 @@ import {
   deleteMenuController,
   generateMenuController,
   getMenuController,
+  khoHashController,
   listMenusController,
 } from "../controllers/menu.controller";
 import { aiSuggestionsController, saveAiDishController, savedAiRecipesController } from "../controllers/ai.controller";
@@ -16,6 +17,7 @@ const router = Router();
 router.get("/ai-suggestions", aiSuggestionsController);
 router.post("/ai-suggestions/:dishId/save", saveAiDishController);
 router.get("/ai-recipes", savedAiRecipesController);
+router.get("/kho-hash", khoHashController);
 router.post("/generate", generateMenuController);
 router.post("/auto-refresh", autoRefreshController);
 router.post("/checkout", checkoutController);

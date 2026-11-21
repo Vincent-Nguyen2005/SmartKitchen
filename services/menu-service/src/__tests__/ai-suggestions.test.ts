@@ -8,7 +8,7 @@ import { vnDay, type KhoItem } from "../services/kho-suggest";
 const KEY = "test-secret-key-0123456789";
 const config = { apiKey: KEY, model: "some-flash-lite-model" };
 const kho = (names: string[]): KhoItem[] => names.map((name) => ({ name, quantity: 2, unit: "PIECE", expiryDate: null }));
-const dish = (name: string): AiDish => ({ id: `x-${name}`, name, description: "", servings: 2, totalMinutes: 20, ingredients: [{ name: "Trứng gà", quantity: 2, unit: "PIECE", fromKho: true }], steps: [{ order: 1, instruction: "Nấu", durationSeconds: 60, ingredients: [] }] });
+const dish = (name: string): AiDish => ({ id: `x-${name}`, name, description: "", mealType: "trua", servings: 2, totalMinutes: 20, ingredients: [{ name: "Trứng gà", quantity: 2, unit: "PIECE", fromKho: true }], steps: [{ order: 1, instruction: "Nấu", durationSeconds: 60, ingredients: [] }] });
 
 const validJson = JSON.stringify({
   dishes: [
@@ -212,4 +212,19 @@ test("model errors keep the previous dishes with status error, are not retried f
   }
   assert.ok(captured.length > 0);
   assert.ok(captured.every((line) => !line.includes(KEY)));
+});
+
+test("mealType: sang / trua / toi kept (case-insensitive), anything else becomes null (Món khác); schema requires it", async () => {
+  const { responseSchema } = await import("../services/ai/gemini");
+  const base = { servings: 2, totalMinutes: 10, ingredients: [{ name: "Trứng", fromKho: true }], steps: [{ instruction: "Nấu" }] };
+  const text = JSON.stringify({ dishes: [
+    { ...base, name: "A", mealType: "sang" },
+    { ...base, name: "B", mealType: " Toi " },
+    { ...base, name: "C", mealType: "brunch" },
+    { ...base, name: "D" },
+  ] });
+  assert.deepEqual(parseDishes(text, snapshot, "x").map((entry) => [entry.name, entry.mealType]), [["A", "sang"], ["B", "toi"], ["C", null]]);
+  const items = responseSchema.properties.dishes.items;
+  assert.deepEqual([...items.properties.mealType.enum], ["sang", "trua", "toi"]);
+  assert.ok((items.required as readonly string[]).includes("mealType"));
 });

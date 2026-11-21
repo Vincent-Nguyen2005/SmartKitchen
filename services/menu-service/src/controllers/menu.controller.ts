@@ -3,6 +3,7 @@ import axios from "axios";
 import { Request, Response } from "express";
 import { z } from "zod";
 import {
+  currentKhoHash,
   autoRefreshMenu,
   createManualMenu,
   deleteMenu,
@@ -140,6 +141,18 @@ export async function deleteMenuController(request: Request, response: Response)
       return;
     }
     response.status(204).end();
+  } catch (error) {
+    handleError(error, response);
+  }
+}
+
+/** GET /kho-hash?familyId: the current Kho snapshot hash, to tell whether today's menu is stale. */
+export async function khoHashController(request: Request, response: Response): Promise<void> {
+  try {
+    const userId = authenticatedUserId(request, response);
+    if (!userId) return;
+    const { familyId } = z.object({ familyId: z.string().uuid() }).parse(request.query);
+    response.json({ khoHash: await currentKhoHash(familyId, request.header("authorization") ?? undefined) });
   } catch (error) {
     handleError(error, response);
   }

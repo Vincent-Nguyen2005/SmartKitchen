@@ -9,6 +9,7 @@ import {
   usableKho,
   vnDay,
 } from "./kho-suggest";
+import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
 
 const prisma = new PrismaClient();
 
@@ -367,6 +368,9 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
       : input.familyId ? getKhoItems(input.familyId, input.authorization) : Promise.resolve([]),
   ]);
   const kho = usableKho(khoItems, today);
+  // Hash of the Kho snapshot these suggestions used (only when a Kho was read); the app compares it with the
+  // current Kho hash to regenerate a stale menu for today.
+  const khoHash = input.familyId || input.inventoryItems !== undefined ? snapshotHash(khoSnapshot(khoItems, today)) : null;
   // Constraints from the request (avoid / required ingredients, diets) still filter the pool.
   const pool = recipes.filter((recipe) => {
     const avoid = readStringList(constraints.avoidIngredients);
@@ -428,6 +432,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
   const data = {
     userId: input.userId,
     familyId: input.familyId ?? null,
+    khoHash,
     title,
     periodType: input.periodType,
     startDate,
@@ -452,6 +457,11 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
       persisted: false,
     };
   }
+}
+
+/** Hash of the family's current Kho (same snapshot hash that generateMenu stores on the menu). */
+export async function currentKhoHash(familyId: string, authorization?: string): Promise<string> {
+  return snapshotHash(khoSnapshot(await getKhoItems(familyId, authorization)));
 }
 
 export function createManualMenu(userId: string, input: ManualMenuInput, client: PrismaClient = prisma) {

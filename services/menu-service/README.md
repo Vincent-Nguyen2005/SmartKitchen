@@ -34,6 +34,12 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
 - **Storage:** the latest result per family is kept in `AiSuggestion` (dishes, Kho hash, generatedAt, daily count). Pending debounces live in memory, so a restart just reschedules on the next read.
 - **Saved dishes:** `POST /ai-suggestions/:dishId/save { familyId }` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes?familyId=` lists them. Both check membership with family-service.
 
+## Stale menus
+
+Generated menus store `khoHash`, the same Kho snapshot hash the AI suggestions use. It's null when no Kho was read. `GET /kho-hash?familyId=` returns the current hash; the app regenerates today's menu when the two differ.
+
+AI dishes also carry `mealType` (`sang`, `trua` or `toi`; anything else becomes null, shown as "Món khác").
+
 ## Listing menus
 
 `GET /` (gateway: `/api/menu`) returns the user's menus. Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.

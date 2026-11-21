@@ -12,7 +12,13 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 - **Screen:** stays awake while cooking (expo-keep-awake, which ships with expo).
 - **Leaving:** asks for confirmation while a timer runs.
 
-## Món gợi ý từ Kho
+## Nấu ăn grouped by meal
+
+- **Sections:** Bữa sáng, Bữa trưa, Bữa tối, then Món khác for dishes with no meal type. A dish with several meal types appears in each matching section.
+- **AI dishes:** AI suggestions (by their `mealType`: sang / trua / toi) and saved AI dishes join those sections with an "AI" pill. The disclaimer shows once at the top whenever an AI dish is visible.
+- **Search and empty states:** search filters every section, empty sections are hidden, and the shared EmptyState shows when nothing matches.
+
+## Món gợi ý từ Kho (earlier notes; now merged into the meal sections)
 
 - **Where:** `AiSuggestions.tsx` is shown in Thực đơn › Theo ngày and in Nấu ăn (Nấu ăn also lists "Món AI đã lưu"). There's no button: it loads `GET /api/menus/ai-suggestions` whenever the tab opens, so a Kho change made in the app shows up when you come back.
 - **While generating:** it shows "Đang chuẩn bị gợi ý..." and polls every 10 s for up to 2 minutes.

@@ -8,6 +8,9 @@ import { sameIngredient } from "../kho-suggest";
 
 export const UNIT_CODES = ["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"] as const;
 export const MAX_DISHES = 3;
+/** Meal of an AI dish: sáng / trưa / tối (null = "Món khác"). */
+export const MEAL_TYPES = ["sang", "trua", "toi"] as const;
+export type AiMealType = (typeof MEAL_TYPES)[number];
 export const MAX_STEPS = 15;
 export const MAX_STEP_SECONDS = 7200;
 const TIMEOUT_MS = 20_000;
@@ -19,6 +22,7 @@ export type AiDish = {
   id: string;
   name: string;
   description: string;
+  mealType: AiMealType | null;
   servings: number;
   totalMinutes: number;
   ingredients: AiIngredient[];
@@ -52,6 +56,7 @@ export const responseSchema = {
         properties: {
           name: { type: "STRING" },
           description: { type: "STRING" },
+          mealType: { type: "STRING", enum: [...MEAL_TYPES] },
           servings: { type: "INTEGER" },
           totalMinutes: { type: "INTEGER" },
           ingredients: {
@@ -81,7 +86,7 @@ export const responseSchema = {
             },
           },
         },
-        required: ["name", "servings", "totalMinutes", "ingredients", "steps"],
+        required: ["name", "mealType", "servings", "totalMinutes", "ingredients", "steps"],
       },
     },
   },
@@ -98,6 +103,7 @@ export function buildPrompt(kho: KhoSnapshotItem[]): string {
     "Ưu tiên dùng các nguyên liệu sắp hết hạn và dùng càng nhiều nguyên liệu trong kho càng tốt.",
     "Có thể thêm vài nguyên liệu thông dụng không có trong kho (đánh dấu fromKho=false). Không cần liệt kê muối, đường, nước mắm, dầu ăn.",
     `Đơn vị chỉ dùng một trong: ${UNIT_CODES.join(", ")}.`,
+    "mealType là bữa phù hợp nhất: sang (bữa sáng), trua (bữa trưa) hoặc toi (bữa tối).",
     `Mỗi món tối đa ${MAX_STEPS} bước, viết bằng tiếng Việt, ngắn gọn. durationSeconds là thời gian chờ/nấu của bước (null nếu không cần hẹn giờ). ingredients của bước là tên nguyên liệu cho vào ở bước đó.`,
     "Kho hiện có:",
     ...lines,
@@ -110,6 +116,7 @@ const nonEmpty = z.string().trim().min(1);
 const rawDishSchema = z.object({
   name: nonEmpty.max(120),
   description: z.string().trim().max(500).optional().default(""),
+  mealType: z.unknown().optional(),
   servings: z.number().finite(),
   totalMinutes: z.number().finite(),
   ingredients: z.array(z.object({
@@ -166,6 +173,10 @@ export function parseDishes(text: string, kho: KhoSnapshotItem[], idPrefix: stri
       id: `${idPrefix}-${dishes.length + 1}`,
       name: dish.name,
       description: dish.description,
+      // Anything other than sang / trua / toi goes to "Món khác".
+      mealType: typeof dish.mealType === "string" && (MEAL_TYPES as readonly string[]).includes(dish.mealType.trim().toLowerCase())
+        ? dish.mealType.trim().toLowerCase() as AiMealType
+        : null,
       servings: clamp(Math.round(dish.servings), 1, 10),
       totalMinutes: clamp(Math.round(dish.totalMinutes), 1, 600),
       ingredients,

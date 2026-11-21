@@ -26,6 +26,9 @@ model Menu {
   userId     String
   /// Family whose Kho the suggestions used (also scopes "dish repeated in the last 3 days").
   familyId   String?
+  /// sha256 of the Kho snapshot the suggestions used (same hash as AI suggestions). A different current hash
+  /// means today's menu is stale and the app regenerates it.
+  khoHash    String?
   title      String
   periodType PeriodType @default(WEEK)
   startDate  DateTime

@@ -30,8 +30,8 @@ export function ImagePlaceholder({ style }: { style?: object }): React.JSX.Eleme
   );
 }
 
-export type CardPillTone = "discount" | "warning" | "danger";
-const pillColors: Record<CardPillTone, string> = { discount: colors.danger, warning: colors.warning, danger: colors.danger };
+export type CardPillTone = "discount" | "warning" | "danger" | "ai";
+const pillColors: Record<CardPillTone, string> = { discount: colors.danger, warning: colors.warning, danger: colors.danger, ai: colors.primary };
 
 type Props = {
   width: DimensionValue;
