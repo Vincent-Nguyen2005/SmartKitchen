@@ -39,7 +39,7 @@ jobs:
           - package: recipe-service
             prisma_schema: services/recipe-service/prisma/schema.prisma
           - package: menu-service
-            prisma_schema: "" # chưa có model, bật lại khi owner thêm schema
+            prisma_schema: services/menu-service/prisma/schema.prisma
           - package: shopping-list-service
             prisma_schema: services/shopping-list-service/prisma/schema.prisma
           - package: payment-service
@@ -74,8 +74,8 @@ jobs:
       - name: Test with coverage
         if: matrix.run_tests == true
         run: pnpm turbo run test:coverage --filter="${{ matrix.package }}"
-      - name: Test inventory and shopping list
-        if: matrix.package == 'inventory-service' || matrix.package == 'shopping-list-service'
+      - name: Test inventory, shopping list, recipe and menu
+        if: matrix.package == 'inventory-service' || matrix.package == 'shopping-list-service' || matrix.package == 'recipe-service' || matrix.package == 'menu-service'
         run: pnpm turbo run test --filter="${{ matrix.package }}"
 
   mobile-typecheck:

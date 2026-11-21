@@ -10,6 +10,9 @@ RUN node -e "const fs=require('fs'),f='prisma/schema.prisma',b=fs.readFileSync(f
 RUN if [ -f prisma/schema.prisma ] && grep -Eq '^[[:space:]]*model[[:space:]]+[[:alnum:]_]+[[:space:]]*\{' prisma/schema.prisma; then npx prisma generate; else echo "No Prisma models found; skipping generate"; fi
 RUN npm run build
 RUN npm prune --omit=dev
+# Same pattern as nutrition/meal-diary: the Prisma 5.22.0 CLI stays in the final image (--no-save, package.json
+# and pnpm-lock.yaml unchanged) so `prisma migrate deploy` can run at start.
+RUN npm install --omit=dev --no-save --no-audit --no-fund prisma@5.22.0
 FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
@@ -17,6 +20,8 @@ RUN apk add --no-cache openssl
 COPY --chown=node:node --from=build /app/package*.json ./
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
+COPY --chown=node:node --from=build /app/prisma ./prisma
 EXPOSE 4007
 USER node
-CMD ["npm", "start"]
+# Apply pending migrations (never migrate dev / db push), then start; `exec` lets node receive SIGTERM.
+CMD ["sh", "-c", "npx --no-install prisma migrate deploy && exec node dist/index.js"]

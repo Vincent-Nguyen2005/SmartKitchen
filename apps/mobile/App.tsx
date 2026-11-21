@@ -536,7 +536,6 @@ function AppContent(): React.JSX.Element {
           <MenuScreen
             accessToken={session.accessToken}
             familyId={session.family?.id}
-            onPaymentStarted={setPaymentUrl}
           />
         )}
         {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}

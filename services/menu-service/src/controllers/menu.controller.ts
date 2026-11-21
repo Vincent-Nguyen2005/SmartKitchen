@@ -1,4 +1,4 @@
-import { MealType, PeriodType } from "@prisma/client";
+import { MealType, PeriodType } from "../../node_modules/.prisma/client-menu";
 import axios from "axios";
 import { Request, Response } from "express";
 import { z } from "zod";
@@ -20,6 +20,8 @@ export const generateSchema = z.object({
   preferences: z.record(z.unknown()).optional(),
   constraints: z.record(z.unknown()).optional(),
   recipes: z.array(z.unknown()).optional(),
+  /** Family whose Kho the suggestions use (inventory-service checks membership with the caller's token). */
+  familyId: z.string().uuid().optional(),
 });
 
 export const createMenuSchema = z.object({
@@ -75,6 +77,7 @@ export async function generateMenuController(request: Request, response: Respons
       ...input,
       periodType: input.periodType || PeriodType.WEEK,
       userId,
+      authorization: request.header("authorization") ?? undefined,
     }));
   } catch (error) {
     console.error("Generate Menu Error:", error);

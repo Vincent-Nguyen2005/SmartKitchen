@@ -27,6 +27,8 @@ export async function listRecipesController(request: Request, response: Response
     const querySchema = z.object({
       search: z.string().trim().max(160).optional(),
       mealType: z.string().trim().min(1).max(40).optional(),
+      /** active=true: only recipes that can be suggested (menu-service). */
+      active: z.enum(["true", "false"]).optional().transform((value) => value === "true"),
     });
     const query = querySchema.parse(request.query);
     response.json(await listRecipes(query));

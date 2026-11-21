@@ -117,6 +117,9 @@ services:
       PORT: 4007
       DATABASE_URL: postgres://postgres:postgres@menu-db:5432/menu_db
       PAYMENT_SERVICE_URL: http://payment-service:4009
+      # Kho suggestions read recipes and the family's Kho at request time (no depends_on, like nutrition).
+      RECIPE_SERVICE_URL: http://recipe-service:4006
+      INVENTORY_API_URL: http://inventory-service:4003
     ports: ["4007:4007"]
     depends_on: { menu-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4007/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }

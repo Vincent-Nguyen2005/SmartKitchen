@@ -18,6 +18,19 @@ model Recipe {
   tags               String[] @default([])
   preparationMinutes Int?
   servings           Int?
+  /// Structured ingredients: [{ "name": string, "quantity": number | null, "unit": string | null }].
+  /// Units are the Kho/Giỏ hàng codes (GRAM, KILOGRAM, MILLILITER, LITER, PIECE, PACK, BOTTLE, CAN, BOX).
+  /// `ingredients` keeps the plain names for older readers (mobile Công thức, nutrition-service).
+  ingredientDetails  Json?
+  imageUrl           String?
+  /// Per serving.
+  calories           Float?
+  protein            Float?
+  carbs              Float?
+  fat                Float?
+  allergens          String[] @default([])
+  contraindications  String[] @default([])
+  isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
