@@ -99,11 +99,17 @@ export async function createMenuController(request: Request, response: Response)
   }
 }
 
+const dayParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((value) => new Date(`${value}T00:00:00.000Z`));
+export const listRangeSchema = z.object({ from: dayParam.optional(), to: dayParam.optional() })
+  .refine((query) => (query.from === undefined) === (query.to === undefined), "from and to go together")
+  .refine((query) => !query.from || !query.to || (query.from <= query.to && query.to.getTime() - query.from.getTime() <= 62 * 86_400_000), "to must be on or after from, at most 62 days later");
+
 export async function listMenusController(request: Request, response: Response): Promise<void> {
   try {
     const userId = authenticatedUserId(request, response);
     if (!userId) return;
-    response.json(await listMenus(userId));
+    const { from, to } = listRangeSchema.parse(request.query);
+    response.json(await listMenus(userId, undefined, from && to ? { from, to } : undefined));
   } catch (error) {
     handleError(error, response);
   }

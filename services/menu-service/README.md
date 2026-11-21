@@ -18,6 +18,10 @@ Owner: Cuong. Responsibility: menu planning and meal schedule APIs.
 
 If recipe-service or inventory-service is down, the endpoint returns 503 with a Vietnamese message.
 
+## Listing menus
+
+`GET /` (gateway: `/api/menu`) returns the user's menus. Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.
+
 ## Database
 
 Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).

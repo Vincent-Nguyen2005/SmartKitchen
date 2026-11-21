@@ -12,6 +12,8 @@ Mounted at `/api/recipes`, at `/api/recipe` (nutrition-service) and at the root 
 
 A recipe keeps the plain `ingredients` names. It also has `ingredientDetails` (`[{ name, quantity, unit }]`, with the Kho unit codes), which menu-service matches against Kho. It has optional per-serving nutrition (`calories`, `protein`, `carbs`, `fat`), `imageUrl`, `allergens`, `contraindications` and `isActive` (default true).
 
+`imageUrl` must be an https link to a public host (no localhost, private or link-local addresses, no credentials) and at most 2048 characters. The server only stores it and never fetches it. Admins set it in Quản trị > Món ăn, and hiding a dish there sets `isActive=false` (it is never deleted).
+
 ## Database
 
 - Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).

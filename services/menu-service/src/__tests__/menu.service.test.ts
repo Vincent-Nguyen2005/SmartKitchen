@@ -199,3 +199,20 @@ test("menu create, list, find and delete use Prisma with user-scoped CRUD filter
     { where: { id: "menu-1", userId: "user-1" } },
   ]);
 });
+test("listMenus with from/to returns only menus overlapping the range; the query must be valid", async () => {
+  const { listRangeSchema } = await import("../controllers/menu.controller");
+  let args: unknown;
+  const client = { menu: { findMany: async (input: unknown) => { args = input; return []; } } } as unknown as PrismaClient;
+  const range = listRangeSchema.parse({ from: "2026-11-23", to: "2026-11-29" });
+  await listMenus("user-1", client, { from: range.from!, to: range.to! });
+  assert.deepEqual(args, {
+    where: { userId: "user-1", startDate: { lte: new Date("2026-11-29T00:00:00.000Z") }, endDate: { gte: new Date("2026-11-23T00:00:00.000Z") } },
+    include: { items: true },
+    orderBy: { createdAt: "desc" },
+  });
+  assert.equal(listRangeSchema.safeParse({ from: "2026-11-23" }).success, false);
+  assert.equal(listRangeSchema.safeParse({ from: "2026-11-29", to: "2026-11-23" }).success, false);
+  assert.equal(listRangeSchema.safeParse({ from: "2026-01-01", to: "2026-12-31" }).success, false);
+  assert.equal(listRangeSchema.safeParse({ from: "23/11/2026", to: "2026-11-29" }).success, false);
+  assert.equal(listRangeSchema.safeParse({}).success, true);
+});

@@ -10,6 +10,7 @@ import {
 import { BookOpen, Search } from "lucide-react-native";
 import { AppIcon, AppText, breakpoints, colors, radius, spacing, touchTarget } from "../../theme";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
+import { RemoteImage } from "../notifications/ui";
 
 type Recipe = {
   id: string;
@@ -20,6 +21,8 @@ type Recipe = {
   dietaryTags: string[];
   preparationMinutes?: number | null;
   servings?: number | null;
+  /** Set by the admin (Quản trị > Món ăn); the shared placeholder shows when missing or broken. */
+  imageUrl?: string | null;
 };
 
 type Props = Readonly<{ accessToken: string | null }>;
@@ -43,7 +46,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     setLoading(true);
     setError("");
     try {
-      const result = await api.get<Recipe[] | { items: Recipe[] }>("/api/recipes");
+      const result = await api.get<Recipe[] | { items: Recipe[] }>("/api/recipes?active=true");
       setRecipes(Array.isArray(result) ? result : result.items);
     } catch (requestError) {
       setError(errorMessage(requestError));
@@ -121,7 +124,10 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
         }
         renderItem={({ item }) => (
           <View style={[styles.recipeCard, columns > 1 && styles.recipeCardColumn]}>
-            <AppText variant="subheading">{item.name}</AppText>
+            <View style={styles.recipeHeader}>
+              <RemoteImage uri={item.imageUrl ?? null} size={72} accessibilityLabel={item.name} />
+              <AppText variant="subheading" style={styles.recipeName}>{item.name}</AppText>
+            </View>
             {!!item.description && (
               <AppText variant="bodySmall" color={colors.muted}>{item.description}</AppText>
             )}
@@ -153,5 +159,7 @@ const styles = StyleSheet.create({
   columns: { gap: spacing.md, justifyContent: "space-between" },
   recipeCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, marginBottom: spacing.md, padding: spacing.md },
   recipeCardColumn: { flex: 1 },
+  recipeHeader: { alignItems: "center", flexDirection: "row", gap: spacing.md },
+  recipeName: { flex: 1 },
   empty: { alignItems: "center", minHeight: 140, justifyContent: "center", padding: spacing.lg },
 });
