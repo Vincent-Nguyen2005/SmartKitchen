@@ -22,7 +22,7 @@ import { RadioDropdown } from "../../components/RadioDropdown";
 import { DateField } from "../admin/DateField";
 import { inventoryApi, type CatalogIngredient, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
-import { dayFromToday, matchCatalog, unitFromCatalog } from "./catalogSuggest";
+import { dayFromToday, matchCatalog, UNIT_LABELS, unitFromCatalog } from "./catalogSuggest";
 
 const isWeb = Platform.OS === "web";
 const UPLOAD_FAILED_NOTE = "Đã lưu, nhưng chưa tải được ảnh. Thử lại";
@@ -49,10 +49,7 @@ type ReceiptDraft = { id: string; name: string; quantity: string; unit: Inventor
 type CaptureAsset = { uri: string; base64?: string | null; mimeType?: string | null; fileName?: string | null };
 
 const units: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-const unitLabels: Record<InventoryUnit, string> = {
-  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
-  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
-};
+const unitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 
 function parseVoiceDraft(text: string): { name: string; quantity: string; unit: InventoryUnit } {
   const match = text.trim().match(/^(\d+(?:[,.]\d+)?)\s*(kg|kilogram|cân|gram|g|ml|milliliter|lít|lit|l)\s+(.+)$/i);

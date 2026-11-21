@@ -7,14 +7,13 @@ import { Camera, FileImage, ScanLine, X } from "lucide-react-native";
 import { AppIcon, colors, spacing, textStyles, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { inventoryApi, type InventoryUnit, type ReceiptMimeType } from "./inventoryApi";
+import { UNIT_LABELS } from "./catalogSuggest";
 import { parseReceiptQr } from "./receiptQr";
 
 type Draft = { id: string; name: string; quantity: string; unit: InventoryUnit; selected: boolean };
 type Props = { familyId: string | null; accessToken: string | null; onSaved: () => void; onClose: () => void };
 const units: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-const unitLabels: Record<InventoryUnit, string> = {
-  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon", GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
-};
+const unitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 
 export default function ReceiptQrCapturePanel({ familyId, accessToken, onSaved, onClose }: Props): React.JSX.Element {
   const [permission, requestPermission] = useCameraPermissions();

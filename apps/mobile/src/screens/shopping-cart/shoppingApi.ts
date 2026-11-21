@@ -1,11 +1,10 @@
 import { gatewayFetch } from "../../services/api";
+import { UNIT_LABELS } from "../inventory/catalogSuggest";
 
 export type ShoppingUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export const shoppingUnits: ShoppingUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-export const shoppingUnitLabels: Record<ShoppingUnit, string> = {
-  PIECE: "Cái", PACK: "Gói", BOX: "Hộp", BOTTLE: "Chai", CAN: "Lon",
-  GRAM: "Gram", KILOGRAM: "Kg", MILLILITER: "Ml", LITER: "Lít",
-};
+/** Same short Vietnamese labels as Kho (g, kg, ml, lít, cái/quả, ...). */
+export const shoppingUnitLabels: Record<ShoppingUnit, string> = UNIT_LABELS;
 export type ShoppingItem = {
   id: string;
   shoppingListId: string;

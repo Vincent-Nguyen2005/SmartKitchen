@@ -6,7 +6,7 @@ import { Badge, Pagination, ScreenState, Segmented, styles as ui, useGridCell, u
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inventory/inventoryApi";
-import { unitFromCatalog } from "../inventory/catalogSuggest";
+import { unitLabel } from "../inventory/catalogSuggest";
 import { shoppingUnitLabels } from "./shoppingApi";
 import { addToCart, shoppingUnitFor } from "./cart";
 
@@ -29,10 +29,7 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
 };
 
-const unitText = (product: CatalogIngredient): string => {
-  const code = unitFromCatalog(product.unit);
-  return code ? shoppingUnitLabels[code] : product.unit;
-};
+const unitText = (product: CatalogIngredient): string => unitLabel(product.unit);
 
 /** Image link set by the admin, or a neutral placeholder when there is none or it fails to load. */
 export function ProductImage({ uri, style }: { uri: string | null | undefined; style: object }): React.JSX.Element {
@@ -213,7 +210,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
               <View style={local.sheetRow}>
                 <ProductImage uri={selected.imageUrl} style={local.sheetImage} />
                 <View style={local.sheetInfo}>
-                  <Text style={local.unit}>{selected.group} · {unitText(selected)}</Text>
+                  <Text style={local.unit}>{unitText(selected)}</Text>
                   <PriceLine product={selected} />
                   {selected.discountPercent !== null && (
                     <Badge label={`Giảm ${selected.discountPercent}%${selected.promoEndDate ? ` đến ${selected.promoEndDate.split("-").reverse().join("/")}` : ""}`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />

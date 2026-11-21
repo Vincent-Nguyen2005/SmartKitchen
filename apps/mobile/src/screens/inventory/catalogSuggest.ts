@@ -28,6 +28,19 @@ const UNIT_ALIASES: Record<string, InventoryUnit> = {
   goi: "PACK", bo: "PACK", "goi / bo": "PACK", chai: "BOTTLE", lon: "CAN", hop: "BOX",
 };
 
+/** Short Vietnamese unit labels shown everywhere in the app (never the code or English). */
+export const UNIT_LABELS: Record<InventoryUnit, string> = {
+  GRAM: "g", KILOGRAM: "kg", MILLILITER: "ml", LITER: "lít",
+  PIECE: "cái/quả", PACK: "gói/bó", BOTTLE: "chai", CAN: "lon", BOX: "hộp",
+};
+
+/** Label for a unit code or an older free-text unit ("Gram", "Kg", "KILOGRAM" → "g", "kg"); unknown text as is. */
+export const unitLabel = (unit: string | null | undefined): string => {
+  if (!unit) return "";
+  const code = unitFromCatalog(unit);
+  return code ? UNIT_LABELS[code] : unit.trim();
+};
+
 /** Admin stores defaultUnit as free text: the Unit code, or an older label such as "g". */
 export const unitFromCatalog = (defaultUnit: string): InventoryUnit | null => {
   const code = defaultUnit.trim().toUpperCase();
