@@ -16,7 +16,7 @@ import { ChevronLeft, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react-nat
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
-import { normalizeVi } from "../inventory/catalogSuggest";
+import { normalizeVi, unitLabel } from "../inventory/catalogSuggest";
 import type { CatalogIngredient } from "../inventory/inventoryApi";
 import MarketProducts, { ProductImage } from "./MarketProducts";
 import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
@@ -208,7 +208,7 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
   const renderLine = (item: ShoppingItem) => {
     const price = unitPriceOf(item, catalogFor(item));
     const image = item.imageUrl ?? catalogFor(item)?.imageUrl ?? null;
-    const unit = shoppingUnitLabels[item.unit] ?? item.unit;
+    const unit = shoppingUnitLabels[item.unit] ?? unitLabel(item.unit);
     const busy = busyItemId === item.id || checkingOut;
     // Older rows already marked bought (never synced) can only go through "Mua".
     const locked = item.isPurchased;
