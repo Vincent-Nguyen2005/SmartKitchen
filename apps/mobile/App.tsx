@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   Bell,
+  CalendarDays,
   ChefHat,
   Camera,
   Check,
@@ -75,7 +76,7 @@ type AuthView = "login" | "register" | "otp" | "forgot";
 const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
-  { key: "menu", label: "Lịch", icon: Utensils },
+  { key: "menu", label: "Lịch", icon: CalendarDays },
   { key: "recipes", label: "Nấu ăn", icon: ChefHat },
   { key: "family", label: "Gia đình", icon: Users },
   { key: "nutrition", label: "Dinh dưỡng", icon: Salad },

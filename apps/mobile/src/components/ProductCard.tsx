@@ -1,7 +1,7 @@
 import React from "react";
-import { Pressable, StyleSheet, Text, View, type DimensionValue } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View, type DimensionValue } from "react-native";
 import { ImageOff } from "lucide-react-native";
-import { AppIcon, colors, radius, spacing, textStyles } from "../theme";
+import { AppIcon, colors, radius, spacing, textStyles, type LucideIcon } from "../theme";
 import { styles as ui, useGridCell, useLayout } from "../screens/notifications/ui";
 
 /** Card grid used by Đi chợ and Kho: 3 columns on phones, 4 on tablets and wide web. */
@@ -45,10 +45,12 @@ type Props = {
   footer?: React.ReactNode;
   onPress: () => void;
   accessibilityLabel: string;
+  /** Small round button in the image's top-right corner (Nấu ăn: "Đổi món khác"); `busy` shows a spinner. */
+  cornerAction?: { icon: LucideIcon; label: string; onPress: () => void; busy?: boolean };
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, cornerAction }: Props): React.JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
@@ -62,6 +64,19 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
           <View style={[local.pill, { backgroundColor: pillColors[pill.tone] }]}>
             <Text style={local.pillText} numberOfLines={1}>{pill.label}</Text>
           </View>
+        )}
+        {cornerAction && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={cornerAction.label}
+            accessibilityState={{ busy: !!cornerAction.busy, disabled: !!cornerAction.busy }}
+            disabled={cornerAction.busy}
+            hitSlop={6}
+            onPress={cornerAction.onPress}
+            style={({ pressed }) => [local.corner, pressed && ui.pressed]}
+          >
+            {cornerAction.busy ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={cornerAction.icon} size="sm" color={colors.primary} />}
+          </Pressable>
         )}
 
       </View>
@@ -101,6 +116,7 @@ const local = StyleSheet.create({
   imageArea: { aspectRatio: 1, backgroundColor: colors.background, width: "100%" },
   placeholder: { alignItems: "center", backgroundColor: colors.background, height: "100%", justifyContent: "center", width: "100%" },
   pill: { borderRadius: radius.pill, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", top: spacing.xs },
+  corner: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.primary, borderRadius: radius.pill, borderWidth: 1, height: 32, justifyContent: "center", position: "absolute", right: spacing.xs, top: spacing.xs, width: 32 },
   pillText: { ...textStyles.caption, color: colors.surface, fontWeight: "700" },
   body: { gap: 2, padding: spacing.xs + 2 },
   name: { ...textStyles.caption, color: colors.text, fontWeight: "600" },

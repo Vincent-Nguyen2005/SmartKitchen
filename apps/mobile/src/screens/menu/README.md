@@ -6,7 +6,7 @@ Owner: Cuong. Responsibility: meal menu planning and schedule screens.
 
 - **Theo ngày:** Bữa sáng, Bữa trưa and Bữa tối are section titles. Each dish uses the shared card (image, name, kcal, total time), and tapping it opens the same recipe detail as Nấu ăn, with "Bắt đầu nấu". The small refresh icon next to the date switcher is "Làm mới theo kho".
 - **Saved menus:** a day (today or later) is generated once, the first time it's opened in Lịch or Nấu ăn, then kept. It never changes by itself.
-- **Cards:** Theo ngày cards show only the image and name. Tapping one opens the shared detail, which (for today or a future day) has "Đổi món khác": after a confirmation the server swaps that one dish for another of the same meal and role. An older single-dish menu is topped up once to "Số món mỗi bữa".
+- **Cards:** Theo ngày cards show only the image and name. Tapping one opens the shared detail read-only (`mode="view"`: no steps, no cooking, no "Đổi món khác"; those are in Nấu ăn). An older single-dish menu is topped up once to "Số món mỗi bữa". The tab icon is a calendar.
 - **Theo tuần:** a vertical list of the 7 days with their dish names joined by " · ". Opening it generates menus, in one request, for today and the later days of that week that have none.
 - **"Làm mới theo kho":** regenerates the whole day after a confirmation. Past days are read-only.
 - **Meal header:** each meal shows its total kcal. "Số món mỗi bữa" is in Hồ sơ.

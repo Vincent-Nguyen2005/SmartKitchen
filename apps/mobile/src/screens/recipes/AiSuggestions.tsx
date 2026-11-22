@@ -3,7 +3,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { Bookmark, ShoppingCart } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
 import { useSession } from "../../services/session";
-import { createGatewayClient, errorMessage, type GatewayClient } from "../notifications/gatewayApi";
+import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { addMissingToCart } from "../shopping-cart/addMissing";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -21,7 +21,6 @@ export type AiDish = {
   ingredients: AiIngredient[];
   steps: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: string[] }>;
 };
-type SavedRecipe = { id: string; name: string; dish: AiDish };
 
 export const AI_DISCLAIMER = "Công thức do AI gợi ý, hãy kiểm tra độ chín trước khi ăn.";
 
@@ -48,25 +47,19 @@ export function aiDishToRecipe(dish: AiDish): Recipe {
   };
 }
 
-/** The family's saved AI dishes (cook again, search in Nấu ăn). Ids are prefixed so they never clash with suggestions. */
-export async function loadSavedAiDishes(api: GatewayClient, familyId: string): Promise<AiDish[]> {
-  const rows = await api.get<SavedRecipe[]>(`/api/menus/ai-recipes?familyId=${encodeURIComponent(familyId)}`);
-  return rows.map((row) => ({ ...row.dish, id: `saved-${row.id}` }));
-}
-
 type DetailProps = {
   dish: AiDish | null;
   /** Saved dishes have no "Lưu món". */
-  isSaved: boolean;
   onClose: () => void;
-  onStartCooking: (recipe: Recipe) => void;
-  onSaved: () => void;
+  onStartCooking?: (recipe: Recipe) => void;
+  /** "view" (Lịch): read-only detail; "cook" (Nấu ăn): steps, cooking and the AI actions. */
+  mode?: "view" | "cook";
   /** More buttons (Lịch: "Đổi món khác"). */
   extraActions?: React.ReactNode;
 };
 
 /** AI dish detail: the shared recipe detail with the disclaimer, "Nấu món này", "Lưu món" and "Thêm phần thiếu vào giỏ hàng". */
-export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved, extraActions }: DetailProps): React.JSX.Element {
+export function AiDishDetail({ dish, onClose, onStartCooking, extraActions, mode = "cook" }: DetailProps): React.JSX.Element {
   const { accessToken, family } = useSession();
   const familyId = family?.id ?? null;
   const [message, setMessage] = useState<string | null>(null);
@@ -80,8 +73,7 @@ export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved, 
     setBusy("save");
     try {
       await api.post(`/api/menus/ai-suggestions/${encodeURIComponent(target.id)}/save`, { familyId });
-      setMessage("Đã lưu món. Món sẽ hiện trong Nấu ăn kể cả khi Kho thay đổi.");
-      onSaved();
+      setMessage("Đã lưu món cho gia đình.");
     } catch (error) {
       setMessage(errorMessage(error));
     } finally {
@@ -113,11 +105,12 @@ export function AiDishDetail({ dish, isSaved, onClose, onStartCooking, onSaved, 
       onClose={onClose}
       onStartCooking={onStartCooking}
       startLabel="Nấu món này"
+      mode={mode}
       notice={AI_DISCLAIMER}
       message={message}
       actions={dish && (
         <View style={local.actions}>
-          {!isSaved && <ActionButton icon={Bookmark} label="Lưu món" busy={busy === "save"} disabled={busy !== null} onPress={() => void save(dish)} />}
+          <ActionButton icon={Bookmark} label="Lưu món" busy={busy === "save"} disabled={busy !== null} onPress={() => void save(dish)} />
           {missingCount > 0 && (
             <ActionButton icon={ShoppingCart} label="Thêm phần thiếu vào giỏ hàng" busy={busy === "cart"} disabled={busy !== null} onPress={() => void addMissing(dish)} />
           )}

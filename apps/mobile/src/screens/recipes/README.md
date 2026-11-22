@@ -14,6 +14,12 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 
 ## Nấu ăn = today's menu (current)
 
+- **No search:** Nấu ăn shows only today's Lịch menu (Bữa sáng, Bữa trưa, Bữa tối).
+- **Swap button:** each card has a round "Đổi món khác" button. After a confirmation the server replaces that dish (same meal and role), and the card shows a spinner while it works.
+- **Detail (`mode="cook"`):** ingredients, steps, "Bắt đầu nấu" and "Đổi món khác". AI dishes also keep "Lưu món" and "Thêm phần thiếu vào giỏ hàng". Lịch opens the same detail with `mode="view"`: image, name, time, servings, description and ingredients only.
+
+## Earlier notes
+
 - **Today's menu:** Nấu ăn shows today's menu from Lịch (Bữa sáng, Bữa trưa, Bữa tối, same dishes and order). It's loaded each time the tab opens, and generated once if today has none. AI dishes appear only when they were placed in the menu, with the "AI" pill.
 - **Search:** typing searches all active dishes and the family's saved AI dishes; clearing it returns to today's menu.
 
