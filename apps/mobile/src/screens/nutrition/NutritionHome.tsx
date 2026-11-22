@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { HeartPulse, Salad } from "lucide-react-native";
-import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
+import { Salad } from "lucide-react-native";
+import { colors, radius, spacing, textStyles } from "../../theme";
 import { useSession } from "../../services/session";
 import { EmptyState, useLayout } from "../notifications/ui";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -10,11 +10,34 @@ import { createNutritionStatsApi, NutritionStatsApiError, type DailyNutritionSta
 import { vnToday } from "./nutritionToday";
 
 type Props = {
-  /** Opens Hồ sơ › "Thông tin sức khỏe" (the nutrition profile form). */
-  onOpenHealthProfile?: () => void;
   /** Changes after the health profile was edited, so the targets reload. */
   refreshKey?: number;
 };
+
+/** Targets used when the user has no health profile yet (shown with "Mục tiêu ước tính"). */
+const DEFAULT_TARGETS = { calories: 2000, protein: 100, carbs: 250, fat: 67 };
+
+/** Today's totals from the meal diary, against the default targets (no profile: daily-stats answers 404). */
+function estimatedStats(date: string, meals: MealLog[]): DailyNutritionStats {
+  const items = meals.flatMap((meal) => meal.items);
+  const sum = (pick: (item: (typeof items)[number]) => number | null) => items.reduce((total, item) => total + (pick(item) ?? 0) * item.quantity, 0);
+  const totals = { calories: sum((item) => item.calories), protein: sum((item) => item.protein), carbs: sum((item) => item.carbs), fat: sum((item) => item.fat) };
+  const percent = (value: number, target: number) => Math.round((value / target) * 100);
+  return {
+    date,
+    totalCalories: totals.calories,
+    totalProtein: totals.protein,
+    totalCarbs: totals.carbs,
+    totalFat: totals.fat,
+    targets: DEFAULT_TARGETS,
+    completionPercent: {
+      calories: percent(totals.calories, DEFAULT_TARGETS.calories),
+      protein: percent(totals.protein, DEFAULT_TARGETS.protein),
+      carbs: percent(totals.carbs, DEFAULT_TARGETS.carbs),
+      fat: percent(totals.fat, DEFAULT_TARGETS.fat),
+    },
+  };
+}
 
 const MACROS: Array<{ key: "protein" | "carbs" | "fat"; label: string }> = [
   { key: "protein", label: "Đạm" },
@@ -27,15 +50,17 @@ const ratio = (eaten: number, target: number) => (target > 0 ? Math.min(1, eaten
 /**
  * "Dinh dưỡng trong ngày": today's calories and Đạm / Tinh bột / Chất béo against the profile targets
  * (nutrition-service daily stats), and the dishes counted today (meal-diary) with "Bỏ" to un-log one.
- * Dishes are counted from Nấu ăn ("Hoàn thành" in cooking mode).
+ * Dishes are counted from Nấu ăn ("Hoàn thành" in cooking mode). Without a health profile the same screen uses
+ * default targets ("Mục tiêu ước tính"); it never shows health-profile UI.
  */
-export default function NutritionHome({ onOpenHealthProfile, refreshKey = 0 }: Props): React.JSX.Element {
+export default function NutritionHome({ refreshKey = 0 }: Props): React.JSX.Element {
   const { accessToken } = useSession();
   const { gutter, isWide } = useLayout();
   const { confirm, dialog } = useConfirm();
   const [stats, setStats] = useState<DailyNutritionStats | null>(null);
   const [meals, setMeals] = useState<MealLog[]>([]);
-  const [noProfile, setNoProfile] = useState(false);
+  /** No health profile: targets are the defaults. */
+  const [estimated, setEstimated] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -49,12 +74,13 @@ export default function NutritionHome({ onOpenHealthProfile, refreshKey = 0 }: P
       createNutritionStatsApi(accessToken).getDailyStats(today),
       createMealDiaryApi(accessToken).getHistory(today),
     ]);
+    const todayMeals = historyResult.status === "fulfilled" ? historyResult.value.meals : [];
     if (statsResult.status === "fulfilled") {
       setStats(statsResult.value);
-      setNoProfile(false);
+      setEstimated(false);
     } else if (statsResult.reason instanceof NutritionStatsApiError && statsResult.reason.status === 404) {
-      setStats(null);
-      setNoProfile(true);
+      setStats(estimatedStats(today, todayMeals));
+      setEstimated(true);
     } else {
       setError(statsResult.reason instanceof Error ? statsResult.reason.message : "Không tải được dinh dưỡng hôm nay.");
     }
@@ -80,20 +106,8 @@ export default function NutritionHome({ onOpenHealthProfile, refreshKey = 0 }: P
 
   const items = meals.flatMap((meal) => meal.items.map((item) => ({ meal, item })));
   let body: React.ReactNode;
-  if (loading && !stats && !noProfile) {
+  if (loading && !stats) {
     body = <View style={local.center}><ActivityIndicator color={colors.primary} /></View>;
-  } else if (noProfile) {
-    body = (
-      <View style={local.fill}>
-        <EmptyState fill icon={HeartPulse} text="Cập nhật Thông tin sức khỏe để có mục tiêu dinh dưỡng" />
-        {onOpenHealthProfile && (
-          <Pressable accessibilityRole="button" onPress={onOpenHealthProfile} style={({ pressed }) => [local.button, pressed && local.pressed]}>
-            <AppIcon icon={HeartPulse} size="sm" color={colors.primaryText} />
-            <Text style={local.buttonText}>Mở Thông tin sức khỏe</Text>
-          </Pressable>
-        )}
-      </View>
-    );
   } else if (stats) {
     body = (
       <>
@@ -103,6 +117,7 @@ export default function NutritionHome({ onOpenHealthProfile, refreshKey = 0 }: P
             {round(stats.totalCalories)} <Text style={local.caloriesTarget}>/ {round(stats.targets.calories)} kcal</Text>
           </Text>
           <View style={local.track}><View style={[local.fillBar, { width: `${ratio(stats.totalCalories, stats.targets.calories) * 100}%` }]} /></View>
+          {estimated && <Text style={local.estimate}>Mục tiêu ước tính</Text>}
           {MACROS.map((macro) => {
             const eaten = macro.key === "protein" ? stats.totalProtein : macro.key === "carbs" ? stats.totalCarbs : stats.totalFat;
             const target = stats.targets[macro.key];
@@ -155,9 +170,9 @@ export default function NutritionHome({ onOpenHealthProfile, refreshKey = 0 }: P
         showsVerticalScrollIndicator={false}
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[local.content, { paddingHorizontal: gutter }, isWide && local.wide]}
-        refreshControl={<RefreshControl refreshing={loading && (!!stats || noProfile)} onRefresh={() => void load()} tintColor={colors.primary} />}
+        refreshControl={<RefreshControl refreshing={loading && !!stats} onRefresh={() => void load()} tintColor={colors.primary} />}
       >
-        {!!error && (stats || noProfile) && <Text accessibilityRole="alert" style={local.error}>{error}</Text>}
+        {!!error && stats && <Text accessibilityRole="alert" style={local.error}>{error}</Text>}
         {body}
       </ScrollView>
       {dialog}
@@ -170,7 +185,6 @@ const local = StyleSheet.create({
   content: { flexGrow: 1, gap: spacing.md, paddingBottom: spacing.xl, paddingTop: spacing.lg },
   wide: { alignSelf: "center", maxWidth: 720, width: "100%" },
   center: { alignItems: "center", paddingVertical: spacing.xl },
-  fill: { alignItems: "center", flexGrow: 1, gap: spacing.md },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.md, padding: spacing.md },
   cardLabel: { ...textStyles.labelSmall, color: colors.muted },
   calories: { ...textStyles.pageTitle, color: colors.primary },
@@ -189,9 +203,8 @@ const local = StyleSheet.create({
   rowKcal: { ...textStyles.caption },
   remove: { alignItems: "center", borderColor: colors.danger, borderRadius: radius.sm, borderWidth: 1, justifyContent: "center", minHeight: 32, minWidth: 48, paddingHorizontal: spacing.sm },
   removeText: { ...textStyles.labelSmall, color: colors.danger },
-  button: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
-  buttonText: { ...textStyles.labelSmall, color: colors.primaryText },
   pressed: { opacity: 0.8 },
   disabled: { opacity: 0.5 },
   error: { ...textStyles.bodySmall, color: colors.danger },
+  estimate: { ...textStyles.caption },
 });

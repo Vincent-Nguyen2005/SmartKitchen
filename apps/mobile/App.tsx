@@ -607,7 +607,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
         {/* Hồ sơ / Nhật ký / Thống kê / Gợi ý; never for ADMIN accounts (they only see Quản trị). */}
         {!paymentUrl && activeTab === "nutrition" && !isAdmin && (
-          <NutritionHome onOpenHealthProfile={() => setHealthProfileOpen(true)} refreshKey={nutritionRefreshKey} />
+          <NutritionHome refreshKey={nutritionRefreshKey} />
         )}
       </View>
       {showCaptureBar && (
