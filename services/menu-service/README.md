@@ -40,6 +40,10 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
   - **Lunch and dinner** are built like a family meal from recipe roles: món mặn, canh, rau, món xào, tráng miệng (the first N roles), then more mặn, xào and canh.
   - **Breakfast** gets light dishes, with a drink as the last dish when there are 2 or more.
   - Each slot takes the best Kho-scored recipe of its role. A dish is never repeated within the day, and dishes the user removed in the last 7 days are skipped while others fit.
+- **Variety across days:** every path (a day, the week, top-up and swap) looks at the same meal on the saved days up to a week before AND after.
+  - First choice: the best Kho-scored dish not used in that meal in the 2 days before or after, and planned at most once more in that meal within the week, so a dish appears at most twice in 7 days.
+  - Next: any dish that isn't on the previous or next day.
+  - Only when nothing else fits may a dish repeat. Saved menus are never regenerated for this.
 - **Saved menus:** menus are generated once (the app does it the first time a day is opened, today or later) and never change by themselves. `khoHash` is still stored, but nothing regenerates from it. Generating a past day is refused (422).
 - **Week view:** `POST /generate-days { days, familyId }` generates DAY menus in one request for days that are today or later and have no menu. Past days and existing menus are left alone.
 - **Older menus:** `POST /:menuId/top-up` upgrades a day menu made before multi-dish menus (its dishes have no role). It adds only the missing dishes per meal up to "Số món mỗi bữa" and keeps the existing ones. It runs once, because the new dishes carry roles, and past days are refused (422).

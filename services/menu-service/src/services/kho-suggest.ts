@@ -209,6 +209,53 @@ export function fitsRole(recipeRole: string | null | undefined, slotRole: string
 
 const fitsMeal = (recipe: SuggestRecipe, meal: string) => recipe.mealTypes.length === 0 || recipe.mealTypes.includes(meal.toLowerCase());
 
+/**
+ * Dishes already planned per meal on other days: key `${YYYY-MM-DD}|${MEAL}` -> recipe ids. Built from the saved
+ * menus before AND after the day (and the days generated earlier in the same request).
+ */
+export type MealHistory = Map<string, Set<string>>;
+export const historyKey = (day: string, meal: string): string => `${day}|${meal.toUpperCase()}`;
+const shiftDay = (day: string, days: number): string => new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+
+export function addToHistory(history: MealHistory, day: string, meal: string, recipeId: string): void {
+  const key = historyKey(day, meal);
+  history.set(key, (history.get(key) ?? new Set<string>()).add(recipeId));
+}
+
+/** Recipes used in this meal within `distance` days before or after `day` (the day itself excluded). */
+function usedNear(history: MealHistory, meal: string, day: string, distance: number): Set<string> {
+  const used = new Set<string>();
+  for (let offset = 1; offset <= distance; offset += 1) {
+    history.get(historyKey(shiftDay(day, -offset), meal))?.forEach((id) => used.add(id));
+    history.get(historyKey(shiftDay(day, offset), meal))?.forEach((id) => used.add(id));
+  }
+  return used;
+}
+
+/** How often a recipe is planned in this meal within 6 days before or after `day`. */
+function usesWithinWeek(history: MealHistory, meal: string, day: string, recipeId: string): number {
+  let count = 0;
+  for (let offset = -6; offset <= 6; offset += 1) {
+    if (offset !== 0 && history.get(historyKey(shiftDay(day, offset), meal))?.has(recipeId)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Variety before Kho score. First choice: dishes not used in this meal in the 2 days before/after and planned at most
+ * once more in that meal within the week (so at most twice in 7 days). Then: just not on the previous/next day.
+ * Only when nothing else fits may a dish repeat on consecutive days.
+ */
+export function varietyPool(pool: SuggestRecipe[], meal: string, day: string, history?: MealHistory): SuggestRecipe[] {
+  if (!history || history.size === 0) return pool;
+  const nearTwo = usedNear(history, meal, day, 2);
+  const strict = pool.filter((recipe) => !nearTwo.has(recipe.id) && usesWithinWeek(history, meal, day, recipe.id) < 2);
+  if (strict.length > 0) return strict;
+  const nearOne = usedNear(history, meal, day, 1);
+  const loose = pool.filter((recipe) => !nearOne.has(recipe.id));
+  return loose.length > 0 ? loose : pool;
+}
+
 function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string): DishSuggestion | null {
   return candidates
     .map((recipe) => evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, seed))
@@ -225,7 +272,7 @@ export function pickMealDishes(
   kho: KhoItem[],
   meal: string,
   count: number,
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string> },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   return pickRoleDishes(recipes, kho, meal, roleSlots(meal, count), options);
 }
@@ -236,14 +283,14 @@ export function pickRoleDishes(
   kho: KhoItem[],
   meal: string,
   roles: string[],
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string> },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
   roles.forEach((role, index) => {
     const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id));
     let pool = open.filter((recipe) => fitsRole(recipe.role, role));
     if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");
-    const pick = best(pool, kho, options, `${options.day}:${meal.toLowerCase()}:${index}`);
+    const pick = best(varietyPool(pool, meal, options.day, options.history), kho, options, `${options.day}:${meal.toLowerCase()}:${index}`);
     if (!pick) return;
     options.usedIds.add(pick.recipe.id);
     picks.push({ role, suggestion: pick });
@@ -260,9 +307,9 @@ export function pickReplacement(
   kho: KhoItem[],
   meal: string,
   role: string | null,
-  options: { today: string; day: string; excludeIds: ReadonlySet<string> },
+  options: { today: string; day: string; excludeIds: ReadonlySet<string>; history?: MealHistory },
 ): DishSuggestion | null {
   const pool = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.excludeIds.has(recipe.id)
     && (role === null ? true : role === "sang" ? fitsRole(recipe.role, "sang") : recipe.role === role));
-  return best(pool, kho, { today: options.today, recentRecipeIds: new Set() }, `${options.day}:${meal.toLowerCase()}:replace`);
+  return best(varietyPool(pool, meal, options.day, options.history), kho, { today: options.today, recentRecipeIds: new Set() }, `${options.day}:${meal.toLowerCase()}:replace`);
 }

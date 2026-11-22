@@ -46,15 +46,15 @@ const WEEK_MEALS: Array<{ meal: MealType; short: string; label: string }> = [
   { meal: "LUNCH", short: "Trưa", label: "Bữa trưa" },
   { meal: "DINNER", short: "Tối", label: "Bữa tối" },
 ];
-/** Row heights are fixed so the grid reads like a calendar: 3 name lines + the "+N" line. */
+/** Row heights are fixed so the grid reads like a calendar. */
 const WEEK_HEADER_HEIGHT = 40;
-const WEEK_ROW_HEIGHT = 84;
+const WEEK_ROW_HEIGHT = 56;
 const WEEK_LABEL_WIDTH = 34;
 
 /**
  * Theo tuần: a timetable (rows Sáng / Trưa / Tối, columns T2..CN) that fits a 360 px phone without sideways
  * scrolling: a narrow label column and 7 equal flexible columns (wider on tablets/web). Each cell shows the meal's
- * first dish (up to 3 lines) and "+N" for the others, or "—". Tapping a cell or a day header opens Theo ngày.
+ * dish count ("N món", like Theo tháng) or "—". Tapping a cell or a day header opens Theo ngày.
  */
 export function WeekTimetable({ weekStart, todayKey, dishesFor, onOpenDay }: WeekProps): React.JSX.Element {
   const days = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
@@ -84,7 +84,6 @@ export function WeekTimetable({ weekStart, todayKey, dishesFor, onOpenDay }: Wee
             </Pressable>
             {WEEK_MEALS.map((row) => {
               const mealDishes = dishes.filter((dish) => dish.mealType === row.meal);
-              const first = mealDishes[0];
               return (
                 <Pressable
                   key={row.meal}
@@ -93,8 +92,7 @@ export function WeekTimetable({ weekStart, todayKey, dishesFor, onOpenDay }: Wee
                   onPress={() => onOpenDay(key)}
                   style={({ pressed }) => [local.weekCell, pressed && local.pressed]}
                 >
-                  <Text style={first ? local.weekDish : local.weekEmpty} numberOfLines={3}>{first?.dishName ?? "—"}</Text>
-                  {mealDishes.length > 1 && <Text style={local.weekMore} numberOfLines={1}>+{mealDishes.length - 1}</Text>}
+                  <Text style={mealDishes.length ? local.weekCount : local.weekEmpty} numberOfLines={2}>{mealDishes.length ? `${mealDishes.length} món` : "—"}</Text>
                 </Pressable>
               );
             })}
@@ -176,10 +174,9 @@ const local = StyleSheet.create({
   weekHeaderToday: { backgroundColor: colors.primary },
   weekHeaderText: { ...textStyles.caption, color: colors.text, fontWeight: "700", lineHeight: 16 },
   weekHeaderTextToday: { color: colors.primaryText },
-  weekCell: { borderTopColor: colors.border, borderTopWidth: 1, gap: 1, height: WEEK_ROW_HEIGHT, overflow: "hidden", paddingHorizontal: 2, paddingVertical: 3 },
-  weekDish: { ...textStyles.caption, color: colors.text, lineHeight: 16 },
+  weekCell: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, height: WEEK_ROW_HEIGHT, justifyContent: "center", overflow: "hidden", paddingHorizontal: 2 },
+  weekCount: { ...textStyles.caption, color: colors.primary, lineHeight: 16, textAlign: "center" },
   weekEmpty: { ...textStyles.caption, lineHeight: 16, textAlign: "center" },
-  weekMore: { ...textStyles.caption, lineHeight: 16 },
   headerDay: { ...textStyles.caption, color: colors.text, fontWeight: "700" },
   todayDay: { color: colors.primary },
   pressed: { opacity: 0.7 },

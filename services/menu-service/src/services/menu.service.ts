@@ -12,6 +12,8 @@ import {
   pickReplacement,
   pickRoleDishes,
   roleSlots,
+  addToHistory,
+  type MealHistory,
   REPEAT_WINDOW_DAYS,
   type SuggestRecipe,
   usableKho,
@@ -270,6 +272,47 @@ async function recentDishes(client: PrismaClient, owner: { userId: string; famil
   return byDay;
 }
 
+/** Days around a menu that the variety rule looks at (a week before and after). */
+const VARIETY_WINDOW_DAYS = 6;
+
+/**
+ * Dishes planned per meal on the days around [from, to] (saved menus before AND after), for the variety rule.
+ * Days inside `skip` are left out (they are being generated now). Errors give an empty history.
+ */
+async function mealHistory(
+  client: PrismaClient,
+  owner: { userId: string; familyId?: string | null },
+  from: Date,
+  to: Date,
+  skip?: { from: Date; to: Date },
+): Promise<MealHistory> {
+  const history: MealHistory = new Map();
+  const windowStart = addDays(from, -VARIETY_WINDOW_DAYS);
+  const windowEnd = addDays(to, VARIETY_WINDOW_DAYS);
+  try {
+    const menus = await client.menu.findMany({
+      where: {
+        ...(owner.familyId ? { familyId: owner.familyId } : { userId: owner.userId }),
+        startDate: { lte: windowEnd },
+        endDate: { gte: windowStart },
+      },
+      include: { items: true },
+    });
+    for (const menu of menus ?? []) {
+      for (const item of menu.items ?? []) {
+        if (!item.recipeId) continue;
+        const date = itemDate(menu.startDate, item.dayOfWeek);
+        if (date < windowStart || date > windowEnd) continue;
+        if (skip && date >= skip.from && date <= skip.to) continue;
+        addToHistory(history, dayKey(date), item.mealType, item.recipeId);
+      }
+    }
+  } catch (error) {
+    console.error("Generate Menu Error:", error);
+  }
+  return history;
+}
+
 const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
   id: recipe.id,
   name: recipe.name,
@@ -400,6 +443,8 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
   if (pool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
 
   const history = await recentDishes(client, { userId: input.userId, familyId: input.familyId }, startDate);
+  // Variety: the same meal on the days before and after (saved menus), plus the days generated in this request.
+  const variety = await mealHistory(client, { userId: input.userId, familyId: input.familyId }, startDate, endDate, { from: startDate, to: endDate });
   const scheduledWeekdays = new Set<number>();
   const items: Array<{
     recipeId: string | null;
@@ -423,7 +468,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
     const picks: Array<{ meal: string; role: string | null; suggestion: DishSuggestion | null }> = input.mealCounts
       ? mealTypes.flatMap((meal) => {
         const count = meal in input.mealCounts! ? input.mealCounts![meal as keyof MealCounts] : 1;
-        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday };
+        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, history: variety };
         // Recently removed dishes are skipped, unless that leaves the meal without enough dishes.
         let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds });
         if (mealPicks.length < count && excludeIds.size > 0) {
@@ -435,6 +480,7 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
     for (const { meal, role, suggestion } of picks) {
       if (!suggestion) continue;
       chosenToday.add(suggestion.recipe.id);
+      addToHistory(variety, dayKey(date), meal, suggestion.recipe.id);
       items.push({
         recipeId: suggestion.recipe.id,
         dishName: suggestion.recipe.name,
@@ -654,7 +700,8 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
     ...(item.recipeId ? [item.recipeId] : []),
   ]);
   const day = dayKey(normalizeDate(menu.startDate));
-  const pick = pickReplacement(recipes.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds });
+  const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
+  const pick = pickReplacement(recipes.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds, history });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -763,12 +810,13 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   const pool = recipes.map(toSuggestRecipe);
   const usedIds = new Set(menu.items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])));
   const day = dayKey(normalizeDate(menu.startDate));
+  const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
   const creates: Prisma.MenuItemUncheckedCreateInput[] = [];
   for (const meal of short) {
     const have = menu.items.filter((item) => item.mealType === meal).length;
     // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
     const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
-    const picks = pickRoleDishes(pool, kho, meal, roles, { today, day, recentRecipeIds: new Set(), usedIds, excludeIds: removed.recipeIds });
+    const picks = pickRoleDishes(pool, kho, meal, roles, { today, day, recentRecipeIds: new Set(), usedIds, excludeIds: removed.recipeIds, history });
     const dayOfWeek = ((normalizeDate(menu.startDate).getUTCDay() + 6) % 7) + 1;
     for (const { role, suggestion } of picks) {
       creates.push({
