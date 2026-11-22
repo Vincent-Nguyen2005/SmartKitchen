@@ -109,7 +109,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
         if (!active) return;
         setHeight(normalizeDecimal(String(data.profile.height)));
         setWeight(normalizeDecimal(String(data.profile.weight)));
-        setBirthDate(typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : "");
+        setBirthDate(data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""));
         setGender(data.profile.gender);
         setActivityLevel(data.profile.activityLevel);
         setResult(data);
@@ -159,8 +159,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     const profile: NutritionProfileInput = {
       height: parsedHeight,
       weight: parsedWeight,
-      // nutrition-service stores the age (not the date); it is recomputed from the picked birth date on each save.
-      age,
+      // nutrition-service stores the date and computes the age from it (Vietnam time).
+      birthDate,
       gender,
       activityLevel,
     };
@@ -333,8 +333,9 @@ function HealthPreferencesSection({
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
   const [conditions, setConditions] = useState<HealthOption[]>([]);
-  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  /** Tag names shown: catalog items and the user's own (custom) items. */
+  const [allergyTags, setAllergyTags] = useState<string[]>([]);
+  const [conditionTags, setConditionTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -346,8 +347,8 @@ function HealthPreferencesSection({
         if (!active) return;
         setAllergies(allergyOptions);
         setConditions(conditionOptions);
-        setSelectedAllergies(selection.allergies.map(({ id }) => id));
-        setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
+        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
       })
       .catch(() => {
         if (active) setMessage("Không thể tải dị ứng và bệnh lý đã khai báo.");
@@ -360,19 +361,22 @@ function HealthPreferencesSection({
     };
   }, [accessToken]);
 
-  const namesOf = (ids: string[], options: HealthOption[]) => ids.flatMap((id) => options.find((option) => option.id === id)?.name ?? []);
-  const idsOf = (names: string[], options: HealthOption[]) => names.flatMap((name) => options.find((option) => option.name === name)?.id ?? []);
+  const tagsOf = (selected: HealthOption[], custom: string[] = []) => [...selected.map(({ name }) => name), ...custom];
+  /** Catalog names become ids; anything else is saved as the user's own item. */
+  const splitTags = (names: string[], options: HealthOption[]) => ({
+    ids: names.flatMap((name) => options.find((option) => option.name === name)?.id ?? []),
+    custom: names.filter((name) => !options.some((option) => option.name === name)),
+  });
 
   const save = async (): Promise<void> => {
     setSaving(true);
     setMessage("");
     try {
-      const selection = await api.saveSelection(
-        selectedAllergies,
-        selectedConditions,
-      );
-      setSelectedAllergies(selection.allergies.map(({ id }) => id));
-      setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+      const allergySplit = splitTags(allergyTags, allergies);
+      const conditionSplit = splitTags(conditionTags, conditions);
+      const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
+      setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
+      setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
       setMessage("Đã lưu hồ sơ sức khỏe.");
     } catch {
       setMessage("Không thể lưu hồ sơ sức khỏe. Vui lòng thử lại.");
@@ -393,22 +397,21 @@ function HealthPreferencesSection({
         <>
           <Text style={styles.healthGroupTitle}>Dị ứng</Text>
           <TagInput
-            tags={namesOf(selectedAllergies, allergies)}
-            onChange={(names) => { setSelectedAllergies(idsOf(names, allergies)); setMessage(""); }}
+            tags={allergyTags}
+            onChange={(names) => { setAllergyTags(names); setMessage(""); }}
             suggestions={allergies.map((option) => option.name)}
-            allowFreeText={false}
             accessibilityLabel="Thêm dị ứng"
-            placeholder={allergies.length ? "Gõ để tìm, ví dụ: sữa, hải sản" : "Chưa có danh mục dị ứng."}
+            placeholder="Ví dụ: sữa, hải sản"
           />
           <Text style={styles.healthGroupTitle}>Bệnh lý / tình trạng sức khỏe</Text>
           <TagInput
-            tags={namesOf(selectedConditions, conditions)}
-            onChange={(names) => { setSelectedConditions(idsOf(names, conditions)); setMessage(""); }}
+            tags={conditionTags}
+            onChange={(names) => { setConditionTags(names); setMessage(""); }}
             suggestions={conditions.map((option) => option.name)}
-            allowFreeText={false}
             accessibilityLabel="Thêm bệnh lý"
-            placeholder={conditions.length ? "Gõ để tìm trong danh mục" : "Chưa có danh mục bệnh lý."}
+            placeholder="Ví dụ: tiểu đường, gout"
           />
+          <Text style={styles.healthNote}>Chọn gợi ý trong danh mục hoặc tự nhập. Mục tự nhập được lưu trong hồ sơ nhưng chưa dùng để lọc món gợi ý.</Text>
           {!!message && (
             <Text accessibilityRole="alert" style={styles.healthMessage}>
               {message}

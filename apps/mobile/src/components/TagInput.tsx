@@ -25,39 +25,24 @@ type Props = {
   onChange: (tags: string[]) => void;
   accessibilityLabel: string;
   placeholder: string;
-  /** Autocomplete list shown while typing (e.g. a catalog), filtered without accents. */
-  suggestions?: string[];
   /**
-   * false: only suggestions can be added (a typed name is matched to its suggestion); anything else shows a hint.
-   * true (default): any text becomes a tag.
+   * Autocomplete list shown while typing (e.g. a catalog), filtered without accents. Typed text that matches a
+   * suggestion takes the suggestion's spelling; any other text is added as the user's own tag.
    */
-  allowFreeText?: boolean;
+  suggestions?: string[];
 };
 
 /**
  * Tag input (Cài đặt gia đình "Lưu ý ăn uống", Thông tin sức khỏe "Dị ứng" / "Bệnh lý"): type, then Enter or a comma
  * adds a tag; each tag chip has "×" to remove it. Optional suggestions appear under the box while typing.
  */
-export function TagInput({ tags, onChange, accessibilityLabel, placeholder, suggestions = [], allowFreeText = true }: Props): React.JSX.Element {
+export function TagInput({ tags, onChange, accessibilityLabel, placeholder, suggestions = [] }: Props): React.JSX.Element {
   const [text, setText] = useState("");
-  const [hint, setHint] = useState<string | null>(null);
-
-  /** Adds typed parts; with a catalog only names that match a suggestion are accepted. */
+  /** Adds typed parts; a part equal to a suggestion (ignoring accents and case) uses the suggestion's spelling. */
   const add = (value: string) => {
-    if (!value.trim()) return;
-    if (allowFreeText) {
-      onChange(addTags(tags, value));
-      setHint(null);
-      return;
-    }
-    const accepted: string[] = [];
-    const rejected: string[] = [];
-    for (const part of value.split(SEPARATORS).map((item) => item.trim()).filter(Boolean)) {
-      const match = suggestions.find((option) => key(option) === key(part));
-      if (match) accepted.push(match); else rejected.push(part);
-    }
-    if (accepted.length) onChange(addTags(tags, accepted.join(",")));
-    setHint(rejected.length ? `Chưa có "${rejected.join(", ")}" trong danh sách. Hãy chọn một gợi ý.` : null);
+    const parts = value.split(SEPARATORS).map((item) => item.trim()).filter(Boolean)
+      .map((part) => suggestions.find((option) => key(option) === key(part)) ?? part);
+    if (parts.length) onChange(addTags(tags, parts.join(",")));
   };
 
   const change = (value: string) => {
@@ -110,14 +95,13 @@ export function TagInput({ tags, onChange, accessibilityLabel, placeholder, sugg
         <View style={local.suggestions} accessibilityLabel="Gợi ý">
           {matches.map((option) => (
             <Pressable key={option} accessibilityRole="button" accessibilityLabel={`Thêm ${option}`}
-              onPress={() => { onChange(addTags(tags, option)); setText(""); setHint(null); }}
+              onPress={() => { onChange(addTags(tags, option)); setText(""); }}
               style={({ pressed }) => [local.suggestion, pressed && local.pressed]}>
               <Text style={local.suggestionText}>{option}</Text>
             </Pressable>
           ))}
         </View>
       )}
-      {!!hint && <Text style={local.hint}>{hint}</Text>}
     </View>
   );
 }
@@ -133,5 +117,4 @@ const local = StyleSheet.create({
   suggestion: { borderColor: colors.primary, borderRadius: radius.pill, borderWidth: 1, minHeight: 32, justifyContent: "center", paddingHorizontal: spacing.sm },
   suggestionText: { ...textStyles.labelSmall, color: colors.primary },
   pressed: { backgroundColor: colors.primarySoft },
-  hint: { ...textStyles.caption, color: colors.warning },
 });

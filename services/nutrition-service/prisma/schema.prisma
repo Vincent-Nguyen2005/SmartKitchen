@@ -42,6 +42,8 @@ model NutritionProfile {
   height        Float
   weight        Float
   age           Int
+  /// Real date of birth (optional; older profiles only have `age`). When set, age is recomputed from it.
+  birthDate     DateTime?     @db.Date
   gender        Gender
   activityLevel ActivityLevel
   createdAt     DateTime      @default(now())
@@ -62,6 +64,15 @@ model HealthCondition {
   description String?
   createdAt   DateTime                   @default(now())
   users       UserHealthCondition[]
+}
+
+/// Free-text allergies / conditions a user typed that are not in the catalogs. Shown again in the profile;
+/// not used by the suggestion filter (which only reads the catalog selections).
+model UserHealthCustom {
+  userId     String   @id @db.Uuid
+  allergies  String[] @default([])
+  conditions String[] @default([])
+  updatedAt  DateTime @updatedAt
 }
 
 model UserAllergy {

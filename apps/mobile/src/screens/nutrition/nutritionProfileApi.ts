@@ -7,9 +7,10 @@ export type ActivityLevel =
   | "ACTIVE"
   | "VERY_ACTIVE";
 
+/** birthDate (YYYY-MM-DD) is preferred: the service computes and stores the age from it. */
 type NutritionProfileMeasurements =
-  | { age: number; birthYear?: never }
-  | { age?: never; birthYear: number };
+  | { birthDate: string; age?: never }
+  | { age: number; birthDate?: never };
 
 export type NutritionProfileInput = {
   height: number;
@@ -19,9 +20,10 @@ export type NutritionProfileInput = {
 } & NutritionProfileMeasurements;
 
 export type NutritionProfileResult = {
-  profile: Omit<NutritionProfileInput, "age" | "birthYear"> & {
+  profile: Omit<NutritionProfileInput, "age" | "birthDate"> & {
     age?: number;
-    birthYear?: number;
+    /** YYYY-MM-DD, or null for profiles saved before birth dates were stored. */
+    birthDate?: string | null;
     id: string;
     userId: string;
     createdAt: string;
@@ -40,6 +42,9 @@ export type HealthOption = {
 export type HealthSelection = {
   allergies: HealthOption[];
   healthConditions: HealthOption[];
+  /** Free-text items not in the catalogs (kept on the profile, not used for suggestions). */
+  customAllergies?: string[];
+  customConditions?: string[];
 };
 
 export class NutritionApiError extends Error {
@@ -168,10 +173,12 @@ export function createHealthPreferencesApi(accessToken: string) {
     getAllergies: () => request<HealthOption[]>("/allergies"),
     getConditions: () => request<HealthOption[]>("/health-conditions"),
     getSelection: () => request<HealthSelection>("/user/profile/health"),
-    saveSelection: (allergyIds: string[], conditionIds: string[]) =>
+    saveSelection: (allergyIds: string[], conditionIds: string[], customAllergies: string[], customConditions: string[]) =>
       request<HealthSelection>("/user/profile/health", "POST", {
         allergyIds,
         conditionIds,
+        customAllergies,
+        customConditions,
       }),
   };
 }
