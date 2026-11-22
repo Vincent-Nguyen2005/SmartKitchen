@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { CookingPot, Shuffle } from "lucide-react-native";
-import { AppIcon, AppText, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
+import { ActivityIndicator, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { CookingPot } from "lucide-react-native";
+import { AppText, colors, spacing, textStyles } from "../../theme";
 import { useSession } from "../../services/session";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { EmptyState } from "../notifications/ui";
@@ -23,7 +23,7 @@ const DAY_MEALS: MealType[] = ["BREAKFAST", "LUNCH", "DINNER"];
 /**
  * "Nấu ăn": today's menu from Lịch (Bữa sáng, Bữa trưa, Bữa tối, same dishes and order), loaded each time the tab
  * opens so it always matches Lịch; generated once when today has no menu yet. Each card has a round "Đổi món khác"
- * button; the detail shows the steps, "Bắt đầu nấu" and "Đổi món khác".
+ * button (the only place to swap); the detail shows the ingredients, steps and "Bắt đầu nấu".
  */
 export default function RecipeScreen({ accessToken }: Props): React.JSX.Element {
   const { family } = useSession();
@@ -37,8 +37,6 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   const [error, setError] = useState("");
   const [detail, setDetail] = useState<Recipe | null>(null);
   const [aiDetail, setAiDetail] = useState<AiDish | null>(null);
-  /** The menu dish whose detail is open (for "Đổi món khác" in the detail). */
-  const [openItem, setOpenItem] = useState<MenuItem | null>(null);
   /** The dish being replaced (spinner on its card / in the detail). */
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [cooking, setCooking] = useState<Recipe | null>(null);
@@ -93,10 +91,9 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   const items = menu ? sortItems(menu.items) : [];
   const anyAiVisible = items.some((item) => item.details?.ai);
 
-  const closeDetail = () => { setDetail(null); setAiDetail(null); setOpenItem(null); };
+  const closeDetail = () => { setDetail(null); setAiDetail(null); };
 
   const openDish = (item: MenuItem) => {
-    setOpenItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     const recipe = item.recipeId ? recipeById.get(item.recipeId) : undefined;
     if (recipe) { setDetail(recipe); return; }
@@ -106,7 +103,6 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   /**
    * "Đổi món khác": in-app confirm, then the server removes the dish and puts one replacement in the same meal and
    * role (Kho-ranked, varied, not recently removed). Feedback: spinner on the card, then a toast with the result.
-   * Returns false only when the user cancelled.
    */
   const swap = async (item: MenuItem): Promise<boolean> => {
     if (!menu || swappingId) return false;
@@ -128,25 +124,6 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     }
     return true;
   };
-
-  /** From the detail: close it once the swap ran (the toast shows the result on the list). */
-  const swapFromDetail = async () => {
-    if (openItem && (await swap(openItem))) closeDetail();
-  };
-
-  const detailSwapButton = openItem && menu?.items.some((item) => item.id === openItem.id) ? (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Đổi món khác"
-      accessibilityState={{ busy: swappingId === openItem.id, disabled: swappingId !== null }}
-      disabled={swappingId !== null}
-      onPress={() => void swapFromDetail()}
-      style={[styles.swapButton, swappingId !== null && styles.disabled]}
-    >
-      {swappingId === openItem.id ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={Shuffle} size="sm" color={colors.primary} />}
-      <AppText variant="labelSmall" color={colors.primary}>Đổi món khác</AppText>
-    </Pressable>
-  ) : null;
 
   let content: React.ReactNode;
   if ((loading || generating) && !menu) {
@@ -198,21 +175,17 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
       <RecipeDetail
         recipe={detail}
         mode="cook"
-        overlay={detail ? dialog : null}
         onClose={closeDetail}
         onStartCooking={(recipe) => { closeDetail(); setCooking(recipe); }}
-        actions={detailSwapButton}
       />
       <AiDishDetail
         dish={aiDetail}
         mode="cook"
-        overlay={aiDetail ? dialog : null}
         onClose={closeDetail}
         onStartCooking={(recipe) => { closeDetail(); setCooking(recipe); }}
-        extraActions={detailSwapButton}
       />
       <CookingMode recipe={cooking} onClose={() => setCooking(null)} />
-      {!detail && !aiDetail && dialog}
+      {dialog}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>
           <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
@@ -230,8 +203,6 @@ const styles = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap" },
   loading: { alignItems: "center", flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.xl },
   disclaimer: { ...textStyles.caption, color: colors.warning },
-  swapButton: { alignItems: "center", backgroundColor: colors.primarySoft, borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  disabled: { opacity: 0.55 },
   toastWrap: { alignItems: "center", bottom: spacing.xl + 64, left: spacing.lg, position: "absolute", right: spacing.lg },
   toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, textAlign: "center" },
 });

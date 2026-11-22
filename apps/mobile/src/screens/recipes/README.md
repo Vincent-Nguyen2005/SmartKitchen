@@ -14,12 +14,12 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 
 ## Nấu ăn = today's menu (current)
 
-- **Confirmations** ("Đổi món khác" from a card or the detail, and Lịch's "Làm mới theo kho") use the in-app `useConfirm` dialog (`components/ConfirmDialog.tsx`), not `Alert.alert` or `window.confirm`, so they work on web and on phones.
+- **Confirmations** (the card's "Đổi món khác" and Lịch's "Làm mới theo kho") use the in-app `useConfirm` dialog (`components/ConfirmDialog.tsx`), not `Alert.alert` or `window.confirm`, so they work on web and on phones.
 - **Swap feedback:** a spinner on the card while it works, then a toast: "Đã đổi món", "Không tìm được món khác phù hợp cho bữa này", or the server's error.
 
 - **No search:** Nấu ăn shows only today's Lịch menu (Bữa sáng, Bữa trưa, Bữa tối).
 - **Swap button:** each card has a round "Đổi món khác" button. After a confirmation the server replaces that dish (same meal and role), and the card shows a spinner while it works.
-- **Detail (`mode="cook"`):** ingredients, steps, "Bắt đầu nấu" and "Đổi món khác". AI dishes also keep "Lưu món" and "Thêm phần thiếu vào giỏ hàng". Lịch opens the same detail with `mode="view"`: image, name, time, servings, description and ingredients only.
+- **Detail (`mode="cook"`):** ingredients, steps and "Bắt đầu nấu". AI dishes also keep "Lưu món" and "Thêm phần thiếu vào giỏ hàng". Lịch opens the same detail with `mode="view"`: image, name, time, servings, description and ingredients only.
 
 ## Earlier notes
 
