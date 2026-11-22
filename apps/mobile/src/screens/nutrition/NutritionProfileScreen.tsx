@@ -218,14 +218,6 @@ export default function NutritionProfileScreen(): React.JSX.Element {
           contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>DINH DƯỠNG CÁ NHÂN</Text>
-            <Text style={styles.title}>Hồ sơ dinh dưỡng</Text>
-            <Text style={styles.subtitle}>
-              Cập nhật thông tin để tính nhu cầu năng lượng phù hợp với bạn.
-            </Text>
-          </View>
-
           {loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} />
           ) : (
@@ -588,22 +580,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 800,
     alignSelf: "center",
-  },
-  header: { marginBottom: spacing.lg },
-  eyebrow: {
-    ...textStyles.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  title: {
-    ...textStyles.heading,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  subtitle: {
-    ...textStyles.bodySmall,
-    color: colors.muted,
-    marginTop: spacing.sm,
   },
   loader: { marginTop: spacing.xl },
   formCard: {

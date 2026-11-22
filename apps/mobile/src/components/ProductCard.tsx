@@ -1,6 +1,6 @@
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View, type DimensionValue } from "react-native";
-import { ImageOff } from "lucide-react-native";
+import { Check, ImageOff } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, type LucideIcon } from "../theme";
 import { styles as ui, useGridCell, useLayout } from "../screens/notifications/ui";
 
@@ -45,12 +45,14 @@ type Props = {
   footer?: React.ReactNode;
   onPress: () => void;
   accessibilityLabel: string;
+  /** Small label in the image's bottom-left corner (Nấu ăn: "Đã ăn" with a check). */
+  marker?: string;
   /** Small round button in the image's top-right corner (Nấu ăn: "Đổi món khác"); `busy` shows a spinner. */
   cornerAction?: { icon: LucideIcon; label: string; onPress: () => void; busy?: boolean };
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, cornerAction }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, cornerAction, marker }: Props): React.JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
@@ -63,6 +65,12 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
         {pill && (
           <View style={[local.pill, { backgroundColor: pillColors[pill.tone] }]}>
             <Text style={local.pillText} numberOfLines={1}>{pill.label}</Text>
+          </View>
+        )}
+        {!!marker && (
+          <View style={local.marker}>
+            <AppIcon icon={Check} size="sm" color={colors.primaryText} />
+            <Text style={local.markerText} numberOfLines={1}>{marker}</Text>
           </View>
         )}
         {cornerAction && (
@@ -117,6 +125,8 @@ const local = StyleSheet.create({
   imageArea: { aspectRatio: 1, backgroundColor: colors.background, width: "100%" },
   placeholder: { alignItems: "center", backgroundColor: colors.background, height: "100%", justifyContent: "center", width: "100%" },
   pill: { borderRadius: radius.pill, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", top: spacing.xs },
+  marker: { alignItems: "center", backgroundColor: colors.success, borderRadius: radius.pill, bottom: spacing.xs, flexDirection: "row", gap: 2, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute" },
+  markerText: { ...textStyles.caption, color: colors.primaryText, fontWeight: "700" },
   corner: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.primary, borderRadius: radius.pill, borderWidth: 1, height: 32, justifyContent: "center", position: "absolute", right: spacing.xs, top: spacing.xs, width: 32 },
   pillText: { ...textStyles.caption, color: colors.surface, fontWeight: "700" },
   body: { gap: 2, padding: spacing.xs + 2 },

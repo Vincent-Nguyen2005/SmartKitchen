@@ -17,6 +17,8 @@ import { AI_DISCLAIMER, AiDishDetail, type AiDish } from "./AiSuggestions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
+import { createMealDiaryApi } from "../meal-diary/mealDiaryApi";
+import { isLogged, loggedNames, logServing, servingOf, vnToday } from "../nutrition/nutritionToday";
 
 type Props = Readonly<{ accessToken: string | null }>;
 type DayMeal = Extract<MealType, "BREAKFAST" | "LUNCH" | "DINNER">;
@@ -48,6 +50,11 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   /** The dish being replaced (spinner on its card / in the detail). */
   const [swappingId, setSwappingId] = useState<string | null>(null);
   const [cooking, setCooking] = useState<Recipe | null>(null);
+  /** The menu dish whose detail is open / that is being cooked (meal and kcal for logging). */
+  const [openedItem, setOpenedItem] = useState<MenuItem | null>(null);
+  const [cookingItem, setCookingItem] = useState<MenuItem | null>(null);
+  /** Dish names already counted in today's nutrition ("Đã ăn"). */
+  const [logged, setLogged] = useState<Set<string>>(new Set());
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, dialog } = useConfirm();
@@ -83,8 +90,18 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     }
   };
 
+  const loadLogged = async () => {
+    if (!accessToken) return;
+    try {
+      setLogged(loggedNames(await createMealDiaryApi(accessToken).getHistory(vnToday())));
+    } catch {
+      // Without the diary the cards simply show no "Đã ăn".
+    }
+  };
+
   useEffect(() => {
     void load();
+    void loadLogged();
   }, [accessToken, familyId]);
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
@@ -101,8 +118,27 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
   const closeDetail = () => { setDetail(null); setAiDetail(null); };
+  const startCooking = (recipe: Recipe) => { setCookingItem(openedItem); closeDetail(); setCooking(recipe); };
+
+  /**
+   * "Hoàn thành" in cooking mode: one serving goes into today's nutrition (recipe kcal/macros; an AI dish uses the
+   * menu kcal, macros 0). The same dish twice in one day asks first.
+   */
+  const logCooked = async (recipe: Recipe) => {
+    const item = cookingItem;
+    const name = item?.dishName ?? recipe.name;
+    if (isLogged(logged, name) && !(await confirm({ title: "Tính thêm một phần nữa?", message: `${name} đã được tính vào dinh dưỡng hôm nay.`, confirmLabel: "Tính thêm" }))) return;
+    try {
+      await logServing(accessToken, servingOf({ ...recipe, name, calories: recipe.calories ?? item?.calories }), item?.mealType ?? "LUNCH");
+      setLogged((current) => new Set(current).add(name.trim().toLocaleLowerCase("vi")));
+      showToast("Đã tính vào dinh dưỡng hôm nay");
+    } catch (requestError) {
+      showToast(errorMessage(requestError));
+    }
+  };
 
   const openDish = (item: MenuItem) => {
+    setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     const recipe = item.recipeId ? recipeById.get(item.recipeId) : undefined;
     if (recipe) { setDetail(recipe); return; }
@@ -158,6 +194,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
             onPress={() => openDish(item)}
             onSwap={() => void swap(item)}
             swapping={swappingId === item.id}
+            eaten={isLogged(logged, item.dishName)}
           />
         ))}
       </View>
@@ -181,15 +218,15 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
         recipe={detail}
         mode="cook"
         onClose={closeDetail}
-        onStartCooking={(recipe) => { closeDetail(); setCooking(recipe); }}
+        onStartCooking={startCooking}
       />
       <AiDishDetail
         dish={aiDetail}
         mode="cook"
         onClose={closeDetail}
-        onStartCooking={(recipe) => { closeDetail(); setCooking(recipe); }}
+        onStartCooking={startCooking}
       />
-      <CookingMode recipe={cooking} onClose={() => setCooking(null)} />
+      <CookingMode recipe={cooking} onClose={() => setCooking(null)} onComplete={(recipe) => void logCooked(recipe)} />
       {dialog}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>
