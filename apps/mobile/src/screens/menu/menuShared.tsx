@@ -57,6 +57,8 @@ export type MenuRecord = {
   startDate: string;
   endDate: string;
   khoHash?: string | null;
+  /** People the menu is cooked for (family member count when generated; older menus: null). */
+  servings?: number | null;
   /** Made without any family health data (allergies unknown): Lịch shows a small notice. */
   healthUnavailable?: boolean;
   items: MenuItem[];

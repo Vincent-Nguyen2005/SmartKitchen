@@ -80,7 +80,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
                 )}
               </View>
             )}
-            <Text style={local.section}>Nguyên liệu</Text>
+            <Text style={local.section}>{recipe.portionPeople ? `Nguyên liệu (cho ${recipe.portionPeople} người)` : "Nguyên liệu"}</Text>
             <View style={local.card}>
               {recipeIngredients(recipe).filter((ingredient) => !ingredient.isSeasoning).map((ingredient) => (
                 <View key={ingredient.name} style={local.ingredientRow}>
@@ -91,7 +91,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
             </View>
             {recipeIngredients(recipe).some((ingredient) => ingredient.isSeasoning) && (
               <>
-                <Text style={local.section}>Gia vị</Text>
+                <Text style={local.section}>{recipe.portionPeople ? `Gia vị (cho ${recipe.portionPeople} người)` : "Gia vị"}</Text>
                 <View style={local.card}>
                   {recipeIngredients(recipe).filter((ingredient) => ingredient.isSeasoning).map((ingredient) => (
                     <View key={ingredient.name} style={local.ingredientRow}>

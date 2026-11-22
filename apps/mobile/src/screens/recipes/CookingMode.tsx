@@ -173,7 +173,9 @@ export default function CookingMode({ recipe, onClose, onComplete }: Props): Rea
           <IconButton icon={X} accessibilityLabel="Thoát chế độ nấu" onPress={requestClose} />
           <View style={local.headerText}>
             <Text style={local.recipeName} numberOfLines={1}>{recipe?.name ?? ""}</Text>
-            <Text style={local.progressText}>{steps.length > 0 ? `Bước ${index + 1}/${steps.length}` : "Chưa có các bước"}</Text>
+            <Text style={local.progressText}>
+              {steps.length > 0 ? `Bước ${index + 1}/${steps.length}` : "Chưa có các bước"}{recipe?.portionPeople ? ` · Cho ${recipe.portionPeople} người` : ""}
+            </Text>
           </View>
         </View>
         <View style={local.progressTrack}>

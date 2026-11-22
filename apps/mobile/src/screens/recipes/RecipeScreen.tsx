@@ -14,6 +14,7 @@ import {
   type MenuItem, type MenuRecord,
 } from "../menu/menuShared";
 import { AI_DISCLAIMER, AiDishDetail, type AiDish } from "./AiSuggestions";
+import { menuPeople, scaleRecipe } from "./portions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -114,6 +115,9 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
 
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const items = menu ? sortItems(menu.items) : [];
+  /** People today's dishes are cooked for: the menu's servings, else the family size (detail, cooking, AI cart). */
+  const people = menuPeople(menu?.servings, family?.members.length);
+  const showRecipe = (recipe: Recipe) => setDetail(scaleRecipe(recipe, people));
   const mealItems = items.filter((item) => item.mealType === meal);
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
@@ -141,8 +145,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     const recipe = item.recipeId ? recipeById.get(item.recipeId) : undefined;
-    if (recipe) { setDetail(recipe); return; }
-    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then(setDetail).catch((requestError) => setError(errorMessage(requestError)));
+    if (recipe) { showRecipe(recipe); return; }
+    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
   };
 
   /**
@@ -222,13 +226,14 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
         health={detailHealth(openedItem, detail?.id, (id) => {
           // The alternative opens in the same detail and can be cooked (same meal for nutrition logging).
           const known = recipeById.get(id);
-          if (known) { setDetail(known); return; }
-          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then(setDetail).catch((requestError) => setError(errorMessage(requestError)));
+          if (known) { showRecipe(known); return; }
+          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
         })}
       />
       <AiDishDetail
         dish={aiDetail}
         mode="cook"
+        people={people}
         onClose={closeDetail}
         onStartCooking={startCooking}
       />

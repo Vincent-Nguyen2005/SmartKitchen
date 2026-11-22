@@ -18,6 +18,8 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import { SegmentTabs } from "../../components/SegmentTabs";
 import RecipeDetail from "../recipes/RecipeDetail";
 import { AiDishDetail, type AiDish } from "../recipes/AiSuggestions";
+import { menuPeople, scaleRecipe } from "../recipes/portions";
+import { useSession } from "../../services/session";
 import type { Recipe } from "../recipes/recipeTypes";
 import { addDays, dayKey, keyToDate, monthGridDays, MonthCalendar, startOfWeek, weekday, WeekTimetable, type MealType } from "./MenuCalendar";
 import {
@@ -102,6 +104,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
   const [aiDetail, setAiDetail] = useState<AiDish | null>(null);
   /** The planned dish whose detail is open (its health warnings and alternative). */
   const [openedItem, setOpenedItem] = useState<MenuItem | null>(null);
+  const memberCount = useSession().family?.members.length;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, dialog } = useConfirm();
   const loadId = useRef(0);
@@ -194,12 +197,17 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
 
   const closeDetail = () => { setDetail(null); setAiDetail(null); setOpenedItem(null); };
 
+  /** People a planned dish is cooked for: its menu's servings, else the current family size, else 1. */
+  const peopleFor = (item: MenuItem | null): number =>
+    menuPeople(menus.find((menu) => menu.items.some((entry) => entry.id === item?.id))?.servings, memberCount);
+
   /** The alternative of an unsuitable dish (view-only here, like every dish in Lịch). */
   const openRecipe = async (recipeId: string): Promise<void> => {
+    const people = peopleFor(openedItem);
     const known = recipes.get(recipeId);
-    if (known) { setDetail(known); return; }
+    if (known) { setDetail(scaleRecipe(known, people)); return; }
     try {
-      setDetail(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`));
+      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`), people));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -210,10 +218,12 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
     setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     if (!item.recipeId) { showToast("Món này chưa có công thức."); return; }
+    // Quantities for the people eating ("Nguyên liệu (cho N người)").
+    const people = peopleFor(item);
     const known = recipes.get(item.recipeId);
-    if (known) { setDetail(known); return; }
+    if (known) { setDetail(scaleRecipe(known, people)); return; }
     try {
-      setDetail(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`));
+      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`), people));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -376,7 +386,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
       </ScrollView>
       {/* Lịch shows dishes read-only; steps, cooking and "Đổi món khác" live in Nấu ăn. */}
       <RecipeDetail recipe={detail} onClose={closeDetail} mode="view" health={detailHealth(openedItem, detail?.id, (id) => void openRecipe(id))} />
-      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" />
+      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" people={peopleFor(openedItem)} />
       {dialog}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>

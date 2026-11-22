@@ -13,7 +13,7 @@
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && node --test dist/__tests__/recipe.service.test.js dist/__tests__/recipe.routes.test.js dist/__tests__/recipe.steps.test.js dist/__tests__/recipe.seasonings.test.js dist/__tests__/recipe.health-tags.test.js"
+    "test": "pnpm run build && node --test dist/__tests__/recipe.service.test.js dist/__tests__/recipe.routes.test.js dist/__tests__/recipe.steps.test.js dist/__tests__/recipe.seasonings.test.js dist/__tests__/recipe.health-tags.test.js dist/__tests__/recipe.per-person.test.js"
   },
   "dependencies": {
     "express": "^4.19.2",

@@ -6,6 +6,7 @@ import { useSession } from "../../services/session";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { addMissingToCart } from "../shopping-cart/addMissing";
 import RecipeDetail from "./RecipeDetail";
+import { scaleQuantity, scaleRecipe } from "./portions";
 import type { Recipe } from "./recipeTypes";
 
 export type AiMealType = "sang" | "trua" | "toi";
@@ -54,10 +55,12 @@ type DetailProps = {
   onStartCooking?: (recipe: Recipe) => void;
   /** "view" (Lịch): read-only detail; "cook" (Nấu ăn): steps, cooking and the AI actions. */
   mode?: "view" | "cook";
+  /** People eating (menu servings / family size): quantities, cooking mode and the cart use their amounts. */
+  people?: number;
 };
 
 /** AI dish detail: the shared recipe detail with the disclaimer, "Nấu món này", "Lưu món" and "Thêm phần thiếu vào giỏ hàng". */
-export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook" }: DetailProps): React.JSX.Element {
+export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", people }: DetailProps): React.JSX.Element {
   const { accessToken, family } = useSession();
   const familyId = family?.id ?? null;
   const [message, setMessage] = useState<string | null>(null);
@@ -80,7 +83,9 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook" }: D
   };
 
   const addMissing = async (target: AiDish) => {
-    const missing = target.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning);
+    // Amounts for the people eating (same rule as the menu: portions.ts).
+    const missing = target.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning)
+      .map((ingredient) => (people ? { ...ingredient, quantity: scaleQuantity(ingredient, target.servings, people) } : ingredient));
     if (!accessToken || !familyId || busy || missing.length === 0) return;
     setBusy("cart");
     let added = 0;
@@ -99,7 +104,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook" }: D
   const missingCount = dish ? dish.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning).length : 0;
   return (
     <RecipeDetail
-      recipe={dish ? aiDishToRecipe(dish) : null}
+      recipe={dish ? (people ? scaleRecipe(aiDishToRecipe(dish), people) : aiDishToRecipe(dish)) : null}
       onClose={onClose}
       onStartCooking={onStartCooking}
       startLabel="Nấu món này"

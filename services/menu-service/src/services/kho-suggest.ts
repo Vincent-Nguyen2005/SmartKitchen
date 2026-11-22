@@ -16,8 +16,11 @@ const MAX_EXPIRING_COUNTED = 2;
 const REPEAT_PENALTY = 10;
 
 export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null };
-/** isSeasoning: pantry staple (muối, nước mắm, dầu ăn...), never matched against Kho or counted as missing. */
-export type DishIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
+/**
+ * isSeasoning: pantry staple (muối, nước mắm, dầu ăn...), never matched against Kho or counted as missing.
+ * perPerson: eaten one per person (portions.ts scales it per person).
+ */
+export type DishIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 export type SuggestRecipe = {
   id: string;
   name: string;
