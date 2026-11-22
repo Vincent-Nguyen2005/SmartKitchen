@@ -6,15 +6,43 @@ import { isDatabaseUnavailable } from "../database-error";
 import { lookupProfiles, ProfileLookupError } from "../services/user-profiles";
 
 const params = z.object({ id: z.string().uuid() });
+const membershipsBody = z.object({ userIds: z.array(z.string().uuid()).min(1).max(500) });
 
 /**
  * Service-to-service only (x-api-key = INTERNAL_API_KEY; the gateway blocks every path with an "internal" segment).
  * GET /internal/families/:id/members -> { items: [{ userId, name }] } in join order; name is the auth display name
  * (null when the user has none). Used by menu-service for family menus.
+ * POST /internal/families/memberships { userIds } (max 500) -> { items: [{ userId, familyId, role, memberCount }] }
+ * for the users that belong to a family (others are left out). No names; menu-service resolves the caller's family
+ * with it on each request and its startup backfill maps existing menus to families.
  */
 export const createInternalFamiliesRouter = (prisma: PrismaClient): Router => {
   const router = Router();
   router.use(requireInternalKey);
+
+  router.post("/memberships", async (req, res) => {
+    const parsed = membershipsBody.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "INVALID_BODY", message: "userIds must be 1-500 UUIDs" });
+      return;
+    }
+    try {
+      const memberships = await prisma.familyMember.findMany({
+        where: { userId: { in: [...new Set(parsed.data.userIds)] } },
+        select: { userId: true, familyId: true, role: true, family: { select: { _count: { select: { members: true } } } } },
+      });
+      res.json({
+        items: memberships.map(({ userId, familyId, role, family }) => ({ userId, familyId, role, memberCount: family._count.members })),
+      });
+    } catch (error) {
+      console.error("[family-service] internal membership lookup failed", error);
+      const unavailable = isDatabaseUnavailable(error);
+      res.status(unavailable ? 503 : 500).json({
+        error: unavailable ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
+        message: unavailable ? "Family database is unavailable" : "Unable to look up memberships",
+      });
+    }
+  });
 
   router.get("/:id/members", async (req, res) => {
     const parsed = params.safeParse(req.params);

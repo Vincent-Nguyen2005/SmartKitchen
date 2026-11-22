@@ -5,7 +5,10 @@ import { z } from "zod";
 import { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { AiDish } from "../services/ai/gemini";
 import { aiEngine } from "./ai.controller";
+import { FamilyLookupError, lookupMemberships, type MembershipLookup } from "../services/family-client";
 import {
+  canEditMenuSettings,
+  type MenuOwner,
   currentKhoHash,
   generateDays,
   getMenuSettings,
@@ -66,6 +69,38 @@ function authenticatedUserId(request: Request, response: Response): string | und
   return userId || undefined;
 }
 
+/**
+ * The caller's menu owner: their family (menus belong to the family, membership checked with family-service) or,
+ * without a family, the user (personal menus as before). A requested familyId that is not the caller's family is
+ * refused (403). family-service unavailable → 503, never a silent switch to personal menus.
+ */
+export async function resolveMenuOwner(userId: string, requestedFamilyId?: string, lookup: MembershipLookup = lookupMemberships): Promise<MenuOwner> {
+  let memberships;
+  try {
+    memberships = await lookup([userId]);
+  } catch (error) {
+    if (error instanceof FamilyLookupError) console.error("[menu-service] family lookup failed:", error.message);
+    throw new MenuServiceError("Không kiểm tra được gia đình. Hãy thử lại sau.", 503);
+  }
+  const membership = memberships.find((entry) => entry.userId === userId);
+  if (requestedFamilyId && membership?.familyId !== requestedFamilyId) throw new MenuServiceError("Bạn không thuộc gia đình này.", 403);
+  return membership
+    ? { userId, familyId: membership.familyId, role: membership.role, memberCount: membership.memberCount }
+    : { userId, familyId: null };
+}
+
+/** Signed-in user (gateway x-user-id) and their menu owner; answers 401 / 403 / 503 itself and returns undefined. */
+async function requestOwner(request: Request, response: Response, requestedFamilyId?: string): Promise<MenuOwner | undefined> {
+  const userId = authenticatedUserId(request, response);
+  if (!userId) return undefined;
+  try {
+    return await resolveMenuOwner(userId, requestedFamilyId);
+  } catch (error) {
+    handleError(error, response);
+    return undefined;
+  }
+}
+
 function handleError(error: unknown, response: Response): void {
   if (error instanceof z.ZodError) {
     response.status(400).json({ error: "Invalid request", details: error.issues });
@@ -81,9 +116,10 @@ function handleError(error: unknown, response: Response): void {
 
 export async function generateMenuController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
+    if (!authenticatedUserId(request, response)) return;
     const input = generateSchema.parse(request.body);
+    const owner = await requestOwner(request, response, input.familyId);
+    if (!owner) return;
     const periodType = input.periodType || PeriodType.WEEK;
     // Past days are never regenerated.
     if (periodType === PeriodType.DAY && isPastDay(input.startDate)) {
@@ -91,13 +127,14 @@ export async function generateMenuController(request: Request, response: Respons
       return;
     }
     const [mealCounts, removed] = await Promise.all([
-      getMenuSettings(userId).catch(() => undefined),
-      recentlyRemoved(userId).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+      getMenuSettings(owner).catch(() => undefined),
+      recentlyRemoved(owner).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
     ]);
     response.status(201).json(await generateMenu({
       ...input,
       periodType,
-      userId,
+      userId: owner.userId,
+      owner,
       authorization: request.header("authorization") ?? undefined,
       mealCounts: periodType === PeriodType.DAY ? mealCounts : undefined,
       excludeRecipeIds: [...removed.recipeIds],
@@ -110,10 +147,10 @@ export async function generateMenuController(request: Request, response: Respons
 
 export async function createMenuController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
     const input = createMenuSchema.parse(request.body);
-    response.status(201).json(await createManualMenu(userId, {
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    response.status(201).json(await createManualMenu(owner, {
       ...input,
       title: String(input.title),
     }));
@@ -129,10 +166,10 @@ export const listRangeSchema = z.object({ from: dayParam.optional(), to: dayPara
 
 export async function listMenusController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
     const { from, to } = listRangeSchema.parse(request.query);
-    response.json(await listMenus(userId, undefined, from && to ? { from, to } : undefined));
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    response.json(await listMenus(owner, undefined, from && to ? { from, to } : undefined));
   } catch (error) {
     handleError(error, response);
   }
@@ -140,9 +177,9 @@ export async function listMenusController(request: Request, response: Response):
 
 export async function getMenuController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
-    const menu = await findMenu(userId, request.params.id);
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    const menu = await findMenu(owner, request.params.id);
     if (!menu) {
       response.status(404).json({ error: "Menu not found" });
       return;
@@ -155,9 +192,9 @@ export async function getMenuController(request: Request, response: Response): P
 
 export async function deleteMenuController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
-    const deleted = await deleteMenu(userId, request.params.id);
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    const deleted = await deleteMenu(owner, request.params.id);
     if (!deleted) {
       response.status(404).json({ error: "Menu not found" });
       return;
@@ -182,10 +219,10 @@ export async function khoHashController(request: Request, response: Response): P
 
 export async function autoRefreshController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
     const input = refreshSchema.parse(request.body);
-    response.json(await autoRefreshMenu(userId, input));
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    response.json(await autoRefreshMenu(owner, input));
   } catch (error) {
     handleError(error, response);
   }
@@ -241,25 +278,29 @@ export const settingsSchema = z.object({
   dinner: z.number().int().min(1).max(6),
 });
 
-/** GET /settings: "Số món mỗi bữa" of the caller (defaults 3 / 5 / 5). */
+/**
+ * GET /settings: "Số món mỗi bữa" of the caller's family (or their own without a family; defaults 3 / 5 / 5), plus
+ * canEdit (only the family OWNER may change it).
+ */
 export async function getSettingsController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
-    const counts = await getMenuSettings(userId, settingsClient);
-    response.json({ breakfast: counts.BREAKFAST, lunch: counts.LUNCH, dinner: counts.DINNER });
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    const counts = await getMenuSettings(owner, settingsClient);
+    response.json({ breakfast: counts.BREAKFAST, lunch: counts.LUNCH, dinner: counts.DINNER, canEdit: canEditMenuSettings(owner) });
   } catch (error) {
     handleError(error, response);
   }
 }
 
-/** PUT /settings { breakfast, lunch, dinner } (1-6 each). */
+/** PUT /settings { breakfast, lunch, dinner } (1-6 each): family OWNER only (403 for other members). */
 export async function updateSettingsController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
-    const counts = await updateMenuSettings(userId, settingsSchema.parse(request.body), settingsClient);
-    response.json({ breakfast: counts.BREAKFAST, lunch: counts.LUNCH, dinner: counts.DINNER });
+    const counts = settingsSchema.parse(request.body);
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    const saved = await updateMenuSettings(owner, counts, settingsClient);
+    response.json({ breakfast: saved.BREAKFAST, lunch: saved.LUNCH, dinner: saved.DINNER, canEdit: true });
   } catch (error) {
     handleError(error, response);
   }
@@ -275,10 +316,11 @@ async function storedAiDishes(familyId: string, kho: Parameters<typeof aiEngine.
 /** POST /:id/items/:itemId/remove: drop one dish and put one replacement in the same meal and role. */
 export async function removeMenuItemController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
     response.json(await removeMenuItem({
-      userId,
+      userId: owner.userId,
+      owner,
       menuId: request.params.id,
       itemId: request.params.itemId,
       authorization: request.header("authorization") ?? undefined,
@@ -297,17 +339,19 @@ export const generateDaysSchema = z.object({
 /** POST /generate-days { days, familyId }: Theo tuần fills today and later days that have no menu (past days untouched). */
 export async function generateDaysController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
+    if (!authenticatedUserId(request, response)) return;
     const input = generateDaysSchema.parse(request.body);
+    const owner = await requestOwner(request, response, input.familyId);
+    if (!owner) return;
     const [mealCounts, removed] = await Promise.all([
-      getMenuSettings(userId, settingsClient),
-      recentlyRemoved(userId, settingsClient).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+      getMenuSettings(owner, settingsClient),
+      recentlyRemoved(owner, settingsClient).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
     ]);
     response.status(201).json(await generateDays({
-      userId,
+      userId: owner.userId,
+      owner,
       days: input.days,
-      familyId: input.familyId,
+      familyId: owner.familyId ?? input.familyId,
       authorization: request.header("authorization") ?? undefined,
       mealCounts,
       excludeRecipeIds: [...removed.recipeIds],
@@ -320,13 +364,14 @@ export async function generateDaysController(request: Request, response: Respons
 /** POST /:id/top-up: an older single-dish menu gets its missing dishes (once); anything else is returned unchanged. */
 export async function topUpMenuController(request: Request, response: Response): Promise<void> {
   try {
-    const userId = authenticatedUserId(request, response);
-    if (!userId) return;
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
     response.json(await topUpMenu({
-      userId,
+      userId: owner.userId,
+      owner,
       menuId: request.params.id,
       authorization: request.header("authorization") ?? undefined,
-      mealCounts: await getMenuSettings(userId, settingsClient),
+      mealCounts: await getMenuSettings(owner, settingsClient),
     }));
   } catch (error) {
     handleError(error, response);

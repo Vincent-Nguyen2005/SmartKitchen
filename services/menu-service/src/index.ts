@@ -3,6 +3,9 @@ import cors from "cors";
 import dotenv from "dotenv";
 import healthRouter from "./routes/health.route";
 import menuRouter from "./routes/menu.route";
+import { PrismaClient } from "../node_modules/.prisma/client-menu";
+import { lookupMemberships } from "./services/family-client";
+import { runFamilyBackfillAtStartup } from "./services/family-backfill";
 
 dotenv.config();
 
@@ -18,4 +21,6 @@ app.use("/", menuRouter);
 const PORT = process.env.PORT || 4007;
 app.listen(PORT, () => {
   console.log(`[menu-service] dang chay tai http://localhost:${PORT}`);
+  // Menus belong to families: map older menus, dislike history and settings to families (idempotent, counts only).
+  void runFamilyBackfillAtStartup(new PrismaClient(), lookupMemberships);
 });

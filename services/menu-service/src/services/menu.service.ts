@@ -62,6 +62,8 @@ interface GenerateMenuInput {
   excludeRecipeIds?: string[];
   /** Already loaded recipes / Kho (several days generated in one request load them once). */
   preloaded?: { recipes: RecipeCandidate[]; khoItems: KhoItem[] };
+  /** The caller's family (shared menu, replaced per family) or personal owner; without it, personal by userId. */
+  owner?: MenuOwner;
 }
 
 interface AutoRefreshInput {
@@ -82,6 +84,23 @@ interface ManualMenuInput {
     calories?: number;
   }>;
 }
+
+/**
+ * Whose menus a request reads and writes. In a family, menus belong to the family (shared by every member, one active
+ * menu per family, day and period); without a family the user keeps personal menus (read by userId, as before).
+ */
+export type MenuOwner = { userId: string; familyId: string | null; role?: string; memberCount?: number };
+/** A plain userId means a personal owner (older callers and tests). */
+export type OwnerArg = string | MenuOwner;
+export const ownerOf = (owner: OwnerArg): MenuOwner => (typeof owner === "string" ? { userId: owner, familyId: null } : owner);
+/** Active menus of the owner: the family's (archived duplicates left out) or the user's own. */
+export function menuScope(owner: OwnerArg): Prisma.MenuWhereInput {
+  const resolved = ownerOf(owner);
+  return resolved.familyId ? { familyId: resolved.familyId, archived: false } : { userId: resolved.userId };
+}
+/** Prisma unique-constraint error (the partial index on family menus). */
+const isUniqueViolation = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2002";
 
 export class MenuServiceError extends Error {
   constructor(message: string, readonly statusCode: number) {
@@ -252,7 +271,7 @@ async function recentDishes(client: PrismaClient, owner: { userId: string; famil
   try {
     const menus = await client.menu.findMany({
       where: {
-        ...(owner.familyId ? { familyId: owner.familyId } : { userId: owner.userId }),
+        ...(owner.familyId ? { familyId: owner.familyId, archived: false } : { userId: owner.userId }),
         startDate: { lt: startDate },
         endDate: { gte: from },
       },
@@ -294,7 +313,7 @@ async function mealHistory(
   try {
     const menus = await client.menu.findMany({
       where: {
-        ...(owner.familyId ? { familyId: owner.familyId } : { userId: owner.userId }),
+        ...(owner.familyId ? { familyId: owner.familyId, archived: false } : { userId: owner.userId }),
         startDate: { lte: windowEnd },
         endDate: { gte: windowStart },
       },
@@ -412,7 +431,10 @@ function selectedMealTypes(preferences: JsonRecord): MealType[] {
   ];
 }
 
-export async function generateMenu(input: GenerateMenuInput, client: PrismaClient = prisma) {
+export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaClient = prisma) {
+  const ownerFamily = rawInput.owner?.familyId ?? null;
+  // A family menu always uses the family's own Kho.
+  const input = ownerFamily ? { ...rawInput, familyId: ownerFamily } : rawInput;
   const startDate = normalizeDate(input.startDate);
   const endDate = normalizeDate(input.endDate);
   if (endDate < startDate) {
@@ -511,6 +533,8 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
   const data = {
     userId: input.userId,
     familyId: input.familyId ?? null,
+    // Cooked for everyone in the family (member count now); personal menus for one.
+    servings: ownerFamily ? input.owner?.memberCount ?? null : 1,
     khoHash,
     title,
     periodType: input.periodType,
@@ -518,12 +542,24 @@ export async function generateMenu(input: GenerateMenuInput, client: PrismaClien
     endDate,
   };
   try {
-    // "Làm mới theo kho": the new suggestion replaces this user's menu for the same period and dates.
+    // "Làm mới theo kho": the new suggestion replaces the family's (or, without a family, this user's) menu for the
+    // same period and dates.
+    const replaced = ownerFamily
+      ? { familyId: ownerFamily, archived: false, periodType: input.periodType, startDate, endDate }
+      : { userId: input.userId, periodType: input.periodType, startDate, endDate };
     return await client.$transaction(async (tx) => {
-      await tx.menu.deleteMany({ where: { userId: input.userId, periodType: input.periodType, startDate, endDate } });
+      await tx.menu.deleteMany({ where: replaced });
       return tx.menu.create({ data: { ...data, items: { create: items } }, include: { items: true } });
     });
   } catch (error) {
+    // Two members generated the same family day at once: the unique index let the other one win; return it.
+    if (ownerFamily && isUniqueViolation(error)) {
+      const winner = await client.menu.findFirst({
+        where: { familyId: ownerFamily, archived: false, periodType: input.periodType, startDate },
+        include: { items: true },
+      });
+      if (winner) return winner;
+    }
     console.error("Generate Menu Error:", error);
     const id = randomUUID();
     const now = new Date();
@@ -543,7 +579,9 @@ export async function currentKhoHash(familyId: string, authorization?: string): 
   return snapshotHash(khoSnapshot(await getKhoItems(familyId, authorization)));
 }
 
-export function createManualMenu(userId: string, input: ManualMenuInput, client: PrismaClient = prisma) {
+export function createManualMenu(ownerArg: OwnerArg, input: ManualMenuInput, client: PrismaClient = prisma) {
+  const owner = ownerOf(ownerArg);
+  const userId = owner.userId;
   const startDate = normalizeDate(input.startDate);
   const endDate = normalizeDate(input.endDate);
   if (endDate < startDate) {
@@ -552,6 +590,7 @@ export function createManualMenu(userId: string, input: ManualMenuInput, client:
   return client.menu.create({
     data: {
       userId,
+      ...(owner.familyId ? { familyId: owner.familyId, servings: owner.memberCount ?? null } : {}),
       title: input.title.trim(),
       periodType: input.periodType,
       startDate,
@@ -568,25 +607,28 @@ export function createManualMenu(userId: string, input: ManualMenuInput, client:
   });
 }
 
-/** The user's menus; with `from`/`to` (YYYY-MM-DD) only those overlapping that range (one request per week/month view). */
-export function listMenus(userId: string, client: PrismaClient = prisma, range?: { from: Date; to: Date }) {
+/** The owner's menus (family or personal); with `from`/`to` only those overlapping that range (one request per view). */
+export function listMenus(owner: OwnerArg, client: PrismaClient = prisma, range?: { from: Date; to: Date }) {
+  const scope = menuScope(owner);
   return client.menu.findMany({
-    where: range ? { userId, startDate: { lte: range.to }, endDate: { gte: range.from } } : { userId },
+    where: range ? { ...scope, startDate: { lte: range.to }, endDate: { gte: range.from } } : scope,
     include: { items: true },
     orderBy: { createdAt: "desc" },
   });
 }
 
-export function findMenu(userId: string, id: string, client: PrismaClient = prisma) {
-  return client.menu.findFirst({ where: { id, userId }, include: { items: true } });
+/** One menu of the owner; archived family menus stay readable by id (history). */
+export function findMenu(ownerArg: OwnerArg, id: string, client: PrismaClient = prisma) {
+  const owner = ownerOf(ownerArg);
+  return client.menu.findFirst({ where: owner.familyId ? { id, familyId: owner.familyId } : { id, userId: owner.userId }, include: { items: true } });
 }
 
-export async function deleteMenu(userId: string, id: string, client: PrismaClient = prisma): Promise<boolean> {
-  const result = await client.menu.deleteMany({ where: { id, userId } });
+export async function deleteMenu(owner: OwnerArg, id: string, client: PrismaClient = prisma): Promise<boolean> {
+  const result = await client.menu.deleteMany({ where: { id, ...menuScope(owner) } });
   return result.count > 0;
 }
 
-export async function autoRefreshMenu(userId: string, input: AutoRefreshInput, client: PrismaClient = prisma) {
+export async function autoRefreshMenu(owner: OwnerArg, input: AutoRefreshInput, client: PrismaClient = prisma) {
   const recipes = await getRecipes(input.recipes);
   const available = inventoryNames(input.inventoryItems);
   if (available.length === 0) {
@@ -594,7 +636,7 @@ export async function autoRefreshMenu(userId: string, input: AutoRefreshInput, c
   }
 
   const activeMenus = await client.menu.findMany({
-    where: { userId },
+    where: menuScope(owner),
     include: { items: true },
   });
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
@@ -637,20 +679,35 @@ const AI_MEAL: Record<string, string> = { BREAKFAST: "sang", LUNCH: "trua", DINN
 /** Vietnam day of a stored menu date is the UTC date part (menus store days at UTC midnight). */
 export const isPastDay = (date: Date, now: Date = new Date()): boolean => dayKey(normalizeDate(date)) < vnDay(now);
 
-/** "Số món mỗi bữa" of a user (defaults 3 / 5 / 5). */
-export async function getMenuSettings(userId: string, client: PrismaClient = prisma): Promise<MealCounts> {
-  const row = await client.menuSettings.findUnique({ where: { userId } });
+/** "Số món mỗi bữa" of the family (or, without a family, of the user); defaults 3 / 5 / 5. */
+export async function getMenuSettings(ownerArg: OwnerArg, client: PrismaClient = prisma): Promise<MealCounts> {
+  const owner = ownerOf(ownerArg);
+  const row = owner.familyId
+    ? await client.familyMenuSettings.findUnique({ where: { familyId: owner.familyId } })
+    : await client.menuSettings.findUnique({ where: { userId: owner.userId } });
   return row ? { BREAKFAST: row.breakfast, LUNCH: row.lunch, DINNER: row.dinner } : { ...DEFAULT_MEAL_COUNTS };
 }
 
-export async function updateMenuSettings(userId: string, counts: { breakfast: number; lunch: number; dinner: number }, client: PrismaClient = prisma): Promise<MealCounts> {
-  const row = await client.menuSettings.upsert({ where: { userId }, create: { userId, ...counts }, update: counts });
+/** Everyone can read the family's "Số món mỗi bữa"; only the family OWNER changes it (personal users change their own). */
+export const canEditMenuSettings = (ownerArg: OwnerArg): boolean => {
+  const owner = ownerOf(ownerArg);
+  return !owner.familyId || owner.role === "OWNER";
+};
+
+export async function updateMenuSettings(ownerArg: OwnerArg, counts: { breakfast: number; lunch: number; dinner: number }, client: PrismaClient = prisma): Promise<MealCounts> {
+  const owner = ownerOf(ownerArg);
+  if (!canEditMenuSettings(owner)) throw new MenuServiceError("Chỉ chủ gia đình có thể thay đổi số món mỗi bữa.", 403);
+  const row = owner.familyId
+    ? await client.familyMenuSettings.upsert({ where: { familyId: owner.familyId }, create: { familyId: owner.familyId, ...counts }, update: counts })
+    : await client.menuSettings.upsert({ where: { userId: owner.userId }, create: { userId: owner.userId, ...counts }, update: counts });
   return { BREAKFAST: row.breakfast, LUNCH: row.lunch, DINNER: row.dinner };
 }
 
-/** Recipes and dish names the user removed in the last 7 days (dislike history). */
-export async function recentlyRemoved(userId: string, client: PrismaClient = prisma, now: Date = new Date()): Promise<{ recipeIds: Set<string>; names: Set<string> }> {
-  const rows = await client.removedDish.findMany({ where: { userId, removedAt: { gte: addDays(now, -DISLIKE_DAYS) } } });
+/** Recipes and dish names removed in the last 7 days (dislike history): by any family member, else by the user. */
+export async function recentlyRemoved(ownerArg: OwnerArg, client: PrismaClient = prisma, now: Date = new Date()): Promise<{ recipeIds: Set<string>; names: Set<string> }> {
+  const owner = ownerOf(ownerArg);
+  const who = owner.familyId ? { familyId: owner.familyId } : { userId: owner.userId };
+  const rows = await client.removedDish.findMany({ where: { ...who, removedAt: { gte: addDays(now, -DISLIKE_DAYS) } } });
   return {
     recipeIds: new Set(rows.flatMap((row) => (row.recipeId ? [row.recipeId] : []))),
     names: new Set(rows.map((row) => normalizeText(row.dishName))),
@@ -659,6 +716,8 @@ export async function recentlyRemoved(userId: string, client: PrismaClient = pri
 
 type RemoveInput = {
   userId: string;
+  /** The caller's family or personal owner; without it, personal by userId. */
+  owner?: MenuOwner;
   menuId: string;
   itemId: string;
   authorization?: string;
@@ -679,14 +738,15 @@ type RemoveInput = {
  */
 export async function removeMenuItem(input: RemoveInput, client: PrismaClient = prisma) {
   const now = input.now ?? new Date();
-  const menu = await client.menu.findFirst({ where: { id: input.menuId, userId: input.userId }, include: { items: true } });
+  const owner = input.owner ?? ownerOf(input.userId);
+  const menu = await client.menu.findFirst({ where: { id: input.menuId, ...menuScope(owner) }, include: { items: true } });
   if (!menu) throw new MenuServiceError("Menu not found", 404);
   if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
   const item = menu.items.find((entry) => entry.id === input.itemId);
   if (!item) throw new MenuServiceError("Món này không còn trong thực đơn.", 404);
 
-  await client.removedDish.create({ data: { userId: input.userId, recipeId: item.recipeId, dishName: item.dishName } });
-  const removed = await recentlyRemoved(input.userId, client, now);
+  await client.removedDish.create({ data: { userId: input.userId, familyId: owner.familyId, recipeId: item.recipeId, dishName: item.dishName } });
+  const removed = await recentlyRemoved(owner, client, now);
 
   const recipes = await getRecipes(input.recipes).catch(() => [] as RecipeCandidate[]);
   const khoItems = input.inventoryItems !== undefined
@@ -765,16 +825,17 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
   const days = [...new Set(input.days)].filter((day) => DAY_PATTERN.test(day) && day >= today).sort();
   if (days.length === 0) return [];
   const existing = await client.menu.findMany({
-    where: { userId: input.userId, periodType: PeriodType.DAY, startDate: { in: days.map((day) => new Date(`${day}T00:00:00.000Z`)) } },
+    where: { ...menuScope(input.owner ?? input.userId), periodType: PeriodType.DAY, startDate: { in: days.map((day) => new Date(`${day}T00:00:00.000Z`)) } },
     select: { startDate: true },
   });
   const taken = new Set(existing.map((menu) => dayKey(menu.startDate)));
   const missing = days.filter((day) => !taken.has(day));
   if (missing.length === 0) return [];
+  const khoFamily = input.owner?.familyId ?? input.familyId;
   const [recipes, khoItems] = await Promise.all([
     getRecipes(input.recipes),
     input.inventoryItems !== undefined ? Promise.resolve(readKhoItems(input.inventoryItems))
-      : input.familyId ? getKhoItems(input.familyId, input.authorization) : Promise.resolve([] as KhoItem[]),
+      : khoFamily ? getKhoItems(khoFamily, input.authorization) : Promise.resolve([] as KhoItem[]),
   ]);
   const created = [];
   // One day after another, so each day sees the previous days and avoids repeating their dishes.
@@ -785,7 +846,7 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
   return created;
 }
 
-type TopUpInput = { userId: string; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
+type TopUpInput = { userId: string; owner?: MenuOwner; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
 
 /**
  * Upgrades a day menu made before multi-dish menus (its dishes carry no role): adds only the missing dishes of each
@@ -794,7 +855,8 @@ type TopUpInput = { userId: string; menuId: string; authorization?: string; now?
  */
 export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma) {
   const now = input.now ?? new Date();
-  const menu = await client.menu.findFirst({ where: { id: input.menuId, userId: input.userId }, include: { items: true } });
+  const owner = input.owner ?? ownerOf(input.userId);
+  const menu = await client.menu.findFirst({ where: { id: input.menuId, ...menuScope(owner) }, include: { items: true } });
   if (!menu) throw new MenuServiceError("Menu not found", 404);
   if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
   const legacy = menu.periodType === PeriodType.DAY && !menu.items.some((item) => typeof asRecord(item.details).role === "string");
@@ -806,7 +868,7 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
     getRecipes(input.recipes).catch(() => [] as RecipeCandidate[]),
     input.inventoryItems !== undefined ? Promise.resolve(readKhoItems(input.inventoryItems))
       : menu.familyId ? getKhoItems(menu.familyId, input.authorization).catch(() => [] as KhoItem[]) : Promise.resolve([] as KhoItem[]),
-    recentlyRemoved(input.userId, client, now),
+    recentlyRemoved(owner, client, now),
   ]);
   const today = vnDay(now);
   const kho = usableKho(khoItems, today);
