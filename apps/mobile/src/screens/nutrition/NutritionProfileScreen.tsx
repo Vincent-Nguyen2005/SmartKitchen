@@ -306,8 +306,6 @@ type HealthSectionProps = {
   onTagsChange?: (allergies: string[], conditions: string[]) => void;
   /** Show only this list, without the tabs (onboarding has one step per list). */
   only?: HealthTab;
-  /** Quick-pick chips under the input; names missing from the catalog are left out. */
-  quickPicks?: Partial<Record<HealthTab, readonly string[]>>;
 };
 
 export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSectionProps>(function HealthPreferencesSection({
@@ -315,7 +313,6 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
   accessToken,
   onTagsChange,
   only,
-  quickPicks,
 }, ref): React.JSX.Element {
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
@@ -389,14 +386,6 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
     },
   }), [loading, allergyTags, conditionTags, allergies, conditions]);
 
-  const tags = tab === "allergies" ? allergyTags : conditionTags;
-  const setTags = tab === "allergies" ? setAllergyTags : setConditionTags;
-  const catalog = tab === "allergies" ? allergies : conditions;
-  const picks = (quickPicks?.[tab] ?? []).filter((name) => catalog.some((option) => option.name === name));
-  const togglePick = (name: string) => {
-    setTags(tags.includes(name) ? tags.filter((tag) => tag !== name) : [...tags, name]);
-    setMessage("");
-  };
 
   return (
     <View style={[styles.healthSection, compact && styles.cardCompact]}>
@@ -421,25 +410,6 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
               accessibilityLabel="Thêm tình trạng sức khỏe"
               placeholder="Ví dụ: tiểu đường, gout"
             />
-          )}
-          {picks.length > 0 && (
-            <View style={styles.quickPicks}>
-              {picks.map((name) => {
-                const selected = tags.includes(name);
-                return (
-                  <Pressable
-                    key={name}
-                    accessibilityRole="checkbox"
-                    accessibilityLabel={name}
-                    accessibilityState={{ checked: selected }}
-                    onPress={() => togglePick(name)}
-                    style={({ pressed }) => [styles.quickPick, selected && styles.quickPickSelected, pressed && styles.pressed]}
-                  >
-                    <Text style={[styles.quickPickText, selected && styles.quickPickTextSelected]}>{name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
           )}
           {!!message && (
             <Text accessibilityRole="alert" style={styles.healthMessage}>
@@ -609,14 +579,6 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   healthLoader: { marginVertical: spacing.lg },
-  quickPicks: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  quickPick: {
-    alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1,
-    justifyContent: "center", minHeight: touchTarget - spacing.xs, paddingHorizontal: spacing.md,
-  },
-  quickPickSelected: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-  quickPickText: { ...textStyles.labelSmall, color: colors.text },
-  quickPickTextSelected: { color: colors.primary },
   healthMessage: {
     ...textStyles.bodySmall,
     color: colors.primary,

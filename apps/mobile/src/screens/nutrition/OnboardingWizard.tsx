@@ -41,11 +41,6 @@ const STEPS: readonly Step[] = ["gender", "birthDate", "height", "weight", "alle
 /** Steps counted in "Bước n/6" (all but the summary). */
 const COUNTED_STEPS = STEPS.length - 1;
 const isHealthStep = (step: Step): step is HealthTab => step === "allergies" || step === "conditions";
-/** Common catalog items offered as chips (names missing from the catalog are not shown). */
-const QUICK_PICKS: Record<HealthTab, readonly string[]> = {
-  allergies: ["Sữa", "Trứng", "Hải sản", "Tôm", "Đậu phộng", "Đậu nành", "Gluten", "Mè"],
-  conditions: ["Tiểu đường", "Cao huyết áp", "Mỡ máu cao", "Gout", "Bệnh dạ dày", "Bệnh thận", "Mang thai", "Cho con bú"],
-};
 const GENDER_LABEL: Record<Gender, string> = { MALE: "Nam", FEMALE: "Nữ" };
 
 type Props = {
@@ -55,7 +50,7 @@ type Props = {
 
 /**
  * "Thông tin cơ bản" after sign-in: one question per screen (giới tính, ngày sinh, chiều cao, cân nặng), then the
- * optional allergies and health conditions (one step each, with quick picks), then a summary whose rows jump back to edit. "Hoàn tất" saves through the
+ * optional allergies and health conditions (one step each), then a summary whose rows jump back to edit. "Hoàn tất" saves through the
  * nutrition profile API; "Để sau" leaves without saving. Answers are kept while moving back and forth.
  */
 export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
@@ -317,7 +312,6 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
                 compact
                 accessToken={accessToken}
                 only={step === "conditions" ? "conditions" : "allergies"}
-                quickPicks={QUICK_PICKS}
                 onTagsChange={(allergyNames, conditionNames) => { setAllergies(allergyNames); setConditions(conditionNames); }}
               />
             </View>
