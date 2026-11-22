@@ -1,6 +1,7 @@
 import { useSession } from "../../services/session";
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
@@ -69,7 +70,20 @@ const rangeError = (text: string, range: { min: number; max: number }, unit: str
   return Number.isFinite(value) && value >= range.min && value <= range.max ? null : `Nhập từ ${range.min} đến ${range.max} ${unit}.`;
 };
 
-export default function NutritionProfileScreen(): React.JSX.Element {
+type Props = {
+  /**
+   * "settings" (Hồ sơ › Thông tin sức khỏe, default) or "onboarding" (the "Thông tin cơ bản" step after sign-in):
+   * "Tiếp tục" / "Để sau" instead of "Lưu", allergies and health conditions collapsed, no energy result. In onboarding
+   * an existing profile (or a load error) calls onDone at once so the step never blocks the app.
+   */
+  mode?: "settings" | "onboarding";
+  onDone?: () => void;
+};
+
+export default function NutritionProfileScreen({ mode = "settings", onDone }: Props = {}): React.JSX.Element {
+  const onboarding = mode === "onboarding";
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
   const accessToken = useSession().accessToken ?? undefined;
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
@@ -94,6 +108,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const healthRef = useRef<HealthSectionHandle>(null);
+  const [healthOpen, setHealthOpen] = useState(false);
+  const [healthMounted, setHealthMounted] = useState(!onboarding);
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const showToast = (message: string) => {
@@ -107,6 +123,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     if (!api) {
       setLoading(false);
       setError("Vui lòng đăng nhập để tải hồ sơ dinh dưỡng.");
+      if (onboarding) onDoneRef.current?.();
       return () => {
         active = false;
       };
@@ -125,6 +142,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
         setResult(data);
         setHasProfile(true);
         setError("");
+        if (onboarding) onDoneRef.current?.();
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -135,6 +153,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
           setError("");
         } else {
           setError("Không thể tải hồ sơ dinh dưỡng. Vui lòng thử lại.");
+          if (onboarding) onDoneRef.current?.();
         }
       })
       .finally(() => {
@@ -143,7 +162,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [api, accessToken]);
+  }, [api, accessToken, onboarding]);
 
   const heightError = rangeError(height, HEIGHT_RANGE, "cm");
   const weightError = rangeError(weight, WEIGHT_RANGE, "kg");
@@ -199,7 +218,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       showToast(healthError);
       return;
     }
-    showToast("Đã lưu thông tin sức khỏe");
+    if (onboarding) onDoneRef.current?.();
+    else showToast("Đã lưu thông tin sức khỏe");
   };
 
   return (
@@ -217,7 +237,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
           ) : (
             <>
               <View style={[styles.formCard, isCompact && styles.cardCompact]}>
-                <Text style={styles.cardTitle}>Thông tin cơ bản</Text>
+                {!onboarding && <Text style={styles.cardTitle}>Thông tin cơ bản</Text>}
                 <Text style={styles.cardHint}>
                   Các chỉ số giúp ước tính nhu cầu dinh dưỡng hằng ngày.
                 </Text>
@@ -267,7 +287,23 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 </View>
               </View>
 
-              {accessToken ? <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} /> : null}
+              {onboarding && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: healthOpen }}
+                  onPress={() => { setHealthMounted(true); setHealthOpen((open) => !open); }}
+                  style={({ pressed }) => [styles.healthToggle, pressed && styles.pressed]}
+                >
+                  <Text style={styles.healthToggleText}>Dị ứng / Tình trạng sức khỏe (không bắt buộc)</Text>
+                  <AppIcon icon={healthOpen ? ChevronUp : ChevronDown} size="sm" color={colors.muted} />
+                </Pressable>
+              )}
+              {/* Stays mounted once opened, so collapsing keeps the tags for "Tiếp tục". */}
+              {accessToken && healthMounted ? (
+                <View style={onboarding && !healthOpen ? styles.hidden : undefined}>
+                  <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} />
+                </View>
+              ) : null}
 
               {!!error && (
                 <Text accessibilityRole="alert" style={styles.error}>
@@ -287,11 +323,21 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 {saving ? (
                   <ActivityIndicator color={colors.primaryText} />
                 ) : (
-                  <Text style={styles.saveText}>Lưu</Text>
+                  <Text style={styles.saveText}>{onboarding ? "Tiếp tục" : "Lưu"}</Text>
                 )}
               </Pressable>
+              {onboarding && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={saving}
+                  onPress={() => onDoneRef.current?.()}
+                  style={({ pressed }) => [styles.laterButton, pressed && styles.pressed, saving && styles.disabled]}
+                >
+                  <Text style={styles.laterText}>Để sau</Text>
+                </Pressable>
+              )}
 
-              {result && (
+              {!onboarding && result && (
                 <View accessibilityLiveRegion="polite" style={[styles.result, isCompact && styles.cardCompact]}>
                   <Text style={styles.resultLabel}>MỤC TIÊU NĂNG LƯỢNG</Text>
                   <Text style={styles.calorie}>
@@ -600,6 +646,11 @@ const styles = StyleSheet.create({
   },
   saveText: { ...textStyles.labelSmall, color: colors.primaryText },
   pressed: { opacity: 0.82 },
+  hidden: { display: "none" },
+  healthToggle: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "space-between", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  healthToggleText: { ...textStyles.labelSmall, color: colors.text, flex: 1 },
+  laterButton: { alignItems: "center", borderColor: colors.primary, borderRadius: radius.md, borderWidth: 1, justifyContent: "center", minHeight: touchTarget + spacing.sm, paddingHorizontal: spacing.md },
+  laterText: { ...textStyles.labelSmall, color: colors.primary },
   disabled: { opacity: 0.5 },
   result: {
     backgroundColor: colors.surface,

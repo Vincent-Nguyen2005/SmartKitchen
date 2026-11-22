@@ -17,6 +17,10 @@ type SessionContextValue = {
   verifyOtp: (otpCode: string) => Promise<void>;
   resendOtp: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** True right after signIn / verifyOtp (not after restoring a saved session) until completeOnboarding or signOut. */
+  freshSignIn: boolean;
+  /** Ends the "Thông tin cơ bản" step for this session (saved, skipped with "Để sau", or a profile already exists). */
+  completeOnboarding: () => void;
   loadFamily: () => Promise<void>;
   createFamily: (name: string) => Promise<void>;
   joinFamily: (code: string) => Promise<void>;
@@ -54,6 +58,8 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const [ready, setReady] = useState(false);
   const [restoreError, setRestoreError] = useState(false);
   const [restoreAttempt, setRestoreAttempt] = useState(0);
+  const [freshSignIn, setFreshSignIn] = useState(false);
+  const completeOnboarding = useCallback(() => setFreshSignIn(false), []);
   const refreshInFlight = useRef<Promise<string> | null>(null);
 
   const retryRestore = useCallback(() => {
@@ -73,8 +79,10 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const signIn = useCallback(async (email: string, password: string) => {
     try {
       const result = await authApi.login(email, password);
+      setFreshSignIn(true);
       await saveTokens(result.accessToken, result.refreshToken, result.user);
     } catch (error) {
+      setFreshSignIn(false);
       if (error instanceof ApiError && error.code === "EMAIL_NOT_VERIFIED") {
         setPendingVerificationEmail(email.trim().toLowerCase());
       }
@@ -94,6 +102,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const verifyOtp = useCallback(async (otpCode: string) => {
     if (!pendingVerificationEmail) throw new Error("No account is waiting for verification");
     const result = await authApi.verifyOtp(pendingVerificationEmail, otpCode);
+    setFreshSignIn(true);
     await saveTokens(result.accessToken, result.refreshToken, result.user);
     setPendingVerificationEmail(null);
   }, [pendingVerificationEmail, saveTokens]);
@@ -203,6 +212,7 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setFamily(null);
     setFamilySettings(null);
     setRestoreError(false);
+    setFreshSignIn(false);
   }, [accessToken]);
 
   useEffect(() => {
@@ -249,11 +259,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   }, [accessToken, loadFamily, ready]);
 
   const value = useMemo(() => ({
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings,
   }), [
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings,
   ]);
