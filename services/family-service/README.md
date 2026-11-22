@@ -44,7 +44,9 @@ These public endpoints enter admin-service via the gateway, require an authentic
 
 Gateway `/api/families/me` is forwarded as `/me`, so the family router is mounted at the service root as well as its direct-service legacy path `/api/family/me`.
 
-## Internal route: family members
+## Internal routes: family members and memberships
+
+`POST /internal/families/memberships` with `{ "userIds": [...] }` (1–500 UUIDs) returns `{ items: [{ userId, familyId, role, memberCount }] }`, only for the users who belong to a family. It contains no names. menu-service uses it to find the caller's family on each menu request, and its startup backfill uses it to map older menus to families. Wrong or missing key gives 403; invalid body 400.
 
 `GET /internal/families/:id/members` returns `{ items: [{ userId, name }] }` in join order. It is for menu-service (family menus).
 

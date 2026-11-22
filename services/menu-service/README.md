@@ -38,9 +38,39 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
 
 Ingredients with `isSeasoning` (from recipe-service, or AI dishes, which now list common seasonings with `isSeasoning=true`) are left out of Kho matching, "Có sẵn X/Y", the score and the missing list.
 
+## Family-owned menus
+
+Menus belong to the family: every member sees and changes the same menu. Users without a family keep personal menus, which work as before.
+
+- **Who owns a request:** the gateway's `x-user-id` is looked up in family-service `POST /internal/families/memberships`, using `INTERNAL_API_KEY` and `FAMILY_SERVICE_URL`.
+  - **In a family:** generate, list (with `from`/`to`), get, delete, `auto-refresh`, `top-up`, `generate-days`, remove/swap and settings all work on the family's menus.
+  - **No family:** everything is read by `userId`, as before.
+  - **Errors:** a `familyId` in the request that isn't the caller's family gives 403. If family-service can't be reached, the request gets 503; it never switches silently to personal menus.
+- **One menu per family, day and period:** a partial unique index enforces this for active menus (`"Menu_family_period_active_key"`, created in SQL in migration `20261125000000_family_menus`, because Prisma can't declare a partial index).
+  - Generating again replaces the family's menu ("Làm mới theo kho").
+  - If two members generate at the same moment, the index lets one win, and the other request returns that menu. No duplicates.
+- **Menu fields:** `servings` is the family's member count when the menu was generated (1 for personal menus, null for older menus). `userId` is the member who generated it.
+- **"Số món mỗi bữa":** `FamilyMenuSettings` holds one value per family.
+  - `GET /settings` returns it with `canEdit`.
+  - Only the family OWNER can `PUT` it (403 for other members). Users without a family use their personal `MenuSettings`.
+- **Dislike history:** `RemovedDish.familyId` is set for family removals. Dishes removed by any member are skipped for the whole family for 7 days.
+
+### Family backfill (startup, idempotent)
+
+After `prisma migrate deploy`, the service runs a data step in the background. It logs counts only, never names or ids:
+
+- **Migration SQL first:** among menus that already had a `familyId` (the family whose Kho they used), it keeps the most recently updated menu per family, day and period active. The others are archived. Then it creates the unique index.
+- **Menus without a family:** each one whose creator is now in a family gets that family. If the family already has an active menu for that day and period, the more recently updated one stays active and the other is archived. `updatedAt` is kept, so later runs agree. Archived menus stay readable by id and are never listed or deleted.
+- **Dislike history:** members' `RemovedDish` rows without a family get the family, so the members' history is merged.
+- **Settings:** a family without `FamilyMenuSettings` gets its OWNER's personal setting, or else the most recently updated member setting. A family with no settings at all keeps the defaults.
+- **Repeat runs:** the step only touches rows without a family, so running it again changes nothing. It is skipped (with a warning) when `INTERNAL_API_KEY` is missing. If it fails, it is retried at the next start.
+- **Users without a family:** nothing changes for them.
+
+Log line: `[menu-service] family backfill: N menus assigned to families, N archived, N removed dishes merged, N family settings created`.
+
 ## Day menus: several dishes per meal, saved, one-dish replacement
 
-- **Meal sizes:** `POST /generate` for a DAY uses the user's "Số món mỗi bữa" (`GET/PUT /settings`, 1–6 each; defaults are 3 breakfast, 5 lunch, 5 dinner).
+- **Meal sizes:** `POST /generate` for a DAY uses the family's (or the personal user's) "Số món mỗi bữa" (`GET/PUT /settings`, 1–6 each; defaults are 3 breakfast, 5 lunch, 5 dinner).
   - **Lunch and dinner** are built like a family meal from recipe roles: món mặn, canh, rau, món xào, tráng miệng (the first N roles), then more mặn, xào and canh.
   - **Breakfast** gets light dishes, with a drink as the last dish when there are 2 or more.
   - Each slot takes the best Kho-scored recipe of its role. A dish is never repeated within the day, and dishes the user removed in the last 7 days are skipped while others fit.
@@ -52,14 +82,14 @@ Ingredients with `isSeasoning` (from recipe-service, or AI dishes, which now lis
 - **Week view:** `POST /generate-days { days, familyId }` generates DAY menus in one request for days that are today or later and have no menu. Past days and existing menus are left alone.
 - **Older menus:** `POST /:menuId/top-up` upgrades a day menu made before multi-dish menus (its dishes have no role). It adds only the missing dishes per meal up to "Số món mỗi bữa" and keeps the existing ones. It runs once, because the new dishes carry roles, and past days are refused (422).
 - **Removing one dish:** `POST /:menuId/items/:itemId/remove`
-  - The removal is stored in the user's dislike history (`RemovedDish`).
+  - The removal is stored in the dislike history (`RemovedDish`; per family when the caller has one).
   - The server adds ONE replacement with the same meal and role, ranked by Kho score. It excludes dishes already in that day, dishes removed in the last 7 days and hidden dishes.
   - If no catalog dish fits, a stored AI suggestion for that meal fills the slot. This uses the same AI limits, and starts a background generation when the Kho changed. Otherwise the slot stays empty.
   - Past days can't be edited (422).
 
 ## Listing menus
 
-`GET /` (gateway: `/api/menu`) returns the user's menus. Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.
+`GET /` (gateway: `/api/menu`) returns the family's active menus (or, without a family, the user's). Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.
 
 ## Database
 
