@@ -31,6 +31,7 @@ import {
 import {
   ageFrom,
   basicsError,
+  birthCalendarStart,
   birthDateForAge,
   DEFAULT_ACTIVITY,
   heightRangeError,
@@ -215,9 +216,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                       onChange={setBirthDate}
                       minDate={MIN_BIRTH_DATE}
                       maxDate={todayIso()}
-                      suggestedDate={birthDateForAge(25)}
-                      emptyHint="Chọn ngày sinh để tính tuổi."
-                      pickYearFirst
+                      suggestedDate={birthCalendarStart()}
                     />
                   </View>
                   {age !== null && age >= 0 && <Text style={styles.ageText}>{age} tuổi</Text>}

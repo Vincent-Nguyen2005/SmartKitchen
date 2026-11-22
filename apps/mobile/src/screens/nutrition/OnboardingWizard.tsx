@@ -21,6 +21,7 @@ import {
   ageFrom,
   basicsError,
   birthDateError,
+  birthCalendarStart,
   birthDateForAge,
   DEFAULT_ACTIVITY,
   heightRangeError,
@@ -199,9 +200,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
             onChange={setBirthDate}
             minDate={MIN_BIRTH_DATE}
             maxDate={todayIso()}
-            suggestedDate={birthDateForAge(25)}
-            emptyHint="Chọn ngày sinh để tính tuổi."
-            pickYearFirst
+            suggestedDate={birthCalendarStart()}
             size="large"
           />
           {birthProblem ? <Text style={local.fieldError}>{birthProblem}</Text> : age !== null && <Text style={local.ageText}>{age} tuổi</Text>}

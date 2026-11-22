@@ -21,10 +21,8 @@ type DateFieldProps = {
   maxDate?: string;
   /** Day the picker opens on while the field is empty (e.g. today + 7), YYYY-MM-DD. */
   suggestedDate: string;
-  /** Shown under the field while it is empty. */
-  emptyHint: string;
-  /** While empty, the calendar opens on the year list (birth dates). */
-  pickYearFirst?: boolean;
+  /** Shown under the field while it is empty (optional). */
+  emptyHint?: string;
   /** Offer clearing (the x next to the field and "Xóa" in the calendar). Default true. */
   clearable?: boolean;
   /** "large": taller field with bigger text (onboarding wizard). */
@@ -36,7 +34,7 @@ type DateFieldProps = {
  * CalendarPicker, the same on web, iOS and Android, so it also works inside embedded web previews.
  * Selectable days = minDate..maxDate.
  */
-export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint, pickYearFirst, clearable = true, size = "default" }: DateFieldProps): React.JSX.Element {
+export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint, clearable = true, size = "default" }: DateFieldProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const large = size === "large";
   const textVariant = large ? "subheading" : "body";
@@ -56,7 +54,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
         </Pressable>
         {clearable && value ? <IconButton icon={X} size="sm" accessibilityLabel={`Xóa ${label.toLowerCase()}`} onPress={() => onChange("")} /> : null}
       </View>
-      {value ? <AppText variant="caption">Đã chọn: {toDisplayDate(value)}</AppText> : <AppText variant="caption">{emptyHint}</AppText>}
+      {value ? <AppText variant="caption">Đã chọn: {toDisplayDate(value)}</AppText> : emptyHint ? <AppText variant="caption">{emptyHint}</AppText> : null}
       <CalendarPicker
         visible={open}
         title={label}
@@ -64,7 +62,6 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
         minDate={minDate}
         maxDate={maxDate}
         initialDate={suggestedDate}
-        startWithYears={pickYearFirst}
         onCancel={() => setOpen(false)}
         onConfirm={(day) => { setOpen(false); onChange(day); }}
         onClear={clearable ? () => { setOpen(false); onChange(""); } : undefined}

@@ -13,7 +13,7 @@ Owner: Hung. Responsibility: nutrition summaries and dietary tracking screens.
   - **Activity:** no section. New profiles send `activityLevel: "LIGHTLY_ACTIVE"`; existing profiles keep their stored value.
   - **Dị ứng / Tình trạng sức khỏe:** shown one at a time with the shared `SegmentTabs` (default Dị ứng; switching keeps unsaved tags), each a `TagInput` with catalog autocomplete and free text. Catalog names are saved as selections, anything else as the user's own items.
   - **Saving:** one "Lưu" saves the basic info first, then the tags, and shows a single toast with the result or the first error.
-  - **Ngày sinh picker:** the in-app `CalendarPicker` (same on web, iOS and Android, also inside embedded web previews). While empty it opens on the year list at the year for age 25; then month, then day. YYYY-MM-DD is still sent.
+  - **Ngày sinh picker:** the in-app `CalendarPicker` (same on web, iOS and Android, also inside embedded web previews). Day grid only (‹ Tháng N YYYY ›); while empty it opens at January of (current year - 25). No helper text under the field; the age shows once a date is picked. YYYY-MM-DD is still sent.
   - Closing the form reloads the targets.
 - **`profileFields.ts`:** the shared rules for both the form and the wizard (ranges, decimal parsing, age from the birth date, validation messages).
 - **`OnboardingWizard`, "Thông tin cơ bản" after sign-in:**

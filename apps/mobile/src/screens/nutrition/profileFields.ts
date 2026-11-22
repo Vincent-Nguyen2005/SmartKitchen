@@ -32,6 +32,9 @@ export const birthDateForAge = (age: number): string => {
   return isoDay(date);
 };
 
+/** Month the birth-date calendar opens on while empty: January of (current year - 25). */
+export const birthCalendarStart = (): string => `${new Date().getFullYear() - 25}-01-01`;
+
 /** Decimal text: "," becomes ".", digits and one dot only, at most 2 decimals. */
 export function normalizeDecimal(value: string): string {
   const cleaned = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
