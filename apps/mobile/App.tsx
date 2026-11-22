@@ -4,6 +4,7 @@ import {
   Bell,
   CalendarDays,
   ChefHat,
+  HeartPulse,
   Camera,
   Check,
   ChevronDown,
@@ -59,6 +60,7 @@ import PaymentScreen, { type PaymentResult } from "./src/screens/payment/Payment
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
+import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -138,6 +140,10 @@ function AppContent(): React.JSX.Element {
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
   const [mealSizeOpen, setMealSizeOpen] = useState(false);
+  // Hồ sơ > "Thông tin sức khỏe" (the nutrition profile form, moved out of Dinh dưỡng); closing it reloads targets.
+  const [healthProfileOpen, setHealthProfileOpen] = useState(false);
+  const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0);
+  const closeHealthProfile = () => { setHealthProfileOpen(false); setNutritionRefreshKey((key) => key + 1); };
   // Thông báo expiry alert tapped: Kho opens that item's edit dialog.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   // Thông báo tab badge = unread notifications + current expiry alerts.
@@ -465,6 +471,12 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
               <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
             </TouchableOpacity>
+            <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
+              onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
+              <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
+              <Text style={styles.sheetItemText}>Thông tin sức khỏe</Text>
+              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+            </TouchableOpacity>
             <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
               onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
               <AppIcon icon={Utensils} size="md" color={colors.primary} />
@@ -488,6 +500,18 @@ function AppContent(): React.JSX.Element {
           </View>
           <View style={styles.settingsBody}>
             <NotificationPreferencesScreen />
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={closeHealthProfile}>
+        <SafeAreaView style={styles.settingsScreen}>
+          <View style={styles.settingsHeader}>
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={closeHealthProfile} />
+            <Text style={styles.settingsTitle}>Thông tin sức khỏe</Text>
+          </View>
+          <View style={styles.healthBody}>
+            <NutritionProfileScreen />
           </View>
         </SafeAreaView>
       </Modal>
@@ -582,7 +606,9 @@ function AppContent(): React.JSX.Element {
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
         {/* Hồ sơ / Nhật ký / Thống kê / Gợi ý; never for ADMIN accounts (they only see Quản trị). */}
-        {!paymentUrl && activeTab === "nutrition" && !isAdmin && <NutritionHome />}
+        {!paymentUrl && activeTab === "nutrition" && !isAdmin && (
+          <NutritionHome refreshKey={nutritionRefreshKey} />
+        )}
       </View>
       {showCaptureBar && (
         <View style={styles.captureBar}>
@@ -674,6 +700,7 @@ const styles = StyleSheet.create({
   settingsScreen: { backgroundColor: colors.background, flex: 1 },
   settingsHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   settingsTitle: { ...textStyles.heading },
+  healthBody: { flex: 1 },
   settingsBody: { flex: 1, paddingTop: spacing.md },
   menuTabIcons: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },

@@ -1,7 +1,6 @@
 import { useSession } from "../../services/session";
 import React, { useEffect, useMemo, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Check } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
@@ -16,6 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { DateField } from "../admin/DateField";
+import { TagInput } from "../../components/TagInput";
 import {
   ActivityLevel,
   createHealthPreferencesApi,
@@ -28,33 +29,45 @@ import {
 } from "./nutritionProfileApi";
 
 
-const activityOptions: {
-  value: ActivityLevel;
-  label: string;
-  detail: string;
-}[] = [
-  {
-    value: "SEDENTARY",
-    label: "Ít vận động",
-    detail: "Chủ yếu ngồi, ít tập luyện",
-  },
-  {
-    value: "LIGHTLY_ACTIVE",
-    label: "Vận động nhẹ",
-    detail: "Tập nhẹ 1-3 ngày/tuần",
-  },
-  {
-    value: "MODERATELY_ACTIVE",
-    label: "Vừa phải",
-    detail: "Tập 3-5 ngày/tuần",
-  },
-  { value: "ACTIVE", label: "Năng động", detail: "Tập 6-7 ngày/tuần" },
-  {
-    value: "VERY_ACTIVE",
-    label: "Rất năng động",
-    detail: "Tập nặng hoặc lao động thể lực",
-  },
-];
+/** The calorie calculation uses light activity by default (the section was removed; existing profiles keep theirs). */
+const DEFAULT_ACTIVITY: ActivityLevel = "LIGHTLY_ACTIVE";
+const MIN_BIRTH_DATE = "1900-01-01";
+const HEIGHT_RANGE = { min: 50, max: 250 };
+const WEIGHT_RANGE = { min: 2, max: 300 };
+
+const pad2 = (value: number) => String(value).padStart(2, "0");
+const isoDay = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const todayIso = () => isoDay(new Date());
+
+/** Full years between a YYYY-MM-DD birth date and today. */
+export function ageFrom(birthDate: string, today: string = todayIso()): number | null {
+  const birth = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  const now = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
+  if (!birth || !now) return null;
+  let age = Number(now[1]) - Number(birth[1]);
+  if (`${now[2]}-${now[3]}` < `${birth[2]}-${birth[3]}`) age -= 1;
+  return age;
+}
+
+/** The API stores only the age: an existing profile is shown with the birth date that gives that age today. */
+const birthDateForAge = (age: number): string => {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() - age);
+  return isoDay(date);
+};
+
+/** Decimal text: "," becomes ".", digits and one dot only, at most 2 decimals. */
+export function normalizeDecimal(value: string): string {
+  const cleaned = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const [whole, ...rest] = cleaned.split(".");
+  return rest.length ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
+}
+
+const rangeError = (text: string, range: { min: number; max: number }, unit: string): string | null => {
+  if (!text.trim()) return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= range.min && value <= range.max ? null : `Nhập từ ${range.min} đến ${range.max} ${unit}.`;
+};
 
 export default function NutritionProfileScreen(): React.JSX.Element {
   const accessToken = useSession().accessToken ?? undefined;
@@ -69,10 +82,10 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   );
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
-  const [birthYear, setBirthYear] = useState("");
+  const [birthDate, setBirthDate] = useState("");
   const [gender, setGender] = useState<Gender>("FEMALE");
-  const [activityLevel, setActivityLevel] =
-    useState<ActivityLevel>("SEDENTARY");
+  const [activityLevel, setActivityLevel] = useState<ActivityLevel>(DEFAULT_ACTIVITY);
+  const [submitted, setSubmitted] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
   const [result, setResult] = useState<NutritionProfileResult | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,21 +107,14 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       .get()
       .then((data) => {
         if (!active) return;
-        setHeight(String(data.profile.height));
-        setWeight(String(data.profile.weight));
-        const profileBirthYear = data.profile.birthYear;
-        setBirthYear(
-          profileBirthYear === undefined ? "" : String(profileBirthYear),
-        );
+        setHeight(normalizeDecimal(String(data.profile.height)));
+        setWeight(normalizeDecimal(String(data.profile.weight)));
+        setBirthDate(data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""));
         setGender(data.profile.gender);
         setActivityLevel(data.profile.activityLevel);
         setResult(data);
         setHasProfile(true);
-        setError(
-          profileBirthYear === undefined && data.profile.age !== undefined
-            ? "Hồ sơ hiện chưa có năm sinh. Vui lòng nhập năm sinh trước khi lưu."
-            : "",
-        );
+        setError("");
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -129,6 +135,10 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     };
   }, [api, accessToken]);
 
+  const heightError = rangeError(height, HEIGHT_RANGE, "cm");
+  const weightError = rangeError(weight, WEIGHT_RANGE, "kg");
+  const age = ageFrom(birthDate);
+
   const save = async (): Promise<void> => {
     if (!api) {
       const message = "Vui lòng đăng nhập để lưu hồ sơ dinh dưỡng.";
@@ -137,29 +147,20 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       return;
     }
 
-    const parseNumber = (value: string): number =>
-      Number(value.trim().replace(",", "."));
-    const parsedHeight = parseNumber(height);
-    const parsedWeight = parseNumber(weight);
-    const parsedBirthYear = parseNumber(birthYear);
-    const currentYear = new Date().getFullYear();
-    if (
-      !Number.isFinite(parsedHeight) ||
-      parsedHeight <= 0 ||
-      !Number.isFinite(parsedWeight) ||
-      parsedWeight <= 0 ||
-      !Number.isInteger(parsedBirthYear) ||
-      parsedBirthYear < currentYear - 130 ||
-      parsedBirthYear > currentYear
-    ) {
-      setError("Nhập chiều cao, cân nặng và năm sinh hợp lệ.");
+    setSubmitted(true);
+    const parsedHeight = Number(height);
+    const parsedWeight = Number(weight);
+    const age = ageFrom(birthDate);
+    if (!height.trim() || !weight.trim() || heightError || weightError || age === null || age < 1 || age > 130) {
+      setError(age !== null && age < 1 ? "Ngày sinh phải cách hôm nay ít nhất 1 năm." : "Nhập chiều cao, cân nặng và ngày sinh hợp lệ.");
       return;
     }
 
     const profile: NutritionProfileInput = {
       height: parsedHeight,
       weight: parsedWeight,
-      birthYear: parsedBirthYear,
+      // nutrition-service stores the date and computes the age from it (Vietnam time).
+      birthDate,
       gender,
       activityLevel,
     };
@@ -218,14 +219,6 @@ export default function NutritionProfileScreen(): React.JSX.Element {
           contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>DINH DƯỠNG CÁ NHÂN</Text>
-            <Text style={styles.title}>Hồ sơ dinh dưỡng</Text>
-            <Text style={styles.subtitle}>
-              Cập nhật thông tin để tính nhu cầu năng lượng phù hợp với bạn.
-            </Text>
-          </View>
-
           {loading ? (
             <ActivityIndicator color={colors.primary} style={styles.loader} />
           ) : (
@@ -240,21 +233,31 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                     label="Chiều cao"
                     unit="cm"
                     value={height}
-                    onChangeText={setHeight}
+                    onChangeText={(value) => setHeight(normalizeDecimal(value))}
+                    error={heightError ?? (submitted && !height.trim() ? "Nhập chiều cao." : null)}
                   />
                   <NumberField
                     label="Cân nặng"
                     unit="kg"
                     value={weight}
-                    onChangeText={setWeight}
+                    onChangeText={(value) => setWeight(normalizeDecimal(value))}
+                    error={weightError ?? (submitted && !weight.trim() ? "Nhập cân nặng." : null)}
                   />
                 </View>
-                <NumberField
-                  label="Năm sinh"
-                  unit="năm"
-                  value={birthYear}
-                  onChangeText={setBirthYear}
-                />
+                <View style={styles.birthRow}>
+                  <View style={styles.birthField}>
+                    <DateField
+                      label="Ngày sinh"
+                      value={birthDate}
+                      onChange={setBirthDate}
+                      minDate={MIN_BIRTH_DATE}
+                      maxDate={todayIso()}
+                      suggestedDate={birthDateForAge(25)}
+                      emptyHint="Chọn ngày sinh để tính tuổi."
+                    />
+                  </View>
+                  {age !== null && age >= 0 && <Text style={styles.ageText}>{age} tuổi</Text>}
+                </View>
 
                 <Text style={styles.sectionTitle}>Giới tính</Text>
                 <View style={styles.genderRow}>
@@ -268,38 +271,6 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                     selected={gender === "MALE"}
                     onPress={() => setGender("MALE")}
                   />
-                </View>
-              </View>
-
-              <View style={[styles.formCard, isCompact && styles.cardCompact]}>
-                <Text style={styles.cardTitle}>Mức độ vận động</Text>
-                <Text style={styles.cardHint}>
-                  Chọn mức độ gần nhất với sinh hoạt của bạn.
-                </Text>
-                <View style={styles.activityList}>
-                  {activityOptions.map((option) => (
-                    <Pressable
-                      key={option.value}
-                      accessibilityRole="radio"
-                      accessibilityState={{ selected: activityLevel === option.value }}
-                      onPress={() => setActivityLevel(option.value)}
-                      style={({ pressed }) => [
-                        styles.activityOption,
-                        activityLevel === option.value && styles.activitySelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <View style={styles.radioOuter}>
-                        {activityLevel === option.value && (
-                          <View style={styles.radioInner} />
-                        )}
-                      </View>
-                      <View style={styles.activityCopy}>
-                        <Text style={styles.activityLabel}>{option.label}</Text>
-                        <Text style={styles.activityDetail}>{option.detail}</Text>
-                      </View>
-                    </Pressable>
-                  ))}
                 </View>
               </View>
 
@@ -362,8 +333,9 @@ function HealthPreferencesSection({
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
   const [conditions, setConditions] = useState<HealthOption[]>([]);
-  const [selectedAllergies, setSelectedAllergies] = useState<string[]>([]);
-  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
+  /** Tag names shown: catalog items and the user's own (custom) items. */
+  const [allergyTags, setAllergyTags] = useState<string[]>([]);
+  const [conditionTags, setConditionTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -375,8 +347,8 @@ function HealthPreferencesSection({
         if (!active) return;
         setAllergies(allergyOptions);
         setConditions(conditionOptions);
-        setSelectedAllergies(selection.allergies.map(({ id }) => id));
-        setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
+        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
       })
       .catch(() => {
         if (active) setMessage("Không thể tải dị ứng và bệnh lý đã khai báo.");
@@ -389,29 +361,22 @@ function HealthPreferencesSection({
     };
   }, [accessToken]);
 
-  const toggle = (
-    id: string,
-    selected: string[],
-    setSelected: React.Dispatch<React.SetStateAction<string[]>>,
-  ): void => {
-    setSelected(
-      selected.includes(id)
-        ? selected.filter((item) => item !== id)
-        : [...selected, id],
-    );
-    setMessage("");
-  };
+  const tagsOf = (selected: HealthOption[], custom: string[] = []) => [...selected.map(({ name }) => name), ...custom];
+  /** Catalog names become ids; anything else is saved as the user's own item. */
+  const splitTags = (names: string[], options: HealthOption[]) => ({
+    ids: names.flatMap((name) => options.find((option) => option.name === name)?.id ?? []),
+    custom: names.filter((name) => !options.some((option) => option.name === name)),
+  });
 
   const save = async (): Promise<void> => {
     setSaving(true);
     setMessage("");
     try {
-      const selection = await api.saveSelection(
-        selectedAllergies,
-        selectedConditions,
-      );
-      setSelectedAllergies(selection.allergies.map(({ id }) => id));
-      setSelectedConditions(selection.healthConditions.map(({ id }) => id));
+      const allergySplit = splitTags(allergyTags, allergies);
+      const conditionSplit = splitTags(conditionTags, conditions);
+      const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
+      setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
+      setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
       setMessage("Đã lưu hồ sơ sức khỏe.");
     } catch {
       setMessage("Không thể lưu hồ sơ sức khỏe. Vui lòng thử lại.");
@@ -431,35 +396,22 @@ function HealthPreferencesSection({
       ) : (
         <>
           <Text style={styles.healthGroupTitle}>Dị ứng</Text>
-          {allergies.length === 0 ? (
-            <Text style={styles.healthEmpty}>Chưa có danh mục dị ứng.</Text>
-          ) : (
-            allergies.map((option) => (
-              <HealthOptionButton
-                key={option.id}
-                option={option}
-                selected={selectedAllergies.includes(option.id)}
-                onPress={() =>
-                  toggle(option.id, selectedAllergies, setSelectedAllergies)
-                }
-              />
-            ))
-          )}
+          <TagInput
+            tags={allergyTags}
+            onChange={(names) => { setAllergyTags(names); setMessage(""); }}
+            suggestions={allergies.map((option) => option.name)}
+            accessibilityLabel="Thêm dị ứng"
+            placeholder="Ví dụ: sữa, hải sản"
+          />
           <Text style={styles.healthGroupTitle}>Bệnh lý / tình trạng sức khỏe</Text>
-          {conditions.length === 0 ? (
-            <Text style={styles.healthEmpty}>Chưa có danh mục bệnh lý.</Text>
-          ) : (
-            conditions.map((option) => (
-              <HealthOptionButton
-                key={option.id}
-                option={option}
-                selected={selectedConditions.includes(option.id)}
-                onPress={() =>
-                  toggle(option.id, selectedConditions, setSelectedConditions)
-                }
-              />
-            ))
-          )}
+          <TagInput
+            tags={conditionTags}
+            onChange={(names) => { setConditionTags(names); setMessage(""); }}
+            suggestions={conditions.map((option) => option.name)}
+            accessibilityLabel="Thêm bệnh lý"
+            placeholder="Ví dụ: tiểu đường, gout"
+          />
+          <Text style={styles.healthNote}>Chọn gợi ý trong danh mục hoặc tự nhập. Mục tự nhập được lưu trong hồ sơ nhưng chưa dùng để lọc món gợi ý.</Text>
           {!!message && (
             <Text accessibilityRole="alert" style={styles.healthMessage}>
               {message}
@@ -483,49 +435,18 @@ function HealthPreferencesSection({
   );
 }
 
-function HealthOptionButton({
-  option,
-  selected,
-  onPress,
-}: {
-  option: HealthOption;
-  selected: boolean;
-  onPress: () => void;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="checkbox"
-      accessibilityState={{ checked: selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.healthOption,
-        selected && styles.healthOptionSelected,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-        {selected ? <AppIcon icon={Check} size="sm" color={colors.primaryText} /> : null}
-      </View>
-      <View style={styles.healthOptionCopy}>
-        <Text style={styles.healthOptionName}>{option.name}</Text>
-        {option.description ? (
-          <Text style={styles.healthOptionDescription}>{option.description}</Text>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
 function NumberField({
   label,
   unit,
   value,
   onChangeText,
+  error,
 }: {
   label: string;
   unit: string;
   value: string;
   onChangeText: (value: string) => void;
+  error?: string | null;
 }): React.JSX.Element {
   return (
     <View style={styles.field}>
@@ -533,15 +454,16 @@ function NumberField({
       <View style={styles.inputShell}>
         <TextInput
           accessibilityLabel={label}
-          keyboardType={unit === "năm" ? "number-pad" : "decimal-pad"}
+          keyboardType="decimal-pad"
           onChangeText={onChangeText}
           value={value}
-          placeholder="0"
+          placeholder="0.00"
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
         <Text style={styles.unit}>{unit}</Text>
       </View>
+      {!!error && <Text style={styles.fieldError}>{error}</Text>}
     </View>
   );
 }
@@ -575,6 +497,10 @@ function ChoiceButton({
 }
 
 const styles = StyleSheet.create({
+  birthRow: { alignItems: "center", flexDirection: "row", gap: spacing.md },
+  birthField: { flex: 1 },
+  ageText: { ...textStyles.label, color: colors.primary },
+  fieldError: { ...textStyles.caption, color: colors.danger, marginTop: spacing.xs },
   // SCRUM-232: input pairs become a single column on small devices.
   contentCompact: { paddingHorizontal: spacing.md },
   measurementsCompact: { flexDirection: "column", gap: 0 },
@@ -588,22 +514,6 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: 800,
     alignSelf: "center",
-  },
-  header: { marginBottom: spacing.lg },
-  eyebrow: {
-    ...textStyles.caption,
-    color: colors.primary,
-    fontWeight: "700",
-  },
-  title: {
-    ...textStyles.heading,
-    color: colors.text,
-    marginTop: spacing.xs,
-  },
-  subtitle: {
-    ...textStyles.bodySmall,
-    color: colors.muted,
-    marginTop: spacing.sm,
   },
   loader: { marginTop: spacing.xl },
   formCard: {
@@ -685,30 +595,6 @@ const styles = StyleSheet.create({
     height: spacing.sm,
     width: spacing.sm,
   },
-  activityList: { gap: spacing.sm },
-  activityOption: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    minHeight: touchTarget + spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  activitySelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  activityCopy: { flex: 1, minWidth: 0 },
-  activityLabel: { ...textStyles.labelSmall, color: colors.text },
-  activityDetail: {
-    ...textStyles.caption,
-    color: colors.muted,
-    marginTop: spacing.xs,
-  },
   error: {
     ...textStyles.bodySmall,
     color: colors.danger,
@@ -770,48 +656,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
-  },
-  healthEmpty: {
-    ...textStyles.caption,
-    color: colors.muted,
-    paddingVertical: spacing.sm,
-  },
-  healthOption: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: spacing.md,
-    minHeight: touchTarget,
-    marginBottom: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  healthOptionSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  checkbox: {
-    alignItems: "center",
-    borderColor: colors.muted,
-    borderRadius: radius.sm,
-    borderWidth: 1.5,
-    height: spacing.lg + spacing.xs,
-    justifyContent: "center",
-    width: spacing.lg + spacing.xs,
-  },
-  checkboxSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  healthOptionCopy: { flex: 1, minWidth: 0 },
-  healthOptionName: { ...textStyles.labelSmall, color: colors.text },
-  healthOptionDescription: {
-    ...textStyles.caption,
-    color: colors.muted,
-    marginTop: spacing.xs,
   },
   healthMessage: {
     ...textStyles.bodySmall,

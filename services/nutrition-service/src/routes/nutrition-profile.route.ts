@@ -2,17 +2,42 @@ import { ActivityLevel, Gender, MealSource, MealType, PrismaClient, Prisma } fro
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { calculateDailyCalories } from "../utils/nutrition-calculator";
+import { ageFromBirthDate, dayOf, vnToday } from "../utils/age";
 
 const router = Router();
 const prisma = new PrismaClient();
 
+const MIN_BIRTH_DATE = "1900-01-01";
+
+/**
+ * birthDate (YYYY-MM-DD, preferred) or age (older clients). With birthDate the age is computed server-side in
+ * Vietnam time and stored too, so readers of `age` keep working.
+ */
 const profileSchema = z.object({
   height: z.number().finite().positive().max(300),
   weight: z.number().finite().positive().max(700),
-  age: z.number().int().positive().max(130),
+  age: z.number().int().positive().max(130).optional(),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((day) => !Number.isNaN(Date.parse(`${day}T00:00:00Z`)), "Invalid date").optional(),
   gender: z.nativeEnum(Gender),
   activityLevel: z.nativeEnum(ActivityLevel),
-});
+}).superRefine((input, context) => {
+  if (input.birthDate === undefined && input.age === undefined) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "birthDate or age is required." });
+    return;
+  }
+  if (input.birthDate !== undefined) {
+    const today = vnToday();
+    const age = ageFromBirthDate(input.birthDate, today);
+    if (input.birthDate < MIN_BIRTH_DATE || input.birthDate > today || age < 1 || age > 130) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: ["birthDate"], message: "birthDate must give an age between 1 and 130." });
+    }
+  }
+}).transform(({ birthDate, age, ...rest }) => (birthDate !== undefined
+  ? { ...rest, age: ageFromBirthDate(birthDate), birthDate: new Date(`${birthDate}T00:00:00.000Z`) }
+  // Age only: the stored birth date (if any) is left as it is.
+  : { ...rest, age: age as number }));
+
+export const profileInputSchema = profileSchema;
 
 function getUserId(request: Request, response: Response): string | undefined {
   const userId = request.header("X-User-Id");
@@ -39,9 +64,11 @@ function parseProfile(request: Request, response: Response) {
   return result.data;
 }
 
-function profileResponse(profile: Prisma.NutritionProfileGetPayload<object>) {
+/** With a stored birth date the age is always the current one (it changes every birthday). */
+function profileResponse(stored: Prisma.NutritionProfileGetPayload<object>) {
+  const profile = stored.birthDate ? { ...stored, age: ageFromBirthDate(dayOf(stored.birthDate)) } : stored;
   const { bmr, tdee } = calculateDailyCalories(profile);
-  return { profile, bmr: Math.round(bmr), tdee: Math.round(tdee) };
+  return { profile: { ...profile, birthDate: profile.birthDate ? dayOf(profile.birthDate) : null }, bmr: Math.round(bmr), tdee: Math.round(tdee) };
 }
 
 router.get("/", async (request, response) => {
@@ -106,13 +133,17 @@ router.put("/", async (request, response) => {
 });
 
 // ---- Restored from Hung's Sprint 3 work (reverted in PR #34): health declarations and meal logs.
+const customTags = z.array(z.string().trim().min(1).max(80)).max(30).optional();
 const healthSelectionSchema = z
   .object({
     allergyIds: z.array(z.string().uuid()),
     conditionIds: z.array(z.string().uuid()),
+    /** Free text not in the catalogs: kept on the profile, ignored by the suggestion filter. */
+    customAllergies: customTags,
+    customConditions: customTags,
   })
   .superRefine((selection, context) => {
-    for (const [field, ids] of Object.entries(selection)) {
+    for (const [field, ids] of Object.entries({ allergyIds: selection.allergyIds, conditionIds: selection.conditionIds })) {
       if (new Set(ids).size !== ids.length) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -123,8 +154,28 @@ const healthSelectionSchema = z
     }
   });
 
+const tagKey = (value: string) => value.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+
+/**
+ * Splits typed names into catalog ids (a name equal to a catalog item, ignoring accents and case) and custom
+ * names (the rest, deduplicated).
+ */
+export function splitCustom(names: string[] | undefined, catalog: Array<{ id: string; name: string }>): { ids: string[]; custom: string[] } {
+  const ids: string[] = [];
+  const custom: string[] = [];
+  const seen = new Set<string>();
+  for (const name of names ?? []) {
+    const key = tagKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    const match = catalog.find((item) => tagKey(item.name) === key);
+    if (match) ids.push(match.id); else custom.push(name.trim());
+  }
+  return { ids, custom };
+}
+
 async function getUserHealth(userId: string) {
-  const [userAllergies, userConditions] = await Promise.all([
+  const [userAllergies, userConditions, custom] = await Promise.all([
     prisma.userAllergy.findMany({
       where: { userId },
       include: { allergy: true },
@@ -135,11 +186,14 @@ async function getUserHealth(userId: string) {
       include: { condition: true },
       orderBy: { condition: { name: "asc" } },
     }),
+    prisma.userHealthCustom.findUnique({ where: { userId } }),
   ]);
 
   return {
     allergies: userAllergies.map(({ allergy }) => allergy),
     healthConditions: userConditions.map(({ condition }) => condition),
+    customAllergies: custom?.allergies ?? [],
+    customConditions: custom?.conditions ?? [],
   };
 }
 
@@ -189,8 +243,18 @@ router.post("/user/profile/health", async (request, response) => {
     return;
   }
 
-  const { allergyIds, conditionIds } = result.data;
   try {
+    // Typed names that are catalog items become selections; the rest are stored as custom items.
+    const [allergyCatalog, conditionCatalog] = result.data.customAllergies?.length || result.data.customConditions?.length
+      ? await Promise.all([
+        prisma.allergy.findMany({ select: { id: true, name: true } }),
+        prisma.healthCondition.findMany({ select: { id: true, name: true } }),
+      ])
+      : [[], []];
+    const customAllergies = splitCustom(result.data.customAllergies, allergyCatalog);
+    const customConditions = splitCustom(result.data.customConditions, conditionCatalog);
+    const allergyIds = [...new Set([...result.data.allergyIds, ...customAllergies.ids])];
+    const conditionIds = [...new Set([...result.data.conditionIds, ...customConditions.ids])];
     const [allergies, conditions] = await Promise.all([
       prisma.allergy.findMany({
         where: { id: { in: allergyIds } },
@@ -226,6 +290,10 @@ router.post("/user/profile/health", async (request, response) => {
         await transaction.userHealthCondition.createMany({
           data: conditionIds.map((conditionId) => ({ userId, conditionId })),
         });
+      }
+      if (result.data.customAllergies !== undefined || result.data.customConditions !== undefined) {
+        const custom = { allergies: customAllergies.custom, conditions: customConditions.custom };
+        await transaction.userHealthCustom.upsert({ where: { userId }, create: { userId, ...custom }, update: custom });
       }
     });
 

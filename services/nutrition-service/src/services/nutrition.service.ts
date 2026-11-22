@@ -8,6 +8,7 @@ import {
   type RecipeDto,
 } from "../dto/nutrition.dto";
 import { calculateDailyCalories } from "../utils/nutrition-calculator";
+import { ageFromBirthDate, dayOf } from "../utils/age";
 import { z } from "zod";
 
 const prisma = new PrismaClient();
@@ -36,7 +37,8 @@ function calculateGoals(profile: NutritionProfile): NutritionGoals {
 async function getProfile(userId: string): Promise<NutritionProfile> {
   const profile = await prisma.nutritionProfile.findUnique({ where: { userId } });
   if (!profile) throw new NutritionProfileNotFoundError();
-  return profile;
+  // A stored birth date gives the current age (targets follow birthdays).
+  return profile.birthDate ? { ...profile, age: ageFromBirthDate(dayOf(profile.birthDate)) } : profile;
 }
 
 async function getUpstreamJson(

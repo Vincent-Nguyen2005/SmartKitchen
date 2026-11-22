@@ -26,6 +26,8 @@ type DateFieldProps = {
   onChange: (day: string) => void;
   /** Earliest selectable day, YYYY-MM-DD. */
   minDate: string;
+  /** Latest selectable day, YYYY-MM-DD (e.g. today for a birth date). */
+  maxDate?: string;
   /** Day the picker opens on while the field is empty (e.g. today + 7), YYYY-MM-DD. */
   suggestedDate: string;
   /** Shown under the field while it is empty. */
@@ -38,7 +40,7 @@ type DateFieldProps = {
  * iOS: the compact picker inline in the form (a small date button that expands in place), so it
  * never covers the form. Minimum date everywhere = minDate.
  */
-export function DateField({ label, value, onChange, minDate, suggestedDate, emptyHint }: DateFieldProps): React.JSX.Element {
+export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint }: DateFieldProps): React.JSX.Element {
   const pick = (event: DateTimePickerEvent, date?: Date) => {
     if (event.type === "set" && date) onChange(toDay(date));
   };
@@ -46,6 +48,7 @@ export function DateField({ label, value, onChange, minDate, suggestedDate, empt
     value: toLocalDate(value || suggestedDate),
     mode: "date",
     minimumDate: toLocalDate(minDate),
+    maximumDate: maxDate ? toLocalDate(maxDate) : undefined,
     onChange: pick,
   });
 
@@ -59,6 +62,7 @@ export function DateField({ label, value, onChange, minDate, suggestedDate, empt
         aria-label={label}
         value={value}
         min={minDate}
+        max={maxDate}
         onChange={(event) => onChange(event.currentTarget.value)}
         style={{
           flex: 1, minHeight: touchTarget, padding: `0 ${spacing.md}px`, borderRadius: radius.sm,
@@ -75,6 +79,7 @@ export function DateField({ label, value, onChange, minDate, suggestedDate, empt
           mode="date"
           display="compact"
           minimumDate={toLocalDate(minDate)}
+          maximumDate={maxDate ? toLocalDate(maxDate) : undefined}
           onChange={pick}
           accessibilityLabel={label}
         />

@@ -44,14 +44,19 @@ const ingredientText = (ingredient: RecipeIngredient): string =>
     ? `${ingredient.name} · ${ingredient.quantity} ${unitLabel(ingredient.unit)}`.trim()
     : ingredient.name;
 
-type Props = { recipe: Recipe | null; onClose: () => void };
+type Props = {
+  recipe: Recipe | null;
+  onClose: () => void;
+  /** "Hoàn thành" on the last step (the dish is cooked): e.g. count one serving in today's nutrition. */
+  onComplete?: (recipe: Recipe) => void;
+};
 
 /**
  * Cooking mode: one step at a time with a countdown for timed steps. The timer stores its end time (not a
  * ticking counter), so it stays right after the app goes to the background or the screen locks. When it ends:
  * vibration and an alert in the app, and a local notification (with sound) scheduled for the end time.
  */
-export default function CookingMode({ recipe, onClose }: Props): React.JSX.Element {
+export default function CookingMode({ recipe, onClose, onComplete }: Props): React.JSX.Element {
   const steps = recipe ? sortedSteps(recipe) : [];
   const [index, setIndex] = useState(0);
   const [timer, setTimer] = useState<TimerState>({ status: "idle", remainingMs: 0 });
@@ -226,7 +231,12 @@ export default function CookingMode({ recipe, onClose }: Props): React.JSX.Eleme
             <AppIcon icon={ChevronLeft} size="sm" color={colors.primary} />
             <Text style={local.navSecondaryText}>Bước trước</Text>
           </Pressable>
-          <Pressable accessibilityRole="button" onPress={() => (isLast ? requestClose() : setIndex((current) => current + 1))} style={[local.navButton, local.navPrimary]}>
+          <Pressable accessibilityRole="button" onPress={() => {
+            if (!isLast) { setIndex((current) => current + 1); return; }
+            // Finished: count the dish (when steps exist), then leave without the running-timer question.
+            if (recipe && steps.length > 0) onComplete?.(recipe);
+            onClose();
+          }} style={[local.navButton, local.navPrimary]}>
             <Text style={local.navPrimaryText}>{isLast ? "Hoàn thành" : "Bước sau"}</Text>
             {!isLast && <AppIcon icon={ChevronRight} size="sm" color={colors.primaryText} />}
           </Pressable>

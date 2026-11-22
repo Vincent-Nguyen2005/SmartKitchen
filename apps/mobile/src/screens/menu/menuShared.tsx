@@ -74,10 +74,12 @@ type CardProps = {
   /** Nấu ăn: round "Đổi món khác" button on the image; `swapping` shows its spinner. */
   onSwap?: () => void;
   swapping?: boolean;
+  /** Nấu ăn: already counted in today's nutrition ("Đã ăn"). */
+  eaten?: boolean;
 };
 
 /** A planned dish in the shared card style: image, name, kcal, total time; AI dishes carry the "AI" pill. */
-export function MenuDishCard({ item, recipe, width, onPress, variant = "full", onSwap, swapping = false }: CardProps): React.JSX.Element {
+export function MenuDishCard({ item, recipe, width, onPress, variant = "full", onSwap, swapping = false, eaten = false }: CardProps): React.JSX.Element {
   const aiDish = item.details?.ai ? item.details.aiDish : undefined;
   const minutes = recipe ? totalMinutes(recipe) : aiDish ? aiDish.totalMinutes : null;
   const kcal = item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`;
@@ -92,6 +94,7 @@ export function MenuDishCard({ item, recipe, width, onPress, variant = "full", o
       subtitle={variant === "full" ? kcal : undefined}
       footer={variant === "full" && minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
       cornerAction={onSwap ? { icon: Shuffle, label: "Đổi món khác", onPress: onSwap, busy: swapping } : undefined}
+      marker={eaten ? "Đã ăn" : undefined}
     />
   );
 }

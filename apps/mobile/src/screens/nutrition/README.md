@@ -2,22 +2,16 @@
 
 Owner: Hung. Responsibility: nutrition summaries and dietary tracking screens.
 
-`NutritionProfileScreen` is the Expo/React Native implementation used by this workspace. Render it with the gateway base URL and authenticated user's UUID:
-
-```tsx
-<NutritionProfileScreen
-  apiBaseUrl={API_BASE_URL}
-  userId={authenticatedUser.id}
-/>
-```
-
-The screen loads the profile on mount, creates it with POST on first save, updates it with PUT after that, and displays the returned TDEE. Configure `apiBaseUrl` for the device environment (for example, the host machine's LAN address when testing on a physical phone).
-
-The Hồ sơ screen also saves selected allergies and health conditions. The
-Thống kê tab calls `GET /api/nutrition/daily-stats?date=YYYY-MM-DD`; the Gợi ý
-tab calls `GET /api/nutrition/suggestions`. Both require the user's UUID and an
-existing nutrition profile. Macro goals use the app's existing 20/50/30
-protein/carbohydrate/fat calorie split. Suggestions are filtered only by recipe
-catalog tags and are not medical advice.
-
-For a native Android app, the standalone Jetpack Compose, ViewModel, and Retrofit sources are in `apps/mobile/native-android`. Add the documented Android dependencies and provide an authenticated `NutritionProfileApi` and `NutritionProfileViewModel` from the host app's dependency-injection setup.
+- **`NutritionHome`, the Dinh dưỡng tab ("Dinh dưỡng trong ngày"):**
+  - Today's calories eaten against the target, and bars for Đạm, Tinh bột and Chất béo ("eaten / target g"). The data comes from nutrition-service `GET /api/nutrition/daily-stats?date=` (Vietnam date); the targets come from the profile.
+  - Below that, the dishes counted today, each with "Bỏ" to un-log it.
+  - **No profile (404):** the same screen with today's totals from the meal diary against default targets (2000 kcal, protein 100 g, carbs 250 g, fat 67 g) and the caption "Mục tiêu ước tính". There is no link or button to the profile.
+  - **Nothing logged yet:** the bars at 0 and the hint "Nấu xong một món ở Nấu ăn để tính vào hôm nay".
+- **`NutritionProfileScreen`, the health profile form (Hồ sơ › "Thông tin sức khỏe"):**
+  - **Ngày sinh:** uses the shared DateField (dd/mm/yyyy, 01/01/1900 to today) and shows the age next to it. The form sends `birthDate`, and nutrition-service stores it and computes the age. Profiles saved before this have only an age, so they are shown with the birth date that gives that age today.
+  - **Chiều cao / Cân nặng:** decimal inputs ("," becomes ".", at most 2 decimals, placeholder "0.00"), with inline errors outside 50–250 cm and 2–300 kg.
+  - **Activity:** no section. New profiles send `activityLevel: "LIGHTLY_ACTIVE"`; existing profiles keep their stored value.
+  - **Dị ứng / Bệnh lý:** the shared `TagInput` with autocomplete from the nutrition-service catalogs. Free text is allowed: catalog names are saved as selections, and anything else as the user's own items (shown again later, not used for suggestions).
+  - Closing the form reloads the targets.
+- **`nutritionToday.ts`:** `vnToday`, building one serving (`servingOf`: missing macros count as 0), `logServing`, and the names logged today ("Đã ăn" on Nấu ăn cards).
+- **Removed from the mobile app:** the segment row, Nhật ký (`MealDiaryScreen`), Thống kê (`NutritionStatsScreen`), Gợi ý (`SuggestionsScreen`, `suggestionsApi`), `DaySwitcher` and `ProfileMissingCard`. The backend routes are unchanged.

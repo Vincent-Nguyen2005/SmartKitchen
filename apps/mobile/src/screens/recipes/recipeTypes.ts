@@ -19,6 +19,11 @@ export type Recipe = {
   /** Set by the admin (Quản trị > Món ăn); the shared placeholder shows when missing or broken. */
   imageUrl?: string | null;
   steps?: RecipeStep[] | null;
+  /** Per serving (recipe-service); missing values count as 0 when logged. */
+  calories?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
 };
 
 /** Structured ingredients, or the plain names without quantities for older recipes. */

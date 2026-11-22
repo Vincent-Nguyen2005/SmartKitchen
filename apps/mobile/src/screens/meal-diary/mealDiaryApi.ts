@@ -83,6 +83,8 @@ export function createMealDiaryApi(accessToken: string | null) {
   }
 
   return {
+    /** Removes one logged meal (Dinh dưỡng trong ngày › "Bỏ"). */
+    deleteMeal: (id: string) => request<unknown>(`/meals/${encodeURIComponent(id)}`, { method: "DELETE" }),
     getHistory: (date: string) =>
       request<MealHistory>(`/meals/history?date=${encodeURIComponent(date)}`),
     logMeal: (meal: MealLogInput) =>
@@ -96,16 +98,5 @@ export function createMealDiaryApi(accessToken: string | null) {
           })),
         }),
       }),
-    /**
-     * Daily calorie goal = `tdee` from the nutrition profile (GET /api/nutrition, nutrition-service).
-     * null = the user has no nutrition profile yet (404). Other failures throw.
-     */
-    getCalorieGoal: async (): Promise<number | null> => {
-      const response = await gatewayFetch("/api/nutrition", { accessToken });
-      const result = (await response.json().catch(() => ({}))) as { tdee?: unknown; error?: string };
-      if (response.status === 404) return null;
-      if (!response.ok) throw new MealDiaryApiError(result.error ?? "Unable to load the nutrition profile.", response.status);
-      return typeof result.tdee === "number" && Number.isFinite(result.tdee) && result.tdee > 0 ? result.tdee : null;
-    },
   };
 }
