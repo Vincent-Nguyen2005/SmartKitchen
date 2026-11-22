@@ -14,6 +14,9 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 
 ## Nấu ăn = today's menu (current)
 
+- **Gia vị:** the recipe detail (both modes) lists seasonings in their own "Gia vị" section under "Nguyên liệu", with free-text amounts such as "vừa ăn". Cooking mode shows the seasonings used in the current step. Seasonings never count as missing.
+- **Tab group order:** Nấu ăn, Dinh dưỡng, Lịch. Tapping the group from another tab opens Nấu ăn; tapping it again opens the dropdown.
+
 - **Meal tabs:** "Bữa sáng | Bữa trưa | Bữa tối" (the shared `SegmentTabs`, the same control as Lịch's Theo ngày / Theo tuần / Theo tháng), defaulting to Bữa sáng. Only the selected meal's dishes show, and an empty meal shows "Bữa này chưa có món." A swap keeps the selected tab.
 
 - **Confirmations** (the card's "Đổi món khác" and Lịch's "Làm mới theo kho") use the in-app `useConfirm` dialog (`components/ConfirmDialog.tsx`), not `Alert.alert` or `window.confirm`, so they work on web and on phones.

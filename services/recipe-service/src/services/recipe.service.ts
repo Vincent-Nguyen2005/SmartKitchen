@@ -11,6 +11,10 @@ export const ingredientDetailSchema = z.object({
   name: z.string().trim().min(1).max(120),
   quantity: z.number().finite().positive().max(100_000).nullable().optional(),
   unit: z.enum(recipeUnits).nullable().optional(),
+  /** Free-text amount when there is no number, e.g. "vừa ăn", "1 muỗng cà phê". */
+  note: z.string().trim().min(1).max(40).nullable().optional(),
+  /** Pantry staple (muối, nước mắm, dầu ăn...): shown under "Gia vị", never counted against Kho. */
+  isSeasoning: z.boolean().optional(),
 });
 
 /** Dish roles in a Vietnamese family meal (menu-service composes lunch/dinner from them). */

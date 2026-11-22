@@ -101,7 +101,8 @@ if (webDocument && !webDocument.getElementById("smartkitchen-hide-scrollbars")) 
 }
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
-const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
+/** Dropdown order (and default screen): Nấu ăn, Dinh dưỡng, Lịch. */
+const menuTabs = (["recipes", "nutrition", "menu"] as const).map((key) => tabs.find((tab) => tab.key === key)!);
 const captureActions = [
   { key: "photo", label: "Chụp ảnh", icon: Camera },
   { key: "scan", label: "QR hóa đơn", icon: QrCode },
@@ -387,7 +388,12 @@ function AppContent(): React.JSX.Element {
                 accessibilityRole={key === "menu" ? "button" : "tab"}
                 accessibilityState={key === "menu" ? { expanded: menuOpen } : { selected: active }}
                 key={key}
-                onPress={() => { if (key === "menu") setMenuOpen((open) => !open); else setTab(key); }}
+                // The Nấu ăn / Dinh dưỡng / Lịch group: from another tab it opens Nấu ăn; once inside, it opens the dropdown.
+                onPress={() => {
+                  if (key !== "menu") { setTab(key); return; }
+                  if (menuKeys.has(activeTab)) setMenuOpen((open) => !open);
+                  else setTab("recipes");
+                }}
                 style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
               >
                 {key === "menu" ? (

@@ -16,7 +16,8 @@ const MAX_EXPIRING_COUNTED = 2;
 const REPEAT_PENALTY = 10;
 
 export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null };
-export type DishIngredient = { name: string; quantity: number | null; unit: string | null };
+/** isSeasoning: pantry staple (muối, nước mắm, dầu ăn...), never matched against Kho or counted as missing. */
+export type DishIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
 export type SuggestRecipe = {
   id: string;
   name: string;

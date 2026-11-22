@@ -34,6 +34,10 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
 - **Storage:** the latest result per family is kept in `AiSuggestion` (dishes, Kho hash, generatedAt, daily count). Pending debounces live in memory, so a restart just reschedules on the next read.
 - **Saved dishes:** `POST /ai-suggestions/:dishId/save { familyId }` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes?familyId=` lists them. Both check membership with family-service.
 
+## Seasonings
+
+Ingredients with `isSeasoning` (from recipe-service, or AI dishes, which now list common seasonings with `isSeasoning=true`) are left out of Kho matching, "Có sẵn X/Y", the score and the missing list.
+
 ## Day menus: several dishes per meal, saved, one-dish replacement
 
 - **Meal sizes:** `POST /generate` for a DAY uses the user's "Số món mỗi bữa" (`GET/PUT /settings`, 1–6 each; defaults are 3 breakfast, 5 lunch, 5 dinner).

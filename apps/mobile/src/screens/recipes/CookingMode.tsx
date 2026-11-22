@@ -3,8 +3,7 @@ import { Alert, AppState, Modal, Platform, Pressable, ScrollView, StyleSheet, Te
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChevronLeft, ChevronRight, Pause, Play, Plus, X } from "lucide-react-native";
 import { AppIcon, colors, fontSize, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
-import { unitLabel } from "../inventory/catalogSuggest";
-import { clockText, sortedSteps, type Recipe, type RecipeIngredient } from "./recipeTypes";
+import { amountText, clockText, sortedSteps, type Recipe, type RecipeIngredient } from "./recipeTypes";
 
 type TimerState =
   | { status: "idle"; remainingMs: number }
@@ -40,9 +39,7 @@ async function setKeepAwake(on: boolean): Promise<void> {
 }
 
 const ingredientText = (ingredient: RecipeIngredient): string =>
-  ingredient.quantity !== null && ingredient.quantity !== undefined
-    ? `${ingredient.name} · ${ingredient.quantity} ${unitLabel(ingredient.unit)}`.trim()
-    : ingredient.name;
+  amountText(ingredient) ? `${ingredient.name} · ${amountText(ingredient)}` : ingredient.name;
 
 type Props = {
   recipe: Recipe | null;
@@ -187,10 +184,18 @@ export default function CookingMode({ recipe, onClose, onComplete }: Props): Rea
           {step ? (
             <>
               <Text style={local.instruction} accessibilityRole="header">{step.instruction}</Text>
-              {step.ingredients.length > 0 && (
+              {step.ingredients.some((ingredient) => !ingredient.isSeasoning) && (
                 <View style={local.ingredients}>
                   <Text style={local.sectionLabel}>Cho vào bây giờ</Text>
-                  {step.ingredients.map((ingredient) => (
+                  {step.ingredients.filter((ingredient) => !ingredient.isSeasoning).map((ingredient) => (
+                    <Text key={ingredient.name} style={local.ingredient}>• {ingredientText(ingredient)}</Text>
+                  ))}
+                </View>
+              )}
+              {step.ingredients.some((ingredient) => ingredient.isSeasoning) && (
+                <View style={local.ingredients}>
+                  <Text style={local.sectionLabel}>Gia vị</Text>
+                  {step.ingredients.filter((ingredient) => ingredient.isSeasoning).map((ingredient) => (
                     <Text key={ingredient.name} style={local.ingredient}>• {ingredientText(ingredient)}</Text>
                   ))}
                 </View>
