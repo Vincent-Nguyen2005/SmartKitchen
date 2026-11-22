@@ -9,10 +9,11 @@ Mounted at `/api/recipes`, at `/api/recipe` (nutrition-service) and at the root 
 - `GET /` lists recipes (`search`, `mealType`, `active=true` for suggestable ones only).
 - `GET /:id` returns one recipe.
 - `POST /`, `PUT /:id` and `DELETE /:id` require `x-user-role: ADMIN` (the gateway sets it from the JWT).
+- `DELETE /:id` deletes for good only when menu-service reports no saved menu item and no dislike-history row with this recipe id (`GET /internal/recipes/:id/usage`, `INTERNAL_API_KEY`, `MENU_SERVICE_URL`). Otherwise `409 { code: "IN_USE", reasons }` and nothing is deleted; if menu-service cannot answer, `503 USAGE_CHECK_UNAVAILABLE`. A deleted starter dish gets a row in `deleted_starter_recipes` (migration `20261128000000_deleted_starter_recipes`), and the startup seed skips those names.
 
 A recipe keeps the plain `ingredients` names. It also has `ingredientDetails` (`[{ name, quantity, unit }]`, with the Kho unit codes), which menu-service matches against Kho. It has optional per-serving nutrition (`calories`, `protein`, `carbs`, `fat`), `imageUrl`, `allergens`, `contraindications` and `isActive` (default true).
 
-`imageUrl` must be an https link to a public host (no localhost, private or link-local addresses, no credentials) and at most 2048 characters. The server only stores it and never fetches it. Admins set it in Quản trị > Món ăn, and hiding a dish there sets `isActive=false` (it is never deleted).
+`imageUrl` must be an https link to a public host (no localhost, private or link-local addresses, no credentials) and at most 2048 characters. The server only stores it and never fetches it. Admins set it in Quản trị > Món ăn. Hiding a dish there sets `isActive=false`; "Xóa" uses the safe delete above.
 
 ### Meal role
 

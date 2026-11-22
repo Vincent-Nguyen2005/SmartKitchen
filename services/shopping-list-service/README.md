@@ -55,3 +55,7 @@ Apply schema changes and generate the Prisma client before deployment:
 pnpm --filter shopping-list-service prisma:deploy
 pnpm --filter shopping-list-service prisma:generate
 ```
+
+## Internal: product usage
+
+`GET /internal/products/:productId/usage` (x-api-key = `INTERNAL_API_KEY`, at least 32 characters; the gateway answers 404 for `/internal/*`) returns `{ items }`, the number of shopping-list items added from that admin catalog product. admin-service calls it before deleting a catalog ingredient.

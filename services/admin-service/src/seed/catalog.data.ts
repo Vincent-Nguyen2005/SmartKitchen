@@ -66,7 +66,7 @@ export const catalogSeed: CatalogSeed[] = [
   giaVi("Nước tương", "soy sauce", 730, 53), giaVi("Dầu ăn", "cooking oil", 365, 884), giaViGoi("Tiêu", "black pepper", 730, 251),
   giaViGoi("Hạt nêm", "bouillon powder", 365, 200), giaVi("Giấm", "vinegar", 730, 18), giaVi("Tương ớt", "chili sauce", 365, 93),
   // Đồ uống
-  doUong("Nước suối", "bottled water", 365, 0), doUong("Nước dừa", "coconut water", 5, 19), doUongGoi("Trà xanh", "green tea leaves", 365, 1),
+  doUong("Nước dừa", "coconut water", 5, 19), doUongGoi("Trà xanh", "green tea leaves", 365, 1),
   doUongGoi("Cà phê", "coffee beans", 180, 2), doUong("Sữa đậu nành", "soy milk", 5, 54),
   // Đồ đông lạnh
   dongLanh("Xúc xích", "sausage", 30, 300), dongLanh("Chả giò", "cha gio spring rolls", 90, 250), dongLanh("Há cảo", "har gow dumplings", 90, 220),

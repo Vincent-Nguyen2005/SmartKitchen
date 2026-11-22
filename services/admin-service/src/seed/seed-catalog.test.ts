@@ -19,6 +19,7 @@ describe("starter catalog seed", () => {
         findMany: async () => rows.map((row) => ({ name: row.name })),
         createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; },
       },
+      auditLog: { findMany: async () => [] },
     } as unknown as PrismaClient;
     const added = await seedMissingIngredients(client);
     expect(added).toBe(catalogSeed.length - 1);
@@ -27,5 +28,29 @@ describe("starter catalog seed", () => {
     expect(created).toMatchObject({ category: "Thịt", defaultUnit: "GRAM", shelfLifeDays: 3, caloriesPer100g: 250, nameNormalized: "thit bo" });
     expect(created.price).toBeUndefined();
     expect(await seedMissingIngredients(client)).toBe(0);
+  });
+
+  it("does not bring back a starter ingredient an admin deleted or renamed (audit rows)", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: {
+        findMany: async () => rows.map((row) => ({ name: row.name })),
+        createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; },
+      },
+      auditLog: { findMany: async () => [
+        { action: "DELETE", metadata: { before: { name: "Thịt bò" } } },
+        { action: "UPDATE", metadata: { before: { name: "Chả giò" }, after: { name: "Mướng ngọt" } } },
+        // An edit that keeps the name (or only changes accents/case) does not remove it.
+        { action: "UPDATE", metadata: { before: { name: "Cà chua" }, after: { name: "cà chua" } } },
+        { action: "DELETE", metadata: null },
+      ] },
+    } as unknown as PrismaClient;
+    expect(await seedMissingIngredients(client)).toBe(catalogSeed.length - 2);
+    expect(rows.some((row) => row.name === "Thịt bò" || row.name === "Chả giò")).toBe(false);
+    expect(rows.some((row) => row.name === "Cà chua")).toBe(true);
+  });
+
+  it("no longer lists Nước suối", () => {
+    expect(catalogSeed.some((entry) => entry.name === "Nước suối")).toBe(false);
   });
 });

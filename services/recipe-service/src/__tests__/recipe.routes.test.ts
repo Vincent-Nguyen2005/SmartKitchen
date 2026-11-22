@@ -35,6 +35,7 @@ test("write routes keep the admin guard on every mount (gateway-stripped root, /
     assert.equal(put.status, 403);
     const del = await fetch(`${baseUrl}/some-id`, { method: "DELETE" });
     assert.equal(del.status, 401);
+    assert.equal((await fetch(`${baseUrl}/some-id`, { method: "DELETE", headers: { "x-user-role": "USER" } })).status, 403);
     assert.equal((await fetch(`${baseUrl}/health`)).status, 200);
   });
 });
@@ -62,7 +63,7 @@ test("starter catalog: 40-60 unique Vietnamese dishes with valid ingredients, me
   }
 });
 
-function fakeClient(names: string[]) {
+function fakeClient(names: string[], deletedKeys: string[] = []) {
   const created: Array<{ name: string }> = [];
   const client = {
     recipe: {
@@ -70,6 +71,7 @@ function fakeClient(names: string[]) {
       findMany: async () => names.map((name) => ({ name })),
       createMany: async ({ data }: { data: Array<{ name: string }> }) => { created.push(...data); return { count: data.length }; },
     },
+    deletedStarterRecipe: { findMany: async () => deletedKeys.map((nameKey) => ({ nameKey })) },
   } as unknown as PrismaClient;
   return { client, created };
 }
@@ -84,6 +86,12 @@ test("seed adds only missing names, never touches existing rows, and runs at sta
 
   assert.equal(await seedMissingRecipes(existing.client), seedRecipes.length - 1);
   assert.ok(!existing.created.some((row) => row.name === "Phở bò"));
+});
+
+test("a starter dish deleted by an admin (tombstone) is not created again by the seed", async () => {
+  const afterDelete = fakeClient([], ["phở bò"]);
+  assert.equal(await seedMissingRecipes(afterDelete.client), seedRecipes.length - 1);
+  assert.ok(!afterDelete.created.some((row) => row.name === "Phở bò"));
 });
 
 test("image links: https public addresses only, at most 2048 characters, updates validated too", async () => {

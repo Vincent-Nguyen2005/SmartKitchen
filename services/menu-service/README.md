@@ -133,6 +133,10 @@ Log line: `[menu-service] family backfill: N menus assigned to families, N archi
 
 `GET /` (gateway: `/api/menu`) returns the family's active menus (or, without a family, the user's). Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.
 
+## Internal: recipe usage
+
+`GET /internal/recipes/:recipeId/usage` (x-api-key = `INTERNAL_API_KEY`; the gateway answers 404 for `/internal/*`) returns `{ menuItems, removedDishes }`: saved menu items (any family, past or future) and dislike-history rows with that recipe id. recipe-service calls it before deleting a dish. Saved AI dishes keep their own copy and have no recipe id, so they never count.
+
 ## Database
 
 Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).

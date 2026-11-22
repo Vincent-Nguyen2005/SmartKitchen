@@ -25,12 +25,14 @@ const toData = (recipe: SeedRecipe) => ({
 });
 
 /**
- * Adds the starter recipes whose name is not in the table yet. Never updates or deletes a row, so admin edits
- * are kept; running it again adds nothing. Returns how many rows were created.
+ * Adds the starter recipes whose name is not in the table yet (and was not deleted by an admin). Never updates or
+ * deletes a row, so admin edits are kept; running it again adds nothing. Returns how many rows were created.
  */
 export async function seedMissingRecipes(client: PrismaClient, recipes: SeedRecipe[] = seedRecipes): Promise<number> {
   const existing = await client.recipe.findMany({ select: { name: true } });
-  const names = new Set(existing.map((row) => row.name.trim().toLocaleLowerCase("vi")));
+  // Starter dishes an admin deleted for good (tombstones) count as present, so they are not created again.
+  const deleted = await client.deletedStarterRecipe.findMany({ select: { nameKey: true } });
+  const names = new Set([...existing.map((row) => row.name.trim().toLocaleLowerCase("vi")), ...deleted.map((row) => row.nameKey)]);
   const missing = recipes.filter((recipe) => !names.has(recipe.name.trim().toLocaleLowerCase("vi")));
   if (missing.length === 0) return 0;
   const result = await client.recipe.createMany({ data: missing.map(toData) });

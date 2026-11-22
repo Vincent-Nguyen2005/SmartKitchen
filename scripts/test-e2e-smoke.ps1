@@ -126,7 +126,8 @@ $ingredientId = if ($null -ne $ingredient) { [string]$ingredient.id } else { '' 
 if ($ingredientId) {
     Expect-Status 'admin ingredient update' (Invoke-Api PUT "$AdminUrl/ingredients/$ingredientId" $adminHeaders (@{ category = 'e2e-updated' } | ConvertTo-Json)) 200
     Expect-Status 'admin ingredient soft delete' (Invoke-Api PATCH "$AdminUrl/ingredients/$ingredientId/active" $adminHeaders (@{ isActive = $false } | ConvertTo-Json)) 200
-    Expect-Status 'admin ingredient cleanup' (Invoke-Api PATCH "$AdminUrl/ingredients/$ingredientId/active" $adminHeaders (@{ isActive = $true } | ConvertTo-Json)) 200
+    # Hard delete, so the smoke run leaves no e2e-ingredient row in the catalog (the gateway is not involved).
+    Expect-Status 'admin ingredient cleanup (hard delete)' (Invoke-Api DELETE "$AdminUrl/ingredients/$ingredientId" $adminHeaders) 204
 } else { $missing = [pscustomobject]@{ Method = 'PUT'; Url = "$AdminUrl/ingredients/<missing>"; Status = 0; Body = ''; Headers = @{}; Error = 'ingredient id unavailable' }; Fail 'admin ingredient update' $missing 200; Fail 'admin ingredient soft delete' $missing 200 }
 $weightResponse = Invoke-Api GET "$AdminUrl/weights/expiry_priority" $adminHeaders; $weight = Read-Json 'admin weight JSON' $weightResponse
 if ($null -ne $weight) {

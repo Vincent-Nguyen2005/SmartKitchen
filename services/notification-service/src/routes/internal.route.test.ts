@@ -7,8 +7,8 @@ import { createInternalRouter } from "./internal.route";
 import { errorHandler } from "../middleware/error-handler";
 
 const prismaMock = {
-  notification: { create: vi.fn() },
-  promotion: { upsert: vi.fn(), updateMany: vi.fn() },
+  notification: { create: vi.fn(), count: vi.fn() },
+  promotion: { upsert: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn() },
   partnerSupermarket: { findFirst: vi.fn(), create: vi.fn() },
 };
 const buildApp = () => {
@@ -117,5 +117,33 @@ describe("internal promotion sync", () => {
     expect(prismaMock.promotion.updateMany).toHaveBeenCalledWith({ where: { externalId: "admin-ingredient:i1" }, data: { isActive: false } });
     prismaMock.promotion.updateMany.mockResolvedValue({ count: 0 });
     expect((await request(buildApp()).post("/internal/promotions/admin-ingredient:unknown/deactivate").set("x-api-key", KEY)).body).toEqual({ deactivated: 0 });
+  });
+});
+
+describe("promotion usage and delete (ingredient safe delete)", () => {
+  const KEY = "internal-test-key";
+  beforeEach(() => { vi.clearAllMocks(); process.env.INTERNAL_API_KEY = KEY; });
+  afterEach(() => { delete process.env.INTERNAL_API_KEY; });
+
+  it("reports whether the promotion exists, is running and was sent to users", async () => {
+    prismaMock.promotion.findUnique.mockResolvedValue(null);
+    expect((await request(buildApp()).get("/internal/promotions/admin-ingredient:i1/usage").set("x-api-key", KEY)).body).toEqual({ exists: false, active: false, notified: 0 });
+    const day = 24 * 3600 * 1000;
+    prismaMock.promotion.findUnique.mockResolvedValue({ id: "p9", isActive: true, startsAt: new Date(Date.now() - day), endsAt: new Date(Date.now() + day) });
+    prismaMock.notification.count.mockResolvedValue(2);
+    const response = await request(buildApp()).get("/internal/promotions/admin-ingredient:i1/usage").set("x-api-key", KEY);
+    expect(response.body).toEqual({ exists: true, active: true, notified: 2 });
+    expect(prismaMock.notification.count.mock.calls[0][0].where).toEqual({ type: "PROMOTION", data: { path: ["promotionId"], equals: "p9" } });
+    prismaMock.promotion.findUnique.mockResolvedValue({ id: "p9", isActive: true, startsAt: new Date(Date.now() - 3 * day), endsAt: new Date(Date.now() - day) });
+    prismaMock.notification.count.mockResolvedValue(0);
+    expect((await request(buildApp()).get("/internal/promotions/admin-ingredient:i1/usage").set("x-api-key", KEY)).body.active).toBe(false);
+  });
+
+  it("deletes by externalId; needs the internal key", async () => {
+    prismaMock.promotion.deleteMany.mockResolvedValue({ count: 1 });
+    expect((await request(buildApp()).delete("/internal/promotions/admin-ingredient:i1")).status).toBe(401);
+    const response = await request(buildApp()).delete("/internal/promotions/admin-ingredient:i1").set("x-api-key", KEY);
+    expect(response.body).toEqual({ deleted: 1 });
+    expect(prismaMock.promotion.deleteMany).toHaveBeenCalledTimes(1);
   });
 });

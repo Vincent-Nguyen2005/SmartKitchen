@@ -79,5 +79,24 @@ export const createInternalRouter = (prisma: InternalPrisma): Router => {
     return response.json({ deactivated: result.count });
   });
 
+  // Before admin-service deletes an ingredient: does its promotion exist, is it running, were users notified?
+  router.get("/promotions/:externalId/usage", async (request, response) => {
+    const externalId = externalIdSchema.safeParse(request.params.externalId);
+    if (!externalId.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details: externalId.error.flatten() });
+    const promotion = await prisma.promotion.findUnique({ where: { externalId: externalId.data } });
+    if (!promotion) return response.json({ exists: false, active: false, notified: 0 });
+    const now = new Date();
+    const notified = await prisma.notification.count({ where: { type: "PROMOTION", data: { path: ["promotionId"], equals: promotion.id } } });
+    return response.json({ exists: true, active: promotion.isActive && promotion.startsAt <= now && promotion.endsAt >= now, notified });
+  });
+
+  // Hard delete of a synced promotion (its ingredient is being deleted and nobody was notified); unknown ids are a no-op.
+  router.delete("/promotions/:externalId", async (request, response) => {
+    const externalId = externalIdSchema.safeParse(request.params.externalId);
+    if (!externalId.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details: externalId.error.flatten() });
+    const result = await prisma.promotion.deleteMany({ where: { externalId: externalId.data } });
+    return response.json({ deleted: result.count });
+  });
+
   return router;
 };

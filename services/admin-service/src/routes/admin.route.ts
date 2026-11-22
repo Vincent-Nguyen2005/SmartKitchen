@@ -6,6 +6,7 @@ import { requireUser } from "../middleware/require-user";
 import { defaultWeights, knownWeightKeys } from "../config/weights";
 import { imageUrlProblem } from "../lib/image-url";
 import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
+import { ingredientUsage, UsageCheckError } from "../lib/ingredient-usage";
 
 const router = Router();
 // Promotion fields: "" from a cleared form field means "none".
@@ -142,6 +143,37 @@ router.put("/ingredients/:id", async (request, response) => {
 });
 // Hiding an ingredient (soft delete) withdraws its promotion; showing it again republishes it.
 router.patch("/ingredients/:id/active", async (request, response) => { const parsed = z.object({ isActive: z.boolean() }).safeParse(request.body); if (!parsed.success) return resultError(response, parsed.error.flatten()); const before = await prisma.masterIngredient.findUnique({ where: { id: request.params.id } }); if (!before) return response.status(404).json({ error: "NOT_FOUND", message: "Ingredient not found" }); const after = await prisma.$transaction(async (tx) => { const item = await tx.masterIngredient.update({ where: { id: before.id }, data: parsed.data }); await tx.auditLog.create({ data: { adminUserId: adminUserId(request), action: "SET_ACTIVE", targetType: "MasterIngredient", targetId: item.id, metadata: { before, after: item } } }); return item; }); return response.json({ ...after, promotionSync: await promotionSync.sync(after, hadPromotion(before)) }); });
+/**
+ * Permanent delete. Refused with 409 IN_USE while anything still points at the ingredient (a running or already
+ * sent promotion, shopping-list items added from the market); then nothing is deleted and the admin can hide it
+ * instead. If another service cannot answer, 503 and nothing is deleted. A synced promotion that was never sent
+ * is removed together with the ingredient.
+ */
+router.delete("/ingredients/:id", async (request, response) => {
+  const before = await prisma.masterIngredient.findUnique({ where: { id: request.params.id } });
+  if (!before) return response.status(404).json({ error: "NOT_FOUND", message: "Ingredient not found" });
+  let usage;
+  try { usage = await ingredientUsage.check(before.id); } catch (error) {
+    if (!(error instanceof UsageCheckError)) throw error;
+    console.error(JSON.stringify({ event: "ingredient_usage_check_failed", ingredientId: before.id, message: error.message }));
+    return response.status(503).json({ error: "USAGE_CHECK_UNAVAILABLE", message: "Không kiểm tra được nguyên liệu đang được dùng ở đâu, chưa xóa. Thử lại sau." });
+  }
+  const reasons = [...usage.reasons];
+  // The row's own discount still running counts too (even if its promotion sync failed earlier).
+  if (before.isActive && before.discountPercent !== null && (!before.promoEndDate || dayOf(before.promoEndDate) >= vnToday()) && !reasons.includes("đang có khuyến mãi")) reasons.unshift("đang có khuyến mãi");
+  if (reasons.length > 0) return response.status(409).json({ error: "IN_USE", code: "IN_USE", message: `Nguyên liệu ${reasons.join(", ")}.`, reasons });
+  if (usage.promotionExists) {
+    try { await ingredientUsage.removePromotion(before.id); } catch (error) {
+      if (!(error instanceof UsageCheckError)) throw error;
+      return response.status(503).json({ error: "USAGE_CHECK_UNAVAILABLE", message: "Không xóa được khuyến mãi của nguyên liệu, chưa xóa. Thử lại sau." });
+    }
+  }
+  await prisma.$transaction(async (tx) => {
+    await tx.masterIngredient.delete({ where: { id: before.id } });
+    await tx.auditLog.create({ data: { adminUserId: adminUserId(request), action: "DELETE", targetType: "MasterIngredient", targetId: before.id, metadata: { before } } });
+  });
+  return response.status(204).end();
+});
 router.post("/ingredients/import", async (request, response) => {
   const parsed = z.array(ingredientSchema).max(500).safeParse(request.body); if (!parsed.success) return resultError(response, parsed.error.flatten());
   const results = { created: 0, updated: 0, skipped: 0, errors: [] as unknown[], promotionSync: { synced: 0, failed: 0 } };

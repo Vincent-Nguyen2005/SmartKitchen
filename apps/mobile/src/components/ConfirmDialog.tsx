@@ -2,8 +2,8 @@ import React, { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius, spacing, textStyles, touchTarget } from "../theme";
 
-/** cancelLabel defaults to "Hủy". */
-type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string };
+/** cancelLabel defaults to "Hủy"; destructive shows the confirm button in the danger colour (permanent delete). */
+type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string; destructive?: boolean };
 
 /**
  * In-app yes/no dialog (same look as the Giỏ hàng checkout confirmation). Not Alert.alert or window.confirm:
@@ -34,7 +34,7 @@ export function useConfirm() {
         <Text style={local.message}>{request.message}</Text>
         <View style={local.actions}>
           <Pressable accessibilityRole="button" onPress={() => answer(false)} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => answer(true)} style={local.primary}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => answer(true)} style={[local.primary, request.destructive && local.destructive]}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
         </View>
       </View>
     </View>
@@ -52,5 +52,6 @@ const local = StyleSheet.create({
   cancel: { alignItems: "center", borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
   cancelText: { ...textStyles.labelSmall, color: colors.text },
   primary: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
+  destructive: { backgroundColor: colors.danger },
   primaryText: { ...textStyles.label, color: colors.primaryText },
 });
