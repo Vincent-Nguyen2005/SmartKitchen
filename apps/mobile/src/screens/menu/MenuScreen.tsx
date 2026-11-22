@@ -15,6 +15,7 @@ import { AppIcon, AppText, breakpoints, colors, radius, spacing, textStyles, tou
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { useCardGrid } from "../../components/ProductCard";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { SegmentTabs } from "../../components/SegmentTabs";
 import RecipeDetail from "../recipes/RecipeDetail";
 import { AiDishDetail, type AiDish } from "../recipes/AiSuggestions";
 import type { Recipe } from "../recipes/recipeTypes";
@@ -325,24 +326,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
         contentContainerStyle={[styles.content, { maxWidth: isWide ? breakpoints.extraWide : undefined, paddingHorizontal: horizontalPadding }]}
         refreshControl={<RefreshControl refreshing={loading && menus.length > 0} onRefresh={() => void loadMenus()} tintColor={colors.primary} />}
       >
-        <View accessibilityRole="tablist" style={styles.periodTabs}>
-          {periods.map((option) => {
-            const selected = period === option.value;
-            return (
-              <Pressable
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-                key={option.value}
-                onPress={() => setPeriod(option.value)}
-                style={[styles.periodTab, selected && styles.periodTabSelected]}
-              >
-                <AppText variant="labelSmall" color={selected ? colors.primaryText : colors.muted}>
-                  {option.label}
-                </AppText>
-              </Pressable>
-            );
-          })}
-        </View>
+        <SegmentTabs<PeriodType> options={periods} value={period} onChange={setPeriod} />
 
         <View style={styles.periodNavigation}>
           <Pressable accessibilityRole="button" accessibilityLabel={steps.backA11y} onPress={() => { setFollowToday(false); setSelectedDate((date) => shiftPeriod(date, period, -1)); }} style={styles.navigationButton}>
@@ -389,9 +373,6 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background, flex: 1 },
   content: { alignSelf: "center", backgroundColor: colors.background, flexGrow: 1, paddingBottom: spacing.xl, paddingTop: spacing.lg, width: "100%" },
-  periodTabs: { backgroundColor: colors.border, borderRadius: radius.sm, flexDirection: "row", gap: 2, marginBottom: spacing.md, padding: 3 },
-  periodTab: { alignItems: "center", borderRadius: radius.sm, flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },
-  periodTabSelected: { backgroundColor: colors.primary },
   periodNavigation: { alignItems: "center", flexDirection: "row", gap: spacing.xs, marginBottom: spacing.md },
   navigationButton: { alignItems: "center", flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: touchTarget, minWidth: 62 },
   rangeButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.xs },

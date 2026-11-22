@@ -14,6 +14,8 @@ Owner: Cuong. Responsibility: recipe browsing, creation, and editing screens.
 
 ## Nấu ăn = today's menu (current)
 
+- **Meal tabs:** "Bữa sáng | Bữa trưa | Bữa tối" (the shared `SegmentTabs`, the same control as Lịch's Theo ngày / Theo tuần / Theo tháng), defaulting to Bữa sáng. Only the selected meal's dishes show, and an empty meal shows "Bữa này chưa có món." A swap keeps the selected tab.
+
 - **Confirmations** (the card's "Đổi món khác" and Lịch's "Làm mới theo kho") use the in-app `useConfirm` dialog (`components/ConfirmDialog.tsx`), not `Alert.alert` or `window.confirm`, so they work on web and on phones.
 - **Swap feedback:** a spinner on the card while it works, then a toast: "Đã đổi món", "Không tìm được món khác phù hợp cho bữa này", or the server's error.
 
