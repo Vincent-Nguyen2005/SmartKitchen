@@ -13,7 +13,13 @@ Owner: Hung. Responsibility: nutrition summaries and dietary tracking screens.
   - **Activity:** no section. New profiles send `activityLevel: "LIGHTLY_ACTIVE"`; existing profiles keep their stored value.
   - **Dị ứng / Tình trạng sức khỏe:** shown one at a time with the shared `SegmentTabs` (default Dị ứng; switching keeps unsaved tags), each a `TagInput` with catalog autocomplete and free text. Catalog names are saved as selections, anything else as the user's own items.
   - **Saving:** one "Lưu" saves the basic info first, then the tags, and shows a single toast with the result or the first error.
-  - **Ngày sinh on web:** shows dd/mm/yyyy even in an English browser; the invisible native input on top opens the picker. YYYY-MM-DD is still sent.
+  - **Ngày sinh on web:** shows dd/mm/yyyy even in an English browser; the invisible native input on top opens the picker. Where `showPicker()` is missing or not allowed (an embedded cross-origin preview), the browser's own date input opens instead, with no error. YYYY-MM-DD is still sent.
   - Closing the form reloads the targets.
+- **`profileFields.ts`:** the shared rules for both the form and the wizard (ranges, decimal parsing, age from the birth date, validation messages).
+- **`OnboardingWizard`, "Thông tin cơ bản" after sign-in:**
+  - Shown after a real sign-in or OTP verification, not after reopening the app with a saved session. Only for non-admin users without a profile; users who have one, or whose profile check fails, go straight to the app.
+  - One question per screen with "Bước n/4": Giới tính (tapping moves on), Ngày sinh (large DateField with the age), Chiều cao and Cân nặng (large auto-focused decimal inputs).
+  - Then optional Dị ứng / Tình trạng sức khỏe ("Bỏ qua" / "Tiếp"), then a summary whose rows jump back to edit. "Hoàn tất" saves the profile and the tags.
+  - "Để sau" (top right) leaves without saving; the wizard comes back at the next sign-in while there is no profile.
 - **`nutritionToday.ts`:** `vnToday`, building one serving (`servingOf`: missing macros count as 0), `logServing`, and the names logged today ("Đã ăn" on Nấu ăn cards).
 - **Removed from the mobile app:** the segment row, Nhật ký (`MealDiaryScreen`), Thống kê (`NutritionStatsScreen`), Gợi ý (`SuggestionsScreen`, `suggestionsApi`), `DaySwitcher` and `ProfileMissingCard`. The backend routes are unchanged.

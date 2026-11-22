@@ -1,7 +1,6 @@
 import { useSession } from "../../services/session";
 import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronDown, ChevronUp } from "lucide-react-native";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
@@ -29,61 +28,19 @@ import {
   NutritionProfileResult,
 } from "./nutritionProfileApi";
 
+import {
+  ageFrom,
+  basicsError,
+  birthDateForAge,
+  DEFAULT_ACTIVITY,
+  heightRangeError,
+  MIN_BIRTH_DATE,
+  normalizeDecimal,
+  todayIso,
+  weightRangeError,
+} from "./profileFields";
 
-/** The calorie calculation uses light activity by default (the section was removed; existing profiles keep theirs). */
-const DEFAULT_ACTIVITY: ActivityLevel = "LIGHTLY_ACTIVE";
-const MIN_BIRTH_DATE = "1900-01-01";
-const HEIGHT_RANGE = { min: 50, max: 250 };
-const WEIGHT_RANGE = { min: 2, max: 300 };
-
-const pad2 = (value: number) => String(value).padStart(2, "0");
-const isoDay = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-const todayIso = () => isoDay(new Date());
-
-/** Full years between a YYYY-MM-DD birth date and today. */
-export function ageFrom(birthDate: string, today: string = todayIso()): number | null {
-  const birth = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
-  const now = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
-  if (!birth || !now) return null;
-  let age = Number(now[1]) - Number(birth[1]);
-  if (`${now[2]}-${now[3]}` < `${birth[2]}-${birth[3]}`) age -= 1;
-  return age;
-}
-
-/** The API stores only the age: an existing profile is shown with the birth date that gives that age today. */
-const birthDateForAge = (age: number): string => {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - age);
-  return isoDay(date);
-};
-
-/** Decimal text: "," becomes ".", digits and one dot only, at most 2 decimals. */
-export function normalizeDecimal(value: string): string {
-  const cleaned = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-  const [whole, ...rest] = cleaned.split(".");
-  return rest.length ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
-}
-
-const rangeError = (text: string, range: { min: number; max: number }, unit: string): string | null => {
-  if (!text.trim()) return null;
-  const value = Number(text);
-  return Number.isFinite(value) && value >= range.min && value <= range.max ? null : `Nhập từ ${range.min} đến ${range.max} ${unit}.`;
-};
-
-type Props = {
-  /**
-   * "settings" (Hồ sơ › Thông tin sức khỏe, default) or "onboarding" (the "Thông tin cơ bản" step after sign-in):
-   * "Tiếp tục" / "Để sau" instead of "Lưu", allergies and health conditions collapsed, no energy result. In onboarding
-   * an existing profile (or a load error) calls onDone at once so the step never blocks the app.
-   */
-  mode?: "settings" | "onboarding";
-  onDone?: () => void;
-};
-
-export default function NutritionProfileScreen({ mode = "settings", onDone }: Props = {}): React.JSX.Element {
-  const onboarding = mode === "onboarding";
-  const onDoneRef = useRef(onDone);
-  onDoneRef.current = onDone;
+export default function NutritionProfileScreen(): React.JSX.Element {
   const accessToken = useSession().accessToken ?? undefined;
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
@@ -108,8 +65,6 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const healthRef = useRef<HealthSectionHandle>(null);
-  const [healthOpen, setHealthOpen] = useState(false);
-  const [healthMounted, setHealthMounted] = useState(!onboarding);
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const showToast = (message: string) => {
@@ -123,7 +78,6 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
     if (!api) {
       setLoading(false);
       setError("Vui lòng đăng nhập để tải hồ sơ dinh dưỡng.");
-      if (onboarding) onDoneRef.current?.();
       return () => {
         active = false;
       };
@@ -142,7 +96,6 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
         setResult(data);
         setHasProfile(true);
         setError("");
-        if (onboarding) onDoneRef.current?.();
       })
       .catch((requestError: unknown) => {
         if (!active) return;
@@ -153,7 +106,6 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
           setError("");
         } else {
           setError("Không thể tải hồ sơ dinh dưỡng. Vui lòng thử lại.");
-          if (onboarding) onDoneRef.current?.();
         }
       })
       .finally(() => {
@@ -162,10 +114,10 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
     return () => {
       active = false;
     };
-  }, [api, accessToken, onboarding]);
+  }, [api, accessToken]);
 
-  const heightError = rangeError(height, HEIGHT_RANGE, "cm");
-  const weightError = rangeError(weight, WEIGHT_RANGE, "kg");
+  const heightError = heightRangeError(height);
+  const weightError = weightRangeError(weight);
   const age = ageFrom(birthDate);
 
   /** "Lưu": the basic info first (validated), then the allergy / health tags; one toast with the result or first error. */
@@ -178,9 +130,8 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
     setSubmitted(true);
     const parsedHeight = Number(height);
     const parsedWeight = Number(weight);
-    const age = ageFrom(birthDate);
-    if (!height.trim() || !weight.trim() || heightError || weightError || age === null || age < 1 || age > 130) {
-      const message = age !== null && age < 1 ? "Ngày sinh phải cách hôm nay ít nhất 1 năm." : "Nhập chiều cao, cân nặng và ngày sinh hợp lệ.";
+    const message = basicsError(height, weight, birthDate);
+    if (message) {
       setError(message);
       showToast(message);
       return;
@@ -218,8 +169,7 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
       showToast(healthError);
       return;
     }
-    if (onboarding) onDoneRef.current?.();
-    else showToast("Đã lưu thông tin sức khỏe");
+    showToast("Đã lưu thông tin sức khỏe");
   };
 
   return (
@@ -237,7 +187,7 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
           ) : (
             <>
               <View style={[styles.formCard, isCompact && styles.cardCompact]}>
-                {!onboarding && <Text style={styles.cardTitle}>Thông tin cơ bản</Text>}
+                <Text style={styles.cardTitle}>Thông tin cơ bản</Text>
                 <Text style={styles.cardHint}>
                   Các chỉ số giúp ước tính nhu cầu dinh dưỡng hằng ngày.
                 </Text>
@@ -287,23 +237,7 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
                 </View>
               </View>
 
-              {onboarding && (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: healthOpen }}
-                  onPress={() => { setHealthMounted(true); setHealthOpen((open) => !open); }}
-                  style={({ pressed }) => [styles.healthToggle, pressed && styles.pressed]}
-                >
-                  <Text style={styles.healthToggleText}>Dị ứng / Tình trạng sức khỏe (không bắt buộc)</Text>
-                  <AppIcon icon={healthOpen ? ChevronUp : ChevronDown} size="sm" color={colors.muted} />
-                </Pressable>
-              )}
-              {/* Stays mounted once opened, so collapsing keeps the tags for "Tiếp tục". */}
-              {accessToken && healthMounted ? (
-                <View style={onboarding && !healthOpen ? styles.hidden : undefined}>
-                  <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} />
-                </View>
-              ) : null}
+              {accessToken ? <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} /> : null}
 
               {!!error && (
                 <Text accessibilityRole="alert" style={styles.error}>
@@ -323,21 +257,11 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
                 {saving ? (
                   <ActivityIndicator color={colors.primaryText} />
                 ) : (
-                  <Text style={styles.saveText}>{onboarding ? "Tiếp tục" : "Lưu"}</Text>
+                  <Text style={styles.saveText}>Lưu</Text>
                 )}
               </Pressable>
-              {onboarding && (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={saving}
-                  onPress={() => onDoneRef.current?.()}
-                  style={({ pressed }) => [styles.laterButton, pressed && styles.pressed, saving && styles.disabled]}
-                >
-                  <Text style={styles.laterText}>Để sau</Text>
-                </Pressable>
-              )}
 
-              {!onboarding && result && (
+              {result && (
                 <View accessibilityLiveRegion="polite" style={[styles.result, isCompact && styles.cardCompact]}>
                   <Text style={styles.resultLabel}>MỤC TIÊU NĂNG LƯỢNG</Text>
                   <Text style={styles.calorie}>
@@ -364,7 +288,7 @@ export default function NutritionProfileScreen({ mode = "settings", onDone }: Pr
 }
 
 /** Saves the tags; resolves to null on success or the error message. */
-type HealthSectionHandle = { save: () => Promise<string | null> };
+export type HealthSectionHandle = { save: () => Promise<string | null> };
 type HealthTab = "allergies" | "conditions";
 const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
   { value: "allergies", label: "Dị ứng" },
@@ -375,9 +299,17 @@ const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
  * Allergies and health conditions as tag inputs, one tab at a time (switching keeps unsaved tags). Saved by the
  * screen's single "Lưu" through the ref.
  */
-const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: boolean; accessToken: string }>(function HealthPreferencesSection({
+type HealthSectionProps = {
+  compact: boolean;
+  accessToken: string;
+  /** Called with the tag names whenever they change (the onboarding summary lists them). */
+  onTagsChange?: (allergies: string[], conditions: string[]) => void;
+};
+
+export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSectionProps>(function HealthPreferencesSection({
   compact,
   accessToken,
+  onTagsChange,
 }, ref): React.JSX.Element {
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
@@ -388,6 +320,9 @@ const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: bool
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [tab, setTab] = useState<HealthTab>("allergies");
+  const onTagsChangeRef = useRef(onTagsChange);
+  onTagsChangeRef.current = onTagsChange;
+  useEffect(() => { onTagsChangeRef.current?.(allergyTags, conditionTags); }, [allergyTags, conditionTags]);
 
   useEffect(() => {
     let active = true;
@@ -646,11 +581,6 @@ const styles = StyleSheet.create({
   },
   saveText: { ...textStyles.labelSmall, color: colors.primaryText },
   pressed: { opacity: 0.82 },
-  hidden: { display: "none" },
-  healthToggle: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", gap: spacing.sm, justifyContent: "space-between", minHeight: touchTarget, paddingHorizontal: spacing.md },
-  healthToggleText: { ...textStyles.labelSmall, color: colors.text, flex: 1 },
-  laterButton: { alignItems: "center", borderColor: colors.primary, borderRadius: radius.md, borderWidth: 1, justifyContent: "center", minHeight: touchTarget + spacing.sm, paddingHorizontal: spacing.md },
-  laterText: { ...textStyles.labelSmall, color: colors.primary },
   disabled: { opacity: 0.5 },
   result: {
     backgroundColor: colors.surface,

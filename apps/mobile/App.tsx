@@ -61,6 +61,7 @@ import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -347,19 +348,10 @@ function AppContent(): React.JSX.Element {
     );
   }
 
-  // "Thông tin cơ bản" after a real sign-in (not a restored session); NutritionProfileScreen ends it at once when a
-  // profile already exists. Never for ADMIN accounts.
+  // "Thông tin cơ bản" wizard after a real sign-in (not a restored session); it ends at once when a profile already
+  // exists. Never for ADMIN accounts.
   if (session.freshSignIn && !isAdmin) {
-    return withNotice(
-      <SafeAreaView style={styles.settingsScreen}>
-        <View style={styles.settingsHeader}>
-          <Text style={[styles.settingsTitle, styles.onboardingTitle]}>Thông tin cơ bản</Text>
-        </View>
-        <View style={styles.healthBody}>
-          <NutritionProfileScreen mode="onboarding" onDone={session.completeOnboarding} />
-        </View>
-      </SafeAreaView>
-    );
+    return withNotice(<OnboardingWizard onDone={session.completeOnboarding} />);
   }
 
   const signOut = () => {
@@ -722,7 +714,6 @@ const styles = StyleSheet.create({
   settingsHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   settingsTitle: { ...textStyles.heading },
   healthBody: { flex: 1 },
-  onboardingTitle: { minHeight: touchTarget, paddingHorizontal: spacing.sm, textAlignVertical: "center" },
   settingsBody: { flex: 1, paddingTop: spacing.md },
   menuTabIcons: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   sheetOverlay: { flex: 1, justifyContent: "flex-end", backgroundColor: colors.overlay },

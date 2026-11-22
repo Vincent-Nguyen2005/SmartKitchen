@@ -19,6 +19,19 @@ const toLocalDate = (day: string): Date => {
   return new Date(year, month - 1, date);
 };
 
+/**
+ * Opens the browser's date picker when it allows it. showPicker() is missing in older browsers and throws a
+ * SecurityError inside a cross-origin iframe (embedded previews); then the native input just opens as usual.
+ */
+const tryShowPicker = (input: HTMLInputElement & { showPicker?: () => void }) => {
+  if (typeof input.showPicker !== "function") return;
+  try {
+    input.showPicker();
+  } catch {
+    // Not allowed here: keep the browser's own click / focus behaviour.
+  }
+};
+
 type DateFieldProps = {
   label: string;
   /** YYYY-MM-DD, or "" for none. */
@@ -32,6 +45,8 @@ type DateFieldProps = {
   suggestedDate: string;
   /** Shown under the field while it is empty. */
   emptyHint: string;
+  /** "large": taller field with bigger text (onboarding wizard). */
+  size?: "default" | "large";
 };
 
 /**
@@ -40,7 +55,9 @@ type DateFieldProps = {
  * iOS: the compact picker inline in the form (a small date button that expands in place), so it
  * never covers the form. Minimum date everywhere = minDate.
  */
-export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint }: DateFieldProps): React.JSX.Element {
+export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint, size = "default" }: DateFieldProps): React.JSX.Element {
+  const large = size === "large";
+  const textVariant = large ? "subheading" : "body";
   const pick = (event: DateTimePickerEvent, date?: Date) => {
     if (event.type === "set" && date) onChange(toDay(date));
   };
@@ -59,10 +76,10 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
     // The browser's own date input follows the browser language (mm/dd/yyyy in English), so the field shows our
     // dd/mm/yyyy text and the native input lies on top of it, invisible, to open the picker on click.
     control = (
-      <View style={local.webField}>
-        <View pointerEvents="none" style={local.button}>
-          <AppIcon icon={CalendarDays} size="sm" color={colors.muted} />
-          <AppText variant="body" color={value ? colors.text : colors.muted}>{value ? toDisplayDate(value) : "dd/mm/yyyy"}</AppText>
+      <View style={[local.webField, large && local.large]}>
+        <View pointerEvents="none" style={[local.button, large && local.large]}>
+          <AppIcon icon={CalendarDays} size={large ? "md" : "sm"} color={colors.muted} />
+          <AppText variant={textVariant} color={value ? colors.text : colors.muted}>{value ? toDisplayDate(value) : "dd/mm/yyyy"}</AppText>
         </View>
         <input
           type="date"
@@ -71,14 +88,14 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
           min={minDate}
           max={maxDate}
           onChange={(event) => onChange(event.currentTarget.value)}
-          onClick={(event) => (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+          onClick={(event) => tryShowPicker(event.currentTarget)}
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: 0, padding: 0 }}
         />
       </View>
     );
   } else if (Platform.OS === "ios" && value) {
     control = (
-      <View style={local.iosPicker}>
+      <View style={[local.iosPicker, large && local.large]}>
         <DateTimePicker
           value={toLocalDate(value)}
           mode="date"
@@ -98,10 +115,10 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
         accessibilityRole="button"
         accessibilityLabel={value ? `${label}: ${toDisplayDate(value)}. Đổi ngày` : `${label}: chọn ngày`}
         onPress={() => (Platform.OS === "android" ? openAndroid() : onChange(suggestedDate))}
-        style={({ pressed }) => [local.button, pressed && local.pressed]}
+        style={({ pressed }) => [local.button, large && local.large, pressed && local.pressed]}
       >
-        <AppIcon icon={CalendarDays} size="sm" color={colors.muted} />
-        <AppText variant="body" color={value ? colors.text : colors.muted}>{value ? toDisplayDate(value) : "Chọn ngày"}</AppText>
+        <AppIcon icon={CalendarDays} size={large ? "md" : "sm"} color={colors.muted} />
+        <AppText variant={textVariant} color={value ? colors.text : colors.muted}>{value ? toDisplayDate(value) : "Chọn ngày"}</AppText>
       </Pressable>
     );
   }
@@ -126,6 +143,7 @@ const local = StyleSheet.create({
     flex: 1, flexDirection: "row", gap: spacing.sm, minHeight: touchTarget, paddingHorizontal: spacing.md,
   },
   pressed: { backgroundColor: colors.primarySoft },
+  large: { minHeight: touchTarget + spacing.lg },
   webField: { flex: 1, minHeight: touchTarget, position: "relative" },
   iosPicker: { alignItems: "flex-start", flex: 1, minHeight: touchTarget, justifyContent: "center" },
 });
