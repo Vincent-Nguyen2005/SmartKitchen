@@ -20,6 +20,7 @@ import {
   vnDay,
 } from "./kho-suggest";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
+import { conditionWarnings, familyAllergic, familyMealTarget, hasAllergen, type FamilyHealth, type HealthWarning } from "./family-health";
 
 const prisma = new PrismaClient();
 
@@ -39,6 +40,9 @@ interface RecipeCandidate {
   tags: string[];
   calories?: number;
   role: string | null;
+  /** recipe-service health tags (family allergy exclusion, condition warnings). */
+  allergens: string[];
+  contraindications: string[];
 }
 
 interface GenerateMenuInput {
@@ -64,11 +68,14 @@ interface GenerateMenuInput {
   preloaded?: { recipes: RecipeCandidate[]; khoItems: KhoItem[] };
   /** The caller's family (shared menu, replaced per family) or personal owner; without it, personal by userId. */
   owner?: MenuOwner;
+  /** Members' allergies, conditions and meal targets (family-context.ts); without it no health rules apply. */
+  health?: FamilyHealth;
 }
 
 interface AutoRefreshInput {
   inventoryItems: unknown[];
   recipes?: unknown[];
+  health?: FamilyHealth;
 }
 
 interface ManualMenuInput {
@@ -180,6 +187,8 @@ function normalizeRecipes(values: unknown[]): RecipeCandidate[] {
       dietaryTags: readStringList(record.dietaryTags ?? record.diets),
       tags: readStringList(record.tags),
       calories: typeof record.calories === "number" && Number.isFinite(record.calories) ? record.calories : undefined,
+      allergens: readStringList(record.allergens),
+      contraindications: readStringList(record.contraindications),
     }];
   });
 }
@@ -344,7 +353,69 @@ const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
   // Seasonings are not matched against Kho: they never count for "Có sẵn X/Y", the score or the missing list.
   ingredients: recipe.details.filter((detail) => !detail.isSeasoning),
   role: recipe.role,
+  allergens: recipe.allergens,
+  contraindications: recipe.contraindications,
 });
+
+/** All ingredients (seasonings included) count for allergies. */
+const healthView = (recipe: RecipeCandidate) => ({ ingredients: recipe.details, allergens: recipe.allergens, contraindications: recipe.contraindications });
+
+/**
+ * Family health rules on the recipe list: dishes any member is allergic to are dropped everywhere; the rest is split
+ * into dishes suitable for everyone (used first) and dishes unsuitable for some member (only when a slot cannot be
+ * filled otherwise; they then carry warnings). Without health data every dish is "suitable".
+ */
+function splitCandidates(recipes: RecipeCandidate[], health?: FamilyHealth): { suitable: RecipeCandidate[]; fallback: RecipeCandidate[] } {
+  if (!health || health.members.length === 0) return { suitable: recipes, fallback: [] };
+  const safe = recipes.filter((recipe) => !familyAllergic(healthView(recipe), health));
+  const unsuitable = new Set(safe.filter((recipe) => conditionWarnings(healthView(recipe), health).length > 0).map((recipe) => recipe.id));
+  return { suitable: safe.filter((recipe) => !unsuitable.has(recipe.id)), fallback: safe.filter((recipe) => unsuitable.has(recipe.id)) };
+}
+
+/** Role slots still open after `picks` (each pick fills one slot of its role). */
+function openRoles(roles: string[], picks: Array<{ role: string }>): string[] {
+  const filled = picks.map((pick) => pick.role);
+  return roles.filter((role) => {
+    const at = filled.indexOf(role);
+    if (at < 0) return true;
+    filled.splice(at, 1);
+    return false;
+  });
+}
+
+/** Suggestion details stored on a menu item (Kho match, role and, for an unsuitable dish, warnings and an alternative). */
+function itemDetails(suggestion: DishSuggestion, role: string | null, health?: { warnings: HealthWarning[]; alternative: DishSuggestion | null }): Prisma.InputJsonValue {
+  return {
+    imageUrl: suggestion.recipe.imageUrl,
+    availableIngredients: suggestion.availableIngredients,
+    missingIngredients: suggestion.missingIngredients,
+    availableCount: suggestion.availableCount,
+    totalCount: suggestion.totalCount,
+    reason: suggestion.reason,
+    role,
+    ...(health && health.warnings.length > 0 ? {
+      warnings: health.warnings,
+      alternative: health.alternative
+        ? { recipeId: health.alternative.recipe.id, dishName: health.alternative.recipe.name, imageUrl: health.alternative.recipe.imageUrl }
+        : null,
+    } : {}),
+  } as Prisma.InputJsonValue;
+}
+
+/** Warnings for an unsuitable dish plus one suitable alternative for the same meal (any role, not already in the day). */
+function healthNote(
+  pick: DishSuggestion,
+  meal: string,
+  context: { health?: FamilyHealth; suitable: SuggestRecipe[]; kho: KhoItem[]; today: string; day: string; usedIds: ReadonlySet<string> },
+): { warnings: HealthWarning[]; alternative: DishSuggestion | null } | undefined {
+  if (!context.health) return undefined;
+  const warnings = conditionWarnings(pick.recipe, context.health);
+  if (warnings.length === 0) return undefined;
+  const alternative = pickReplacement(context.suitable, context.kho, meal, null, {
+    today: context.today, day: context.day, excludeIds: new Set([...context.usedIds, pick.recipe.id]),
+  });
+  return { warnings, alternative };
+}
 
 function normalizeDate(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -457,15 +528,21 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
   // current Kho hash to regenerate a stale menu for today.
   const khoHash = input.familyId || input.inventoryItems !== undefined || input.preloaded ? snapshotHash(khoSnapshot(khoItems, today)) : null;
   // Constraints from the request (avoid / required ingredients, diets) still filter the pool.
-  const pool = recipes.filter((recipe) => {
+  const constrained = recipes.filter((recipe) => {
     const avoid = readStringList(constraints.avoidIngredients);
     const required = readStringList(constraints.requiredIngredients);
     const diets = readStringList(constraints.dietaryTags);
     return !matchesAny(recipe.ingredients, avoid)
       && required.every((ingredient) => recipe.ingredients.includes(ingredient))
       && diets.every((diet) => recipe.dietaryTags.includes(diet));
-  }).map(toSuggestRecipe);
-  if (pool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
+  });
+  // Family health: allergens never; dishes unsuitable for a member only when a slot cannot be filled otherwise.
+  const split = splitCandidates(constrained, input.health);
+  const pool = split.suitable.map(toSuggestRecipe);
+  const fallbackPool = split.fallback.map(toSuggestRecipe);
+  if (pool.length === 0 && fallbackPool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
+  // Calories per meal: the dishes of a meal aim at the family target (sum of members' meal targets) for everyone.
+  const servingsForTarget = input.health && input.health.members.length > 0 ? input.health.members.length : 1;
 
   const history = await recentDishes(client, { userId: input.userId, familyId: input.familyId }, startDate);
   // Variety: the same meal on the days before and after (saved menus), plus the days generated in this request.
@@ -490,18 +567,28 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
     }
     const chosenToday = new Set<string>();
     const excludeIds = new Set(input.excludeRecipeIds ?? []);
+    const target = (meal: string) => familyMealTarget(input.health, meal);
+    const plannedKcal = (list: Array<{ suggestion: DishSuggestion }>) => list.reduce((sum, pick) => sum + (pick.suggestion.recipe.calories ?? 0) * servingsForTarget, 0);
     const picks: Array<{ meal: string; role: string | null; suggestion: DishSuggestion | null }> = input.mealCounts
       ? mealTypes.flatMap((meal) => {
         const count = meal in input.mealCounts! ? input.mealCounts![meal as keyof MealCounts] : 1;
         const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, history: variety };
+        const goal = (list: Array<{ suggestion: DishSuggestion }>) => (input.health ? { calories: { target: target(meal), servings: servingsForTarget, planned: plannedKcal(list) } } : {});
         // Recently removed dishes are skipped, unless that leaves the meal without enough dishes.
-        let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds });
+        let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds, ...goal([]) });
         if (mealPicks.length < count && excludeIds.size > 0) {
-          mealPicks = [...mealPicks, ...pickMealDishes(pool, kho, meal, count - mealPicks.length, options)];
+          mealPicks = [...mealPicks, ...pickMealDishes(pool, kho, meal, count - mealPicks.length, { ...options, ...goal(mealPicks) })];
+        }
+        // Still short: the open role slots take dishes unsuitable for some member (with warnings; never allergens).
+        if (mealPicks.length < count && fallbackPool.length > 0) {
+          mealPicks = [...mealPicks, ...pickRoleDishes(fallbackPool, kho, meal, openRoles(roleSlots(meal, count), mealPicks), { ...options, ...goal(mealPicks) })];
         }
         return mealPicks.map((pick) => ({ meal, role: pick.role, suggestion: pick.suggestion }));
       })
-      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds }).map((pick) => ({ ...pick, role: pick.suggestion?.recipe.role ?? null }));
+      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds }).map((pick) => {
+        const fallback = !pick.suggestion && fallbackPool.length > 0 ? pickDishes(fallbackPool, kho, [pick.meal], { today, day: dayKey(date), recentRecipeIds })[0] : pick;
+        return { ...fallback, role: fallback.suggestion?.recipe.role ?? null };
+      });
     for (const { meal, role, suggestion } of picks) {
       if (!suggestion) continue;
       chosenToday.add(suggestion.recipe.id);
@@ -512,15 +599,8 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
         mealType: meal as MealType,
         dayOfWeek,
         calories: suggestion.recipe.calories,
-        details: {
-          imageUrl: suggestion.recipe.imageUrl,
-          availableIngredients: suggestion.availableIngredients,
-          missingIngredients: suggestion.missingIngredients,
-          availableCount: suggestion.availableCount,
-          totalCount: suggestion.totalCount,
-          reason: suggestion.reason,
-          role: role ?? suggestion.recipe.role ?? null,
-        },
+        details: itemDetails(suggestion, role ?? suggestion.recipe.role ?? null,
+          healthNote(suggestion, meal, { health: input.health, suitable: pool, kho, today, day: dayKey(date), usedIds: chosenToday })),
       });
     }
     // Later days of the same request also avoid repeating these.
@@ -535,6 +615,8 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
     familyId: input.familyId ?? null,
     // Cooked for everyone in the family (member count now); personal menus for one.
     servings: ownerFamily ? input.owner?.memberCount ?? null : 1,
+    // No family health data has ever been loaded: allergies unknown, the app shows a notice on Lịch.
+    healthUnavailable: input.health?.missing === true,
     khoHash,
     title,
     periodType: input.periodType,
@@ -629,7 +711,9 @@ export async function deleteMenu(owner: OwnerArg, id: string, client: PrismaClie
 }
 
 export async function autoRefreshMenu(owner: OwnerArg, input: AutoRefreshInput, client: PrismaClient = prisma) {
-  const recipes = await getRecipes(input.recipes);
+  const split = splitCandidates(await getRecipes(input.recipes), input.health);
+  const recipes = split.suitable.length > 0 ? split.suitable : split.fallback;
+  if (recipes.length === 0) throw new MenuServiceError("Không có món nào phù hợp với gia đình.", 422);
   const available = inventoryNames(input.inventoryItems);
   if (available.length === 0) {
     throw new MenuServiceError("inventoryItems must contain ingredient names", 400);
@@ -728,6 +812,8 @@ type RemoveInput = {
   inventoryItems?: unknown[];
   /** Stored AI suggestions for the family (fallback when no catalog dish fits the slot). */
   aiDishes?: (familyId: string, kho: KhoItem[]) => Promise<AiDish[]>;
+  /** Members' allergies / conditions (family-context.ts). */
+  health?: FamilyHealth;
 };
 
 /**
@@ -764,7 +850,11 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
   ]);
   const day = dayKey(normalizeDate(menu.startDate));
   const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
-  const pick = pickReplacement(recipes.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds, history });
+  const split = splitCandidates(recipes, input.health);
+  const suitable = split.suitable.map(toSuggestRecipe);
+  // Suitable for everyone first; else a dish unsuitable for some member (with warnings); allergens never.
+  const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history })
+    ?? pickReplacement(split.fallback.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds, history });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -775,19 +865,13 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
       mealType: item.mealType,
       dayOfWeek: item.dayOfWeek,
       calories: pick.recipe.calories,
-      details: {
-        imageUrl: pick.recipe.imageUrl,
-        availableIngredients: pick.availableIngredients,
-        missingIngredients: pick.missingIngredients,
-        availableCount: pick.availableCount,
-        totalCount: pick.totalCount,
-        reason: pick.reason,
-        role,
-      } as Prisma.InputJsonValue,
+      details: itemDetails(pick, role, healthNote(pick, item.mealType, { health: input.health, suitable, kho, today, day, usedIds: excludeIds })),
     };
   } else if (input.aiDishes && menu.familyId) {
     const dayNames = new Set(others.map((entry) => normalizeText(entry.dishName)));
-    const aiDishes = await input.aiDishes(menu.familyId, khoItems).catch(() => [] as AiDish[]);
+    const allergies = input.health?.members.flatMap((member) => member.allergies) ?? [];
+    const aiDishes = (await input.aiDishes(menu.familyId, khoItems).catch(() => [] as AiDish[]))
+      .filter((dish) => !hasAllergen({ ingredients: dish.ingredients }, allergies));
     const aiPick = aiDishes.find((dish) => dish.mealType === AI_MEAL[item.mealType]
       && !dayNames.has(normalizeText(dish.name)) && !removed.names.has(normalizeText(dish.name)) && normalizeText(dish.name) !== normalizeText(item.dishName));
     if (aiPick) {
@@ -846,7 +930,7 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
   return created;
 }
 
-type TopUpInput = { userId: string; owner?: MenuOwner; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
+type TopUpInput = { userId: string; owner?: MenuOwner; health?: FamilyHealth; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
 
 /**
  * Upgrades a day menu made before multi-dish menus (its dishes carry no role): adds only the missing dishes of each
@@ -872,7 +956,9 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   ]);
   const today = vnDay(now);
   const kho = usableKho(khoItems, today);
-  const pool = recipes.map(toSuggestRecipe);
+  const split = splitCandidates(recipes, input.health);
+  const pool = split.suitable.map(toSuggestRecipe);
+  const fallbackPool = split.fallback.map(toSuggestRecipe);
   const usedIds = new Set(menu.items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])));
   const day = dayKey(normalizeDate(menu.startDate));
   const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
@@ -881,7 +967,11 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
     const have = menu.items.filter((item) => item.mealType === meal).length;
     // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
     const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
-    const picks = pickRoleDishes(pool, kho, meal, roles, { today, day, recentRecipeIds: new Set(), usedIds, excludeIds: removed.recipeIds, history });
+    const options = { today, day, recentRecipeIds: new Set<string>(), usedIds, excludeIds: removed.recipeIds, history };
+    let picks = pickRoleDishes(pool, kho, meal, roles, options);
+    if (picks.length < roles.length && fallbackPool.length > 0) {
+      picks = [...picks, ...pickRoleDishes(fallbackPool, kho, meal, openRoles(roles, picks), options)];
+    }
     const dayOfWeek = ((normalizeDate(menu.startDate).getUTCDay() + 6) % 7) + 1;
     for (const { role, suggestion } of picks) {
       creates.push({
@@ -891,15 +981,7 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
         mealType: meal,
         dayOfWeek,
         calories: suggestion.recipe.calories,
-        details: {
-          imageUrl: suggestion.recipe.imageUrl,
-          availableIngredients: suggestion.availableIngredients,
-          missingIngredients: suggestion.missingIngredients,
-          availableCount: suggestion.availableCount,
-          totalCount: suggestion.totalCount,
-          reason: suggestion.reason,
-          role,
-        } as Prisma.InputJsonValue,
+        details: itemDetails(suggestion, role, healthNote(suggestion, meal, { health: input.health, suitable: pool, kho, today, day, usedIds })),
       });
     }
   }

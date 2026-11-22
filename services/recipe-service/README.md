@@ -26,6 +26,24 @@ An ingredient may carry `isSeasoning: true` (a pantry staple such as muối, nư
 
 At start, `fillSeasonings` gives starter dishes their typical seasonings (`src/seed/seasonings.data.ts`, by dish role with per-dish overrides). It only adds missing lines, never changes or deletes existing ingredients, and skips dishes that already have a seasoning line, so running it again changes nothing. Steps change only when they are still the starter steps (compared by content): the step that already says "nêm" gets the amounts appended. Admin-edited steps are never rewritten.
 
+### Health tags
+
+At start, `fillHealthTags` (`src/seed/health-tags.ts`) gives starter dishes (matched by name) `allergens` and `contraindications`. The values use the nutrition-service catalog names, and menu-service's family health rules read them.
+
+- **Only empty fields are filled.** A field that already has tags (seeded or admin-edited) is never changed, so running it again changes nothing. If an admin clears a field, the next start fills it again.
+- **Allergens** come from ingredient names, seasonings included. Words are matched whole, with accents kept:
+  - tôm, cua, mực → that seafood + Hải sản; hải sản, nghêu, sò, hến, ốc → Hải sản
+  - cá → Cá; trứng → Trứng; sữa → Sữa (not sữa đậu nành)
+  - đậu phộng, lạc → Đậu phộng; đậu nành, đậu phụ, đậu hũ, nước tương, xì dầu → Đậu nành
+  - gluten, lúa mì, bột mì, bánh mì, mì, bột chiên → Gluten (not mì chính); mè, vừng → Mè
+  - Nước mắm is not tagged Cá: it's in almost every dish.
+- **Contraindications** use simple, conservative rules:
+  - Tiểu đường: chè, "chua ngọt", sweet drinks, and desserts with sugar, condensed milk or coconut cream.
+  - Cao huyết áp: kho, rim, mắm, dưa muối, cà pháo, and processed meats.
+  - Gout: organ meats, seafood, and rich beef or bone-broth dishes.
+  - Mỡ máu cao: fried and fatty dishes (chiên, rán, quay, giòn; thịt ba chỉ, mỡ, da heo, processed meats).
+- The startup log gives the count: `added health tags to N recipes`.
+
 ### Cooking steps
 
 `steps` is an optional JSON array: `[{ order, instruction, durationSeconds | null, ingredients: [{ name, quantity, unit }] }]`, with at most 30 steps and each timer 0-7200 s. Steps are sorted by `order` and renumbered on save; `null` means no steps yet.

@@ -6,6 +6,7 @@ import { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { AiDish } from "../services/ai/gemini";
 import { aiEngine } from "./ai.controller";
 import { FamilyLookupError, lookupMemberships, type MembershipLookup } from "../services/family-client";
+import { loadFamilyContext } from "../services/family-context";
 import {
   canEditMenuSettings,
   type MenuOwner,
@@ -126,15 +127,18 @@ export async function generateMenuController(request: Request, response: Respons
       response.status(422).json({ error: "Không thể tạo lại thực đơn của ngày đã qua." });
       return;
     }
-    const [mealCounts, removed] = await Promise.all([
+    // Members' allergies, conditions and meal targets (defaults when unavailable; never fails the request).
+    const [mealCounts, removed, health] = await Promise.all([
       getMenuSettings(owner).catch(() => undefined),
       recentlyRemoved(owner).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+      loadFamilyContext(owner),
     ]);
     response.status(201).json(await generateMenu({
       ...input,
       periodType,
       userId: owner.userId,
       owner,
+      health,
       authorization: request.header("authorization") ?? undefined,
       mealCounts: periodType === PeriodType.DAY ? mealCounts : undefined,
       excludeRecipeIds: [...removed.recipeIds],
@@ -222,7 +226,7 @@ export async function autoRefreshController(request: Request, response: Response
     const input = refreshSchema.parse(request.body);
     const owner = await requestOwner(request, response);
     if (!owner) return;
-    response.json(await autoRefreshMenu(owner, input));
+    response.json(await autoRefreshMenu(owner, { ...input, health: await loadFamilyContext(owner) }));
   } catch (error) {
     handleError(error, response);
   }
@@ -321,6 +325,7 @@ export async function removeMenuItemController(request: Request, response: Respo
     response.json(await removeMenuItem({
       userId: owner.userId,
       owner,
+      health: await loadFamilyContext(owner),
       menuId: request.params.id,
       itemId: request.params.itemId,
       authorization: request.header("authorization") ?? undefined,
@@ -343,13 +348,15 @@ export async function generateDaysController(request: Request, response: Respons
     const input = generateDaysSchema.parse(request.body);
     const owner = await requestOwner(request, response, input.familyId);
     if (!owner) return;
-    const [mealCounts, removed] = await Promise.all([
+    const [mealCounts, removed, health] = await Promise.all([
       getMenuSettings(owner, settingsClient),
       recentlyRemoved(owner, settingsClient).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
+      loadFamilyContext(owner),
     ]);
     response.status(201).json(await generateDays({
       userId: owner.userId,
       owner,
+      health,
       days: input.days,
       familyId: owner.familyId ?? input.familyId,
       authorization: request.header("authorization") ?? undefined,
@@ -369,6 +376,7 @@ export async function topUpMenuController(request: Request, response: Response):
     response.json(await topUpMenu({
       userId: owner.userId,
       owner,
+      health: await loadFamilyContext(owner),
       menuId: request.params.id,
       authorization: request.header("authorization") ?? undefined,
       mealCounts: await getMenuSettings(owner, settingsClient),

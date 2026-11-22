@@ -37,7 +37,8 @@ type Props = {
   width: DimensionValue;
   /** Fills the square image area (pass a component sized with `cardImageStyle`). */
   image: React.ReactNode;
-  pill?: { label: string; tone: CardPillTone } | null;
+  /** Corner pill; `icon` (optional) is drawn before the label (e.g. the family health warning). */
+  pill?: { label: string; tone: CardPillTone; icon?: LucideIcon } | null;
   name: string;
   /** Line under the name: unit (Đi chợ) or quantity + unit (Kho); omitted = image and name only. */
   subtitle?: string;
@@ -63,7 +64,8 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
       <View style={local.imageArea}>
         {image}
         {pill && (
-          <View style={[local.pill, { backgroundColor: pillColors[pill.tone] }]}>
+          <View style={[local.pill, pill.icon && local.pillWithIcon, { backgroundColor: pillColors[pill.tone] }]}>
+            {pill.icon && <AppIcon icon={pill.icon} size="sm" color={colors.surface} />}
             <Text style={local.pillText} numberOfLines={1}>{pill.label}</Text>
           </View>
         )}
@@ -129,6 +131,7 @@ const local = StyleSheet.create({
   markerText: { ...textStyles.caption, color: colors.primaryText, fontWeight: "700" },
   corner: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.primary, borderRadius: radius.pill, borderWidth: 1, height: 32, justifyContent: "center", position: "absolute", right: spacing.xs, top: spacing.xs, width: 32 },
   pillText: { ...textStyles.caption, color: colors.surface, fontWeight: "700" },
+  pillWithIcon: { alignItems: "center", flexDirection: "row", gap: 2 },
   body: { gap: 2, padding: spacing.xs + 2 },
   name: { ...textStyles.caption, color: colors.text, fontWeight: "600" },
   subtitle: { ...textStyles.caption },

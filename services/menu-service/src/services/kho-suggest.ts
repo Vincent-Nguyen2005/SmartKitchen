@@ -28,7 +28,12 @@ export type SuggestRecipe = {
   ingredients: DishIngredient[];
   /** Role in a family meal (man, xao, canh, rau, trang_mieng, sang, mot_mon, do_uong); null = not classified. */
   role?: string | null;
+  /** recipe-service tags for the family health rules (allergy exclusion, condition warnings). */
+  allergens?: string[];
+  contraindications?: string[];
 };
+/** Meal kcal goal while picking the dishes of one meal (see caloriePenalty in family-health.ts). */
+export type MealCalorieGoal = { target: number; servings: number; planned: number };
 export type DishSuggestion = {
   recipe: SuggestRecipe;
   score: number;
@@ -257,10 +262,27 @@ export function varietyPool(pool: SuggestRecipe[], meal: string, day: string, hi
   return loose.length > 0 ? loose : pool;
 }
 
-function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string): DishSuggestion | null {
+/** `penalty` (calories) is subtracted from each Kho score before ranking. */
+function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string, penalty?: (recipe: SuggestRecipe) => number): DishSuggestion | null {
   return candidates
-    .map((recipe) => evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, seed))
+    .map((recipe) => {
+      const suggestion = evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, seed);
+      return penalty ? { ...suggestion, score: suggestion.score - penalty(recipe) } : suggestion;
+    })
     .sort((left, right) => right.score - left.score)[0] ?? null;
+}
+
+/** Weight of the calorie term next to the Kho score (explained in family-health.ts). */
+export const CALORIE_WEIGHT = 20;
+/**
+ * Calorie penalty (0..CALORIE_WEIGHT) of one dish against what is left of the meal's family target per remaining
+ * slot: CALORIE_WEIGHT × min(1, |kcal × servings − perSlot| / perSlot). No penalty without kcal or target.
+ */
+export function mealCaloriePenalty(kcal: number | null | undefined, goal: MealCalorieGoal | undefined, slotsLeft: number): number {
+  if (!goal || kcal == null || goal.target <= 0 || slotsLeft <= 0) return 0;
+  const perSlot = (goal.target - goal.planned) / slotsLeft;
+  if (perSlot <= 0) return CALORIE_WEIGHT;
+  return CALORIE_WEIGHT * Math.min(1, Math.abs(kcal * goal.servings - perSlot) / perSlot);
 }
 
 /**
@@ -273,7 +295,7 @@ export function pickMealDishes(
   kho: KhoItem[],
   meal: string,
   count: number,
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   return pickRoleDishes(recipes, kho, meal, roleSlots(meal, count), options);
 }
@@ -284,16 +306,21 @@ export function pickRoleDishes(
   kho: KhoItem[],
   meal: string,
   roles: string[],
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
+  // Whole-meal calories: each slot aims at what is left of the family target (updated as dishes are picked).
+  const goal = options.calories ? { ...options.calories } : undefined;
   roles.forEach((role, index) => {
     const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id));
     let pool = open.filter((recipe) => fitsRole(recipe.role, role));
     if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");
-    const pick = best(varietyPool(pool, meal, options.day, options.history), kho, options, `${options.day}:${meal.toLowerCase()}:${index}`);
+    const slotsLeft = roles.length - index;
+    const pick = best(varietyPool(pool, meal, options.day, options.history), kho, options, `${options.day}:${meal.toLowerCase()}:${index}`,
+      goal ? (recipe) => mealCaloriePenalty(recipe.calories, goal, slotsLeft) : undefined);
     if (!pick) return;
     options.usedIds.add(pick.recipe.id);
+    if (goal && pick.recipe.calories != null) goal.planned += pick.recipe.calories * goal.servings;
     picks.push({ role, suggestion: pick });
   });
   return picks;

@@ -1,7 +1,7 @@
 import React from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChefHat, Clock, X } from "lucide-react-native";
+import { ChefHat, ChevronRight, Clock, TriangleAlert, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { RemoteImage } from "../notifications/ui";
 import { amountText, durationText, minutesText, recipeIngredients, sortedSteps, totalMinutes, type Recipe } from "./recipeTypes";
@@ -23,10 +23,15 @@ type Props = {
    * "view" (Lịch): image, name, time, servings, description and ingredients only.
    */
   mode?: "view" | "cook";
+  /**
+   * Family health notes of the planned dish: "Huy: không hợp tiểu đường" lines and one alternative dish (tapping it
+   * opens that dish; in Nấu ăn it can then be cooked).
+   */
+  health?: { warnings: string[]; alternative?: { name: string; onPress: () => void } | null } | null;
 };
 
 /** Món ăn: image, ingredients with quantities, the steps with their times, total time and "Bắt đầu nấu". */
-export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu", mode = "cook" }: Props): React.JSX.Element {
+export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu", mode = "cook", health }: Props): React.JSX.Element {
   const cook = mode === "cook";
   const steps = recipe ? sortedSteps(recipe) : [];
   const total = recipe ? totalMinutes(recipe) : null;
@@ -52,6 +57,29 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
             </View>
 
             {!!notice && <Text style={local.notice}>{notice}</Text>}
+            {health && health.warnings.length > 0 && (
+              <View style={local.health} accessibilityRole="summary">
+                <View style={local.healthTitleRow}>
+                  <AppIcon icon={TriangleAlert} size="sm" color={colors.warning} />
+                  <Text style={local.healthTitle}>Lưu ý sức khỏe</Text>
+                </View>
+                {health.warnings.map((line) => <Text key={line} style={local.healthLine}>{line}</Text>)}
+                {health.alternative && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Món thay thế: ${health.alternative.name}. Xem món`}
+                    onPress={health.alternative.onPress}
+                    style={({ pressed }) => [local.alternative, pressed && local.pressed]}
+                  >
+                    <View style={local.alternativeText}>
+                      <Text style={local.alternativeLabel}>Món thay thế</Text>
+                      <Text style={local.alternativeName}>{health.alternative.name}</Text>
+                    </View>
+                    <AppIcon icon={ChevronRight} size="sm" color={colors.primary} />
+                  </Pressable>
+                )}
+              </View>
+            )}
             <Text style={local.section}>Nguyên liệu</Text>
             <View style={local.card}>
               {recipeIngredients(recipe).filter((ingredient) => !ingredient.isSeasoning).map((ingredient) => (
@@ -131,6 +159,15 @@ const local = StyleSheet.create({
   muted: { ...textStyles.bodySmall, color: colors.muted },
   footer: { borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.sm, padding: spacing.md },
   notice: { ...textStyles.bodySmall, backgroundColor: colors.warningSoft, borderRadius: radius.sm, color: colors.warning, padding: spacing.sm },
+  health: { backgroundColor: colors.warningSoft, borderRadius: radius.sm, gap: spacing.xs, padding: spacing.sm },
+  healthTitleRow: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
+  healthTitle: { ...textStyles.labelSmall, color: colors.warning },
+  healthLine: { ...textStyles.bodySmall, color: colors.text },
+  alternative: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs, minHeight: touchTarget, paddingHorizontal: spacing.sm },
+  alternativeText: { flex: 1 },
+  alternativeLabel: { ...textStyles.caption, color: colors.muted },
+  alternativeName: { ...textStyles.label, color: colors.primary },
+  pressed: { opacity: 0.82 },
   message: { ...textStyles.bodySmall, color: colors.primary, textAlign: "center" },
   startButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, justifyContent: "center", minHeight: touchTarget + 8 },
   startText: { ...textStyles.label, color: colors.primaryText },

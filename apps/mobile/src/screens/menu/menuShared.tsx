@@ -1,5 +1,5 @@
 import React from "react";
-import { Shuffle } from "lucide-react-native";
+import { Shuffle, TriangleAlert } from "lucide-react-native";
 import type { GatewayClient } from "../notifications/gatewayApi";
 import { ProductImage } from "../shopping-cart/MarketProducts";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard } from "../../components/ProductCard";
@@ -8,8 +8,39 @@ import { minutesText, totalMinutes, type Recipe } from "../recipes/recipeTypes";
 import type { MealType } from "./MenuCalendar";
 
 export type PeriodType = "DAY" | "WEEK" | "MONTH";
-/** Saved by menu-service with each dish: image, role and, for an AI dish placed in the menu, the dish itself. */
-export type DishDetails = { imageUrl?: string | null; role?: string | null; ai?: boolean; aiDish?: AiDish };
+/** A family member for whom a dish is unsuitable (menu-service family health rules). */
+export type HealthWarning = { memberUserId: string; memberName: string; condition: string };
+/** A dish suitable for those members, suggested next to an unsuitable one. */
+export type HealthAlternative = { recipeId: string; dishName: string; imageUrl?: string | null };
+/**
+ * Saved by menu-service with each dish: image, role, for an AI dish placed in the menu the dish itself and, when the
+ * dish is unsuitable for some member, the warnings and one alternative.
+ */
+export type DishDetails = {
+  imageUrl?: string | null;
+  role?: string | null;
+  ai?: boolean;
+  aiDish?: AiDish;
+  warnings?: HealthWarning[];
+  alternative?: HealthAlternative | null;
+};
+
+/** "Huy: không hợp tiểu đường". */
+export const warningText = (warning: HealthWarning): string => `${warning.memberName}: không hợp ${warning.condition.toLocaleLowerCase("vi")}`;
+export const hasWarnings = (item: MenuItem | null | undefined): boolean => (item?.details?.warnings?.length ?? 0) > 0;
+
+/**
+ * Health notes for the dish detail: only while the detail shows the planned dish itself (not its alternative).
+ * `openAlternative` opens the alternative dish by recipe id.
+ */
+export function detailHealth(item: MenuItem | null, shownRecipeId: string | undefined, openAlternative: (recipeId: string) => void) {
+  if (!item || !hasWarnings(item) || !item.recipeId || item.recipeId !== shownRecipeId) return null;
+  const alternative = item.details?.alternative;
+  return {
+    warnings: item.details!.warnings!.map(warningText),
+    alternative: alternative ? { name: alternative.dishName, onPress: () => openAlternative(alternative.recipeId) } : null,
+  };
+}
 export type MenuItem = {
   id: string;
   recipeId?: string | null;
@@ -26,6 +57,8 @@ export type MenuRecord = {
   startDate: string;
   endDate: string;
   khoHash?: string | null;
+  /** Made without any family health data (allergies unknown): Lịch shows a small notice. */
+  healthUnavailable?: boolean;
   items: MenuItem[];
 };
 
@@ -78,7 +111,10 @@ type CardProps = {
   eaten?: boolean;
 };
 
-/** A planned dish in the shared card style: image, name, kcal, total time; AI dishes carry the "AI" pill. */
+/**
+ * A planned dish in the shared card style: image, name, kcal, total time; AI dishes carry the "AI" pill and dishes
+ * unsuitable for a family member a small warning pill (details in the dish detail).
+ */
 export function MenuDishCard({ item, recipe, width, onPress, variant = "full", onSwap, swapping = false, eaten = false }: CardProps): React.JSX.Element {
   const aiDish = item.details?.ai ? item.details.aiDish : undefined;
   const minutes = recipe ? totalMinutes(recipe) : aiDish ? aiDish.totalMinutes : null;
@@ -86,10 +122,10 @@ export function MenuDishCard({ item, recipe, width, onPress, variant = "full", o
   return (
     <ProductCard
       width={width}
-      accessibilityLabel={`${mealLabels[item.mealType]}: ${item.dishName}, ${kcal}${minutes !== null ? `, ${minutesText(minutes)}` : ""}${aiDish ? ", món AI gợi ý" : ""}. Mở công thức`}
+      accessibilityLabel={`${mealLabels[item.mealType]}: ${item.dishName}, ${kcal}${minutes !== null ? `, ${minutesText(minutes)}` : ""}${aiDish ? ", món AI gợi ý" : ""}${hasWarnings(item) ? ", có lưu ý sức khỏe" : ""}. Mở công thức`}
       onPress={onPress}
       image={aiDish ? <ImagePlaceholder /> : <ProductImage uri={recipe?.imageUrl ?? item.details?.imageUrl ?? null} style={cardImageStyle} />}
-      pill={aiDish ? { label: "AI", tone: "ai" } : null}
+      pill={aiDish ? { label: "AI", tone: "ai" } : hasWarnings(item) ? { label: "Lưu ý", tone: "warning", icon: TriangleAlert } : null}
       name={item.dishName}
       subtitle={variant === "full" ? kcal : undefined}
       footer={variant === "full" && minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
