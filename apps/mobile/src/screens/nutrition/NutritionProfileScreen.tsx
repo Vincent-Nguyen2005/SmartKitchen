@@ -1,10 +1,9 @@
 import { useSession } from "../../services/session";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +16,7 @@ import {
 } from "react-native";
 import { DateField } from "../admin/DateField";
 import { TagInput } from "../../components/TagInput";
+import { SegmentTabs } from "../../components/SegmentTabs";
 import {
   ActivityLevel,
   createHealthPreferencesApi,
@@ -91,6 +91,16 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const healthRef = useRef<HealthSectionHandle>(null);
+
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  const showToast = (message: string) => {
+    setToast(message);
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3000);
+  };
 
   useEffect(() => {
     let active = true;
@@ -139,11 +149,10 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   const weightError = rangeError(weight, WEIGHT_RANGE, "kg");
   const age = ageFrom(birthDate);
 
+  /** "Lưu": the basic info first (validated), then the allergy / health tags; one toast with the result or first error. */
   const save = async (): Promise<void> => {
     if (!api) {
-      const message = "Vui lòng đăng nhập để lưu hồ sơ dinh dưỡng.";
-      setError(message);
-      Alert.alert("Cần đăng nhập", message);
+      setError("Vui lòng đăng nhập để lưu hồ sơ dinh dưỡng.");
       return;
     }
 
@@ -152,7 +161,9 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     const parsedWeight = Number(weight);
     const age = ageFrom(birthDate);
     if (!height.trim() || !weight.trim() || heightError || weightError || age === null || age < 1 || age > 130) {
-      setError(age !== null && age < 1 ? "Ngày sinh phải cách hôm nay ít nhất 1 năm." : "Nhập chiều cao, cân nặng và ngày sinh hợp lệ.");
+      const message = age !== null && age < 1 ? "Ngày sinh phải cách hôm nay ít nhất 1 năm." : "Nhập chiều cao, cân nặng và ngày sinh hợp lệ.";
+      setError(message);
+      showToast(message);
       return;
     }
 
@@ -167,46 +178,28 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     setSaving(true);
     setError("");
     try {
-      const data = hasProfile
-        ? await api.update(profile)
-        : await api.create(profile);
+      const data = hasProfile ? await api.update(profile) : await api.create(profile);
       setResult(data);
       setHasProfile(true);
     } catch (saveError: unknown) {
-      const message =
-        saveError instanceof Error && saveError.message
-          ? saveError.message
-          : typeof saveError === "string" && saveError
-            ? saveError
-            : "Đã xảy ra lỗi không xác định.";
-      const responseData =
-        saveError instanceof NutritionApiError
-          ? saveError.responseData
-          : undefined;
-      const status =
-        saveError instanceof NutritionApiError ? saveError.status : undefined;
+      const message = saveError instanceof Error && saveError.message ? saveError.message : "Đã xảy ra lỗi không xác định.";
       console.error("Failed to save nutrition profile.", {
-        status,
-        responseData,
+        status: saveError instanceof NutritionApiError ? saveError.status : undefined,
         message,
       });
-
-      const responseDetails =
-        responseData === undefined
-          ? ""
-          : `\n${JSON.stringify(responseData, null, 2)}`;
-      const alertMessage = [
-        message || "Đã xảy ra lỗi không xác định.",
-        status === undefined ? "" : `(HTTP ${status})`,
-        responseDetails,
-      ]
-        .filter(Boolean)
-        .join(" ");
       setError(`Không thể lưu hồ sơ. ${message}`);
-      Alert.alert("Không lưu được hồ sơ dinh dưỡng", alertMessage);
-    } finally {
+      showToast(`Không thể lưu hồ sơ. ${message}`);
       setSaving(false);
+      return;
     }
+    const healthError = (await healthRef.current?.save()) ?? null;
+    setSaving(false);
+    if (healthError) {
+      setError(healthError);
+      showToast(healthError);
+      return;
+    }
+    showToast("Đã lưu thông tin sức khỏe");
   };
 
   return (
@@ -274,6 +267,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 </View>
               </View>
 
+              {accessToken ? <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} /> : null}
+
               {!!error && (
                 <Text accessibilityRole="alert" style={styles.error}>
                   {error}
@@ -292,7 +287,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 {saving ? (
                   <ActivityIndicator color={colors.primaryText} />
                 ) : (
-                  <Text style={styles.saveText}>Lưu và tính nhu cầu calo</Text>
+                  <Text style={styles.saveText}>Lưu</Text>
                 )}
               </Pressable>
 
@@ -311,25 +306,33 @@ export default function NutritionProfileScreen(): React.JSX.Element {
             </>
           )}
 
-          {accessToken ? (
-            <HealthPreferencesSection
-              compact={isCompact}
-              accessToken={accessToken}
-            />
-          ) : null}
         </ScrollView>
       </KeyboardAvoidingView>
+      {toast && (
+        <View pointerEvents="none" style={styles.toastWrap}>
+          <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
-function HealthPreferencesSection({
+/** Saves the tags; resolves to null on success or the error message. */
+type HealthSectionHandle = { save: () => Promise<string | null> };
+type HealthTab = "allergies" | "conditions";
+const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
+  { value: "allergies", label: "Dị ứng" },
+  { value: "conditions", label: "Tình trạng sức khỏe" },
+];
+
+/**
+ * Allergies and health conditions as tag inputs, one tab at a time (switching keeps unsaved tags). Saved by the
+ * screen's single "Lưu" through the ref.
+ */
+const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: boolean; accessToken: string }>(function HealthPreferencesSection({
   compact,
   accessToken,
-}: {
-  compact: boolean;
-  accessToken: string;
-}): React.JSX.Element {
+}, ref): React.JSX.Element {
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
   const [conditions, setConditions] = useState<HealthOption[]>([]);
@@ -337,8 +340,8 @@ function HealthPreferencesSection({
   const [allergyTags, setAllergyTags] = useState<string[]>([]);
   const [conditionTags, setConditionTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const [tab, setTab] = useState<HealthTab>("allergies");
 
   useEffect(() => {
     let active = true;
@@ -351,7 +354,7 @@ function HealthPreferencesSection({
         setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
       })
       .catch(() => {
-        if (active) setMessage("Không thể tải dị ứng và bệnh lý đã khai báo.");
+        if (active) setMessage("Không thể tải dị ứng và tình trạng sức khỏe đã khai báo.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -368,72 +371,56 @@ function HealthPreferencesSection({
     custom: names.filter((name) => !options.some((option) => option.name === name)),
   });
 
-  const save = async (): Promise<void> => {
-    setSaving(true);
-    setMessage("");
-    try {
-      const allergySplit = splitTags(allergyTags, allergies);
-      const conditionSplit = splitTags(conditionTags, conditions);
-      const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
-      setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
-      setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
-      setMessage("Đã lưu hồ sơ sức khỏe.");
-    } catch {
-      setMessage("Không thể lưu hồ sơ sức khỏe. Vui lòng thử lại.");
-    } finally {
-      setSaving(false);
-    }
-  };
+  useImperativeHandle(ref, () => ({
+    save: async () => {
+      if (loading) return null;
+      try {
+        const allergySplit = splitTags(allergyTags, allergies);
+        const conditionSplit = splitTags(conditionTags, conditions);
+        const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
+        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
+        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
+        return null;
+      } catch {
+        return "Không thể lưu dị ứng và tình trạng sức khỏe. Vui lòng thử lại.";
+      }
+    },
+  }), [loading, allergyTags, conditionTags, allergies, conditions]);
 
   return (
     <View style={[styles.healthSection, compact && styles.cardCompact]}>
-      <Text style={styles.sectionTitle}>Dị ứng và bệnh lý</Text>
-      <Text style={styles.healthNote}>
-        Các lựa chọn này được dùng để loại món có metadata trùng khớp khỏi gợi ý.
-      </Text>
+      <SegmentTabs<HealthTab> options={HEALTH_TABS} value={tab} onChange={setTab} />
       {loading ? (
         <ActivityIndicator color={colors.primary} style={styles.healthLoader} />
       ) : (
         <>
-          <Text style={styles.healthGroupTitle}>Dị ứng</Text>
-          <TagInput
-            tags={allergyTags}
-            onChange={(names) => { setAllergyTags(names); setMessage(""); }}
-            suggestions={allergies.map((option) => option.name)}
-            accessibilityLabel="Thêm dị ứng"
-            placeholder="Ví dụ: sữa, hải sản"
-          />
-          <Text style={styles.healthGroupTitle}>Bệnh lý / tình trạng sức khỏe</Text>
-          <TagInput
-            tags={conditionTags}
-            onChange={(names) => { setConditionTags(names); setMessage(""); }}
-            suggestions={conditions.map((option) => option.name)}
-            accessibilityLabel="Thêm bệnh lý"
-            placeholder="Ví dụ: tiểu đường, gout"
-          />
-          <Text style={styles.healthNote}>Chọn gợi ý trong danh mục hoặc tự nhập. Mục tự nhập được lưu trong hồ sơ nhưng chưa dùng để lọc món gợi ý.</Text>
+          {tab === "allergies" ? (
+            <TagInput
+              tags={allergyTags}
+              onChange={(names) => { setAllergyTags(names); setMessage(""); }}
+              suggestions={allergies.map((option) => option.name)}
+              accessibilityLabel="Thêm dị ứng"
+              placeholder="Ví dụ: sữa, hải sản"
+            />
+          ) : (
+            <TagInput
+              tags={conditionTags}
+              onChange={(names) => { setConditionTags(names); setMessage(""); }}
+              suggestions={conditions.map((option) => option.name)}
+              accessibilityLabel="Thêm tình trạng sức khỏe"
+              placeholder="Ví dụ: tiểu đường, gout"
+            />
+          )}
           {!!message && (
             <Text accessibilityRole="alert" style={styles.healthMessage}>
               {message}
             </Text>
           )}
-          <Pressable
-            accessibilityRole="button"
-            disabled={saving}
-            onPress={() => void save()}
-            style={[styles.healthSave, saving && styles.disabled]}
-          >
-            {saving ? (
-              <ActivityIndicator color={colors.primaryText} />
-            ) : (
-              <Text style={styles.healthSaveText}>Lưu hồ sơ sức khỏe</Text>
-            )}
-          </Pressable>
         </>
       )}
     </View>
   );
-}
+});
 
 function NumberField({
   label,
@@ -497,6 +484,8 @@ function ChoiceButton({
 }
 
 const styles = StyleSheet.create({
+  toastWrap: { alignItems: "center", bottom: spacing.xl, left: spacing.lg, position: "absolute", right: spacing.lg },
+  toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, textAlign: "center" },
   birthRow: { alignItems: "center", flexDirection: "row", gap: spacing.md },
   birthField: { flex: 1 },
   ageText: { ...textStyles.label, color: colors.primary },
@@ -644,31 +633,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     padding: spacing.lg,
   },
-  healthNote: {
-    ...textStyles.bodySmall,
-    color: colors.muted,
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
   healthLoader: { marginVertical: spacing.lg },
-  healthGroupTitle: {
-    ...textStyles.labelSmall,
-    color: colors.text,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
   healthMessage: {
     ...textStyles.bodySmall,
     color: colors.primary,
     marginTop: spacing.sm,
   },
-  healthSave: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    justifyContent: "center",
-    marginTop: spacing.md,
-    minHeight: touchTarget + spacing.xs,
-  },
-  healthSaveText: { ...textStyles.labelSmall, color: colors.primaryText },
 });

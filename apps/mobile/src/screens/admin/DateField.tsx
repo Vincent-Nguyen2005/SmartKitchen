@@ -2,7 +2,7 @@ import React from "react";
 import { Platform, Pressable, StyleSheet, View } from "react-native";
 import DateTimePicker, { DateTimePickerAndroid, type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { CalendarDays, X } from "lucide-react-native";
-import { AppIcon, AppText, colors, IconButton, radius, spacing, touchTarget, typography } from "../../theme";
+import { AppIcon, AppText, colors, IconButton, radius, spacing, touchTarget } from "../../theme";
 
 /** YYYY-MM-DD -> dd/MM/yyyy ("" stays ""). */
 export const toDisplayDate = (day: string): string => {
@@ -56,20 +56,25 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
 
   let control: React.ReactNode;
   if (Platform.OS === "web") {
+    // The browser's own date input follows the browser language (mm/dd/yyyy in English), so the field shows our
+    // dd/mm/yyyy text and the native input lies on top of it, invisible, to open the picker on click.
     control = (
-      <input
-        type="date"
-        aria-label={label}
-        value={value}
-        min={minDate}
-        max={maxDate}
-        onChange={(event) => onChange(event.currentTarget.value)}
-        style={{
-          flex: 1, minHeight: touchTarget, padding: `0 ${spacing.md}px`, borderRadius: radius.sm,
-          border: `1px solid ${colors.border}`, background: colors.surface, color: colors.text,
-          fontFamily: typography.body.fontFamily, fontSize: typography.body.fontSize,
-        }}
-      />
+      <View style={local.webField}>
+        <View pointerEvents="none" style={local.button}>
+          <AppIcon icon={CalendarDays} size="sm" color={colors.muted} />
+          <AppText variant="body" color={value ? colors.text : colors.muted}>{value ? toDisplayDate(value) : "dd/mm/yyyy"}</AppText>
+        </View>
+        <input
+          type="date"
+          aria-label={value ? `${label}: ${toDisplayDate(value)}` : label}
+          value={value}
+          min={minDate}
+          max={maxDate}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          onClick={(event) => (event.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.()}
+          style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: 0, padding: 0 }}
+        />
+      </View>
     );
   } else if (Platform.OS === "ios" && value) {
     control = (
@@ -121,5 +126,6 @@ const local = StyleSheet.create({
     flex: 1, flexDirection: "row", gap: spacing.sm, minHeight: touchTarget, paddingHorizontal: spacing.md,
   },
   pressed: { backgroundColor: colors.primarySoft },
+  webField: { flex: 1, minHeight: touchTarget, position: "relative" },
   iosPicker: { alignItems: "flex-start", flex: 1, minHeight: touchTarget, justifyContent: "center" },
 });
