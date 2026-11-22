@@ -20,6 +20,7 @@ import {
   vnDay,
 } from "./kho-suggest";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
+import { menuPeople, scaleIngredients } from "./portions";
 import { conditionWarnings, familyAllergic, familyMealTarget, hasAllergen, type FamilyHealth, type HealthWarning } from "./family-health";
 
 const prisma = new PrismaClient();
@@ -40,6 +41,8 @@ interface RecipeCandidate {
   tags: string[];
   calories?: number;
   role: string | null;
+  /** People the recipe quantities are for (null = 1). */
+  servings: number | null;
   /** recipe-service health tags (family allergy exclusion, condition warnings). */
   allergens: string[];
   contraindications: string[];
@@ -160,6 +163,7 @@ function readDetails(value: unknown, fallback: unknown): DishIngredient[] {
       unit: typeof record.unit === "string" ? record.unit : null,
       note: typeof record.note === "string" && record.note.trim() ? record.note.trim() : null,
       isSeasoning: record.isSeasoning === true,
+      ...(record.perPerson === true ? { perPerson: true } : {}),
     }];
   });
 }
@@ -189,6 +193,7 @@ function normalizeRecipes(values: unknown[]): RecipeCandidate[] {
       calories: typeof record.calories === "number" && Number.isFinite(record.calories) ? record.calories : undefined,
       allergens: readStringList(record.allergens),
       contraindications: readStringList(record.contraindications),
+      servings: typeof record.servings === "number" && Number.isFinite(record.servings) ? record.servings : null,
     }];
   });
 }
@@ -343,7 +348,11 @@ async function mealHistory(
   return history;
 }
 
-const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
+/**
+ * Recipe as the Kho scorer sees it. With `people`, quantities are scaled to the people eating (portions.ts), so Kho
+ * matching, "Có sẵn X/Y" and the missing list use the family's amounts; without it the recipe's own amounts.
+ */
+const toSuggestRecipe = (recipe: RecipeCandidate, people?: number): SuggestRecipe => ({
   id: recipe.id,
   name: recipe.name,
   imageUrl: recipe.imageUrl,
@@ -351,7 +360,7 @@ const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
   mealTypes: recipe.mealTypes,
   tags: recipe.tags,
   // Seasonings are not matched against Kho: they never count for "Có sẵn X/Y", the score or the missing list.
-  ingredients: recipe.details.filter((detail) => !detail.isSeasoning),
+  ingredients: (people === undefined ? recipe.details : scaleIngredients(recipe.details, recipe.servings, people)).filter((detail) => !detail.isSeasoning),
   role: recipe.role,
   allergens: recipe.allergens,
   contraindications: recipe.contraindications,
@@ -538,8 +547,10 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
   });
   // Family health: allergens never; dishes unsuitable for a member only when a slot cannot be filled otherwise.
   const split = splitCandidates(constrained, input.health);
-  const pool = split.suitable.map(toSuggestRecipe);
-  const fallbackPool = split.fallback.map(toSuggestRecipe);
+  // Quantities for the people eating: the family's member count (personal menus: 1).
+  const people = input.owner ? menuPeople(ownerFamily ? input.owner.memberCount : 1) : undefined;
+  const pool = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
+  const fallbackPool = split.fallback.map((recipe) => toSuggestRecipe(recipe, people));
   if (pool.length === 0 && fallbackPool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
   // Calories per meal: the dishes of a meal aim at the family target (sum of members' meal targets) for everyone.
   const servingsForTarget = input.health && input.health.members.length > 0 ? input.health.members.length : 1;
@@ -851,10 +862,12 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
   const day = dayKey(normalizeDate(menu.startDate));
   const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
   const split = splitCandidates(recipes, input.health);
-  const suitable = split.suitable.map(toSuggestRecipe);
+  // The menu's people (older menus: the current member count).
+  const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
+  const suitable = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
   // Suitable for everyone first; else a dish unsuitable for some member (with warnings); allergens never.
   const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history })
-    ?? pickReplacement(split.fallback.map(toSuggestRecipe), kho, item.mealType, role, { today, day, excludeIds, history });
+    ?? pickReplacement(split.fallback.map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -957,8 +970,9 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   const today = vnDay(now);
   const kho = usableKho(khoItems, today);
   const split = splitCandidates(recipes, input.health);
-  const pool = split.suitable.map(toSuggestRecipe);
-  const fallbackPool = split.fallback.map(toSuggestRecipe);
+  const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
+  const pool = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
+  const fallbackPool = split.fallback.map((recipe) => toSuggestRecipe(recipe, people));
   const usedIds = new Set(menu.items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])));
   const day = dayKey(normalizeDate(menu.startDate));
   const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));

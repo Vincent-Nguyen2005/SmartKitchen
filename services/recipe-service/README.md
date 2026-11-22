@@ -26,6 +26,13 @@ An ingredient may carry `isSeasoning: true` (a pantry staple such as muối, nư
 
 At start, `fillSeasonings` gives starter dishes their typical seasonings (`src/seed/seasonings.data.ts`, by dish role with per-dish overrides). It only adds missing lines, never changes or deletes existing ingredients, and skips dishes that already have a seasoning line, so running it again changes nothing. Steps change only when they are still the starter steps (compared by content): the step that already says "nêm" gets the amounts appended. Admin-edited steps are never rewritten.
 
+### Per-person ingredients
+
+An ingredient may carry `perPerson: true`: it is eaten one per person (bánh mì, trứng ốp la, a glass of milk or orange juice, a fruit or yoghurt). Menus scale it per person (see menu-service "Portions").
+
+- Admins set it with "Theo người" on each ingredient row in Quản trị › Món ăn. The form always saves the flag (true or false).
+- At start, `fillPerPerson` (`src/seed/per-person.ts`) sets it on the obvious starter-dish ingredients, only where the flag is still unset. Admin choices are never changed, and running it again changes nothing. The log gives a count.
+
 ### Health tags
 
 At start, `fillHealthTags` (`src/seed/health-tags.ts`) gives starter dishes (matched by name) `allergens` and `contraindications`. The values use the nutrition-service catalog names, and menu-service's family health rules read them.

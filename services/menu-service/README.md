@@ -75,6 +75,17 @@ Every path that picks dishes (generate, `generate-days`, `top-up`, `auto-refresh
   - The Kho score (100 × share of ingredients in Kho, +15 per expiring item, −10 repeat) and the variety rules still come first; calories decide between close candidates.
   - Dishes without kcal get no penalty. Menus that aren't DAY menus (one dish per meal) only get the allergy and condition rules.
 
+### Portions (quantities for the people eating)
+
+`src/services/portions.ts` holds the one scaling rule. The app has an identical copy in `apps/mobile/src/screens/recipes/portions.ts`.
+
+- **People:** the menu's `servings` (the family's member count when generated; personal menus 1). Older menus without servings use the current member count. Recipe servings null or 0 count as 1.
+- **Normal ingredient:** quantity × people / recipe servings, unchanged when they're equal.
+- **`perPerson` ingredient:** each person's amount (quantity / servings) is rounded up first, then multiplied by the people.
+- **Seasonings** scale the same way; free-text amounts ("vừa ăn") stay as text.
+- **Rounding:** pieces (cái/quả, gói/bó, chai, lon, hộp) round up to whole numbers; g and ml round to the nearest 5 (at least 5); kg, lít and other units keep 2 decimals.
+- **Where it's used:** Kho matching and the score, "Có sẵn X/Y" and the stored missing list (what goes to the cart) all use the scaled amounts, on every path that picks dishes (generate, generate-days, top-up, swap).
+
 ### Family backfill (startup, idempotent)
 
 After `prisma migrate deploy`, the service runs a data step in the background. It logs counts only, never names or ids:

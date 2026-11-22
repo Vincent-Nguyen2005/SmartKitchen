@@ -1,7 +1,10 @@
 import { unitLabel } from "../inventory/catalogSuggest";
 
-/** note: free-text amount ("vừa ăn"); isSeasoning: pantry staple shown under "Gia vị". */
-export type RecipeIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
+/**
+ * note: free-text amount ("vừa ăn"); isSeasoning: pantry staple shown under "Gia vị"; perPerson: eaten one per person
+ * (scaled per person for a menu, see portions.ts).
+ */
+export type RecipeIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 
 /** "300 g", the free-text note ("1 muỗng canh", "vừa ăn"), or "" when neither is set. */
 export const amountText = (ingredient: RecipeIngredient): string =>
@@ -31,6 +34,8 @@ export type Recipe = {
   protein?: number | null;
   carbs?: number | null;
   fat?: number | null;
+  /** Set by scaleRecipe: quantities are for this many people (detail / cooking mode from Lịch and Nấu ăn). */
+  portionPeople?: number;
 };
 
 /** Structured ingredients, or the plain names without quantities for older recipes. */

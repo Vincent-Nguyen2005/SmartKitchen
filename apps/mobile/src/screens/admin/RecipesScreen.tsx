@@ -9,7 +9,7 @@ import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteI
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 
-type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
+type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 type Recipe = {
   id: string;
   name: string;
@@ -51,7 +51,8 @@ const MAX_STEPS = 30;
 const MAX_STEP_SECONDS = 7200;
 
 /** quantity: a number ("300") or a free-text amount ("vừa ăn", "1 muỗng canh"). */
-type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit; isSeasoning: boolean };
+/** perPerson: "Theo người" (eaten one per person; menus scale it per person). */
+type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit; isSeasoning: boolean; perPerson: boolean };
 /** A cooking step being edited: duration as minutes + seconds, ingredients as names from the dish's list. */
 type StepDraft = { key: string; instruction: string; minutes: string; seconds: string; ingredients: string[] };
 type Draft = {
@@ -75,6 +76,7 @@ const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   name: detail?.name ?? "",
   quantity: detail?.quantity != null ? String(detail.quantity) : detail?.note ?? "",
   isSeasoning: detail?.isSeasoning ?? false,
+  perPerson: detail?.perPerson ?? false,
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
 const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none" });
@@ -160,7 +162,8 @@ export default function RecipesScreen(): React.JSX.Element {
       if (quantity !== null && quantity <= 0) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
       // Not a number: kept as the free-text amount ("vừa ăn", "1 muỗng canh").
       const note = quantity === null && amount ? amount.slice(0, 40) : null;
-      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit, note, ...(row.isSeasoning ? { isSeasoning: true } : {}) });
+      // perPerson is always saved (true or false), so the starter-data step never changes an admin's choice.
+      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit, note, ...(row.isSeasoning ? { isSeasoning: true } : {}), perPerson: row.perPerson });
     }
     const steps = draft.steps.filter((step) => step.instruction.trim());
     if (steps.length > MAX_STEPS) return setFormError(`Tối đa ${MAX_STEPS} bước.`);
@@ -357,6 +360,11 @@ export default function RecipesScreen(): React.JSX.Element {
                         onPress={() => updateIngredient(row.key, { isSeasoning: !row.isSeasoning })}
                         style={({ pressed }) => [styles.segment, local.unitPill, row.isSeasoning && styles.segmentSelected, pressed && !row.isSeasoning && styles.segmentPressed]}>
                         <Text style={[styles.segmentText, row.isSeasoning && styles.segmentTextSelected]}>Gia vị</Text>
+                      </Pressable>
+                      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: row.perPerson }} accessibilityLabel={`Nguyên liệu ${index + 1} tính theo người`}
+                        onPress={() => updateIngredient(row.key, { perPerson: !row.perPerson })}
+                        style={({ pressed }) => [styles.segment, local.unitPill, row.perPerson && styles.segmentSelected, pressed && !row.perPerson && styles.segmentPressed]}>
+                        <Text style={[styles.segmentText, row.perPerson && styles.segmentTextSelected]}>Theo người</Text>
                       </Pressable>
                       <IconButton icon={Trash2} accessibilityLabel={`Bỏ nguyên liệu ${index + 1}`} color={colors.danger}
                         onPress={() => setDraft({ ...draft, ingredients: draft.ingredients.length > 1 ? draft.ingredients.filter((entry) => entry.key !== row.key) : [newIngredient()] })} />

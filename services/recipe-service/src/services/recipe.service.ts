@@ -15,6 +15,11 @@ export const ingredientDetailSchema = z.object({
   note: z.string().trim().min(1).max(40).nullable().optional(),
   /** Pantry staple (muối, nước mắm, dầu ăn...): shown under "Gia vị", never counted against Kho. */
   isSeasoning: z.boolean().optional(),
+  /**
+   * Eaten one per person (bánh mì, trứng ốp la, a glass of milk / orange juice): menus scale it per person, rounding
+   * each person's amount up first. Unset = normal ingredient (scaled with the recipe's servings).
+   */
+  perPerson: z.boolean().optional(),
 });
 
 /** Dish roles in a Vietnamese family meal (menu-service composes lunch/dinner from them). */

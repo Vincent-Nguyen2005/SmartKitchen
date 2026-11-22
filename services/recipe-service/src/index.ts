@@ -3,6 +3,7 @@ import { createApp } from "./app";
 import { prisma } from "./lib/prisma";
 import { fillMissingRoles, fillMissingSteps, fillSeasonings, seedMissingRecipes } from "./seed/seed-recipes";
 import { fillHealthTags } from "./seed/health-tags";
+import { fillPerPerson } from "./seed/per-person";
 
 dotenv.config();
 
@@ -24,4 +25,6 @@ seedMissingRecipes(prisma)
   .then((filled) => { if (filled > 0) console.log(`[recipe-service] added seasonings to ${filled} recipes`); })
   .then(() => fillHealthTags(prisma))
   .then((filled) => { if (filled.length > 0) console.log(`[recipe-service] added health tags to ${filled.length} recipes`); })
+  .then(() => fillPerPerson(prisma))
+  .then((filled) => { if (filled > 0) console.log(`[recipe-service] marked per-person ingredients in ${filled} recipes`); })
   .catch((error: unknown) => console.error("[recipe-service] starter seed failed:", error));
