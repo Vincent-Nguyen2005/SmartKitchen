@@ -894,8 +894,9 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
         dishName: aiPick.name,
         mealType: item.mealType,
         dayOfWeek: item.dayOfWeek,
-        calories: null,
-        details: { ai: true, aiDish: aiPick, role } as unknown as Prisma.InputJsonValue,
+        calories: aiPick.calories ?? null,
+        // Same warnings as catalog dishes (shown on the card and in the detail); no alternative for an AI dish.
+        details: { ai: true, aiDish: aiPick, role, ...(aiPick.warnings?.length ? { warnings: aiPick.warnings, alternative: null } : {}) } as unknown as Prisma.InputJsonValue,
       };
     }
   }

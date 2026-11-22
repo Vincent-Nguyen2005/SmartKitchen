@@ -5,12 +5,13 @@ import { AppIcon, colors, radius, spacing, textStyles, touchTarget, type LucideI
 import { useSession } from "../../services/session";
 import { createGatewayClient, errorMessage } from "../notifications/gatewayApi";
 import { addMissingToCart } from "../shopping-cart/addMissing";
+import { warningText, type HealthWarning } from "../menu/menuShared";
 import RecipeDetail from "./RecipeDetail";
 import { scaleQuantity, scaleRecipe } from "./portions";
 import type { Recipe } from "./recipeTypes";
 
 export type AiMealType = "sang" | "trua" | "toi";
-type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean; isSeasoning?: boolean };
+type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean; isSeasoning?: boolean; perPerson?: boolean };
 export type AiDish = {
   id: string;
   name: string;
@@ -21,13 +22,20 @@ export type AiDish = {
   totalMinutes: number;
   ingredients: AiIngredient[];
   steps: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: string[] }>;
+  /** Per serving, from the model (logged as 1 portion when cooked). */
+  calories?: number | null;
+  protein?: number | null;
+  carbs?: number | null;
+  fat?: number | null;
+  /** Members for whom the dish is unsuitable (menu-service family rules). */
+  warnings?: HealthWarning[];
 };
 
 export const AI_DISCLAIMER = "Công thức do AI gợi ý, hãy kiểm tra độ chín trước khi ăn.";
 
 /** An AI dish in the shape the cooking mode and recipe detail use (step ingredients get the dish quantities). */
 export function aiDishToRecipe(dish: AiDish): Recipe {
-  const details = dish.ingredients.map(({ name, quantity, unit, isSeasoning }) => ({ name, quantity, unit, isSeasoning: isSeasoning ?? false }));
+  const details = dish.ingredients.map(({ name, quantity, unit, isSeasoning, perPerson }) => ({ name, quantity, unit, isSeasoning: isSeasoning ?? false, ...(perPerson ? { perPerson: true } : {}) }));
   return {
     id: dish.id,
     name: dish.name,
@@ -38,6 +46,11 @@ export function aiDishToRecipe(dish: AiDish): Recipe {
     dietaryTags: [],
     servings: dish.servings,
     preparationMinutes: dish.totalMinutes,
+    // Per-serving macros from the model: cooking logs 1 portion with them.
+    calories: dish.calories ?? null,
+    protein: dish.protein ?? null,
+    carbs: dish.carbs ?? null,
+    fat: dish.fat ?? null,
     imageUrl: null,
     steps: dish.steps.map((step) => ({
       order: step.order,
@@ -110,6 +123,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", peo
       startLabel="Nấu món này"
       mode={mode}
       notice={AI_DISCLAIMER}
+      health={dish?.warnings?.length ? { warnings: dish.warnings.map(warningText), alternative: null } : null}
       message={message}
       actions={dish && (
         <View style={local.actions}>
