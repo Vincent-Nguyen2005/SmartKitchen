@@ -33,6 +33,28 @@ POST/PUT JSON body:
 
 The calculation uses Mifflin-St Jeor and the activity factors declared in `src/utils/nutrition-calculator.ts`. Input measurements must be positive and within the API's sanity bounds.
 
+## Targets (shared helper)
+
+`src/utils/targets.ts` is the one place that turns a profile into targets; daily stats, suggestions and the internal profile route all use it.
+
+- **TDEE:** Mifflin-St Jeor BMR × the profile's activity factor. New profiles are `LIGHTLY_ACTIVE` (× 1.375); older profiles keep their stored level.
+- **Macros:** 20 % protein, 55 % carbs, 25 % fat of the energy (4 / 4 / 9 kcal per gram).
+- **Meals:** Bữa sáng 25 %, Bữa trưa 40 %, Bữa tối 35 %. Suggestions without a meal type score against an average meal (a third of the day).
+- **No profile:** 2000 kcal with the same split.
+- **Example:** male, 21 years, 50 kg, 164 cm → BMR 1425, TDEE 1959 kcal (protein 98 g, carbs 269.4 g, fat 54.4 g). Female with the same data → TDEE 1731 kcal.
+
+## Internal route: family profiles
+
+`POST /internal/profiles` with `{ "userIds": [...] }` (1–20 UUIDs) returns `{ items: [...] }`, one item per distinct user in request order:
+
+`{ userId, hasProfile, sex, age, tdee, macros: { protein, carbs, fat }, mealTargets: { breakfast, lunch, dinner }, allergies, conditions }`
+
+- Allergies and conditions are catalog names plus the user's own free-text items.
+- Users without a profile get `hasProfile: false`, `sex` and `age` null, and the 2000 kcal defaults.
+- The response contains no names or emails.
+- It requires `x-api-key: INTERNAL_API_KEY` (at least 32 characters; compose passes it): wrong or missing key 403, key not configured 503, invalid body 400.
+- The gateway blocks every path with an `internal` segment, so it can't be reached from outside.
+
 ## Docker: environment, migrations, existing databases
 
 - Environment: `PORT`, `DATABASE_URL`; `MEAL_DIARY_SERVICE_URL` (daily stats) and `RECIPE_SERVICE_URL` (suggestions).

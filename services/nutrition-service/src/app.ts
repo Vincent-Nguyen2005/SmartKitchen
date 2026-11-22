@@ -3,6 +3,7 @@ import cors from "cors";
 import healthRouter from "./routes/health.route";
 import nutritionProfileRouter from "./routes/nutrition-profile.route";
 import nutritionRouter from "./controllers/nutrition.controller";
+import internalProfilesRouter from "./routes/internal-profiles.route";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -10,6 +11,8 @@ export const createApp = (): express.Express => {
   app.use(express.json());
 
   app.use("/health", healthRouter);
+  // Service-to-service only (x-api-key); the gateway blocks every path with an "internal" segment.
+  app.use("/internal/profiles", internalProfilesRouter);
   // Direct calls (unchanged from main): /api/nutrition-profile/*.
   app.use("/api/nutrition-profile", nutritionProfileRouter);
   // Hung's daily stats and suggestions, direct path.
