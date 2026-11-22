@@ -54,6 +54,10 @@ export type CatalogIngredient = {
   unit: string;
   shelfLifeDays: number | null;
   imageUrl: string | null;
+  /** Credit of a Wikimedia Commons image (page URL, author, license); absent for links an admin pasted. */
+  imageSource?: string | null;
+  imageAuthor?: string | null;
+  imageLicense?: string | null;
   /** Set only while the promotion is still valid. */
   discountPercent: number | null;
   promoEndDate: string | null;

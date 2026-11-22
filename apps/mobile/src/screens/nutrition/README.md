@@ -13,7 +13,13 @@ Owner: Hung. Responsibility: nutrition summaries and dietary tracking screens.
   - **Giới tính:** two tiles (`GenderTiles`, shared with onboarding) with the lucide Mars / Venus icons (about 44 px, stroke 2.5) and a small "Nam" / "Nữ" caption; selected = theme primary.
   - **Activity:** no section. New profiles send `activityLevel: "LIGHTLY_ACTIVE"`; existing profiles keep their stored value.
   - **Dị ứng / Tình trạng sức khỏe:** shown one at a time with the shared `SegmentTabs` (default Dị ứng; switching keeps unsaved tags), each a `TagInput` with catalog autocomplete and free text. Catalog names are saved as selections, anything else as the user's own items.
-  - **Saving:** one "Lưu" saves the basic info first, then the tags, and shows a single toast with the result or the first error.
+  - **Saving:** there is no "Lưu" button. Leaving the screen (back arrow ‹, Android back, closing) saves.
+    - Nothing changed: it just closes.
+    - Valid: it saves the changed parts (basic info, then the tags) and closes, and the previous screen shows "Đã lưu thông tin sức khỏe".
+    - Invalid basic info: the in-app dialog "Thông tin chưa hợp lệ. Thoát mà không lưu?" (Ở lại / Thoát).
+    - Save failed: the screen stays open with the error.
+    - Tags alone can be saved without filling in the basic info. The onboarding wizard keeps its own "Hoàn tất".
+  - **Giới tính:** compact tiles (about the height of a text input) with a 24 px Mars / Venus icon and "Nam" / "Nữ" beside it; the same tiles in onboarding.
   - **Ngày sinh picker:** the in-app `CalendarPicker` (same on web, iOS and Android, also inside embedded web previews). Day grid (‹ Tháng N YYYY ›); tapping the year opens a small year dropdown over the grid (the same month in the picked year, clamped to min/max); while empty it opens at January of (current year - 25). No helper text under the field; the age shows once a date is picked. YYYY-MM-DD is still sent.
   - Closing the form reloads the targets.
 - **`profileFields.ts`:** the shared rules for both the form and the wizard (ranges, decimal parsing, age from the birth date, validation messages).

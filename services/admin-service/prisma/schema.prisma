@@ -44,6 +44,11 @@ model MasterIngredient {
   isActive        Boolean  @default(true)
   /// Pasted https image link (never fetched by the server).
   imageUrl        String?
+  /// Credit for a Commons image (scripts/fill-catalog-images): file page URL, author and license. Null for links an
+  /// admin pasted; cleared when the admin replaces the image link.
+  imageSource     String?
+  imageAuthor     String?
+  imageLicense    String?
   /// 1-100; null = no promotion. A value creates/updates the user promotion in notification-service.
   discountPercent Int?
   /// Last day of the promotion (Asia/Ho_Chi_Minh calendar day).

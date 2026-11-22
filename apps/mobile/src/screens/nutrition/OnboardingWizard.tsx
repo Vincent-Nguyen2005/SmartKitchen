@@ -182,7 +182,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
       hint = "Dùng để ước tính nhu cầu dinh dưỡng hằng ngày.";
       body = (
         <View style={local.answer}>
-          <GenderTiles value={gender} onChange={(value) => { setGender(value); next(); }} size="large" />
+          <GenderTiles value={gender} onChange={(value) => { setGender(value); next(); }} />
         </View>
       );
       break;

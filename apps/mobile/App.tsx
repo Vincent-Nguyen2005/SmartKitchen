@@ -60,7 +60,7 @@ import PaymentScreen, { type PaymentResult } from "./src/screens/payment/Payment
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
-import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import NutritionProfileScreen, { type NutritionProfileHandle } from "./src/screens/nutrition/NutritionProfileScreen";
 import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
@@ -159,6 +159,14 @@ function AppContent(): React.JSX.Element {
   const [healthProfileOpen, setHealthProfileOpen] = useState(false);
   const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0);
   const closeHealthProfile = () => { setHealthProfileOpen(false); setNutritionRefreshKey((key) => key + 1); };
+  /** Back arrow, Android back or close: the health form saves itself first (or asks / stays). */
+  const healthProfileRef = useRef<NutritionProfileHandle>(null);
+  const leaveHealthProfile = async () => {
+    const result = (await healthProfileRef.current?.leave()) ?? "closed";
+    if (result === "stay") return;
+    closeHealthProfile();
+    if (result === "saved") setNotice("Đã lưu thông tin sức khỏe");
+  };
   // Thông báo expiry alert tapped: Kho opens that item's edit dialog.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   // Thông báo tab badge = unread notifications + current expiry alerts.
@@ -530,14 +538,14 @@ function AppContent(): React.JSX.Element {
         </SafeAreaView>
       </Modal>
 
-      <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={closeHealthProfile}>
+      <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={() => void leaveHealthProfile()}>
         <SafeAreaView style={styles.settingsScreen}>
           <View style={styles.settingsHeader}>
-            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={closeHealthProfile} />
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => void leaveHealthProfile()} />
             <Text style={styles.settingsTitle}>Thông tin sức khỏe</Text>
           </View>
           <View style={styles.healthBody}>
-            <NutritionProfileScreen />
+            <NutritionProfileScreen ref={healthProfileRef} />
           </View>
         </SafeAreaView>
       </Modal>
