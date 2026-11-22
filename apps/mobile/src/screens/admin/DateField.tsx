@@ -25,6 +25,8 @@ type DateFieldProps = {
   emptyHint?: string;
   /** Offer clearing (the x next to the field and "Xóa" in the calendar). Default true. */
   clearable?: boolean;
+  /** Hide the visible label (the screen already asks the question); it still names the field for screen readers. */
+  hideLabel?: boolean;
   /** "large": taller field with bigger text (onboarding wizard). */
   size?: "default" | "large";
 };
@@ -34,14 +36,14 @@ type DateFieldProps = {
  * CalendarPicker, the same on web, iOS and Android, so it also works inside embedded web previews.
  * Selectable days = minDate..maxDate.
  */
-export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint, clearable = true, size = "default" }: DateFieldProps): React.JSX.Element {
+export function DateField({ label, value, onChange, minDate, maxDate, suggestedDate, emptyHint, clearable = true, hideLabel, size = "default" }: DateFieldProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const large = size === "large";
   const textVariant = large ? "subheading" : "body";
 
   return (
     <View style={local.block}>
-      <AppText variant="bodySmall" color={colors.muted}>{label}</AppText>
+      {!hideLabel && <AppText variant="bodySmall" color={colors.muted}>{label}</AppText>}
       <View style={local.row}>
         <Pressable
           accessibilityRole="button"

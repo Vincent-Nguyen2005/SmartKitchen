@@ -197,6 +197,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
             minDate={MIN_BIRTH_DATE}
             maxDate={todayIso()}
             suggestedDate={birthCalendarStart()}
+            hideLabel
             size="large"
           />
           {!!birthProblem && <Text style={local.fieldError}>{birthProblem}</Text>}
@@ -300,7 +301,6 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
         >
-          {isHealthStep(step) && <Text style={local.optional}>Không bắt buộc</Text>}
           <Text accessibilityRole="header" style={local.title}>{title}</Text>
           {!!hint && <Text style={local.hint}>{hint}</Text>}
           {body}
@@ -358,7 +358,6 @@ const local = StyleSheet.create({
   content: { gap: spacing.md, padding: spacing.lg, paddingTop: spacing.xl },
   title: { ...textStyles.pageTitle },
   hint: { ...textStyles.body, color: colors.muted },
-  optional: { ...textStyles.caption, color: colors.muted, marginBottom: -spacing.sm },
   answer: { gap: spacing.sm, marginTop: spacing.sm },
   fieldError: { ...textStyles.bodySmall, color: colors.danger },
   /** Same size as the DateField on the birth-date step; the unit sits inside on the right (as in Hồ sơ). */

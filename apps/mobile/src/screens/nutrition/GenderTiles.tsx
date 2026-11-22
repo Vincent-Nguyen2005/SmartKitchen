@@ -1,13 +1,16 @@
 import React from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { colors, radius, spacing, textStyles, touchTarget } from "../../theme";
+import { Mars, Venus } from "lucide-react-native";
+import { colors, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
 import type { Gender } from "./nutritionProfileApi";
 
-/** U+FE0E asks for the text (not emoji) form of the symbol, so it takes the theme colour on every platform. */
-const OPTIONS: ReadonlyArray<{ value: Gender; symbol: string; label: string }> = [
-  { value: "MALE", symbol: "♂︎", label: "Nam" },
-  { value: "FEMALE", symbol: "♀︎", label: "Nữ" },
+/** Lucide Mars / Venus icons (clearer than the ♂ / ♀ text symbols): about 44 px with a heavier stroke. */
+const OPTIONS: ReadonlyArray<{ value: Gender; icon: LucideIcon; label: string }> = [
+  { value: "MALE", icon: Mars, label: "Nam" },
+  { value: "FEMALE", icon: Venus, label: "Nữ" },
 ];
+const SYMBOL_SIZE = touchTarget;
+const SYMBOL_STROKE = 2.5;
 
 type Props = {
   value: Gender | null;
@@ -16,7 +19,7 @@ type Props = {
   size?: "default" | "large";
 };
 
-/** Gender as two tiles: ♂ / ♀ as the main content with a small "Nam" / "Nữ" caption (Hồ sơ and onboarding). */
+/** Gender as two tiles: the Mars / Venus icon as the main content with a small "Nam" / "Nữ" caption (Hồ sơ and onboarding). */
 export function GenderTiles({ value, onChange, size = "default" }: Props): React.JSX.Element {
   return (
     <View accessibilityRole="radiogroup" style={local.row}>
@@ -31,7 +34,9 @@ export function GenderTiles({ value, onChange, size = "default" }: Props): React
             onPress={() => onChange(option.value)}
             style={({ pressed }) => [local.tile, size === "large" && local.large, selected && local.selected, pressed && local.pressed]}
           >
-            <Text style={[local.symbol, selected && local.selectedText]}>{option.symbol}</Text>
+            <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" pointerEvents="none">
+              <option.icon size={SYMBOL_SIZE} strokeWidth={SYMBOL_STROKE} color={selected ? colors.primary : colors.text} />
+            </View>
             <Text style={[local.caption, selected && local.selectedText]}>{option.label}</Text>
           </Pressable>
         );
@@ -48,7 +53,6 @@ const local = StyleSheet.create({
   },
   large: { minHeight: touchTarget * 3 + spacing.xl },
   selected: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-  symbol: { ...textStyles.pageTitle, color: colors.text },
   caption: { ...textStyles.labelSmall, color: colors.muted },
   selectedText: { color: colors.primary },
   pressed: { opacity: 0.82 },
