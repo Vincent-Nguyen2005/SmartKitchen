@@ -61,6 +61,7 @@ import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen from "./src/screens/nutrition/NutritionProfileScreen";
+import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -97,6 +98,19 @@ if (webDocument && !webDocument.getElementById("smartkitchen-hide-scrollbars")) 
   const style = webDocument.createElement("style");
   style.id = "smartkitchen-hide-scrollbars";
   style.textContent = "* { scrollbar-width: none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; width: 0; height: 0; }";
+  webDocument.head.appendChild(style);
+}
+/**
+ * Text inputs on web: no browser focus outline (the orange/yellow ring); focus shows as the theme primary border on
+ * the input or, for a borderless input inside a bordered field, on that field. Applies to every TextInput app-wide.
+ */
+if (webDocument && !webDocument.getElementById("smartkitchen-input-focus")) {
+  const style = webDocument.createElement("style");
+  style.id = "smartkitchen-input-focus";
+  style.textContent = [
+    "input, textarea { outline: none !important; }",
+    `input:focus, textarea:focus, *:has(> input:focus), *:has(> textarea:focus) { border-color: ${colors.primary} !important; }`,
+  ].join(" ");
   webDocument.head.appendChild(style);
 }
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
@@ -345,6 +359,12 @@ function AppContent(): React.JSX.Element {
         }}
       />
     );
+  }
+
+  // "Thông tin cơ bản" wizard after a real sign-in (not a restored session); it ends at once when a profile already
+  // exists. Never for ADMIN accounts.
+  if (session.freshSignIn && !isAdmin) {
+    return withNotice(<OnboardingWizard onDone={session.completeOnboarding} />);
   }
 
   const signOut = () => {

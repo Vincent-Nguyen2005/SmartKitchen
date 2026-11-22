@@ -17,6 +17,7 @@ import {
 import { DateField } from "../admin/DateField";
 import { TagInput } from "../../components/TagInput";
 import { SegmentTabs } from "../../components/SegmentTabs";
+import { GenderTiles } from "./GenderTiles";
 import {
   ActivityLevel,
   createHealthPreferencesApi,
@@ -28,46 +29,21 @@ import {
   NutritionProfileResult,
 } from "./nutritionProfileApi";
 
-
-/** The calorie calculation uses light activity by default (the section was removed; existing profiles keep theirs). */
-const DEFAULT_ACTIVITY: ActivityLevel = "LIGHTLY_ACTIVE";
-const MIN_BIRTH_DATE = "1900-01-01";
-const HEIGHT_RANGE = { min: 50, max: 250 };
-const WEIGHT_RANGE = { min: 2, max: 300 };
-
-const pad2 = (value: number) => String(value).padStart(2, "0");
-const isoDay = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-const todayIso = () => isoDay(new Date());
-
-/** Full years between a YYYY-MM-DD birth date and today. */
-export function ageFrom(birthDate: string, today: string = todayIso()): number | null {
-  const birth = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
-  const now = /^(\d{4})-(\d{2})-(\d{2})$/.exec(today);
-  if (!birth || !now) return null;
-  let age = Number(now[1]) - Number(birth[1]);
-  if (`${now[2]}-${now[3]}` < `${birth[2]}-${birth[3]}`) age -= 1;
-  return age;
-}
-
-/** The API stores only the age: an existing profile is shown with the birth date that gives that age today. */
-const birthDateForAge = (age: number): string => {
-  const date = new Date();
-  date.setFullYear(date.getFullYear() - age);
-  return isoDay(date);
-};
-
-/** Decimal text: "," becomes ".", digits and one dot only, at most 2 decimals. */
-export function normalizeDecimal(value: string): string {
-  const cleaned = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
-  const [whole, ...rest] = cleaned.split(".");
-  return rest.length ? `${whole}.${rest.join("").slice(0, 2)}` : whole;
-}
-
-const rangeError = (text: string, range: { min: number; max: number }, unit: string): string | null => {
-  if (!text.trim()) return null;
-  const value = Number(text);
-  return Number.isFinite(value) && value >= range.min && value <= range.max ? null : `Nhập từ ${range.min} đến ${range.max} ${unit}.`;
-};
+import {
+  ageFrom,
+  basicsError,
+  birthCalendarStart,
+  birthDateForAge,
+  DEFAULT_ACTIVITY,
+  cmToHeightText,
+  heightRangeError,
+  heightReading,
+  heightToCm,
+  MIN_BIRTH_DATE,
+  normalizeDecimal,
+  todayIso,
+  weightRangeError,
+} from "./profileFields";
 
 export default function NutritionProfileScreen(): React.JSX.Element {
   const accessToken = useSession().accessToken ?? undefined;
@@ -117,7 +93,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       .get()
       .then((data) => {
         if (!active) return;
-        setHeight(normalizeDecimal(String(data.profile.height)));
+        setHeight(cmToHeightText(data.profile.height));
         setWeight(normalizeDecimal(String(data.profile.weight)));
         setBirthDate(data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""));
         setGender(data.profile.gender);
@@ -145,8 +121,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     };
   }, [api, accessToken]);
 
-  const heightError = rangeError(height, HEIGHT_RANGE, "cm");
-  const weightError = rangeError(weight, WEIGHT_RANGE, "kg");
+  const heightError = heightRangeError(height);
+  const weightError = weightRangeError(weight);
   const age = ageFrom(birthDate);
 
   /** "Lưu": the basic info first (validated), then the allergy / health tags; one toast with the result or first error. */
@@ -157,11 +133,11 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     }
 
     setSubmitted(true);
-    const parsedHeight = Number(height);
+    // Entered in meters; the API keeps centimeters.
+    const parsedHeight = heightToCm(height);
     const parsedWeight = Number(weight);
-    const age = ageFrom(birthDate);
-    if (!height.trim() || !weight.trim() || heightError || weightError || age === null || age < 1 || age > 130) {
-      const message = age !== null && age < 1 ? "Ngày sinh phải cách hôm nay ít nhất 1 năm." : "Nhập chiều cao, cân nặng và ngày sinh hợp lệ.";
+    const message = basicsError(height, weight, birthDate);
+    if (message) {
       setError(message);
       showToast(message);
       return;
@@ -224,7 +200,9 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 <View style={[styles.measurements, isCompact && styles.measurementsCompact]}>
                   <NumberField
                     label="Chiều cao"
-                    unit="cm"
+                    unit="m"
+                    placeholder="1.70"
+                    hint={heightReading(height)}
                     value={height}
                     onChangeText={(value) => setHeight(normalizeDecimal(value))}
                     error={heightError ?? (submitted && !height.trim() ? "Nhập chiều cao." : null)}
@@ -245,26 +223,14 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                       onChange={setBirthDate}
                       minDate={MIN_BIRTH_DATE}
                       maxDate={todayIso()}
-                      suggestedDate={birthDateForAge(25)}
-                      emptyHint="Chọn ngày sinh để tính tuổi."
+                      suggestedDate={birthCalendarStart()}
                     />
                   </View>
                   {age !== null && age >= 0 && <Text style={styles.ageText}>{age} tuổi</Text>}
                 </View>
 
                 <Text style={styles.sectionTitle}>Giới tính</Text>
-                <View style={styles.genderRow}>
-                  <ChoiceButton
-                    label="Nữ"
-                    selected={gender === "FEMALE"}
-                    onPress={() => setGender("FEMALE")}
-                  />
-                  <ChoiceButton
-                    label="Nam"
-                    selected={gender === "MALE"}
-                    onPress={() => setGender("MALE")}
-                  />
-                </View>
+                <GenderTiles value={gender} onChange={setGender} />
               </View>
 
               {accessToken ? <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} /> : null}
@@ -318,8 +284,12 @@ export default function NutritionProfileScreen(): React.JSX.Element {
 }
 
 /** Saves the tags; resolves to null on success or the error message. */
-type HealthSectionHandle = { save: () => Promise<string | null> };
-type HealthTab = "allergies" | "conditions";
+export type HealthTab = "allergies" | "conditions";
+export type HealthSectionHandle = {
+  save: () => Promise<string | null>;
+  /** Puts one list back to the tags loaded (or last saved), dropping what was added since ("Bỏ qua"). */
+  reset: (kind: HealthTab) => void;
+};
 const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
   { value: "allergies", label: "Dị ứng" },
   { value: "conditions", label: "Tình trạng sức khỏe" },
@@ -329,9 +299,20 @@ const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
  * Allergies and health conditions as tag inputs, one tab at a time (switching keeps unsaved tags). Saved by the
  * screen's single "Lưu" through the ref.
  */
-const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: boolean; accessToken: string }>(function HealthPreferencesSection({
+type HealthSectionProps = {
+  compact: boolean;
+  accessToken: string;
+  /** Called with the tag names whenever they change (the onboarding summary lists them). */
+  onTagsChange?: (allergies: string[], conditions: string[]) => void;
+  /** Show only this list, without the tabs (onboarding has one step per list). */
+  only?: HealthTab;
+};
+
+export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSectionProps>(function HealthPreferencesSection({
   compact,
   accessToken,
+  onTagsChange,
+  only,
 }, ref): React.JSX.Element {
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
@@ -341,7 +322,13 @@ const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: bool
   const [conditionTags, setConditionTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<HealthTab>("allergies");
+  const [tabChoice, setTab] = useState<HealthTab>("allergies");
+  const tab = only ?? tabChoice;
+  /** Tags as loaded or last saved, for reset(). */
+  const baseline = useRef<Record<HealthTab, string[]>>({ allergies: [], conditions: [] });
+  const onTagsChangeRef = useRef(onTagsChange);
+  onTagsChangeRef.current = onTagsChange;
+  useEffect(() => { onTagsChangeRef.current?.(allergyTags, conditionTags); }, [allergyTags, conditionTags]);
 
   useEffect(() => {
     let active = true;
@@ -350,8 +337,12 @@ const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: bool
         if (!active) return;
         setAllergies(allergyOptions);
         setConditions(conditionOptions);
-        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
-        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
+        baseline.current = {
+          allergies: tagsOf(selection.allergies, selection.customAllergies),
+          conditions: tagsOf(selection.healthConditions, selection.customConditions),
+        };
+        setAllergyTags(baseline.current.allergies);
+        setConditionTags(baseline.current.conditions);
       })
       .catch(() => {
         if (active) setMessage("Không thể tải dị ứng và tình trạng sức khỏe đã khai báo.");
@@ -378,18 +369,27 @@ const HealthPreferencesSection = forwardRef<HealthSectionHandle, { compact: bool
         const allergySplit = splitTags(allergyTags, allergies);
         const conditionSplit = splitTags(conditionTags, conditions);
         const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
-        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
-        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
+        baseline.current = {
+          allergies: tagsOf(selection.allergies, selection.customAllergies),
+          conditions: tagsOf(selection.healthConditions, selection.customConditions),
+        };
+        setAllergyTags(baseline.current.allergies);
+        setConditionTags(baseline.current.conditions);
         return null;
       } catch {
         return "Không thể lưu dị ứng và tình trạng sức khỏe. Vui lòng thử lại.";
       }
     },
+    reset: (kind) => {
+      if (kind === "allergies") setAllergyTags(baseline.current.allergies);
+      else setConditionTags(baseline.current.conditions);
+    },
   }), [loading, allergyTags, conditionTags, allergies, conditions]);
+
 
   return (
     <View style={[styles.healthSection, compact && styles.cardCompact]}>
-      <SegmentTabs<HealthTab> options={HEALTH_TABS} value={tab} onChange={setTab} />
+      {!only && <SegmentTabs<HealthTab> options={HEALTH_TABS} value={tab} onChange={setTab} />}
       {loading ? (
         <ActivityIndicator color={colors.primary} style={styles.healthLoader} />
       ) : (
@@ -428,12 +428,17 @@ function NumberField({
   value,
   onChangeText,
   error,
+  placeholder = "0.00",
+  hint,
 }: {
   label: string;
   unit: string;
   value: string;
   onChangeText: (value: string) => void;
   error?: string | null;
+  placeholder?: string;
+  /** Shown under a valid value (height: "1m70"). */
+  hint?: string | null;
 }): React.JSX.Element {
   return (
     <View style={styles.field}>
@@ -444,42 +449,14 @@ function NumberField({
           keyboardType="decimal-pad"
           onChangeText={onChangeText}
           value={value}
-          placeholder="0.00"
+          placeholder={placeholder}
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
         <Text style={styles.unit}>{unit}</Text>
       </View>
-      {!!error && <Text style={styles.fieldError}>{error}</Text>}
+      {error ? <Text style={styles.fieldError}>{error}</Text> : hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
     </View>
-  );
-}
-
-function ChoiceButton({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.genderChoice,
-        selected && styles.genderSelected,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={styles.radioOuter}>
-        {selected && <View style={styles.radioInner} />}
-      </View>
-      <Text style={styles.genderText}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -490,6 +467,7 @@ const styles = StyleSheet.create({
   birthField: { flex: 1 },
   ageText: { ...textStyles.label, color: colors.primary },
   fieldError: { ...textStyles.caption, color: colors.danger, marginTop: spacing.xs },
+  fieldHint: { ...textStyles.labelSmall, color: colors.primary, marginTop: spacing.xs },
   // SCRUM-232: input pairs become a single column on small devices.
   contentCompact: { paddingHorizontal: spacing.md },
   measurementsCompact: { flexDirection: "column", gap: 0 },
@@ -550,39 +528,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
-  },
-  genderRow: { flexDirection: "row", gap: spacing.sm },
-  genderChoice: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: touchTarget,
-    paddingHorizontal: spacing.md,
-  },
-  genderSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  genderText: { ...textStyles.labelSmall, color: colors.text },
-  radioOuter: {
-    alignItems: "center",
-    borderColor: colors.muted,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    height: spacing.lg,
-    justifyContent: "center",
-    width: spacing.lg,
-  },
-  radioInner: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    height: spacing.sm,
-    width: spacing.sm,
   },
   error: {
     ...textStyles.bodySmall,
