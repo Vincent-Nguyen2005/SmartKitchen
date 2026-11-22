@@ -55,6 +55,24 @@ Menus belong to the family: every member sees and changes the same menu. Users w
   - Only the family OWNER can `PUT` it (403 for other members). Users without a family use their personal `MenuSettings`.
 - **Dislike history:** `RemovedDish.familyId` is set for family removals. Dishes removed by any member are skipped for the whole family for 7 days.
 
+### Family health rules and calories
+
+Every path that picks dishes (generate, `generate-days`, `top-up`, `auto-refresh`, remove/swap and the AI fallback) loads the family context (`src/services/family-context.ts`):
+
+- **Where it comes from:** members from family-service `GET /internal/families/:id/members`, profiles from nutrition-service `POST /internal/profiles`.
+  - Both use `INTERNAL_API_KEY` with a 3 s timeout. `NUTRITION_SERVICE_URL` is set in compose.
+  - A user without a family counts as a family of one.
+  - Complete results are cached for 5 minutes per family.
+  - If a service is unavailable, the menu is still made: the members fall back to the caller alone, and the profiles to the 2000 kcal defaults (500 / 800 / 700) with no allergies or conditions. This is logged with counts only and not cached.
+- **Allergies (hard exclusion):** a dish is never used when any member is allergic to it. That means an allergen tag equals the allergy (accent- and case-insensitive), or an ingredient name matches it with the Kho matching rule ("Tôm" matches "Tôm sú"; one-word names keep their accents, so "Cá" doesn't match "Cà chua"). Seasonings count, and catalog and custom allergies both count. AI fallback dishes are checked by ingredient name.
+- **Health conditions:** dishes whose contraindication tags equal a member's condition are used only when a slot can't be filled with a dish suitable for everyone.
+  - Such a dish stores `details.warnings: [{ memberUserId, memberName, condition }]`, visible to every family member.
+  - It also stores `details.alternative: { recipeId, dishName, imageUrl }`: the best Kho-scored suitable dish for the same meal that isn't already in the day.
+- **Calories:** the family target of a meal is the sum of the members' meal targets (Bữa sáng 25 %, trưa 40 %, tối 35 % of each TDEE).
+  - The dishes of a meal are picked slot by slot. Each candidate loses up to 20 points: `20 × min(1, |kcal per serving × members − remaining target per open slot| / remaining target per open slot)`.
+  - The Kho score (100 × share of ingredients in Kho, +15 per expiring item, −10 repeat) and the variety rules still come first; calories decide between close candidates.
+  - Dishes without kcal get no penalty. Menus that aren't DAY menus (one dish per meal) only get the allergy and condition rules.
+
 ### Family backfill (startup, idempotent)
 
 After `prisma migrate deploy`, the service runs a data step in the background. It logs counts only, never names or ids:

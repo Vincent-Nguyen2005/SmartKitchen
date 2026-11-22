@@ -10,6 +10,7 @@ Owner: Cuong. Responsibility: meal menu planning and schedule screens.
 - **Theo tuần:** a timetable (rows Sáng / Trưa / Tối, columns T2..CN with the day of month) that fits a 360 px phone without sideways scrolling: a narrow label column and 7 equal flexible columns. Each cell shows only the meal's dish count ("N món", like Theo tháng), or "—"; tapping a cell or a header opens Theo ngày. Opening it generates menus, in one request, for today and the later days of that week that have none.
 - **"Làm mới theo kho":** regenerates the whole day after a confirmation. Past days are read-only.
 - **Meal header:** each meal shows its total kcal. "Số món mỗi bữa" is in Hồ sơ.
+- **Health warnings:** a dish that is unsuitable for a family member has a small "Lưu ý" pill with a warning icon on its card in Lịch and Nấu ăn. Its detail lists the warnings ("Huy: không hợp tiểu đường") and the alternative dish; tapping the alternative opens it, and in Nấu ăn it can then be cooked. These are never sent as notifications.
 - **Family menus:** Lịch and Nấu ăn show the family's shared menu. The server resolves the family, and the UI is unchanged. "Số món mỗi bữa" is the family's setting: only the family owner can change it. Other members see the values read-only with "Chủ gia đình có thể thay đổi".
 - The notes below describe the earlier layout; the week and month views are unchanged.
 
