@@ -17,6 +17,7 @@ import {
 import { DateField } from "../admin/DateField";
 import { TagInput } from "../../components/TagInput";
 import { SegmentTabs } from "../../components/SegmentTabs";
+import { GenderTiles } from "./GenderTiles";
 import {
   ActivityLevel,
   createHealthPreferencesApi,
@@ -223,18 +224,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 </View>
 
                 <Text style={styles.sectionTitle}>Giới tính</Text>
-                <View style={styles.genderRow}>
-                  <ChoiceButton
-                    label="Nữ"
-                    selected={gender === "FEMALE"}
-                    onPress={() => setGender("FEMALE")}
-                  />
-                  <ChoiceButton
-                    label="Nam"
-                    selected={gender === "MALE"}
-                    onPress={() => setGender("MALE")}
-                  />
-                </View>
+                <GenderTiles value={gender} onChange={setGender} />
               </View>
 
               {accessToken ? <HealthPreferencesSection ref={healthRef} compact={isCompact} accessToken={accessToken} /> : null}
@@ -436,34 +426,6 @@ function NumberField({
   );
 }
 
-function ChoiceButton({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}): React.JSX.Element {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.genderChoice,
-        selected && styles.genderSelected,
-        pressed && styles.pressed,
-      ]}
-    >
-      <View style={styles.radioOuter}>
-        {selected && <View style={styles.radioInner} />}
-      </View>
-      <Text style={styles.genderText}>{label}</Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   toastWrap: { alignItems: "center", bottom: spacing.xl, left: spacing.lg, position: "absolute", right: spacing.lg },
   toast: { ...textStyles.labelSmall, backgroundColor: colors.text, borderRadius: 20, color: colors.surface, overflow: "hidden", paddingHorizontal: spacing.lg, paddingVertical: spacing.md, textAlign: "center" },
@@ -531,39 +493,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.sm,
     marginTop: spacing.xs,
-  },
-  genderRow: { flexDirection: "row", gap: spacing.sm },
-  genderChoice: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    flex: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: touchTarget,
-    paddingHorizontal: spacing.md,
-  },
-  genderSelected: {
-    backgroundColor: colors.primarySoft,
-    borderColor: colors.primary,
-  },
-  genderText: { ...textStyles.labelSmall, color: colors.text },
-  radioOuter: {
-    alignItems: "center",
-    borderColor: colors.muted,
-    borderRadius: radius.pill,
-    borderWidth: 1.5,
-    height: spacing.lg,
-    justifyContent: "center",
-    width: spacing.lg,
-  },
-  radioInner: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    height: spacing.sm,
-    width: spacing.sm,
   },
   error: {
     ...textStyles.bodySmall,

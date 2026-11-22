@@ -15,6 +15,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { DateField, toDisplayDate } from "../admin/DateField";
+import { GenderTiles } from "./GenderTiles";
 import { HealthPreferencesSection, type HealthSectionHandle } from "./NutritionProfileScreen";
 import { createNutritionProfileApi, Gender, NutritionApiError } from "./nutritionProfileApi";
 import {
@@ -175,18 +176,8 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
       title = "Giới tính của bạn?";
       hint = "Dùng để ước tính nhu cầu dinh dưỡng hằng ngày.";
       body = (
-        <View style={local.genderRow}>
-          {(["MALE", "FEMALE"] as const).map((value) => (
-            <Pressable
-              key={value}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: gender === value }}
-              onPress={() => { setGender(value); next(); }}
-              style={({ pressed }) => [local.genderButton, gender === value && local.genderSelected, pressed && local.pressed]}
-            >
-              <Text style={[local.genderText, gender === value && local.genderTextSelected]}>{GENDER_LABEL[value]}</Text>
-            </Pressable>
-          ))}
+        <View style={local.answer}>
+          <GenderTiles value={gender} onChange={(value) => { setGender(value); next(); }} size="large" />
         </View>
       );
       break;
@@ -361,14 +352,6 @@ const local = StyleSheet.create({
   answer: { gap: spacing.sm, marginTop: spacing.sm },
   ageText: { ...textStyles.subheading, color: colors.primary },
   fieldError: { ...textStyles.bodySmall, color: colors.danger },
-  genderRow: { flexDirection: "row", gap: spacing.md, marginTop: spacing.md },
-  genderButton: {
-    alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg, borderWidth: 2,
-    flex: 1, justifyContent: "center", minHeight: touchTarget * 2 + spacing.xl,
-  },
-  genderSelected: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
-  genderText: { ...textStyles.heading },
-  genderTextSelected: { color: colors.primary },
   bigInputShell: {
     alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1,
     flexDirection: "row", gap: spacing.sm, minHeight: touchTarget * 2, paddingHorizontal: spacing.lg,
