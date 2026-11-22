@@ -4,8 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ChefHat, Clock, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { RemoteImage } from "../notifications/ui";
-import { unitLabel } from "../inventory/catalogSuggest";
-import { durationText, minutesText, recipeIngredients, sortedSteps, totalMinutes, type Recipe } from "./recipeTypes";
+import { amountText, durationText, minutesText, recipeIngredients, sortedSteps, totalMinutes, type Recipe } from "./recipeTypes";
 
 type Props = {
   recipe: Recipe | null;
@@ -55,13 +54,26 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
             {!!notice && <Text style={local.notice}>{notice}</Text>}
             <Text style={local.section}>Nguyên liệu</Text>
             <View style={local.card}>
-              {recipeIngredients(recipe).map((ingredient) => (
+              {recipeIngredients(recipe).filter((ingredient) => !ingredient.isSeasoning).map((ingredient) => (
                 <View key={ingredient.name} style={local.ingredientRow}>
                   <Text style={local.ingredientName}>{ingredient.name}</Text>
-                  {ingredient.quantity !== null && <Text style={local.ingredientQty}>{ingredient.quantity} {unitLabel(ingredient.unit)}</Text>}
+                  {!!amountText(ingredient) && <Text style={local.ingredientQty}>{amountText(ingredient)}</Text>}
                 </View>
               ))}
             </View>
+            {recipeIngredients(recipe).some((ingredient) => ingredient.isSeasoning) && (
+              <>
+                <Text style={local.section}>Gia vị</Text>
+                <View style={local.card}>
+                  {recipeIngredients(recipe).filter((ingredient) => ingredient.isSeasoning).map((ingredient) => (
+                    <View key={ingredient.name} style={local.ingredientRow}>
+                      <Text style={local.ingredientName}>{ingredient.name}</Text>
+                      {!!amountText(ingredient) && <Text style={local.ingredientQty}>{amountText(ingredient)}</Text>}
+                    </View>
+                  ))}
+                </View>
+              </>
+            )}
 
             {cook && <Text style={local.section}>Các bước</Text>}
             {!cook ? null : steps.length === 0 ? (

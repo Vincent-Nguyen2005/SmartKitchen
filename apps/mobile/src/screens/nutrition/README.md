@@ -11,7 +11,9 @@ Owner: Hung. Responsibility: nutrition summaries and dietary tracking screens.
   - **Ngày sinh:** uses the shared DateField (dd/mm/yyyy, 01/01/1900 to today) and shows the age next to it. The form sends `birthDate`, and nutrition-service stores it and computes the age. Profiles saved before this have only an age, so they are shown with the birth date that gives that age today.
   - **Chiều cao / Cân nặng:** decimal inputs ("," becomes ".", at most 2 decimals, placeholder "0.00"), with inline errors outside 50–250 cm and 2–300 kg.
   - **Activity:** no section. New profiles send `activityLevel: "LIGHTLY_ACTIVE"`; existing profiles keep their stored value.
-  - **Dị ứng / Bệnh lý:** the shared `TagInput` with autocomplete from the nutrition-service catalogs. Free text is allowed: catalog names are saved as selections, and anything else as the user's own items (shown again later, not used for suggestions).
+  - **Dị ứng / Tình trạng sức khỏe:** shown one at a time with the shared `SegmentTabs` (default Dị ứng; switching keeps unsaved tags), each a `TagInput` with catalog autocomplete and free text. Catalog names are saved as selections, anything else as the user's own items.
+  - **Saving:** one "Lưu" saves the basic info first, then the tags, and shows a single toast with the result or the first error.
+  - **Ngày sinh on web:** shows dd/mm/yyyy even in an English browser; the invisible native input on top opens the picker. YYYY-MM-DD is still sent.
   - Closing the form reloads the targets.
 - **`nutritionToday.ts`:** `vnToday`, building one serving (`servingOf`: missing macros count as 0), `logServing`, and the names logged today ("Đã ăn" on Nấu ăn cards).
 - **Removed from the mobile app:** the segment row, Nhật ký (`MealDiaryScreen`), Thống kê (`NutritionStatsScreen`), Gợi ý (`SuggestionsScreen`, `suggestionsApi`), `DaySwitcher` and `ProfileMissingCard`. The backend routes are unchanged.

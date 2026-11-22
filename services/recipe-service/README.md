@@ -20,6 +20,12 @@ A recipe keeps the plain `ingredients` names. It also has `ingredientDetails` (`
 
 At every start the service adds starter dishes whose name is missing, so new starter dishes reach existing databases. It never updates or deletes existing rows.
 
+### Seasonings
+
+An ingredient may carry `isSeasoning: true` (a pantry staple such as muối, nước mắm or dầu ăn) and a free-text amount in `note` ("vừa ăn", "1 muỗng canh") with `quantity: null`.
+
+At start, `fillSeasonings` gives starter dishes their typical seasonings (`src/seed/seasonings.data.ts`, by dish role with per-dish overrides). It only adds missing lines, never changes or deletes existing ingredients, and skips dishes that already have a seasoning line, so running it again changes nothing. Steps change only when they are still the starter steps (compared by content): the step that already says "nêm" gets the amounts appended. Admin-edited steps are never rewritten.
+
 ### Cooking steps
 
 `steps` is an optional JSON array: `[{ order, instruction, durationSeconds | null, ingredients: [{ name, quantity, unit }] }]`, with at most 30 steps and each timer 0-7200 s. Steps are sorted by `order` and renumbered on save; `null` means no steps yet.

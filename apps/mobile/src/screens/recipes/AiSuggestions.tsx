@@ -9,7 +9,7 @@ import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
 
 export type AiMealType = "sang" | "trua" | "toi";
-type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean };
+type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean; isSeasoning?: boolean };
 export type AiDish = {
   id: string;
   name: string;
@@ -26,7 +26,7 @@ export const AI_DISCLAIMER = "Công thức do AI gợi ý, hãy kiểm tra độ
 
 /** An AI dish in the shape the cooking mode and recipe detail use (step ingredients get the dish quantities). */
 export function aiDishToRecipe(dish: AiDish): Recipe {
-  const details = dish.ingredients.map(({ name, quantity, unit }) => ({ name, quantity, unit }));
+  const details = dish.ingredients.map(({ name, quantity, unit, isSeasoning }) => ({ name, quantity, unit, isSeasoning: isSeasoning ?? false }));
   return {
     id: dish.id,
     name: dish.name,
@@ -80,7 +80,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook" }: D
   };
 
   const addMissing = async (target: AiDish) => {
-    const missing = target.ingredients.filter((ingredient) => !ingredient.fromKho);
+    const missing = target.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning);
     if (!accessToken || !familyId || busy || missing.length === 0) return;
     setBusy("cart");
     let added = 0;
@@ -96,7 +96,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook" }: D
     setMessage(added === missing.length ? `Đã thêm ${added} nguyên liệu vào giỏ hàng` : `Đã thêm ${added}/${missing.length} nguyên liệu. Hãy thử lại phần còn lại.`);
   };
 
-  const missingCount = dish ? dish.ingredients.filter((ingredient) => !ingredient.fromKho).length : 0;
+  const missingCount = dish ? dish.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning).length : 0;
   return (
     <RecipeDetail
       recipe={dish ? aiDishToRecipe(dish) : null}

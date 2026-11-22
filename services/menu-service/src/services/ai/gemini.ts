@@ -16,7 +16,8 @@ export const MAX_STEP_SECONDS = 7200;
 const TIMEOUT_MS = 20_000;
 
 export type KhoSnapshotItem = { name: string; quantity: number | null; unit: string | null; expiringSoon: boolean };
-export type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean };
+/** isSeasoning: pantry staple (muối, nước mắm...): shown under "Gia vị", never counted as from Kho or missing. */
+export type AiIngredient = { name: string; quantity: number | null; unit: string | null; fromKho: boolean; isSeasoning?: boolean };
 export type AiStep = { order: number; instruction: string; durationSeconds: number | null; ingredients: string[] };
 export type AiDish = {
   id: string;
@@ -68,6 +69,7 @@ export const responseSchema = {
                 quantity: { type: "NUMBER", nullable: true },
                 unit: { type: "STRING", enum: [...UNIT_CODES], nullable: true },
                 fromKho: { type: "BOOLEAN" },
+                isSeasoning: { type: "BOOLEAN" },
               },
               required: ["name", "fromKho"],
             },
@@ -101,7 +103,8 @@ export function buildPrompt(kho: KhoSnapshotItem[]): string {
   return [
     "Bạn là đầu bếp gia đình Việt Nam. Dựa trên nguyên liệu đang có trong kho dưới đây, hãy gợi ý 2 đến 3 món ăn gia đình Việt Nam phổ biến, dễ nấu.",
     "Ưu tiên dùng các nguyên liệu sắp hết hạn và dùng càng nhiều nguyên liệu trong kho càng tốt.",
-    "Có thể thêm vài nguyên liệu thông dụng không có trong kho (đánh dấu fromKho=false). Không cần liệt kê muối, đường, nước mắm, dầu ăn.",
+    "Có thể thêm vài nguyên liệu thông dụng không có trong kho (đánh dấu fromKho=false).",
+    "Liệt kê cả gia vị Việt Nam thường dùng (muối, tiêu, nước mắm, đường, hạt nêm, dầu ăn, nước tương, giấm; tỏi, hành tím, gừng, ớt khi dùng ít) với isSeasoning=true, quantity=null và lượng ghi trong unit=null.",
     `Đơn vị chỉ dùng một trong: ${UNIT_CODES.join(", ")}.`,
     "mealType là bữa phù hợp nhất: sang (bữa sáng), trua (bữa trưa) hoặc toi (bữa tối).",
     `Mỗi món tối đa ${MAX_STEPS} bước, viết bằng tiếng Việt, ngắn gọn. durationSeconds là thời gian chờ/nấu của bước (null nếu không cần hẹn giờ). ingredients của bước là tên nguyên liệu cho vào ở bước đó.`,
@@ -124,6 +127,7 @@ const rawDishSchema = z.object({
     quantity: z.number().finite().positive().nullable().optional(),
     unit: z.string().nullable().optional(),
     fromKho: z.boolean().optional().default(false),
+    isSeasoning: z.boolean().optional().default(false),
   })).min(1).max(40),
   steps: z.array(z.object({
     order: z.number().finite().optional(),
@@ -156,7 +160,9 @@ export function parseDishes(text: string, kho: KhoSnapshotItem[], idPrefix: stri
       name: ingredient.name,
       quantity: ingredient.quantity ?? null,
       unit: ingredient.unit && (UNIT_CODES as readonly string[]).includes(ingredient.unit) ? ingredient.unit : null,
-      fromKho: kho.some((item) => sameIngredient(item.name, ingredient.name)),
+      // Seasonings are pantry staples: never "from Kho" nor missing.
+      fromKho: ingredient.isSeasoning ? false : kho.some((item) => sameIngredient(item.name, ingredient.name)),
+      isSeasoning: ingredient.isSeasoning,
     }));
     const steps = [...dish.steps]
       .map((step, index) => ({ step, index }))

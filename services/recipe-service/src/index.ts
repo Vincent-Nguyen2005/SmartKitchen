@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import { createApp } from "./app";
 import { prisma } from "./lib/prisma";
-import { fillMissingRoles, fillMissingSteps, seedMissingRecipes } from "./seed/seed-recipes";
+import { fillMissingRoles, fillMissingSteps, fillSeasonings, seedMissingRecipes } from "./seed/seed-recipes";
 
 dotenv.config();
 
@@ -18,4 +18,6 @@ seedMissingRecipes(prisma)
   .then((filled) => { if (filled > 0) console.log(`[recipe-service] added cooking steps to ${filled} recipes`); })
   .then(() => fillMissingRoles(prisma))
   .then((filled) => { if (filled > 0) console.log(`[recipe-service] added meal roles to ${filled} recipes`); })
+  .then(() => fillSeasonings(prisma))
+  .then((filled) => { if (filled > 0) console.log(`[recipe-service] added seasonings to ${filled} recipes`); })
   .catch((error: unknown) => console.error("[recipe-service] starter seed failed:", error));

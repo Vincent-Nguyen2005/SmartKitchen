@@ -1,4 +1,11 @@
-export type RecipeIngredient = { name: string; quantity: number | null; unit: string | null };
+import { unitLabel } from "../inventory/catalogSuggest";
+
+/** note: free-text amount ("vừa ăn"); isSeasoning: pantry staple shown under "Gia vị". */
+export type RecipeIngredient = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
+
+/** "300 g", the free-text note ("1 muỗng canh", "vừa ăn"), or "" when neither is set. */
+export const amountText = (ingredient: RecipeIngredient): string =>
+  ingredient.quantity !== null && ingredient.quantity !== undefined ? `${ingredient.quantity} ${unitLabel(ingredient.unit)}`.trim() : ingredient.note?.trim() ?? "";
 export type RecipeStep = {
   order: number;
   instruction: string;

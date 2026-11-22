@@ -9,7 +9,7 @@ import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteI
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 
-type IngredientDetail = { name: string; quantity: number | null; unit: string | null };
+type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean };
 type Recipe = {
   id: string;
   name: string;
@@ -50,7 +50,8 @@ const PAGE_SIZE = 10;
 const MAX_STEPS = 30;
 const MAX_STEP_SECONDS = 7200;
 
-type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit };
+/** quantity: a number ("300") or a free-text amount ("vừa ăn", "1 muỗng canh"). */
+type IngredientDraft = { key: string; name: string; quantity: string; unit: InventoryUnit; isSeasoning: boolean };
 /** A cooking step being edited: duration as minutes + seconds, ingredients as names from the dish's list. */
 type StepDraft = { key: string; instruction: string; minutes: string; seconds: string; ingredients: string[] };
 type Draft = {
@@ -72,7 +73,8 @@ const newStep = (step?: NonNullable<Recipe["steps"]>[number]): StepDraft => ({
 const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   key: `ing-${ingredientKey += 1}`,
   name: detail?.name ?? "",
-  quantity: detail?.quantity != null ? String(detail.quantity) : "",
+  quantity: detail?.quantity != null ? String(detail.quantity) : detail?.note ?? "",
+  isSeasoning: detail?.isSeasoning ?? false,
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
 const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none" });
@@ -153,9 +155,12 @@ export default function RecipesScreen(): React.JSX.Element {
     if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440)) return setFormError("Thời gian chuẩn bị là số phút nguyên từ 1 đến 1440.");
     const details: IngredientDetail[] = [];
     for (const row of ingredients) {
-      const quantity = optionalNumber(row.quantity);
-      if (quantity !== null && (Number.isNaN(quantity) || quantity <= 0)) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
-      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit });
+      const amount = row.quantity.trim();
+      const quantity = /^[0-9]+([.,][0-9]+)?$/.test(amount) ? Number(amount.replace(",", ".")) : null;
+      if (quantity !== null && quantity <= 0) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
+      // Not a number: kept as the free-text amount ("vừa ăn", "1 muỗng canh").
+      const note = quantity === null && amount ? amount.slice(0, 40) : null;
+      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit, note, ...(row.isSeasoning ? { isSeasoning: true } : {}) });
     }
     const steps = draft.steps.filter((step) => step.instruction.trim());
     if (steps.length > MAX_STEPS) return setFormError(`Tối đa ${MAX_STEPS} bước.`);
@@ -344,10 +349,15 @@ export default function RecipesScreen(): React.JSX.Element {
                   {draft.ingredients.map((row, index) => (
                     <View key={row.key} style={[styles.wrapRow, local.ingredientRow]}>
                       <View style={local.ingredientName}><Field label={`Nguyên liệu ${index + 1}`} value={row.name} onChangeText={(name) => updateIngredient(row.key, { name })} maxLength={120} /></View>
-                      <View style={local.ingredientQty}><Field label="Số lượng" keyboardType="decimal-pad" value={row.quantity} onChangeText={(quantity) => updateIngredient(row.key, { quantity })} /></View>
+                      <View style={local.ingredientQty}><Field label="Số lượng" placeholder="300 hoặc vừa ăn" value={row.quantity} onChangeText={(quantity) => updateIngredient(row.key, { quantity })} maxLength={40} /></View>
                       <View style={local.unitPill}>
                         <Dropdown<InventoryUnit> label="Đơn vị" value={row.unit} options={UNIT_OPTIONS} onChange={(unit) => updateIngredient(row.key, { unit })} />
                       </View>
+                      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: row.isSeasoning }} accessibilityLabel={`Nguyên liệu ${index + 1} là gia vị`}
+                        onPress={() => updateIngredient(row.key, { isSeasoning: !row.isSeasoning })}
+                        style={({ pressed }) => [styles.segment, local.unitPill, row.isSeasoning && styles.segmentSelected, pressed && !row.isSeasoning && styles.segmentPressed]}>
+                        <Text style={[styles.segmentText, row.isSeasoning && styles.segmentTextSelected]}>Gia vị</Text>
+                      </Pressable>
                       <IconButton icon={Trash2} accessibilityLabel={`Bỏ nguyên liệu ${index + 1}`} color={colors.danger}
                         onPress={() => setDraft({ ...draft, ingredients: draft.ingredients.length > 1 ? draft.ingredients.filter((entry) => entry.key !== row.key) : [newIngredient()] })} />
                     </View>

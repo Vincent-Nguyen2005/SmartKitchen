@@ -132,6 +132,8 @@ function readDetails(value: unknown, fallback: unknown): DishIngredient[] {
       name: record.name.trim(),
       quantity: typeof record.quantity === "number" && Number.isFinite(record.quantity) ? record.quantity : null,
       unit: typeof record.unit === "string" ? record.unit : null,
+      note: typeof record.note === "string" && record.note.trim() ? record.note.trim() : null,
+      isSeasoning: record.isSeasoning === true,
     }];
   });
 }
@@ -320,7 +322,8 @@ const toSuggestRecipe = (recipe: RecipeCandidate): SuggestRecipe => ({
   calories: recipe.calories ?? null,
   mealTypes: recipe.mealTypes,
   tags: recipe.tags,
-  ingredients: recipe.details,
+  // Seasonings are not matched against Kho: they never count for "Có sẵn X/Y", the score or the missing list.
+  ingredients: recipe.details.filter((detail) => !detail.isSeasoning),
   role: recipe.role,
 });
 
