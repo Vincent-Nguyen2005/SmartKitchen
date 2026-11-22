@@ -284,8 +284,12 @@ export default function NutritionProfileScreen(): React.JSX.Element {
 }
 
 /** Saves the tags; resolves to null on success or the error message. */
-export type HealthSectionHandle = { save: () => Promise<string | null> };
-type HealthTab = "allergies" | "conditions";
+export type HealthTab = "allergies" | "conditions";
+export type HealthSectionHandle = {
+  save: () => Promise<string | null>;
+  /** Puts one list back to the tags loaded (or last saved), dropping what was added since ("Bỏ qua"). */
+  reset: (kind: HealthTab) => void;
+};
 const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
   { value: "allergies", label: "Dị ứng" },
   { value: "conditions", label: "Tình trạng sức khỏe" },
@@ -300,12 +304,18 @@ type HealthSectionProps = {
   accessToken: string;
   /** Called with the tag names whenever they change (the onboarding summary lists them). */
   onTagsChange?: (allergies: string[], conditions: string[]) => void;
+  /** Show only this list, without the tabs (onboarding has one step per list). */
+  only?: HealthTab;
+  /** Quick-pick chips under the input; names missing from the catalog are left out. */
+  quickPicks?: Partial<Record<HealthTab, readonly string[]>>;
 };
 
 export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSectionProps>(function HealthPreferencesSection({
   compact,
   accessToken,
   onTagsChange,
+  only,
+  quickPicks,
 }, ref): React.JSX.Element {
   const api = createHealthPreferencesApi(accessToken);
   const [allergies, setAllergies] = useState<HealthOption[]>([]);
@@ -315,7 +325,10 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
   const [conditionTags, setConditionTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<HealthTab>("allergies");
+  const [tabChoice, setTab] = useState<HealthTab>("allergies");
+  const tab = only ?? tabChoice;
+  /** Tags as loaded or last saved, for reset(). */
+  const baseline = useRef<Record<HealthTab, string[]>>({ allergies: [], conditions: [] });
   const onTagsChangeRef = useRef(onTagsChange);
   onTagsChangeRef.current = onTagsChange;
   useEffect(() => { onTagsChangeRef.current?.(allergyTags, conditionTags); }, [allergyTags, conditionTags]);
@@ -327,8 +340,12 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
         if (!active) return;
         setAllergies(allergyOptions);
         setConditions(conditionOptions);
-        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
-        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
+        baseline.current = {
+          allergies: tagsOf(selection.allergies, selection.customAllergies),
+          conditions: tagsOf(selection.healthConditions, selection.customConditions),
+        };
+        setAllergyTags(baseline.current.allergies);
+        setConditionTags(baseline.current.conditions);
       })
       .catch(() => {
         if (active) setMessage("Không thể tải dị ứng và tình trạng sức khỏe đã khai báo.");
@@ -355,18 +372,35 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
         const allergySplit = splitTags(allergyTags, allergies);
         const conditionSplit = splitTags(conditionTags, conditions);
         const selection = await api.saveSelection(allergySplit.ids, conditionSplit.ids, allergySplit.custom, conditionSplit.custom);
-        setAllergyTags(tagsOf(selection.allergies, selection.customAllergies));
-        setConditionTags(tagsOf(selection.healthConditions, selection.customConditions));
+        baseline.current = {
+          allergies: tagsOf(selection.allergies, selection.customAllergies),
+          conditions: tagsOf(selection.healthConditions, selection.customConditions),
+        };
+        setAllergyTags(baseline.current.allergies);
+        setConditionTags(baseline.current.conditions);
         return null;
       } catch {
         return "Không thể lưu dị ứng và tình trạng sức khỏe. Vui lòng thử lại.";
       }
     },
+    reset: (kind) => {
+      if (kind === "allergies") setAllergyTags(baseline.current.allergies);
+      else setConditionTags(baseline.current.conditions);
+    },
   }), [loading, allergyTags, conditionTags, allergies, conditions]);
+
+  const tags = tab === "allergies" ? allergyTags : conditionTags;
+  const setTags = tab === "allergies" ? setAllergyTags : setConditionTags;
+  const catalog = tab === "allergies" ? allergies : conditions;
+  const picks = (quickPicks?.[tab] ?? []).filter((name) => catalog.some((option) => option.name === name));
+  const togglePick = (name: string) => {
+    setTags(tags.includes(name) ? tags.filter((tag) => tag !== name) : [...tags, name]);
+    setMessage("");
+  };
 
   return (
     <View style={[styles.healthSection, compact && styles.cardCompact]}>
-      <SegmentTabs<HealthTab> options={HEALTH_TABS} value={tab} onChange={setTab} />
+      {!only && <SegmentTabs<HealthTab> options={HEALTH_TABS} value={tab} onChange={setTab} />}
       {loading ? (
         <ActivityIndicator color={colors.primary} style={styles.healthLoader} />
       ) : (
@@ -387,6 +421,25 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
               accessibilityLabel="Thêm tình trạng sức khỏe"
               placeholder="Ví dụ: tiểu đường, gout"
             />
+          )}
+          {picks.length > 0 && (
+            <View style={styles.quickPicks}>
+              {picks.map((name) => {
+                const selected = tags.includes(name);
+                return (
+                  <Pressable
+                    key={name}
+                    accessibilityRole="checkbox"
+                    accessibilityLabel={name}
+                    accessibilityState={{ checked: selected }}
+                    onPress={() => togglePick(name)}
+                    style={({ pressed }) => [styles.quickPick, selected && styles.quickPickSelected, pressed && styles.pressed]}
+                  >
+                    <Text style={[styles.quickPickText, selected && styles.quickPickTextSelected]}>{name}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
           )}
           {!!message && (
             <Text accessibilityRole="alert" style={styles.healthMessage}>
@@ -556,6 +609,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   healthLoader: { marginVertical: spacing.lg },
+  quickPicks: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  quickPick: {
+    alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1,
+    justifyContent: "center", minHeight: touchTarget - spacing.xs, paddingHorizontal: spacing.md,
+  },
+  quickPickSelected: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  quickPickText: { ...textStyles.labelSmall, color: colors.text },
+  quickPickTextSelected: { color: colors.primary },
   healthMessage: {
     ...textStyles.bodySmall,
     color: colors.primary,

@@ -16,7 +16,7 @@ import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget }
 import { useSession } from "../../services/session";
 import { DateField, toDisplayDate } from "../admin/DateField";
 import { GenderTiles } from "./GenderTiles";
-import { HealthPreferencesSection, type HealthSectionHandle } from "./NutritionProfileScreen";
+import { HealthPreferencesSection, type HealthSectionHandle, type HealthTab } from "./NutritionProfileScreen";
 import { createNutritionProfileApi, Gender, NutritionApiError } from "./nutritionProfileApi";
 import {
   ageFrom,
@@ -36,10 +36,16 @@ import {
   weightValid,
 } from "./profileFields";
 
-type Step = "gender" | "birthDate" | "height" | "weight" | "health" | "summary";
-const STEPS: readonly Step[] = ["gender", "birthDate", "height", "weight", "health", "summary"];
-/** Steps counted in "Bước n/4". */
-const REQUIRED_STEPS = 4;
+type Step = "gender" | "birthDate" | "height" | "weight" | HealthTab | "summary";
+const STEPS: readonly Step[] = ["gender", "birthDate", "height", "weight", "allergies", "conditions", "summary"];
+/** Steps counted in "Bước n/6" (all but the summary). */
+const COUNTED_STEPS = STEPS.length - 1;
+const isHealthStep = (step: Step): step is HealthTab => step === "allergies" || step === "conditions";
+/** Common catalog items offered as chips (names missing from the catalog are not shown). */
+const QUICK_PICKS: Record<HealthTab, readonly string[]> = {
+  allergies: ["Sữa", "Trứng", "Hải sản", "Tôm", "Đậu phộng", "Đậu nành", "Gluten", "Mè"],
+  conditions: ["Tiểu đường", "Cao huyết áp", "Mỡ máu cao", "Gout", "Bệnh dạ dày", "Bệnh thận", "Mang thai", "Cho con bú"],
+};
 const GENDER_LABEL: Record<Gender, string> = { MALE: "Nam", FEMALE: "Nữ" };
 
 type Props = {
@@ -49,7 +55,7 @@ type Props = {
 
 /**
  * "Thông tin cơ bản" after sign-in: one question per screen (giới tính, ngày sinh, chiều cao, cân nặng), then the
- * optional allergies / health conditions, then a summary whose rows jump back to edit. "Hoàn tất" saves through the
+ * optional allergies and health conditions (one step each, with quick picks), then a summary whose rows jump back to edit. "Hoàn tất" saves through the
  * nutrition profile API; "Để sau" leaves without saving. Answers are kept while moving back and forth.
  */
 export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
@@ -67,7 +73,8 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
   const [height, setHeight] = useState("");
   const [weight, setWeight] = useState("");
   const [healthVisited, setHealthVisited] = useState(false);
-  const [healthSkipped, setHealthSkipped] = useState(false);
+  /** Per list: true after "Bỏ qua" (its additions were dropped), false after "Tiếp". */
+  const [skipped, setSkipped] = useState<Record<HealthTab, boolean | null>>({ allergies: null, conditions: null });
   const [allergies, setAllergies] = useState<string[]>([]);
   const [conditions, setConditions] = useState<string[]>([]);
   const [created, setCreated] = useState(false);
@@ -95,7 +102,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
   const index = STEPS.indexOf(step);
   const goTo = (next: Step) => {
     setError("");
-    if (next === "health") setHealthVisited(true);
+    if (isHealthStep(next)) setHealthVisited(true);
     setStep(next);
   };
   const next = () => {
@@ -136,7 +143,8 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
       setSaving(false);
       return;
     }
-    const healthError = healthVisited && !healthSkipped ? (await healthRef.current?.save()) ?? null : null;
+    // Skipped lists were already put back by reset(), so saving keeps nothing new from them.
+    const healthError = healthVisited ? (await healthRef.current?.save()) ?? null : null;
     setSaving(false);
     if (healthError) {
       setError(healthError);
@@ -155,7 +163,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
 
   const age = ageFrom(birthDate);
   const birthProblem = birthDate ? birthDateError(birthDate) : null;
-  const tagSummary = (names: string[]) => (healthSkipped || !healthVisited ? "Bỏ qua" : names.length ? names.join(", ") : "Không có");
+  const tagSummary = (kind: HealthTab, names: string[]) => (skipped[kind] !== false ? "Bỏ qua" : names.length ? names.join(", ") : "Không có");
 
   let title = "";
   let hint = "";
@@ -232,22 +240,24 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
       footer = primary("Tiếp", valid, next);
       break;
     }
-    case "health":
-      title = "Dị ứng / Tình trạng sức khỏe";
-      hint = "Không bắt buộc. Món có thành phần trùng khớp sẽ không được gợi ý.";
+    case "allergies":
+    case "conditions": {
+      const kind = step;
+      title = kind === "allergies" ? "Bạn có dị ứng gì không?" : "Tình trạng sức khỏe của bạn?";
       footer = (
         <>
           <Pressable
             accessibilityRole="button"
-            onPress={() => { setHealthSkipped(true); next(); }}
+            onPress={() => { healthRef.current?.reset(kind); setSkipped((current) => ({ ...current, [kind]: true })); next(); }}
             style={({ pressed }) => [local.secondaryButton, local.grow, pressed && local.pressed]}
           >
             <Text style={local.secondaryText}>Bỏ qua</Text>
           </Pressable>
-          {primary("Tiếp", true, () => { setHealthSkipped(false); next(); })}
+          {primary("Tiếp", true, () => { setSkipped((current) => ({ ...current, [kind]: false })); next(); })}
         </>
       );
       break;
+    }
     case "summary":
       title = "Kiểm tra lại thông tin";
       hint = "Chạm vào một dòng để sửa.";
@@ -257,16 +267,16 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
           <SummaryRow label="Ngày sinh" value={birthDate ? `${toDisplayDate(birthDate)}${age !== null ? ` (${age} tuổi)` : ""}` : "Chưa chọn"} onPress={() => edit("birthDate")} />
           <SummaryRow label="Chiều cao" value={heightReading(height) ?? (height ? `${height} m` : "Chưa nhập")} onPress={() => edit("height")} />
           <SummaryRow label="Cân nặng" value={weight ? `${weight} kg` : "Chưa nhập"} onPress={() => edit("weight")} />
-          <SummaryRow label="Dị ứng" value={tagSummary(allergies)} onPress={() => edit("health")} />
-          <SummaryRow label="Tình trạng sức khỏe" value={tagSummary(conditions)} onPress={() => edit("health")} last />
+          <SummaryRow label="Dị ứng" value={tagSummary("allergies", allergies)} onPress={() => edit("allergies")} />
+          <SummaryRow label="Tình trạng sức khỏe" value={tagSummary("conditions", conditions)} onPress={() => edit("conditions")} last />
         </View>
       );
       footer = primary("Hoàn tất", true, () => void finish());
       break;
   }
 
-  const required = index < REQUIRED_STEPS;
-  const progress = required ? (index + 1) / REQUIRED_STEPS : 1;
+  const counted = index < COUNTED_STEPS;
+  const progress = counted ? (index + 1) / COUNTED_STEPS : 1;
   return (
     <SafeAreaView style={local.safeArea}>
       <KeyboardAvoidingView style={local.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -285,7 +295,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
           <View style={local.progressTrack}>
             <View style={[local.progressFill, { width: `${Math.round(progress * 100)}%` }]} />
           </View>
-          <Text style={local.progressText}>{required ? `Bước ${index + 1}/${REQUIRED_STEPS}` : step === "health" ? "Không bắt buộc" : "Xem lại"}</Text>
+          <Text style={local.progressText}>{counted ? `Bước ${index + 1}/${COUNTED_STEPS}` : "Xem lại"}</Text>
         </View>
 
         <ScrollView
@@ -295,16 +305,19 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
         >
+          {isHealthStep(step) && <Text style={local.optional}>Không bắt buộc</Text>}
           <Text accessibilityRole="header" style={local.title}>{title}</Text>
           {!!hint && <Text style={local.hint}>{hint}</Text>}
           {body}
           {/* Mounted from the first visit and only hidden afterwards, so the tags survive moving between steps. */}
           {accessToken && healthVisited ? (
-            <View style={step === "health" ? undefined : local.hidden}>
+            <View style={isHealthStep(step) ? undefined : local.hidden}>
               <HealthPreferencesSection
                 ref={healthRef}
                 compact
                 accessToken={accessToken}
+                only={step === "conditions" ? "conditions" : "allergies"}
+                quickPicks={QUICK_PICKS}
                 onTagsChange={(allergyNames, conditionNames) => { setAllergies(allergyNames); setConditions(conditionNames); }}
               />
             </View>
@@ -351,6 +364,7 @@ const local = StyleSheet.create({
   content: { gap: spacing.md, padding: spacing.lg, paddingTop: spacing.xl },
   title: { ...textStyles.pageTitle },
   hint: { ...textStyles.body, color: colors.muted },
+  optional: { ...textStyles.caption, color: colors.muted, marginBottom: -spacing.sm },
   answer: { gap: spacing.sm, marginTop: spacing.sm },
   ageText: { ...textStyles.subheading, color: colors.primary },
   fieldError: { ...textStyles.bodySmall, color: colors.danger },
