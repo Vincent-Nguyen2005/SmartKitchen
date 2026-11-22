@@ -1,6 +1,5 @@
 import React from "react";
 import { Shuffle } from "lucide-react-native";
-import { Alert, Platform } from "react-native";
 import type { GatewayClient } from "../notifications/gatewayApi";
 import { ProductImage } from "../shopping-cart/MarketProducts";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard } from "../../components/ProductCard";
@@ -64,17 +63,6 @@ export const generateDay = (api: GatewayClient, key: string, familyId: string | 
 /** Removes one dish; the server puts one replacement in the same meal and role (or leaves the slot empty). */
 export const removeDish = (api: GatewayClient, menuId: string, itemId: string): Promise<MenuRecord> =>
   api.post<MenuRecord>(`/api/menu/${encodeURIComponent(menuId)}/items/${encodeURIComponent(itemId)}/remove`, {});
-
-/** Yes/no confirmation (Alert on phones, window.confirm on web). */
-export function confirmAction(title: string, message: string, confirmLabel: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm?.(`${title}\n${message}`) ?? true);
-  return new Promise((resolve) => {
-    Alert.alert(title, message, [
-      { text: "Hủy", style: "cancel", onPress: () => resolve(false) },
-      { text: confirmLabel, style: "destructive", onPress: () => resolve(true) },
-    ], { cancelable: true, onDismiss: () => resolve(false) });
-  });
-}
 
 type CardProps = {
   item: MenuItem;

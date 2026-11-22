@@ -54,12 +54,14 @@ type DetailProps = {
   onStartCooking?: (recipe: Recipe) => void;
   /** "view" (Lịch): read-only detail; "cook" (Nấu ăn): steps, cooking and the AI actions. */
   mode?: "view" | "cook";
-  /** More buttons (Lịch: "Đổi món khác"). */
+  /** More buttons (Nấu ăn: "Đổi món khác"). */
   extraActions?: React.ReactNode;
+  /** Drawn over the detail (the in-app confirm dialog). */
+  overlay?: React.ReactNode;
 };
 
 /** AI dish detail: the shared recipe detail with the disclaimer, "Nấu món này", "Lưu món" and "Thêm phần thiếu vào giỏ hàng". */
-export function AiDishDetail({ dish, onClose, onStartCooking, extraActions, mode = "cook" }: DetailProps): React.JSX.Element {
+export function AiDishDetail({ dish, onClose, onStartCooking, extraActions, mode = "cook", overlay }: DetailProps): React.JSX.Element {
   const { accessToken, family } = useSession();
   const familyId = family?.id ?? null;
   const [message, setMessage] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, extraActions, mode
       onStartCooking={onStartCooking}
       startLabel="Nấu món này"
       mode={mode}
+      overlay={overlay}
       notice={AI_DISCLAIMER}
       message={message}
       actions={dish && (

@@ -71,8 +71,9 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
             accessibilityLabel={cornerAction.label}
             accessibilityState={{ busy: !!cornerAction.busy, disabled: !!cornerAction.busy }}
             disabled={cornerAction.busy}
-            hitSlop={6}
-            onPress={cornerAction.onPress}
+            hitSlop={8}
+            // Its own press: never also opens the card's detail (web click bubbling included).
+            onPress={(event) => { event?.stopPropagation?.(); cornerAction.onPress(); }}
             style={({ pressed }) => [local.corner, pressed && ui.pressed]}
           >
             {cornerAction.busy ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={cornerAction.icon} size="sm" color={colors.primary} />}

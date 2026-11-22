@@ -24,10 +24,12 @@ type Props = {
    * "view" (Lịch): image, name, time, servings, description and ingredients only.
    */
   mode?: "view" | "cook";
+  /** Drawn over the detail (e.g. the in-app confirm dialog for "Đổi món khác"). */
+  overlay?: React.ReactNode;
 };
 
 /** Món ăn: image, ingredients with quantities, the steps with their times, total time and "Bắt đầu nấu". */
-export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu", mode = "cook" }: Props): React.JSX.Element {
+export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu", mode = "cook", overlay }: Props): React.JSX.Element {
   const cook = mode === "cook";
   const steps = recipe ? sortedSteps(recipe) : [];
   const total = recipe ? totalMinutes(recipe) : null;
@@ -91,6 +93,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
             </Pressable>
           </View>
         )}
+        {overlay}
       </SafeAreaView>
     </Modal>
   );
