@@ -305,7 +305,7 @@ export default function InventoryListScreen({
         <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} />
       </View>
 
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={styles.resultsScroller}
         contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent, !loading && !error && filteredItems.length === 0 && styles.listFill]}
         keyboardShouldPersistTaps="handled"
@@ -370,7 +370,7 @@ export default function InventoryListScreen({
           <View style={[styles.modalCard, isWide && styles.modalWide]}>
             <Text style={styles.modalTitle}>{dialogMode === "edit" ? `Sửa ${activeItem?.name ?? "nguyên liệu"}` : `Ghi lượng đã dùng`}</Text>
             {dialogMode === "edit" ? (
-              <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
+              <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
                 {activeItem && (
                   <View style={styles.photoBlock}>
                     <InventoryPhoto imageUrl={activeItem.imageUrl} accessToken={accessToken} accessibilityLabel={`Ảnh ${activeItem.name}`} style={styles.detailPhoto} />

@@ -75,7 +75,7 @@ export default function AdminUsersScreen({ onBack }: AdminUsersScreenProps): Rea
       {loading && users.length === 0 ? <ScreenState loading /> : error && users.length === 0 ? (
         <ScreenState error={error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />
       ) : (
-        <FlatList
+        <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           data={visible}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <UserRow user={item} />}

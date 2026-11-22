@@ -75,7 +75,7 @@ export default function AdminFamiliesScreen({ onBack, onOpenFamily }: AdminFamil
       {loading && families.length === 0 ? <ScreenState loading /> : error && families.length === 0 ? (
         <ScreenState error={error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />
       ) : (
-        <FlatList
+        <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           data={visible}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <FamilyRow family={item} onPress={() => onOpenFamily(item)} />}

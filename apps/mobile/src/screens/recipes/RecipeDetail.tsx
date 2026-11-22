@@ -10,7 +10,8 @@ import { durationText, minutesText, recipeIngredients, sortedSteps, totalMinutes
 type Props = {
   recipe: Recipe | null;
   onClose: () => void;
-  onStartCooking: (recipe: Recipe) => void;
+  /** Cook mode only. */
+  onStartCooking?: (recipe: Recipe) => void;
   /** Shown above the ingredients (e.g. the AI disclaimer). */
   notice?: string;
   /** Result of an extra action ("Đã lưu món"). */
@@ -18,10 +19,16 @@ type Props = {
   /** Extra buttons above the start button (AI dishes: "Lưu món", "Thêm phần thiếu vào giỏ hàng"). */
   actions?: React.ReactNode;
   startLabel?: string;
+  /**
+   * "cook" (Nấu ăn, default): ingredients, steps, the extra actions and the start button.
+   * "view" (Lịch): image, name, time, servings, description and ingredients only.
+   */
+  mode?: "view" | "cook";
 };
 
 /** Món ăn: image, ingredients with quantities, the steps with their times, total time and "Bắt đầu nấu". */
-export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu" }: Props): React.JSX.Element {
+export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, message, actions, startLabel = "Bắt đầu nấu", mode = "cook" }: Props): React.JSX.Element {
+  const cook = mode === "cook";
   const steps = recipe ? sortedSteps(recipe) : [];
   const total = recipe ? totalMinutes(recipe) : null;
   return (
@@ -32,7 +39,7 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
           <IconButton icon={X} accessibilityLabel="Đóng" onPress={onClose} />
         </View>
         {recipe && (
-          <ScrollView contentContainerStyle={local.body}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={local.body}>
             <View style={local.hero}>
               <RemoteImage uri={recipe.imageUrl ?? null} size={120} accessibilityLabel={recipe.name} />
               <View style={local.heroText}>
@@ -56,8 +63,8 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
               ))}
             </View>
 
-            <Text style={local.section}>Các bước</Text>
-            {steps.length === 0 ? (
+            {cook && <Text style={local.section}>Các bước</Text>}
+            {!cook ? null : steps.length === 0 ? (
               <Text style={local.muted}>Món này chưa có các bước nấu.</Text>
             ) : (
               <View style={local.card}>
@@ -74,11 +81,11 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
             )}
           </ScrollView>
         )}
-        {recipe && (
+        {recipe && cook && (
           <View style={local.footer}>
             {!!message && <Text style={local.message} accessibilityLiveRegion="polite">{message}</Text>}
             {actions}
-            <Pressable accessibilityRole="button" accessibilityState={{ disabled: steps.length === 0 }} disabled={steps.length === 0} onPress={() => onStartCooking(recipe)} style={[local.startButton, steps.length === 0 && local.disabled]}>
+            <Pressable accessibilityRole="button" accessibilityState={{ disabled: steps.length === 0 }} disabled={steps.length === 0} onPress={() => onStartCooking?.(recipe)} style={[local.startButton, steps.length === 0 && local.disabled]}>
               <AppIcon icon={ChefHat} size="md" color={colors.primaryText} />
               <Text style={local.startText}>{startLabel}</Text>
             </Pressable>

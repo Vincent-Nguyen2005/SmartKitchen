@@ -83,7 +83,7 @@ export default function ReportsScreen(): React.JSX.Element {
     </View>
   );
   const list = (
-    <FlatList
+    <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
       style={local.flex}
       data={showState ? [] : items}
       keyExtractor={(item) => item.id}
@@ -173,7 +173,7 @@ function ReportDetail({ report, onUpdated, padding }: { report: Report; onUpdate
 
   const allowed = nextStatuses[report.status];
   return (
-    <ScrollView contentContainerStyle={[local.detail, { padding }]}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={[local.detail, { padding }]}>
       <View style={styles.wrapRow}>
         <Text style={[styles.title, local.flex]}>{categoryText[report.category]}</Text>
         <StatusBadge status={report.status} />

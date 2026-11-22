@@ -87,7 +87,7 @@ export default function FamilySettingsScreen({ settings, onSave, onBack }: Props
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Pressable accessibilityRole="button" accessibilityLabel="Quay lại gia đình" onPress={onBack} style={styles.backButton}><AppIcon icon={ArrowLeft} color={colors.primary} /><Text style={styles.link}>Gia đình</Text></Pressable>
         <Text style={styles.title}>Cài đặt gia đình</Text>
         <Text style={styles.subtitle}>Lưu ý ăn uống và quy ước chung cho cả nhà.</Text>

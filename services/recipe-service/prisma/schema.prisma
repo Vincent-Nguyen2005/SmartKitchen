@@ -34,6 +34,9 @@ model Recipe {
   /// Cooking steps: [{ "order": number, "instruction": string, "durationSeconds": number | null,
   /// "ingredients": [{ "name": string, "quantity": number | null, "unit": string | null }] }]. Null = no steps yet.
   steps              Json?
+  /// Dish role in a Vietnamese family meal: man (món mặn), xao (món xào), canh, rau, trang_mieng (tráng miệng),
+  /// sang (light breakfast dish), mot_mon (one-dish meal such as phở), do_uong (drink). Null = not classified.
+  role               String?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 

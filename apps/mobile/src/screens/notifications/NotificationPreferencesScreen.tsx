@@ -91,7 +91,7 @@ export default function NotificationPreferencesScreen(): React.JSX.Element {
   );
 
   return (
-    <ScrollView contentContainerStyle={[local.content, { maxWidth: isWide ? 640 : undefined, padding: gutter }]}>
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={[local.content, { maxWidth: isWide ? 640 : undefined, padding: gutter }]}>
       {toggle("pushEnabled", BellRing, "Thông báo đẩy", "Nhận thông báo trên điện thoại.")}
       {toggle("promotionEnabled", Tag, "Khuyến mãi", "Nhận khuyến mãi phù hợp với kho thực phẩm của bạn.")}
       <View style={[styles.card, local.quiet]}>

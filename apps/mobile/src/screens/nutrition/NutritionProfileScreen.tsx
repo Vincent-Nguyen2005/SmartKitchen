@@ -214,7 +214,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
         style={styles.flex}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <ScrollView
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
           keyboardShouldPersistTaps="handled"
         >

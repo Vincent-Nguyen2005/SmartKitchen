@@ -72,7 +72,7 @@ export default function NutritionStatsScreen({ onOpenProfile }: Props): React.JS
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
         refreshControl={
           <RefreshControl

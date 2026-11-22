@@ -178,7 +178,7 @@ export default function CookingMode({ recipe, onClose }: Props): React.JSX.Eleme
           <View style={[local.progressFill, { width: `${steps.length > 0 ? ((index + 1) / steps.length) * 100 : 0}%` }]} />
         </View>
 
-        <ScrollView contentContainerStyle={local.body}>
+        <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={local.body}>
           {step ? (
             <>
               <Text style={local.instruction} accessibilityRole="header">{step.instruction}</Text>

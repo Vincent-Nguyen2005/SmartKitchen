@@ -78,7 +78,7 @@ export default function SystemHealthScreen(): React.JSX.Element {
   const visible = showHealthy ? ranked : problems;
 
   return (
-    <ScrollView
+    <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
       contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
     >

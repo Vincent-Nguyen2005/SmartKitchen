@@ -194,7 +194,7 @@ function OptionSheet({ title, visible, onClose, children, footer }: SheetProps):
         {/* Inner Pressable swallows taps so they do not reach the backdrop. */}
         <Pressable style={styles.sheet} onPress={() => undefined} accessible={false}>
           <Text style={[styles.title, styles.sheetTitle]} accessibilityRole="header">{title}</Text>
-          <ScrollView style={styles.sheetList}>{children}</ScrollView>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.sheetList}>{children}</ScrollView>
           {footer}
         </Pressable>
       </Pressable>

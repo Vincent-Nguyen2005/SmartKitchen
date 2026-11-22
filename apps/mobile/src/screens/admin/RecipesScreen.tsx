@@ -22,6 +22,7 @@ type Recipe = {
   ingredients: string[];
   ingredientDetails: IngredientDetail[] | null;
   isActive: boolean;
+  role?: string | null;
   steps?: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: IngredientDetail[] }> | null;
 };
 
@@ -30,6 +31,18 @@ const MEALS = [
   { value: "lunch", label: "Bữa trưa" },
   { value: "dinner", label: "Bữa tối" },
 ] as const;
+/** Dish role in a family meal (menu-service composes lunch/dinner from it). */
+const ROLE_OPTIONS = [
+  { value: "none", label: "Chưa phân loại" },
+  { value: "man", label: "Món mặn" },
+  { value: "xao", label: "Món xào" },
+  { value: "canh", label: "Canh" },
+  { value: "rau", label: "Rau" },
+  { value: "trang_mieng", label: "Tráng miệng" },
+  { value: "sang", label: "Món sáng" },
+  { value: "mot_mon", label: "Món một đĩa (phở, bún...)" },
+  { value: "do_uong", label: "Đồ uống" },
+];
 /** Same short Vietnamese unit labels as Kho / Đi chợ. */
 const UNIT_OPTIONS = INVENTORY_UNITS.map((unit) => ({ value: unit, label: UNIT_LABELS[unit] }));
 const PAGE_SIZE = 10;
@@ -45,6 +58,7 @@ type Draft = {
   calories: string; servings: string; preparationMinutes: string; ingredients: IngredientDraft[]; steps: StepDraft[];
   /** The dish already had steps: an emptied list is sent (clears them); otherwise no steps are sent at all. */
   hadSteps: boolean;
+  role: string;
 };
 let ingredientKey = 0;
 let stepKey = 0;
@@ -61,7 +75,7 @@ const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   quantity: detail?.quantity != null ? String(detail.quantity) : "",
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
-const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false });
+const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none" });
 const toDraft = (recipe: Recipe): Draft => ({
   id: recipe.id,
   name: recipe.name,
@@ -74,6 +88,7 @@ const toDraft = (recipe: Recipe): Draft => ({
   ingredients: (recipe.ingredientDetails?.length ? recipe.ingredientDetails : recipe.ingredients.map((name) => ({ name, quantity: null, unit: null }))).map(newIngredient),
   steps: [...(recipe.steps ?? [])].sort((left, right) => left.order - right.order).map(newStep),
   hadSteps: (recipe.steps?.length ?? 0) > 0,
+  role: recipe.role ?? "none",
 });
 const imageUrlError = (text: string): string | null =>
   !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
@@ -162,6 +177,7 @@ export default function RecipesScreen(): React.JSX.Element {
       description: draft.description.trim() || null,
       imageUrl: draft.imageUrl.trim() || null,
       mealTypes: draft.mealTypes,
+      role: draft.role === "none" ? null : draft.role,
       calories, servings, preparationMinutes: minutes,
       ingredients: details.map((detail) => detail.name),
       ingredientDetails: details,
@@ -228,7 +244,7 @@ export default function RecipesScreen(): React.JSX.Element {
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
-      <FlatList
+      <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={local.flex}
         data={showState ? [] : pageItems}
         key={`cols-${columns}`}
@@ -274,7 +290,7 @@ export default function RecipesScreen(): React.JSX.Element {
 
       <Modal visible={draft !== null} animationType="slide" transparent={isWide} onRequestClose={() => setDraft(null)}>
         <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
             <View style={[styles.spaceBetween, local.modalHeader]}>
               <Text style={[styles.headline, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa món ăn" : "Thêm món ăn"}</Text>
               <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />
@@ -314,6 +330,9 @@ export default function RecipesScreen(): React.JSX.Element {
                       );
                     })}
                   </View>
+                </View>
+                <View style={[styles.row, local.formBlock]}>
+                  <Dropdown<string> label="Loại món" value={draft.role} options={ROLE_OPTIONS} onChange={(role) => setDraft({ ...draft, role })} />
                 </View>
                 <View style={styles.wrapRow}>
                   <View style={local.third}><Field label="Calo / phần" keyboardType="decimal-pad" value={draft.calories} onChangeText={(calories) => setDraft({ ...draft, calories })} /></View>

@@ -165,3 +165,26 @@ test("generateMenu reads Kho from inventory-service with the caller's token and 
     if (saved.inventory === undefined) delete process.env.INVENTORY_API_URL;
   }
 });
+
+test("stale menu detection: generateMenu stores the Kho snapshot hash; same Kho same hash, a Kho change gives a new one", async () => {
+  const { snapshotHash, khoSnapshot } = await import("../services/ai/ai-suggestions.service");
+  const { vnDay } = await import("../services/kho-suggest");
+  const stored: Array<{ khoHash: string | null }> = [];
+  const menu = {
+    findMany: async () => [],
+    deleteMany: async () => ({ count: 0 }),
+    create: async (args: { data: { khoHash: string | null } }) => { stored.push(args.data); return args.data; },
+  };
+  const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
+  const recipes = [{ id: "r1", name: "Trứng xào", ingredients: ["Trứng gà"], mealTypes: [] }];
+  const khoA = [{ name: "Trứng", quantity: 6, unit: "PIECE", expiryDate: null }];
+  const khoB = [...khoA, { name: "Cà chua", quantity: 2, unit: "PIECE", expiryDate: null }];
+  await generateMenu({ ...dayInput, recipes, inventoryItems: khoA }, client);
+  await generateMenu({ ...dayInput, recipes, inventoryItems: khoA }, client);
+  await generateMenu({ ...dayInput, recipes, inventoryItems: khoB }, client);
+  await generateMenu({ ...dayInput, recipes }, client);
+  assert.equal(stored[0].khoHash, snapshotHash(khoSnapshot(khoA, vnDay())));
+  assert.equal(stored[1].khoHash, stored[0].khoHash);
+  assert.notEqual(stored[2].khoHash, stored[0].khoHash);
+  assert.equal(stored[3].khoHash, null);
+});

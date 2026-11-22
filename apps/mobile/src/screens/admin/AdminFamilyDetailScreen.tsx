@@ -63,7 +63,7 @@ export default function AdminFamilyDetailScreen({ familyId, familyName, onBack }
       {loading && !family ? <ScreenState loading /> : error && !family ? (
         <ScreenState error={error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />
       ) : (
-        <FlatList
+        <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
           data={family?.members ?? []}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => <MemberRow member={item} />}

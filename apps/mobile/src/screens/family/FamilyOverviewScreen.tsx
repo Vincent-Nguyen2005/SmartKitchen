@@ -45,7 +45,7 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.content}>
         {!!error && <Text accessibilityRole="alert" style={styles.error}>{error}</Text>}
         {!!actionError && <Text accessibilityRole="alert" style={styles.error}>{actionError}</Text>}
         {loading ? <ActivityIndicator color="#2F6B5F" size="large" style={styles.loader} /> : family ? (

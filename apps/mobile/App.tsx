@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Archive,
   Bell,
+  CalendarDays,
   ChefHat,
   Camera,
   Check,
@@ -57,6 +58,7 @@ import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
+import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -74,7 +76,7 @@ type AuthView = "login" | "register" | "otp" | "forgot";
 const tabs = [
   { key: "inventory", label: "Kho", icon: Archive },
   { key: "shopping", label: "Đi chợ", icon: ShoppingBasket },
-  { key: "menu", label: "Thực đơn", icon: Utensils },
+  { key: "menu", label: "Lịch", icon: CalendarDays },
   { key: "recipes", label: "Nấu ăn", icon: ChefHat },
   { key: "family", label: "Gia đình", icon: Users },
   { key: "nutrition", label: "Dinh dưỡng", icon: Salad },
@@ -82,6 +84,19 @@ const tabs = [
   { key: "admin", label: "Quản trị", icon: Settings },
 ] as const;
 const memberNavigationKeys: ReadonlySet<Tab> = new Set(["inventory", "shopping", "menu", "family", "notifications"]);
+
+/**
+ * Phone-first look on web too: hide the browser scrollbars (scrolling still works). Applied once at the app root;
+ * every ScrollView / FlatList also sets showsVertical/HorizontalScrollIndicator={false} for native.
+ */
+type WebDocument = { getElementById: (id: string) => unknown; createElement: (tag: string) => { id: string; textContent: string }; head: { appendChild: (node: unknown) => void } };
+const webDocument = Platform.OS === "web" ? (globalThis as { document?: WebDocument }).document : undefined;
+if (webDocument && !webDocument.getElementById("smartkitchen-hide-scrollbars")) {
+  const style = webDocument.createElement("style");
+  style.id = "smartkitchen-hide-scrollbars";
+  style.textContent = "* { scrollbar-width: none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; width: 0; height: 0; }";
+  webDocument.head.appendChild(style);
+}
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = tabs.filter(({ key }) => menuKeys.has(key));
@@ -121,6 +136,8 @@ function AppContent(): React.JSX.Element {
   const [profileOpen, setProfileOpen] = useState(false);
   // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).
   const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
+  // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
+  const [mealSizeOpen, setMealSizeOpen] = useState(false);
   // Thông báo expiry alert tapped: Kho opens that item's edit dialog.
   const [inventoryFocusId, setInventoryFocusId] = useState<string | null>(null);
   // Thông báo tab badge = unread notifications + current expiry alerts.
@@ -448,6 +465,12 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
               <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
             </TouchableOpacity>
+            <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
+              onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
+              <AppIcon icon={Utensils} size="md" color={colors.primary} />
+              <Text style={styles.sheetItemText}>Số món mỗi bữa</Text>
+              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+            </TouchableOpacity>
             <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
               onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
               <AppIcon icon={LogOut} size="md" color={colors.danger} />
@@ -465,6 +488,18 @@ function AppContent(): React.JSX.Element {
           </View>
           <View style={styles.settingsBody}>
             <NotificationPreferencesScreen />
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      <Modal animationType="slide" visible={mealSizeOpen && !isAdmin} onRequestClose={() => setMealSizeOpen(false)}>
+        <SafeAreaView style={styles.settingsScreen}>
+          <View style={styles.settingsHeader}>
+            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setMealSizeOpen(false)} />
+            <Text style={styles.settingsTitle}>Số món mỗi bữa</Text>
+          </View>
+          <View style={styles.settingsBody}>
+            <MealSizeSettings />
           </View>
         </SafeAreaView>
       </Modal>
@@ -488,7 +523,7 @@ function AppContent(): React.JSX.Element {
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
               {captureMode !== "scan" && captureMode && (
                 <InventoryCapturePanel
                   key={captureMode}

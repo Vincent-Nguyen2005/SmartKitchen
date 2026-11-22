@@ -105,7 +105,7 @@ export function RadioDropdown<Value extends string>({
                 />
               </View>
             )}
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <View accessibilityRole="radiogroup">
                 {filteredOptions.map((option) => {
                   const checked = option.value === value;

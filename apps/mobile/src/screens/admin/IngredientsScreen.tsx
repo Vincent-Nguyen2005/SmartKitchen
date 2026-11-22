@@ -217,7 +217,7 @@ export default function IngredientsScreen(): React.JSX.Element {
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
-      <FlatList
+      <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={local.flex}
         data={showState ? [] : items}
         key={`cols-${columns}`}
@@ -270,7 +270,7 @@ export default function IngredientsScreen(): React.JSX.Element {
 
       <Modal visible={draft !== null} animationType="slide" transparent={isWide} onRequestClose={() => setDraft(null)}>
         <SafeAreaView style={[local.modalBackdrop, { backgroundColor: isWide ? colors.overlay : colors.background }]}>
-          <ScrollView contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
+          <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} contentContainerStyle={[local.modalCard, { borderRadius: isWide ? 16 : 0 }]}>
             <View style={[styles.spaceBetween, local.modalHeader]}>
               <Text style={[styles.headline, local.flex]} accessibilityRole="header">{draft?.id ? "Sửa nguyên liệu" : "Thêm nguyên liệu"}</Text>
               <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => setDraft(null)} />

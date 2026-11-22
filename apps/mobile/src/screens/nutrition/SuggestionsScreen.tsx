@@ -79,7 +79,7 @@ export default function SuggestionsScreen({ onOpenProfile }: Props): React.JSX.E
 
   return (
     <SafeAreaView edges={["bottom"]} style={styles.safeArea}>
-      <ScrollView
+      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, isCompact && styles.contentCompact]}
         refreshControl={
           <RefreshControl
