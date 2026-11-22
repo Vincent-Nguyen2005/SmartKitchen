@@ -20,19 +20,30 @@ If recipe-service or inventory-service is down, the endpoint returns 503 with a 
 
 ## Món gợi ý từ Kho (AI)
 
-`GET /ai-suggestions?familyId=` (gateway: `/api/menus/ai-suggestions`) returns `{ status, dishes, generatedAt, limitReached }`. `status` is `ready`, `generating`, `not_configured`, `empty_kho` or `error`.
+`GET /ai-suggestions` (gateway: `/api/menus/ai-suggestions`; `familyId` is optional and must be the caller's family) returns `{ status, dishes, generatedAt, limitReached }`. `status` is `ready`, `generating`, `not_configured`, `empty_kho` or `error`.
 
 - **Model:** a Gemini text model via `POST …/v1beta/models/${GEMINI_MODEL}:generateContent`, with the key in the `x-goog-api-key` header and structured JSON output. It has a 20 s timeout and uses no SDK.
 - **Configuration:** `GEMINI_API_KEY` and `GEMINI_MODEL` come from the environment. If either is empty, the status is `not_configured` and the app hides the section.
-- **What is sent:** only Kho item names, quantities, units and an "expiring within 3 days" flag. Expired items are left out, and nothing about the user or family is sent.
-- **Validation:** every dish is checked against a schema. Invalid dishes are dropped, and values are clamped: 1–10 servings, step timers 0–7200 s, at most 15 steps, at most 3 dishes. Whether an ingredient is in Kho is recomputed by name.
-- **When it regenerates:** each read loads the family's Kho with the caller's token, which also checks membership, and hashes a snapshot of it.
+- **What is sent:** Kho item names, quantities, units and an "expiring within 3 days" flag (expired items are left out), plus anonymous family aggregates (`src/services/ai/family-ai.ts`):
+  - the number of people eating;
+  - the members' combined allergies (catalog and custom) as "must not contain";
+  - their combined conditions as "avoid if possible";
+  - the family's kcal per meal (the sum of 25 / 40 / 35 % of each TDEE).
+  - Names and user ids are never sent. The family data comes from the same family context as menus, including the last known context when a service is down.
+- **What is asked:** dishes with `servings` equal to the number of people, kcal and protein / carbs / fat per serving, `mealType`, `isSeasoning` and `perPerson` on ingredients, and allergen / contraindication tags (catalog names).
+- **Validation:** every dish is checked against a schema. Invalid dishes are dropped, and values are clamped: 1–10 servings, kcal 0–3000 and macros 0–300 g per serving, step timers 0–7200 s, at most 15 steps, at most 3 dishes. Whether an ingredient is in Kho is recomputed by name.
+- **Family rules** (the same matcher as menu generation):
+  - A dish containing any member's allergen (by tags or ingredient name) is dropped.
+  - A dish unsuitable for a member carries `warnings: [{ memberUserId, memberName, condition }]`. They're added locally, never sent to the model, and visible to the whole family.
+  - The rules run at generation time and again on every read, so a new allergy hides an unsafe stored dish right away.
+- **When it regenerates:** each read resolves the caller's family (as for menus), loads its Kho with the caller's token and the family context, and hashes the Kho snapshot together with a hash of the members' allergies, conditions and targets (names don't count). A profile change therefore regenerates the dishes like a Kho change does, with the same debounce and daily limit.
   - Same hash as the stored result: the stored dishes are returned and the model is not called.
   - Different hash: a regeneration runs 2 minutes after the last change seen, so several edits make one call. The previous dishes stay visible with status `generating`.
   - Nothing stored yet: generation starts right away.
 - **Limits and errors:** at most 8 model calls per family per Vietnam day. After that the last result stays (`limitReached`). Model errors (including 429) keep the previous dishes with status `error`; the same Kho is not retried, and a Kho change tries again.
 - **Storage:** the latest result per family is kept in `AiSuggestion` (dishes, Kho hash, generatedAt, daily count). Pending debounces live in memory, so a restart just reschedules on the next read.
-- **Saved dishes:** `POST /ai-suggestions/:dishId/save { familyId }` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes?familyId=` lists them. Both check membership with family-service.
+- **Saved dishes:** `POST /ai-suggestions/:dishId/save` keeps a dish as a family-only `SavedRecipe` (source `ai`), and `GET /ai-recipes` lists them. Both resolve the caller's family through family-service `/internal/families/memberships`, as menus do.
+- **In the app:** AI dishes reach the app as a swap fallback (stored on the menu dish with its kcal and warnings) and in "Lưu món". Their quantities use the shared portions helper ("cho N người"), and cooking one logs 1 portion with the dish's per-serving macros.
 
 ## Seasonings
 

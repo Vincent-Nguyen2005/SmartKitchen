@@ -5,8 +5,10 @@ import { z } from "zod";
 import { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { AiDish } from "../services/ai/gemini";
 import { aiEngine } from "./ai.controller";
-import { FamilyLookupError, lookupMemberships, type MembershipLookup } from "../services/family-client";
+import { resolveMenuOwner } from "../services/menu-owner";
 import { loadFamilyContext } from "../services/family-context";
+import { forFamily } from "../services/ai/family-ai";
+import type { FamilyHealth } from "../services/family-health";
 import {
   canEditMenuSettings,
   type MenuOwner,
@@ -26,6 +28,8 @@ import {
   listMenus,
   MenuServiceError,
 } from "../services/menu.service";
+
+export { resolveMenuOwner };
 
 export const generateSchema = z.object({
   periodType: z.nativeEnum(PeriodType).default(PeriodType.WEEK),
@@ -68,26 +72,6 @@ function authenticatedUserId(request: Request, response: Response): string | und
   const userId = request.header("x-user-id")?.trim();
   if (!userId) response.status(401).json({ error: "Authentication required" });
   return userId || undefined;
-}
-
-/**
- * The caller's menu owner: their family (menus belong to the family, membership checked with family-service) or,
- * without a family, the user (personal menus as before). A requested familyId that is not the caller's family is
- * refused (403). family-service unavailable → 503, never a silent switch to personal menus.
- */
-export async function resolveMenuOwner(userId: string, requestedFamilyId?: string, lookup: MembershipLookup = lookupMemberships): Promise<MenuOwner> {
-  let memberships;
-  try {
-    memberships = await lookup([userId]);
-  } catch (error) {
-    if (error instanceof FamilyLookupError) console.error("[menu-service] family lookup failed:", error.message);
-    throw new MenuServiceError("Không kiểm tra được gia đình. Hãy thử lại sau.", 503);
-  }
-  const membership = memberships.find((entry) => entry.userId === userId);
-  if (requestedFamilyId && membership?.familyId !== requestedFamilyId) throw new MenuServiceError("Bạn không thuộc gia đình này.", 403);
-  return membership
-    ? { userId, familyId: membership.familyId, role: membership.role, memberCount: membership.memberCount }
-    : { userId, familyId: null };
 }
 
 /** Signed-in user (gateway x-user-id) and their menu owner; answers 401 / 403 / 503 itself and returns undefined. */
@@ -310,11 +294,14 @@ export async function updateSettingsController(request: Request, response: Respo
   }
 }
 
-/** Stored AI suggestions of the family (and, in the background, a fresh generation when the Kho changed). */
-async function storedAiDishes(familyId: string, kho: Parameters<typeof aiEngine.getSuggestions>[1]): Promise<AiDish[]> {
-  void aiEngine.getSuggestions(familyId, kho).catch(() => undefined);
+/**
+ * Stored AI suggestions of the family, checked against the current family (allergens dropped, warnings attached);
+ * in the background a fresh generation starts when the Kho or the family context changed.
+ */
+async function storedAiDishes(familyId: string, kho: Parameters<typeof aiEngine.getSuggestions>[1], health: FamilyHealth): Promise<AiDish[]> {
+  void aiEngine.getSuggestions(familyId, kho, health).catch(() => undefined);
   const row = await settingsClient.aiSuggestion.findUnique({ where: { familyId } });
-  return Array.isArray(row?.dishes) ? row.dishes as unknown as AiDish[] : [];
+  return forFamily(Array.isArray(row?.dishes) ? row.dishes as unknown as AiDish[] : [], health);
 }
 
 /** POST /:id/items/:itemId/remove: drop one dish and put one replacement in the same meal and role. */
@@ -322,14 +309,15 @@ export async function removeMenuItemController(request: Request, response: Respo
   try {
     const owner = await requestOwner(request, response);
     if (!owner) return;
+    const health = await loadFamilyContext(owner);
     response.json(await removeMenuItem({
       userId: owner.userId,
       owner,
-      health: await loadFamilyContext(owner),
+      health,
       menuId: request.params.id,
       itemId: request.params.itemId,
       authorization: request.header("authorization") ?? undefined,
-      aiDishes: storedAiDishes,
+      aiDishes: (familyId, kho) => storedAiDishes(familyId, kho, health),
     }));
   } catch (error) {
     handleError(error, response);

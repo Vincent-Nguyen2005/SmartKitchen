@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import type { Prisma, PrismaClient } from "../../../node_modules/.prisma/client-menu";
 import { daysLeft, EXPIRING_WITHIN_DAYS, normalizeName, usableKho, vnDay, type KhoItem } from "../kho-suggest";
 import { generateDishes, GeminiError, geminiConfig, type AiDish, type GeminiConfig, type KhoSnapshotItem } from "./gemini";
+import type { FamilyHealth } from "../family-health";
+import { contextHash, familyBrief, forFamily, type AiFamilyBrief } from "./family-ai";
 
 export type AiStatus = "ready" | "generating" | "not_configured" | "empty_kho" | "error";
 export type AiSuggestionsResult = { status: AiStatus; dishes: AiDish[]; generatedAt: string | null; limitReached: boolean };
@@ -14,8 +16,8 @@ export const DAILY_LIMIT = 8;
 const BUSY_RETRY_MS = 5_000;
 
 /**
- * What the model sees: usable (not expired) Kho items, sorted, with an "expiring within 3 days" flag. Nothing about
- * the user or the family. The same Kho always gives the same snapshot (and hash).
+ * What the model sees of the Kho: usable (not expired) items, sorted, with an "expiring within 3 days" flag. The same
+ * Kho always gives the same snapshot (and hash). The family part (anonymous aggregates) comes from family-ai.ts.
  */
 export function khoSnapshot(items: KhoItem[], today: string = vnDay()): KhoSnapshotItem[] {
   return usableKho(items, today)
@@ -34,11 +36,20 @@ export function khoSnapshot(items: KhoItem[], today: string = vnDay()): KhoSnaps
 export const snapshotHash = (snapshot: KhoSnapshotItem[]): string =>
   createHash("sha256").update(JSON.stringify(snapshot.map((item) => [normalizeName(item.name), item.quantity, item.unit, item.expiringSoon]))).digest("hex");
 
+/**
+ * AI cache key: the Kho snapshot hash plus, with family data, a hash of the members' allergies, conditions and targets,
+ * so a profile change regenerates the dishes (same debounce and daily limit as a Kho change).
+ */
+export const suggestionHash = (snapshot: KhoSnapshotItem[], health?: FamilyHealth): string =>
+  health && health.members.length > 0
+    ? createHash("sha256").update(`${snapshotHash(snapshot)}:${contextHash(health)}`).digest("hex")
+    : snapshotHash(snapshot);
+
 type Timer = unknown;
 export type EngineDeps = {
   client: PrismaClient;
   config?: () => GeminiConfig | null;
-  generate?: (snapshot: KhoSnapshotItem[], config: GeminiConfig, idPrefix: string) => Promise<AiDish[]>;
+  generate?: (snapshot: KhoSnapshotItem[], config: GeminiConfig, idPrefix: string, brief?: AiFamilyBrief) => Promise<AiDish[]>;
   delayMs?: number;
   setTimer?: (run: () => void, ms: number) => Timer;
   clearTimer?: (timer: Timer) => void;
@@ -52,7 +63,7 @@ const dishesOf = (row: StoredRow | null): AiDish[] => (row && Array.isArray(row.
 
 /** Per-family AI suggestions: snapshot hash on read, debounced background generation, daily limit, stored result. */
 export class AiSuggestionEngine {
-  private readonly pending = new Map<string, { timer: Timer; hash: string; snapshot: KhoSnapshotItem[] }>();
+  private readonly pending = new Map<string, { timer: Timer; hash: string; snapshot: KhoSnapshotItem[]; health?: FamilyHealth }>();
   private readonly running = new Set<string>();
   private readonly client: PrismaClient;
   private readonly config: () => GeminiConfig | null;
@@ -66,7 +77,7 @@ export class AiSuggestionEngine {
   constructor(deps: EngineDeps) {
     this.client = deps.client;
     this.config = deps.config ?? (() => geminiConfig());
-    this.generate = deps.generate ?? ((snapshot, config, idPrefix) => generateDishes(snapshot, config, idPrefix));
+    this.generate = deps.generate ?? ((snapshot, config, idPrefix, brief) => generateDishes(snapshot, config, idPrefix, fetch, brief));
     this.delayMs = deps.delayMs ?? DEBOUNCE_MS;
     this.setTimer = deps.setTimer ?? ((run, ms) => { const timer = setTimeout(run, ms); timer.unref?.(); return timer; });
     this.clearTimer = deps.clearTimer ?? ((timer) => clearTimeout(timer as ReturnType<typeof setTimeout>));
@@ -84,26 +95,26 @@ export class AiSuggestionEngine {
     this.pending.delete(familyId);
   }
 
-  /** (Re)starts the debounce for this family with the newest snapshot. */
-  private schedule(familyId: string, snapshot: KhoSnapshotItem[], hash: string, delay: number): void {
+  /** (Re)starts the debounce for this family with the newest snapshot and family context. */
+  private schedule(familyId: string, snapshot: KhoSnapshotItem[], hash: string, delay: number, health?: FamilyHealth): void {
     this.cancel(familyId);
     const timer = this.setTimer(() => { void this.fire(familyId); }, delay);
-    this.pending.set(familyId, { timer, hash, snapshot });
+    this.pending.set(familyId, { timer, hash, snapshot, health });
   }
 
   private async fire(familyId: string): Promise<void> {
     const entry = this.pending.get(familyId);
     if (!entry) return;
     if (this.running.has(familyId)) {
-      this.schedule(familyId, entry.snapshot, entry.hash, BUSY_RETRY_MS);
+      this.schedule(familyId, entry.snapshot, entry.hash, BUSY_RETRY_MS, entry.health);
       return;
     }
     this.pending.delete(familyId);
-    await this.run(familyId, entry.snapshot, entry.hash);
+    await this.run(familyId, entry.snapshot, entry.hash, entry.health);
   }
 
   /** One generation: skipped when the hash is unchanged or the daily limit is reached; errors keep the old dishes. */
-  async run(familyId: string, snapshot: KhoSnapshotItem[], hash: string): Promise<void> {
+  async run(familyId: string, snapshot: KhoSnapshotItem[], hash: string, health?: FamilyHealth): Promise<void> {
     const config = this.config();
     if (!config) return;
     this.running.add(familyId);
@@ -115,7 +126,8 @@ export class AiSuggestionEngine {
       if (used >= DAILY_LIMIT) return;
       const base = { khoHash: hash, generationDay: day, generationCount: used + 1 };
       try {
-        const dishes = await this.generate(snapshot, config, `ai-${hash.slice(0, 10)}`);
+        // The model gets anonymous family aggregates; allergens are then dropped and warnings attached here.
+        const dishes = forFamily(await this.generate(snapshot, config, `ai-${hash.slice(0, 10)}`, health ? familyBrief(health) : undefined), health);
         if (dishes.length === 0) throw new GeminiError("Model returned no valid dishes");
         const data = { ...base, dishes: dishes as unknown as Prisma.InputJsonValue, status: "ready", errorMessage: null, generatedAt: this.now() };
         await this.client.aiSuggestion.upsert({ where: { familyId }, create: { familyId, ...data }, update: data });
@@ -132,20 +144,22 @@ export class AiSuggestionEngine {
   }
 
   /**
-   * Called on every read with the family's current Kho. Same hash: stored result. Changed Kho: debounced
-   * regeneration (status generating, previous dishes still shown). Nothing stored yet: start right away.
+   * Called on every read with the family's current Kho and health context. Same hash: stored result. Changed Kho or
+   * family context: debounced regeneration (status generating, previous dishes still shown). Nothing stored yet:
+   * start right away. Stored dishes are always re-checked against the current family (allergens dropped, warnings
+   * recomputed), so a new allergy never shows an unsafe dish while the regeneration is pending.
    */
-  async getSuggestions(familyId: string, khoItems: KhoItem[]): Promise<AiSuggestionsResult> {
+  async getSuggestions(familyId: string, khoItems: KhoItem[], health?: FamilyHealth): Promise<AiSuggestionsResult> {
     if (!this.config()) return { status: "not_configured", dishes: [], generatedAt: null, limitReached: false };
     const snapshot = khoSnapshot(khoItems, vnDay(this.now()));
     if (snapshot.length === 0) {
       this.cancel(familyId);
       return { status: "empty_kho", dishes: [], generatedAt: null, limitReached: false };
     }
-    const hash = snapshotHash(snapshot);
+    const hash = suggestionHash(snapshot, health);
     const row = await this.client.aiSuggestion.findUnique({ where: { familyId } }) as StoredRow | null;
     const result = (status: AiStatus, limitReached = false): AiSuggestionsResult => ({
-      status, dishes: dishesOf(row), generatedAt: row?.generatedAt.toISOString() ?? null, limitReached,
+      status, dishes: forFamily(dishesOf(row), health), generatedAt: row?.generatedAt.toISOString() ?? null, limitReached,
     });
 
     if (row && row.khoHash === hash) {
@@ -154,7 +168,7 @@ export class AiSuggestionEngine {
       return result(this.running.has(familyId) ? "generating" : row.status === "error" ? "error" : "ready");
     }
     if (!row) {
-      if (!this.isGenerating(familyId)) this.schedule(familyId, snapshot, hash, 0);
+      if (!this.isGenerating(familyId)) this.schedule(familyId, snapshot, hash, 0, health);
       return result("generating");
     }
     const day = vnDay(this.now());
@@ -162,7 +176,7 @@ export class AiSuggestionEngine {
       this.cancel(familyId);
       return result(row.status === "error" ? "error" : "ready", true);
     }
-    if (this.pending.get(familyId)?.hash !== hash) this.schedule(familyId, snapshot, hash, this.delayMs);
+    if (this.pending.get(familyId)?.hash !== hash) this.schedule(familyId, snapshot, hash, this.delayMs, health);
     return result("generating");
   }
 }
