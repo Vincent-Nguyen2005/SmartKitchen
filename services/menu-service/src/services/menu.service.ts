@@ -615,6 +615,8 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
     familyId: input.familyId ?? null,
     // Cooked for everyone in the family (member count now); personal menus for one.
     servings: ownerFamily ? input.owner?.memberCount ?? null : 1,
+    // No family health data has ever been loaded: allergies unknown, the app shows a notice on Lịch.
+    healthUnavailable: input.health?.missing === true,
     khoHash,
     title,
     periodType: input.periodType,

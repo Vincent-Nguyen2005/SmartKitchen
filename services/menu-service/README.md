@@ -62,8 +62,10 @@ Every path that picks dishes (generate, `generate-days`, `top-up`, `auto-refresh
 - **Where it comes from:** members from family-service `GET /internal/families/:id/members`, profiles from nutrition-service `POST /internal/profiles`.
   - Both use `INTERNAL_API_KEY` with a 3 s timeout. `NUTRITION_SERVICE_URL` is set in compose.
   - A user without a family counts as a family of one.
-  - Complete results are cached for 5 minutes per family.
-  - If a service is unavailable, the menu is still made: the members fall back to the caller alone, and the profiles to the 2000 kcal defaults (500 / 800 / 700) with no allergies or conditions. This is logged with counts only and not cached.
+  - Complete results are cached for 5 minutes per family and saved as the family's last known context (`FamilyHealthContext` in the menu DB).
+  - If a service is unavailable, the last known context is used, so allergies are never dropped once they have been seen.
+  - Only when no context was ever loaded do the defaults apply (2000 kcal, 500 / 800 / 700, no allergies or conditions). The generated menu then gets `healthUnavailable: true`, and the app shows a notice on Lịch.
+  - Degraded results are not cached or saved. Logs give counts only.
 - **Allergies (hard exclusion):** a dish is never used when any member is allergic to it. That means an allergen tag equals the allergy (accent- and case-insensitive), or an ingredient name matches it with the Kho matching rule ("Tôm" matches "Tôm sú"; one-word names keep their accents, so "Cá" doesn't match "Cà chua"). Seasonings count, and catalog and custom allergies both count. AI fallback dishes are checked by ingredient name.
 - **Health conditions:** dishes whose contraindication tags equal a member's condition are used only when a slot can't be filled with a dish suitable for everyone.
   - Such a dish stores `details.warnings: [{ memberUserId, memberName, condition }]`, visible to every family member.

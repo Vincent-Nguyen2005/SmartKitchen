@@ -369,6 +369,9 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
         </View>
 
         {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger} style={styles.message}>{error}</AppText>}
+        {period === "DAY" && dayMenu?.healthUnavailable && (
+          <AppText variant="bodySmall" color={colors.warning} style={styles.message}>Chưa tải được thông tin dị ứng của gia đình, hãy làm mới sau</AppText>
+        )}
         {scheduleContent}
       </ScrollView>
       {/* Lịch shows dishes read-only; steps, cooking and "Đổi món khác" live in Nấu ăn. */}

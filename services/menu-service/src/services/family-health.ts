@@ -23,7 +23,8 @@ export type MemberHealth = {
   /** kcal per meal. */
   mealTargets: Record<MealKey, number>;
 };
-export type FamilyHealth = { members: MemberHealth[] };
+/** missing: no health data was ever loaded for this family (defaults used; the menu shows a notice). */
+export type FamilyHealth = { members: MemberHealth[]; missing?: boolean };
 export type HealthWarning = { memberUserId: string; memberName: string; condition: string };
 /** The parts of a recipe the rules look at. */
 export type HealthRecipe = { ingredients: Array<{ name: string }>; allergens?: string[]; contraindications?: string[] };

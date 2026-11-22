@@ -3,7 +3,7 @@ import test from "node:test";
 import { PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { generateMenu, removeMenuItem } from "../services/menu.service";
 import { caloriePenalty, defaultMealTargets, hasAllergen, type FamilyHealth, type MemberHealth } from "../services/family-health";
-import { clearFamilyContextCache, loadFamilyContext } from "../services/family-context";
+import { clearFamilyContextCache, loadFamilyContext, type ContextStore } from "../services/family-context";
 
 const DAY = new Date("2026-11-24T00:00:00.000Z");
 const member = (userId: string, name: string, extra: Partial<MemberHealth> = {}): MemberHealth => ({
@@ -128,7 +128,13 @@ test("swap: the replacement never contains a member's allergen", async () => {
   assert.equal(createdItem?.recipeId, "pork");
 });
 
-test("family context: profile service down -> defaults (no allergies, default targets), not cached", async () => {
+/** In-memory last-known-context store. */
+function memoryStore(initial: Record<string, MemberHealth[]> = {}): ContextStore & { saved: Record<string, MemberHealth[]> } {
+  const saved: Record<string, MemberHealth[]> = { ...initial };
+  return { saved, load: async (key) => saved[key] ?? null, save: async (key, members) => { saved[key] = members; } };
+}
+
+test("family context: profile service down and no earlier context -> defaults, marked missing, not cached", async () => {
   const oldKey = process.env.INTERNAL_API_KEY;
   process.env.INTERNAL_API_KEY = "test-internal-key-with-more-than-32-characters";
   clearFamilyContextCache();
@@ -141,14 +147,17 @@ test("family context: profile service down -> defaults (no allergies, default ta
     throw new Error("nutrition-service down");
   }) as typeof fetch;
   try {
-    const context = await loadFamilyContext({ userId: "a", familyId: "f1" }, fetchImpl);
+    const store = memoryStore();
+    const context = await loadFamilyContext({ userId: "a", familyId: "f1" }, fetchImpl, Date.now(), store);
     assert.equal(context.degraded, true);
+    assert.equal(context.missing, true);
     assert.deepEqual(context.members.map((entry) => [entry.userId, entry.name, entry.allergies, entry.mealTargets]), [
       ["a", "An", [], { breakfast: 500, lunch: 800, dinner: 700 }],
       ["b", null, [], { breakfast: 500, lunch: 800, dinner: 700 }],
     ]);
-    await loadFamilyContext({ userId: "a", familyId: "f1" }, fetchImpl);
+    await loadFamilyContext({ userId: "a", familyId: "f1" }, fetchImpl, Date.now(), store);
     assert.equal(calls, 4, "a degraded result is not cached");
+    assert.deepEqual(store.saved, {}, "a degraded result is not saved as the last context");
 
     // Both services up: profiles applied and cached.
     clearFamilyContextCache();
@@ -159,12 +168,37 @@ test("family context: profile service down -> defaults (no allergies, default ta
         ? new Response(JSON.stringify({ items: [{ userId: "a", name: "An" }] }), { status: 200 })
         : new Response(JSON.stringify({ items: [{ userId: "a", allergies: ["Tôm"], conditions: ["Gout"], mealTargets: { breakfast: { calories: 490 }, lunch: { calories: 784 }, dinner: { calories: 686 } } }] }), { status: 200 });
     }) as typeof fetch;
-    const first = await loadFamilyContext({ userId: "a", familyId: "f1" }, healthy);
+    const healthyStore = memoryStore();
+    const first = await loadFamilyContext({ userId: "a", familyId: "f1" }, healthy, Date.now(), healthyStore);
+    assert.equal(first.missing, undefined);
     assert.deepEqual(first.members[0], { userId: "a", name: "An", allergies: ["Tôm"], conditions: ["Gout"], mealTargets: { breakfast: 490, lunch: 784, dinner: 686 } });
-    await loadFamilyContext({ userId: "a", familyId: "f1" }, healthy);
+    await loadFamilyContext({ userId: "a", familyId: "f1" }, healthy, Date.now(), healthyStore);
     assert.equal(healthyCalls, 2, "cached for a few minutes");
+    assert.deepEqual(healthyStore.saved["family:f1"][0].allergies, ["Tôm"], "saved as the last known context");
+
+    // Later both services are down: the last known context (with the allergy) is used, not "no allergies".
+    clearFamilyContextCache();
+    const down = (async () => { throw new Error("down"); }) as typeof fetch;
+    const stale = await loadFamilyContext({ userId: "a", familyId: "f1" }, down, Date.now(), healthyStore);
+    assert.equal(stale.degraded, true);
+    assert.equal(stale.missing, undefined, "no notice when an earlier context exists");
+    assert.deepEqual(stale.members[0].allergies, ["Tôm"]);
   } finally {
     process.env.INTERNAL_API_KEY = oldKey;
     clearFamilyContextCache();
   }
+});
+
+test("menu notice flag: set only when no family health data was ever loaded", async () => {
+  const recipes = [{ id: "l", name: "Cơm gà", role: "man", mealTypes: ["lunch"], ingredientDetails: [{ name: "Thịt gà", quantity: 300, unit: "GRAM" }] }];
+  const flag = async (health: FamilyHealth | undefined) => {
+    const created: Array<{ data: { healthUnavailable?: boolean } }> = [];
+    const menu = { findMany: async () => [], deleteMany: async () => ({ count: 0 }), create: async (args: (typeof created)[number]) => { created.push(args); return args.data; } };
+    const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
+    await generateMenu({ ...dayInput, health, mealCounts: { BREAKFAST: 0, LUNCH: 1, DINNER: 0 }, recipes, inventoryItems: [] }, client);
+    return created[0].data.healthUnavailable;
+  };
+  assert.equal(await flag({ members: [member("a", "An")], missing: true }), true);
+  assert.equal(await flag({ members: [member("a", "An", { allergies: ["Tôm"] })] }), false);
+  assert.equal(await flag(undefined), false);
 });
