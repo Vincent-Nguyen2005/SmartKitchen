@@ -103,6 +103,11 @@ describe("gateway authentication end to end", () => {
     expect(isInternalPath("/api/admin/internal")).toBe(true);
     expect(isInternalPath("/api/internal/admin/users")).toBe(true);
     expect(isInternalPath("/internal/admin/users")).toBe(true);
+    // Family-menu internal routes (family-service members, nutrition-service profiles).
+    expect(isInternalPath("/api/families/internal/families/22222222-2222-2222-2222-222222222222/members")).toBe(true);
+    expect(isInternalPath("/internal/families/22222222-2222-2222-2222-222222222222/members")).toBe(true);
+    expect(isInternalPath("/api/nutrition/internal/profiles")).toBe(true);
+    expect(isInternalPath("/api/nutrition-profile/internal/profiles")).toBe(true);
     expect(isInternalPath("/api/notifications/notifications")).toBe(false);
     expect(isInternalPath("/api/recipes/internal-tips")).toBe(false);
   });

@@ -7,7 +7,7 @@ import {
   recipeSchema,
   type RecipeDto,
 } from "../dto/nutrition.dto";
-import { calculateDailyCalories } from "../utils/nutrition-calculator";
+import { averageMealTargets, dailyTargets, type Targets } from "../utils/targets";
 import { ageFromBirthDate, dayOf } from "../utils/age";
 import { z } from "zod";
 
@@ -17,21 +17,11 @@ export class NutritionProfileNotFoundError extends Error {}
 
 export class NutritionUpstreamError extends Error {}
 
-type NutritionGoals = {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-};
+type NutritionGoals = Targets;
 
+/** Daily targets from the shared helper (Mifflin-St Jeor TDEE; 20 / 55 / 25 macro split). */
 function calculateGoals(profile: NutritionProfile): NutritionGoals {
-  const { tdee } = calculateDailyCalories(profile);
-  return {
-    calories: Math.round(tdee),
-    protein: (tdee * 0.2) / 4,
-    carbs: (tdee * 0.5) / 4,
-    fat: (tdee * 0.3) / 9,
-  };
+  return dailyTargets(profile);
 }
 
 async function getProfile(userId: string): Promise<NutritionProfile> {
@@ -115,13 +105,8 @@ function normalizeTag(value: string): string {
     .trim();
 }
 
-function nutritionMatchScore(recipe: RecipeDto, target: NutritionGoals): number {
-  const mealTarget = {
-    calories: target.calories / 3,
-    protein: target.protein / 3,
-    carbs: target.carbs / 3,
-    fat: target.fat / 3,
-  };
+/** How close one dish is to an average meal (a third of the day; suggestions have no meal type). */
+function nutritionMatchScore(recipe: RecipeDto, mealTarget: NutritionGoals): number {
   const closeness = [
     1 - Math.min(1, Math.abs(recipe.calories - mealTarget.calories) / mealTarget.calories),
     1 - Math.min(1, Math.abs(recipe.protein - mealTarget.protein) / mealTarget.protein),
@@ -155,7 +140,7 @@ export async function getPersonalizedSuggestions(userId: string) {
   const blockedConditions = new Set(
     userConditions.map(({ condition }) => normalizeTag(condition.name)),
   );
-  const goals = calculateGoals(profile);
+  const mealTarget = averageMealTargets(profile);
 
   const suggestions = recipesResult.data
     .filter((recipe) => recipe.isActive)
@@ -168,7 +153,7 @@ export async function getPersonalizedSuggestions(userId: string) {
     )
     .map((recipe) => ({
       ...recipe,
-      nutritionScore: nutritionMatchScore(recipe, goals),
+      nutritionScore: nutritionMatchScore(recipe, mealTarget),
     }))
     .sort(
       (first, second) =>
@@ -178,10 +163,10 @@ export async function getPersonalizedSuggestions(userId: string) {
 
   return {
     targetPerMeal: {
-      calories: Math.round(goals.calories / 3),
-      protein: Math.round(goals.protein / 3),
-      carbs: Math.round(goals.carbs / 3),
-      fat: Math.round(goals.fat / 3),
+      calories: mealTarget.calories,
+      protein: Math.round(mealTarget.protein),
+      carbs: Math.round(mealTarget.carbs),
+      fat: Math.round(mealTarget.fat),
     },
     excludedAllergens: [...blockedAllergens],
     excludedHealthConditions: [...blockedConditions],

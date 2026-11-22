@@ -14,8 +14,19 @@ type Props = {
   refreshKey?: number;
 };
 
-/** Targets used when the user has no health profile yet (shown with "Mục tiêu ước tính"). */
-const DEFAULT_TARGETS = { calories: 2000, protein: 100, carbs: 250, fat: 67 };
+/**
+ * Targets used when the user has no health profile yet (shown with "Mục tiêu ước tính"): 2000 kcal with the same
+ * macro split as nutrition-service (src/utils/targets.ts): 20 % protein, 55 % carbs, 25 % fat (4 / 4 / 9 kcal per g).
+ */
+const DEFAULT_CALORIES = 2000;
+const MACRO_SPLIT = { protein: 0.2, carbs: 0.55, fat: 0.25 } as const;
+const grams = (share: number, kcalPerGram: number) => Math.round((DEFAULT_CALORIES * share) / kcalPerGram);
+const DEFAULT_TARGETS = {
+  calories: DEFAULT_CALORIES,
+  protein: grams(MACRO_SPLIT.protein, 4),
+  carbs: grams(MACRO_SPLIT.carbs, 4),
+  fat: grams(MACRO_SPLIT.fat, 9),
+};
 
 /** Today's totals from the meal diary, against the default targets (no profile: daily-stats answers 404). */
 function estimatedStats(date: string, meals: MealLog[]): DailyNutritionStats {
