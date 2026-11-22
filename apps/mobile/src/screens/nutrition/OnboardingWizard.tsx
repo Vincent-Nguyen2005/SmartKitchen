@@ -199,7 +199,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
             suggestedDate={birthCalendarStart()}
             size="large"
           />
-          {birthProblem ? <Text style={local.fieldError}>{birthProblem}</Text> : age !== null && <Text style={local.ageText}>{age} tuổi</Text>}
+          {!!birthProblem && <Text style={local.fieldError}>{birthProblem}</Text>}
         </View>
       );
       footer = primary("Tiếp", !!birthDate && !birthProblem, next);
@@ -213,7 +213,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
       title = isHeight ? "Chiều cao của bạn?" : "Cân nặng của bạn?";
       body = (
         <View style={local.answer}>
-          <View style={local.bigInputShell}>
+          <View style={local.inputShell}>
             <TextInput
               key={step}
               autoFocus
@@ -225,11 +225,11 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
               onSubmitEditing={() => { if (valid) next(); }}
               placeholder={isHeight ? "1.70" : "0"}
               placeholderTextColor={colors.muted}
-              style={local.bigInput}
+              style={local.input}
             />
-            <Text style={local.bigUnit}>{isHeight ? "m" : "kg"}</Text>
+            <Text style={local.unit}>{isHeight ? "m" : "kg"}</Text>
           </View>
-          {problem ? <Text style={local.fieldError}>{problem}</Text> : isHeight && heightReading(value) ? <Text style={local.ageText}>{heightReading(value)}</Text> : null}
+          {!!problem && <Text style={local.fieldError}>{problem}</Text>}
         </View>
       );
       footer = primary("Tiếp", valid, next);
@@ -360,14 +360,14 @@ const local = StyleSheet.create({
   hint: { ...textStyles.body, color: colors.muted },
   optional: { ...textStyles.caption, color: colors.muted, marginBottom: -spacing.sm },
   answer: { gap: spacing.sm, marginTop: spacing.sm },
-  ageText: { ...textStyles.subheading, color: colors.primary },
   fieldError: { ...textStyles.bodySmall, color: colors.danger },
-  bigInputShell: {
-    alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1,
-    flexDirection: "row", gap: spacing.sm, minHeight: touchTarget * 2, paddingHorizontal: spacing.lg,
+  /** Same size as the DateField on the birth-date step; the unit sits inside on the right (as in Hồ sơ). */
+  inputShell: {
+    alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1,
+    flexDirection: "row", gap: spacing.sm, minHeight: touchTarget, paddingHorizontal: spacing.md,
   },
-  bigInput: { ...textStyles.pageTitle, flex: 1, minHeight: touchTarget * 2, paddingVertical: 0 },
-  bigUnit: { ...textStyles.subheading, color: colors.muted },
+  input: { ...textStyles.body, color: colors.text, flex: 1, minWidth: 0, paddingVertical: spacing.sm },
+  unit: { ...textStyles.caption, color: colors.muted },
   summary: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.md },
   summaryRow: { alignItems: "center", flexDirection: "row", gap: spacing.sm, minHeight: touchTarget + spacing.md, paddingVertical: spacing.sm },
   summaryDivider: { borderBottomColor: colors.border, borderBottomWidth: 1 },

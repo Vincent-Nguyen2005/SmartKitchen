@@ -54,7 +54,7 @@ export function DateField({ label, value, onChange, minDate, maxDate, suggestedD
         </Pressable>
         {clearable && value ? <IconButton icon={X} size="sm" accessibilityLabel={`Xóa ${label.toLowerCase()}`} onPress={() => onChange("")} /> : null}
       </View>
-      {value ? <AppText variant="caption">Đã chọn: {toDisplayDate(value)}</AppText> : emptyHint ? <AppText variant="caption">{emptyHint}</AppText> : null}
+      {!value && emptyHint ? <AppText variant="caption">{emptyHint}</AppText> : null}
       <CalendarPicker
         visible={open}
         title={label}

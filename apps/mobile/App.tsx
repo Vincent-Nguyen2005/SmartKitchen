@@ -100,6 +100,19 @@ if (webDocument && !webDocument.getElementById("smartkitchen-hide-scrollbars")) 
   style.textContent = "* { scrollbar-width: none; -ms-overflow-style: none; } *::-webkit-scrollbar { display: none; width: 0; height: 0; }";
   webDocument.head.appendChild(style);
 }
+/**
+ * Text inputs on web: no browser focus outline (the orange/yellow ring); focus shows as the theme primary border on
+ * the input or, for a borderless input inside a bordered field, on that field. Applies to every TextInput app-wide.
+ */
+if (webDocument && !webDocument.getElementById("smartkitchen-input-focus")) {
+  const style = webDocument.createElement("style");
+  style.id = "smartkitchen-input-focus";
+  style.textContent = [
+    "input, textarea { outline: none !important; }",
+    `input:focus, textarea:focus, *:has(> input:focus), *:has(> textarea:focus) { border-color: ${colors.primary} !important; }`,
+  ].join(" ");
+  webDocument.head.appendChild(style);
+}
 const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 /** Dropdown order (and default screen): Nấu ăn, Dinh dưỡng, Lịch. */
