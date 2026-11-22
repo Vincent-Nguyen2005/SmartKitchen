@@ -26,6 +26,8 @@ import {
   birthDateForAge,
   DEFAULT_ACTIVITY,
   heightRangeError,
+  heightReading,
+  heightToCm,
   heightValid,
   MIN_BIRTH_DATE,
   normalizeDecimal,
@@ -123,7 +125,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
     setSaving(true);
     setError("");
     try {
-      const profile = { height: Number(height), weight: Number(weight), birthDate, gender, activityLevel: DEFAULT_ACTIVITY };
+      const profile = { height: heightToCm(height), weight: Number(weight), birthDate, gender, activityLevel: DEFAULT_ACTIVITY };
       // A retry after a failed tag save updates the profile created a moment ago.
       if (created) await api.update(profile);
       else await api.create(profile);
@@ -212,19 +214,19 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
             <TextInput
               key={step}
               autoFocus
-              accessibilityLabel={isHeight ? "Chiều cao (cm)" : "Cân nặng (kg)"}
+              accessibilityLabel={isHeight ? "Chiều cao (m)" : "Cân nặng (kg)"}
               keyboardType="decimal-pad"
               returnKeyType="next"
               value={value}
               onChangeText={(text) => (isHeight ? setHeight : setWeight)(normalizeDecimal(text))}
               onSubmitEditing={() => { if (valid) next(); }}
-              placeholder="0"
+              placeholder={isHeight ? "1.70" : "0"}
               placeholderTextColor={colors.muted}
               style={local.bigInput}
             />
-            <Text style={local.bigUnit}>{isHeight ? "cm" : "kg"}</Text>
+            <Text style={local.bigUnit}>{isHeight ? "m" : "kg"}</Text>
           </View>
-          {!!problem && <Text style={local.fieldError}>{problem}</Text>}
+          {problem ? <Text style={local.fieldError}>{problem}</Text> : isHeight && heightReading(value) ? <Text style={local.ageText}>{heightReading(value)}</Text> : null}
         </View>
       );
       footer = primary("Tiếp", valid, next);
@@ -253,7 +255,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
         <View style={local.summary}>
           <SummaryRow label="Giới tính" value={gender ? GENDER_LABEL[gender] : "Chưa chọn"} onPress={() => edit("gender")} />
           <SummaryRow label="Ngày sinh" value={birthDate ? `${toDisplayDate(birthDate)}${age !== null ? ` (${age} tuổi)` : ""}` : "Chưa chọn"} onPress={() => edit("birthDate")} />
-          <SummaryRow label="Chiều cao" value={height ? `${height} cm` : "Chưa nhập"} onPress={() => edit("height")} />
+          <SummaryRow label="Chiều cao" value={heightReading(height) ?? (height ? `${height} m` : "Chưa nhập")} onPress={() => edit("height")} />
           <SummaryRow label="Cân nặng" value={weight ? `${weight} kg` : "Chưa nhập"} onPress={() => edit("weight")} />
           <SummaryRow label="Dị ứng" value={tagSummary(allergies)} onPress={() => edit("health")} />
           <SummaryRow label="Tình trạng sức khỏe" value={tagSummary(conditions)} onPress={() => edit("health")} last />

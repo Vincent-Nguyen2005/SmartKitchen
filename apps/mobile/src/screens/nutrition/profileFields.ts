@@ -8,7 +8,8 @@ import type { ActivityLevel } from "./nutritionProfileApi";
 /** The calorie calculation uses light activity by default (the section was removed; existing profiles keep theirs). */
 export const DEFAULT_ACTIVITY: ActivityLevel = "LIGHTLY_ACTIVE";
 export const MIN_BIRTH_DATE = "1900-01-01";
-export const HEIGHT_RANGE = { min: 50, max: 250 };
+/** Height is entered in meters (stored and sent in cm). */
+export const HEIGHT_RANGE_M = { min: 0.5, max: 2.5 };
 export const WEIGHT_RANGE = { min: 2, max: 300 };
 
 const pad2 = (value: number) => String(value).padStart(2, "0");
@@ -49,7 +50,11 @@ export const rangeError = (text: string, range: { min: number; max: number }, un
   return Number.isFinite(value) && value >= range.min && value <= range.max ? null : `Nhập từ ${range.min} đến ${range.max} ${unit}.`;
 };
 
-export const heightRangeError = (text: string) => rangeError(text, HEIGHT_RANGE, "cm");
+export const heightRangeError = (text: string): string | null => {
+  if (!text.trim()) return null;
+  const value = Number(text);
+  return Number.isFinite(value) && value >= HEIGHT_RANGE_M.min && value <= HEIGHT_RANGE_M.max ? null : "Nhập từ 0.50 đến 2.50 m.";
+};
 export const weightRangeError = (text: string) => rangeError(text, WEIGHT_RANGE, "kg");
 
 /** null when the birth date gives an age of 1-130 years. */
@@ -62,6 +67,17 @@ export function birthDateError(birthDate: string): string | null {
 
 export const heightValid = (text: string) => !!text.trim() && !heightRangeError(text);
 export const weightValid = (text: string) => !!text.trim() && !weightRangeError(text);
+
+/** Meters text -> centimeters for the API, rounded to 1 decimal ("1.70" -> 170). */
+export const heightToCm = (meters: string): number => Math.round(Number(meters) * 1000) / 10;
+/** Stored centimeters -> meters text with 2 decimals (170 -> "1.70"). */
+export const cmToHeightText = (cm: number): string => (Number.isFinite(cm) ? (cm / 100).toFixed(2) : "");
+/** The familiar reading of a valid height: "1.70" -> "1m70", "1.05" -> "1m05", "2" -> "2m00"; null when invalid. */
+export function heightReading(meters: string): string | null {
+  if (!heightValid(meters)) return null;
+  const [whole, fraction] = Number(meters).toFixed(2).split(".");
+  return `${whole}m${fraction}`;
+}
 
 /** The one message for the whole basic info (null = ready to save). */
 export function basicsError(height: string, weight: string, birthDate: string): string | null {

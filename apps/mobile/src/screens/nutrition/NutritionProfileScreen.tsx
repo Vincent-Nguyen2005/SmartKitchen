@@ -35,7 +35,10 @@ import {
   birthCalendarStart,
   birthDateForAge,
   DEFAULT_ACTIVITY,
+  cmToHeightText,
   heightRangeError,
+  heightReading,
+  heightToCm,
   MIN_BIRTH_DATE,
   normalizeDecimal,
   todayIso,
@@ -90,7 +93,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       .get()
       .then((data) => {
         if (!active) return;
-        setHeight(normalizeDecimal(String(data.profile.height)));
+        setHeight(cmToHeightText(data.profile.height));
         setWeight(normalizeDecimal(String(data.profile.weight)));
         setBirthDate(data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""));
         setGender(data.profile.gender);
@@ -130,7 +133,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
     }
 
     setSubmitted(true);
-    const parsedHeight = Number(height);
+    // Entered in meters; the API keeps centimeters.
+    const parsedHeight = heightToCm(height);
     const parsedWeight = Number(weight);
     const message = basicsError(height, weight, birthDate);
     if (message) {
@@ -196,7 +200,9 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                 <View style={[styles.measurements, isCompact && styles.measurementsCompact]}>
                   <NumberField
                     label="Chiều cao"
-                    unit="cm"
+                    unit="m"
+                    placeholder="1.70"
+                    hint={heightReading(height)}
                     value={height}
                     onChangeText={(value) => setHeight(normalizeDecimal(value))}
                     error={heightError ?? (submitted && !height.trim() ? "Nhập chiều cao." : null)}
@@ -399,12 +405,17 @@ function NumberField({
   value,
   onChangeText,
   error,
+  placeholder = "0.00",
+  hint,
 }: {
   label: string;
   unit: string;
   value: string;
   onChangeText: (value: string) => void;
   error?: string | null;
+  placeholder?: string;
+  /** Shown under a valid value (height: "1m70"). */
+  hint?: string | null;
 }): React.JSX.Element {
   return (
     <View style={styles.field}>
@@ -415,13 +426,13 @@ function NumberField({
           keyboardType="decimal-pad"
           onChangeText={onChangeText}
           value={value}
-          placeholder="0.00"
+          placeholder={placeholder}
           placeholderTextColor={colors.muted}
           style={styles.input}
         />
         <Text style={styles.unit}>{unit}</Text>
       </View>
-      {!!error && <Text style={styles.fieldError}>{error}</Text>}
+      {error ? <Text style={styles.fieldError}>{error}</Text> : hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -433,6 +444,7 @@ const styles = StyleSheet.create({
   birthField: { flex: 1 },
   ageText: { ...textStyles.label, color: colors.primary },
   fieldError: { ...textStyles.caption, color: colors.danger, marginTop: spacing.xs },
+  fieldHint: { ...textStyles.labelSmall, color: colors.primary, marginTop: spacing.xs },
   // SCRUM-232: input pairs become a single column on small devices.
   contentCompact: { paddingHorizontal: spacing.md },
   measurementsCompact: { flexDirection: "column", gap: 0 },
