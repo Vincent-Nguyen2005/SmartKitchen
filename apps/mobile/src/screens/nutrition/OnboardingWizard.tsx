@@ -201,6 +201,7 @@ export default function OnboardingWizard({ onDone }: Props): React.JSX.Element {
             maxDate={todayIso()}
             suggestedDate={birthDateForAge(25)}
             emptyHint="Chọn ngày sinh để tính tuổi."
+            pickYearFirst
             size="large"
           />
           {birthProblem ? <Text style={local.fieldError}>{birthProblem}</Text> : age !== null && <Text style={local.ageText}>{age} tuổi</Text>}
