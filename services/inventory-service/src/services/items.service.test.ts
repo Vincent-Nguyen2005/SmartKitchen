@@ -275,6 +275,19 @@ describe("PurchasesService", () => {
     }));
   });
 
+  it("stores the catalog product id on a new item, and on a restock only when the item has none", async () => {
+    await PurchasesService.apply({ ...input, productId: "prod-1" });
+    expect(tx.foodItem.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ productId: "prod-1" }) }));
+
+    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: null });
+    await PurchasesService.apply({ ...input, productId: "prod-1" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { quantity: { increment: 2 }, status: "FRESH", productId: "prod-1" } }));
+
+    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: "prod-old" });
+    await PurchasesService.apply({ ...input, productId: "prod-1" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { quantity: { increment: 2 }, status: "FRESH" } }));
+  });
+
   it("restocks a matching active inventory item", async () => {
     tx.foodItem.findFirst.mockResolvedValue({ id: itemId, quantity: 3, status: "NEAR_EXPIRY" });
 

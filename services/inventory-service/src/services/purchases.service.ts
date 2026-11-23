@@ -51,6 +51,7 @@ export class PurchasesService {
                 // A restock fills a missing expiry/group but never overwrites what the family already set.
                 ...(expiryDate && !previous.expiryDate ? { expiryDate } : {}),
                 ...(categoryId && !previous.categoryId ? { categoryId } : {}),
+                ...(input.productId && !previous.productId ? { productId: input.productId } : {}),
               },
               include: { category: true },
             })
@@ -64,6 +65,7 @@ export class PurchasesService {
                 status: "FRESH",
                 ...(expiryDate ? { expiryDate } : {}),
                 ...(categoryId ? { categoryId } : {}),
+                ...(input.productId ? { productId: input.productId } : {}),
               },
               include: { category: true },
             });

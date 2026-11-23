@@ -58,6 +58,9 @@ model FoodItem {
   expiryDate      DateTime?
   status          ItemStatus      @default(FRESH)
   imageUrl        String?
+  /// Admin catalog product id when the item came from the market (Giỏ hàng); the app shows that product's image
+  /// when the item has no photo of its own. Never copied into imageUrl.
+  productId       String?         @db.VarChar(64)
   barcode         String?         @db.VarChar(32)
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt

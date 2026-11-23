@@ -490,6 +490,8 @@ export class ShoppingListService {
           name: item.name,
           quantity: item.quantity,
           unit: item.unit,
+          // Market products: inventory keeps the catalog id so Kho can show the product image (exact match).
+          ...(item.productId ? { productId: item.productId } : {}),
           ...(extras.categoryName ? { categoryName: extras.categoryName } : {}),
           ...(extras.expiryDate ? { expiryDate: extras.expiryDate } : {}),
         },

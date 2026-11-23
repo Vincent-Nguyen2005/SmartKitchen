@@ -5,7 +5,7 @@ The screen calls the gateway through the shared `gatewayFetch` with the bearer t
 ## Đi chợ (main view)
 
 - Active products from Quản trị > Nguyên liệu (`GET /api/admin/catalog/ingredients`), 20 per page, with the shared `SearchBar` (same box as Kho), group chips when there is more than one group, and "Giảm X%" badges.
-- Tapping a product opens a sheet: image, name, price (discounted price when on sale), quantity stepper and unit, **Thêm vào giỏ**. A Wikimedia Commons photo shows a small credit line "Ảnh: <author>, <license>, Wikimedia Commons"; tapping it opens the file page. The same product and unit already in the cart only gets a higher quantity (server-side merge in shopping-list-service). Toast: "Đã thêm vào giỏ hàng".
+- Tapping a product opens a sheet: image, name, price (discounted price when on sale), quantity stepper and unit, **Thêm vào giỏ**. Image credits are not shown to users (they stay in the catalog and in Quản trị › Nguyên liệu). The same product and unit already in the cart only gets a higher quantity (server-side merge in shopping-list-service). Toast: "Đã thêm vào giỏ hàng".
 - A floating cart button (badge = number of cart lines) opens Giỏ hàng.
 - Auto refresh every 30 s while the tab is open and the app is in the foreground, pull-to-refresh, and refresh after adding.
 

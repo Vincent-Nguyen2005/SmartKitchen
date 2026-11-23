@@ -92,6 +92,16 @@ describe("Giỏ hàng: checkout into Kho", () => {
     expect(mocks.prisma.shoppingList.update).toHaveBeenCalledWith({ where: { id: listId }, data: { status: "COMPLETED", activeFamilyId: null } });
   });
 
+  it("sends the market product id to Kho so the item can show the product image; lines without one send none", async () => {
+    mocks.prisma.shoppingItem.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === fishId ? item({ id: fishId, name: "Cá thu", productId: "prod-fish" }) : item());
+    mocks.prisma.shoppingItem.findMany.mockResolvedValueOnce([item(), item({ id: fishId, name: "Cá thu", productId: "prod-fish" })]).mockResolvedValueOnce([]);
+    mocks.axios.post.mockResolvedValue({ data: { success: true, data: { item: { id: "66666666-6666-4666-8666-666666666666" } } } });
+    await ShoppingListService.checkout(familyId, userId, []);
+    expect(mocks.axios.post.mock.calls[0][1]).not.toHaveProperty("productId");
+    expect(mocks.axios.post.mock.calls[1][1]).toMatchObject({ name: "Cá thu", productId: "prod-fish" });
+  });
+
   it("keeps a failed line in the cart and reports it, without completing the list", async () => {
     mocks.prisma.shoppingItem.findMany.mockResolvedValueOnce([item(), item({ id: fishId, name: "Cá thu" })]);
     mocks.axios.post

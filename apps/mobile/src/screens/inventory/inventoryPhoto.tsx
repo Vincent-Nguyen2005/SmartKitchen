@@ -137,6 +137,8 @@ export async function takeItemPhoto(): Promise<PhotoPickResult> {
 
 type PhotoProps = {
   imageUrl?: string | null;
+  /** Shown only when the item has no photo of its own (the matching catalog product image); display only. */
+  fallbackUrl?: string | null;
   accessToken: string | null;
   style?: StyleProp<ViewStyle>;
   placeholderStyle?: StyleProp<ViewStyle>;
@@ -149,9 +151,11 @@ type PhotoProps = {
  * Item photo or a placeholder. Uploaded photos are family-only, so the request carries the access token:
  * native Image sends headers itself; web Image cannot, so the bytes are fetched and shown from a blob URL.
  */
-export function InventoryPhoto({ imageUrl, accessToken, style, placeholderStyle, accessibilityLabel, placeholder }: PhotoProps): React.JSX.Element {
+export function InventoryPhoto({ imageUrl: ownUrl, fallbackUrl, accessToken, style, placeholderStyle, accessibilityLabel, placeholder }: PhotoProps): React.JSX.Element {
   const [webUri, setWebUri] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  // The family's own photo always wins; the catalog image is used only when there is none.
+  const imageUrl = ownUrl || fallbackUrl || null;
   const source = imageUrl ? photoRequest(imageUrl, accessToken) : null;
   const needsWebFetch = Platform.OS === "web" && !!source?.headers;
 

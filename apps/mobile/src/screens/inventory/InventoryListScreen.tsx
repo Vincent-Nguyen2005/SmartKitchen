@@ -25,6 +25,7 @@ import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
 import { UNIT_LABELS } from "./catalogSuggest";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
+import { catalogImageFor, useCatalogImages } from "./catalogImages";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
@@ -78,6 +79,8 @@ export default function InventoryListScreen({
   onFocusHandled,
 }: Props): React.JSX.Element {
   const { user, family, accessToken, ready } = useSession();
+  // Items without their own photo show the matching catalog product image (display only, never stored).
+  const catalogImages = useCatalogImages(accessToken);
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const isWide = width >= 720;
@@ -352,7 +355,7 @@ export default function InventoryListScreen({
                       width={cardGrid.cardWidth}
                       accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. Mở để sửa, ghi đã dùng hoặc xóa`}
                       onPress={() => (onItemPress ? onItemPress(item) : openEdit(item))}
-                      image={<InventoryPhoto imageUrl={item.imageUrl} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
+                      image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
                       pill={expiry.pill}
                       name={item.name}
                       subtitle={quantityText}
@@ -373,7 +376,7 @@ export default function InventoryListScreen({
               <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
                 {activeItem && (
                   <View style={styles.photoBlock}>
-                    <InventoryPhoto imageUrl={activeItem.imageUrl} accessToken={accessToken} accessibilityLabel={`Ảnh ${activeItem.name}`} style={styles.detailPhoto} />
+                    <InventoryPhoto imageUrl={activeItem.imageUrl} fallbackUrl={catalogImageFor(activeItem, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${activeItem.name}`} style={styles.detailPhoto} />
                     <View style={styles.photoActions}>
                       <Pressable accessibilityRole="button" accessibilityState={{ busy: photoBusy, disabled: photoBusy }} disabled={photoBusy} onPress={() => changePhoto(activeItem)} style={styles.itemAction}>
                         <AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.itemActionText}>{activeItem.imageUrl ? "Đổi ảnh" : "Thêm ảnh"}</Text>

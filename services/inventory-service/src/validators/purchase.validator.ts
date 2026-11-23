@@ -7,6 +7,8 @@ export const applyPurchaseSchema = z.object({
   name: z.string().trim().min(1).max(100),
   quantity: z.number().finite().positive().max(1_000_000),
   unit: z.enum(["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"]),
+  /** Admin catalog product id (Đi chợ); stored on the item so the app can show the product image. */
+  productId: z.string().trim().min(1).max(64).optional(),
   /** Optional group from the market catalog ("Nhóm"); the category is created on first use. */
   categoryName: z.string().trim().min(1).max(50).optional(),
   /** Optional expiry day, YYYY-MM-DD (today + catalog shelf-life days, computed by the caller). */
