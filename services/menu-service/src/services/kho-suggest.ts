@@ -34,6 +34,8 @@ export type SuggestRecipe = {
   /** recipe-service tags for the family health rules (allergy exclusion, condition warnings). */
   allergens?: string[];
   contraindications?: string[];
+  /** recipe-service cuisine: vietnam (default when missing), western, asian. */
+  cuisine?: string | null;
 };
 /** Meal kcal goal while picking the dishes of one meal (see caloriePenalty in family-health.ts). */
 export type MealCalorieGoal = { target: number; servings: number; planned: number };
@@ -170,6 +172,32 @@ export function evaluateRecipe(recipe: SuggestRecipe, kho: KhoItem[], today: str
 }
 
 /**
+ * Balance rule for non-Vietnamese dishes (cuisine western / asian): at most FOREIGN_PER_MEAL per meal and
+ * FOREIGN_PER_DAY per day. They otherwise compete on the same Kho, variety, health and calorie scores.
+ */
+export const FOREIGN_PER_MEAL = 1;
+export const FOREIGN_PER_DAY = 2;
+export const isForeign = (recipe: { cuisine?: string | null }): boolean => typeof recipe.cuisine === "string" && recipe.cuisine !== "" && recipe.cuisine !== "vietnam";
+/** Foreign dishes already in the day (total and per meal, upper-case meal keys); updated as dishes are picked. */
+export type ForeignCount = { day: number; meals: Record<string, number> };
+export const newForeignCount = (): ForeignCount => ({ day: 0, meals: {} });
+/** Counts the foreign dishes among existing items of one day. */
+export function countForeign(items: Array<{ meal: string; foreign: boolean }>): ForeignCount {
+  const count = newForeignCount();
+  for (const item of items) if (item.foreign) addForeign(count, item.meal);
+  return count;
+}
+export function addForeign(count: ForeignCount, meal: string): void {
+  const key = meal.toUpperCase();
+  count.day += 1;
+  count.meals[key] = (count.meals[key] ?? 0) + 1;
+}
+/** A foreign dish may still be added to this meal. */
+export const foreignAllowed = (count: ForeignCount, meal: string): boolean =>
+  count.day < FOREIGN_PER_DAY && (count.meals[meal.toUpperCase()] ?? 0) < FOREIGN_PER_MEAL;
+const withinForeignCap = (recipe: SuggestRecipe, count: ForeignCount, meal: string): boolean => !isForeign(recipe) || foreignAllowed(count, meal);
+
+/**
  * One dish per meal for `day`, best score first, never the same dish twice in a day.
  * Recipes without meal types fit any meal. Returns null for a meal with no suitable recipe.
  */
@@ -177,16 +205,18 @@ export function pickDishes(
   recipes: SuggestRecipe[],
   kho: KhoItem[],
   meals: string[],
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string> },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; foreign?: ForeignCount },
 ): Array<{ meal: string; suggestion: DishSuggestion | null }> {
   const used = new Set<string>();
+  const foreign = options.foreign ?? newForeignCount();
   return meals.map((meal) => {
     const mealName = meal.toLowerCase();
-    const candidates = recipes.filter((recipe) => !used.has(recipe.id) && (recipe.mealTypes.length === 0 || recipe.mealTypes.includes(mealName)));
+    const candidates = recipes.filter((recipe) => !used.has(recipe.id) && (recipe.mealTypes.length === 0 || recipe.mealTypes.includes(mealName)) && withinForeignCap(recipe, foreign, meal));
     const best = candidates
       .map((recipe) => evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, `${options.day}:${mealName}`))
       .sort((left, right) => right.score - left.score)[0] ?? null;
     if (best) used.add(best.recipe.id);
+    if (best && isForeign(best.recipe)) addForeign(foreign, meal);
     return { meal, suggestion: best };
   });
 }
@@ -298,7 +328,7 @@ export function pickMealDishes(
   kho: KhoItem[],
   meal: string,
   count: number,
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal; foreign?: ForeignCount },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   return pickRoleDishes(recipes, kho, meal, roleSlots(meal, count), options);
 }
@@ -309,13 +339,15 @@ export function pickRoleDishes(
   kho: KhoItem[],
   meal: string,
   roles: string[],
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal },
+  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal; foreign?: ForeignCount },
 ): Array<{ role: string; suggestion: DishSuggestion }> {
   const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
+  // Foreign-dish caps: shared with the other meals of the day when the caller passes the day's counter.
+  const foreign = options.foreign ?? newForeignCount();
   // Whole-meal calories: each slot aims at what is left of the family target (updated as dishes are picked).
   const goal = options.calories ? { ...options.calories } : undefined;
   roles.forEach((role, index) => {
-    const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id));
+    const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id) && withinForeignCap(recipe, foreign, meal));
     let pool = open.filter((recipe) => fitsRole(recipe.role, role));
     if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");
     const slotsLeft = roles.length - index;
@@ -323,6 +355,7 @@ export function pickRoleDishes(
       goal ? (recipe) => mealCaloriePenalty(recipe.calories, goal, slotsLeft) : undefined);
     if (!pick) return;
     options.usedIds.add(pick.recipe.id);
+    if (isForeign(pick.recipe)) addForeign(foreign, meal);
     if (goal && pick.recipe.calories != null) goal.planned += pick.recipe.calories * goal.servings;
     picks.push({ role, suggestion: pick });
   });
@@ -338,9 +371,11 @@ export function pickReplacement(
   kho: KhoItem[],
   meal: string,
   role: string | null,
-  options: { today: string; day: string; excludeIds: ReadonlySet<string>; history?: MealHistory },
+  options: { today: string; day: string; excludeIds: ReadonlySet<string>; history?: MealHistory; foreign?: ForeignCount },
 ): DishSuggestion | null {
-  const pool = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.excludeIds.has(recipe.id)
+  // `foreign`: the foreign dishes left in the day without the removed one, so a swap keeps the caps.
+  const foreign = options.foreign ?? newForeignCount();
+  const pool = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.excludeIds.has(recipe.id) && withinForeignCap(recipe, foreign, meal)
     && (role === null ? true : role === "sang" ? fitsRole(recipe.role, "sang") : recipe.role === role));
   return best(varietyPool(pool, meal, options.day, options.history), kho, { today: options.today, recentRecipeIds: new Set() }, `${options.day}:${meal.toLowerCase()}:replace`);
 }

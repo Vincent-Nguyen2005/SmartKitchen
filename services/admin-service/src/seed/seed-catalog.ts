@@ -1,5 +1,5 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-admin";
-import { catalogSeed, type CatalogSeed } from "./catalog.data";
+import { catalogMacros, catalogSeed, type CatalogSeed } from "./catalog.data";
 
 /** Same normalisation as the ingredient routes (search key). */
 const normalize = (value: string): string => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -37,6 +37,7 @@ export async function seedMissingIngredients(client: PrismaClient, seed: Catalog
       defaultUnit: entry.unit,
       shelfLifeDays: entry.shelfLifeDays,
       caloriesPer100g: entry.kcal,
+      ...(catalogMacros[entry.name] ? { proteinPer100g: catalogMacros[entry.name][0], carbsPer100g: catalogMacros[entry.name][1], fatPer100g: catalogMacros[entry.name][2] } : {}),
       allergenTags: [],
     })),
     skipDuplicates: true,

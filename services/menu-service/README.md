@@ -133,6 +133,14 @@ Log line: `[menu-service] family backfill: N menus assigned to families, N archi
 
 `GET /` (gateway: `/api/menu`) returns the family's active menus (or, without a family, the user's). Add `?from=YYYY-MM-DD&to=YYYY-MM-DD` (at most 62 days) to get only the menus that overlap that range. The Thực đơn tab uses this to load a week or a month grid in one request.
 
+## Foreign dishes (balance rule)
+
+recipe-service marks each dish with a `cuisine`: vietnam (default), western or asian. Non-Vietnamese dishes take part in generation, top-up and swaps with the same Kho, variety, family health and calorie rules, but a day gets at most **1 per meal** and **2 per day** (`FOREIGN_PER_MEAL` / `FOREIGN_PER_DAY` in `kho-suggest.ts`).
+- **Generation:** a per-day counter is shared by all meals and passes, so the caps hold for every day of a week menu.
+- **Swaps:** the remaining dishes of the day count, and the removed dish does not.
+- **AI dishes and recipes without a cuisine:** count as Vietnamese.
+- **No UI toggle.**
+
 ## Internal: recipe usage
 
 `GET /internal/recipes/:recipeId/usage` (x-api-key = `INTERNAL_API_KEY`; the gateway answers 404 for `/internal/*`) returns `{ menuItems, removedDishes }`: saved menu items (any family, past or future) and dislike-history rows with that recipe id. recipe-service calls it before deleting a dish. Saved AI dishes keep their own copy and have no recipe id, so they never count.

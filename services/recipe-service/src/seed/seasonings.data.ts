@@ -51,6 +51,21 @@ const BY_NAME: Record<string, SeasoningLine[]> = {
   "Nước chanh": [line("Đường", "2 muỗng canh")],
   "Bánh canh cua": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu điều", "1 muỗng canh")],
   "Mì Quảng": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu điều", "1 muỗng canh")],
+  // Foreign dishes (no fish sauce by default).
+  "Mì Ý sốt bò bằm": [line("Dầu ăn", "2 muỗng canh"), line("Muối", "1/2 muỗng cà phê"), line("Đường", "1 muỗng cà phê"), line("Tiêu", "vừa ăn")],
+  "Cà ri gà kiểu Nhật": [line("Muối", "1/2 muỗng cà phê"), line("Đường", "1 muỗng cà phê"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
+  "Kimbap": [line("Dầu mè", "1 muỗng canh"), line("Muối", "1/2 muỗng cà phê"), line("Dầu ăn", "1 muỗng cà phê")],
+  "Cá hồi áp chảo": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
+  "Súp bí đỏ kem": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn")],
+  "Salad trộn dầu giấm": [line("Dầu ô liu", "2 muỗng canh"), line("Giấm", "1 muỗng canh"), line("Đường", "1 muỗng cà phê"), line("Muối", "1/4 muỗng cà phê"), line("Tiêu", "vừa ăn")],
+  "Trứng cuộn kiểu Hàn": [line("Muối", "1/2 muỗng cà phê"), line("Dầu ăn", "1 muỗng canh")],
+  "Bánh mì sandwich trứng": [line("Dầu ăn", "1 muỗng cà phê"), line("Tiêu", "vừa ăn")],
+  "Gà sốt cay kiểu Hàn": [line("Dầu ăn", "2 muỗng canh"), line("Đường", "1 muỗng canh"), line("Nước tương", "1 muỗng canh"), line("Muối", "1/2 muỗng cà phê")],
+  "Canh kim chi đậu phụ": [line("Muối", "1/2 muỗng cà phê"), line("Nước tương", "1 muỗng canh"), line("Dầu ăn", "1 muỗng cà phê")],
+  "Cơm chiên kim chi": [line("Dầu ăn", "2 muỗng canh"), line("Nước tương", "1 muỗng canh"), line("Đường", "1 muỗng cà phê"), line("Dầu mè", "1 muỗng cà phê")],
+  "Bò bít tết": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "1 muỗng canh")],
+  "Khoai tây nghiền": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn")],
+  "Súp nấm kem": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn")],
   "Bánh cuốn": [line("Nước mắm", "3 muỗng canh"), line("Đường", "2 muỗng canh"), line("Hạt nêm", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
 };
 

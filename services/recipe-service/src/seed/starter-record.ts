@@ -35,6 +35,7 @@ export function starterRecord(recipe: SeedRecipe) {
     description: recipe.description,
     mealTypes: [...recipe.mealTypes],
     role,
+    cuisine: recipe.cuisine ?? "vietnam",
     servings: recipe.servings,
     preparationMinutes: recipe.preparationMinutes,
     calories: recipe.calories,

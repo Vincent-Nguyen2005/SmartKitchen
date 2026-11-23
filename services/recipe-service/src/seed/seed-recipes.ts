@@ -22,6 +22,7 @@ const toData = (recipe: SeedRecipe) => ({
   isActive: true,
   steps: stepsFor(recipe) ?? Prisma.DbNull,
   role: seedRole(recipe),
+  cuisine: recipe.cuisine ?? "vietnam",
 });
 
 /**

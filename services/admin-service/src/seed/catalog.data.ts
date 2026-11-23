@@ -71,4 +71,22 @@ export const catalogSeed: CatalogSeed[] = [
   // Đồ đông lạnh
   dongLanh("Xúc xích", "sausage", 30, 300), dongLanh("Chả giò", "cha gio spring rolls", 90, 250), dongLanh("Há cảo", "har gow dumplings", 90, 220),
   item("Đồ đông lạnh", "BOX")("Kem", "ice cream", 180, 207), dongLanh("Đậu Hà Lan", "green peas", 180, 81),
+  // For foreign home dishes (Mì Ý, cà ri Nhật, kimbap, món Hàn, súp kem...). "Mè" already covers mè rang.
+  khoGoi("Mì Ý", "spaghetti pasta", 365, 371), khoGoi("Rong biển", "nori seaweed sheets", 180, 188), khoGoi("Bánh mì sandwich", "sliced white bread", 5, 265),
+  giaVi("Sốt cà chua", "tomato pasta sauce", 180, 50), giaViGoi("Bột cà ri", "curry powder", 365, 325), item("Gia vị", "BOX")("Tương ớt Hàn", "gochujang", 365, 230),
+  sua("Kem tươi", "whipping cream", 14, 340), traiCay("Quả bơ", "avocado fruit", 5, 160), rauCai("Ớt chuông", "bell pepper", 7, 31),
+  rau("Nấm mỡ", "button mushroom", 5, 22), item("Thịt", "PACK")("Thịt xông khói", "bacon", 14, 417), item("Rau củ", "PACK")("Kim chi", "kimchi", 30, 15),
 ];
+
+/**
+ * Protein / carbs / fat per 100 g for the staples (general food-composition values; carbs net of fiber so that
+ * 4 / 4 / 9 kcal per gram adds up to the kcal above within 5%). Stored on new rows by the startup seed.
+ */
+export const catalogMacros: Record<string, [protein: number, carbs: number, fat: number]> = {
+  "Gạo": [7.1, 79, 0.7], "Thịt bò": [26, 0, 17], "Thịt heo": [17, 0, 19], "Thịt gà": [18.6, 0, 15], "Trứng gà": [12.6, 0.7, 9.5],
+  "Tôm": [24, 0.2, 0.3], "Cá basa": [15, 0, 3.4], "Đậu phụ": [8, 1.9, 4.2], "Lạc": [25.8, 13, 45], "Đậu xanh": [23.9, 62.6, 1.2],
+  "Sữa tươi": [3.2, 4.8, 3.3], "Sữa chua": [3.5, 4.7, 3.3], "Chuối": [1.1, 20.2, 0.3], "Cam": [0.9, 10.5, 0.1], "Cà chua": [0.9, 3.3, 0.2],
+  "Cà rốt": [0.9, 9, 0.2], "Bắp cải": [1.3, 4.8, 0.1], "Rau muống": [2.6, 1.8, 0.2], "Bí đỏ": [1, 5.3, 0.1], "Bông cải xanh": [2.8, 4.8, 0.4],
+  "Cải thìa": [1.5, 1.4, 0.2], "Dưa leo": [0.7, 2.8, 0.1], "Gừng": [1.8, 16.4, 0.8], "Hành tây": [1.1, 8.7, 0.1], "Khoai tây": [2, 17.5, 0.1],
+  "Nấm rơm": [3.8, 2.6, 0.7], "Táo": [0.3, 12.3, 0.2], "Thanh long": [1.2, 13, 0.4], "Tỏi": [6.4, 29.8, 0.5], "Đậu que": [1.8, 5.4, 0.2],
+};
