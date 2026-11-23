@@ -38,6 +38,20 @@ const BY_NAME: Record<string, SeasoningLine[]> = {
   "Sữa đậu nành": [line("Đường", "vừa ăn")],
   "Nước cam": [line("Đường", "vừa ăn")],
   "Sinh tố chuối": [line("Đường", "vừa ăn")],
+  // Recipe review corrections (spices, broth seasoning, oil the steps use).
+  "Phở bò": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Hoa hồi", "3 cánh"), line("Quế", "1 thanh nhỏ")],
+  "Hủ tiếu Nam Vang": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Tỏi phi", "1 muỗng canh")],
+  "Bún bò Huế": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Mắm ruốc", "1 muỗng canh")],
+  "Bún riêu cua": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu ăn", "2 muỗng canh")],
+  "Bò kho": [line("Nước mắm", "2 muỗng canh"), line("Đường", "1 muỗng canh"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "2 muỗng canh"), line("Hạt nêm", "vừa ăn"), line("Ngũ vị hương", "1/2 muỗng cà phê"), line("Dầu điều", "1 muỗng canh")],
+  "Canh trứng cà chua": [line("Muối", "1/2 muỗng cà phê"), line("Hạt nêm", "1 muỗng cà phê"), line("Nước mắm", "1 muỗng canh"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
+  "Trứng xào cà chua": [line("Nước mắm", "1 muỗng canh"), line("Đường", "1 muỗng cà phê"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "2 muỗng canh"), line("Hạt nêm", "vừa ăn")],
+  // New dishes.
+  "Dưa leo chấm muối": [line("Muối", "1 muỗng cà phê"), line("Ớt", "vừa ăn"), line("Chanh", "1/2 quả")],
+  "Nước chanh": [line("Đường", "2 muỗng canh")],
+  "Bánh canh cua": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu điều", "1 muỗng canh")],
+  "Mì Quảng": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu điều", "1 muỗng canh")],
+  "Bánh cuốn": [line("Nước mắm", "3 muỗng canh"), line("Đường", "2 muỗng canh"), line("Hạt nêm", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
 };
 
 const key = (name: string) => name.normalize("NFC").trim().toLocaleLowerCase("vi");
