@@ -46,17 +46,17 @@ export const catalogSeed: CatalogSeed[] = [
   traiCay("Ổi", "guava", 5, 68), traiCay("Chanh", "lime fruit", 14, 30), traiCayKg("Nho", "grapes", 7, 69),
   // Thịt
   thit("Thịt heo", "pork meat", 3, 242), thit("Thịt ba chỉ", "pork belly", 3, 518), thit("Sườn heo", "pork ribs", 3, 277),
-  thit("Thịt bò", "beef meat", 3, 250), thit("Thịt gà", "chicken meat", 2, 239), thit("Đùi gà", "chicken drumstick", 2, 214),
+  thit("Thịt bò", "beef meat", 3, 250), thit("Thịt gà", "chicken meat", 2, 215), thit("Đùi gà", "chicken drumstick", 2, 214),
   thit("Thịt vịt", "duck meat", 2, 337), thit("Thịt heo xay", "ground pork", 2, 263),
   // Hải sản
   haiSan("Cá basa", "pangasius fillet", 2, 90), haiSan("Cá thu", "mackerel fish", 2, 205), haiSan("Cá hồi", "salmon fillet", 2, 208),
   haiSan("Tôm", "shrimp", 2, 99), haiSan("Mực", "squid", 2, 92), haiSan("Cua đồng", "freshwater crab", 1, 87),
   haiSan("Nghêu", "clams", 1, 74),
   // Trứng & sữa
-  trung("Trứng gà", "chicken eggs", 21, 155), trung("Trứng vịt", "duck eggs", 21, 185), sua("Sữa tươi", "milk carton", 7, 42),
+  trung("Trứng gà", "chicken eggs", 21, 143), trung("Trứng vịt", "duck eggs", 21, 185), sua("Sữa tươi", "milk carton", 7, 62),
   sua("Sữa chua", "yogurt", 14, 61), item("Trứng & sữa", "PACK")("Phô mai", "cheese", 30, 402), item("Trứng & sữa", "PACK")("Bơ", "butter", 60, 717),
   // Đồ khô & gạo
-  khoKg("Gạo", "rice grains", 365, 365), khoKg("Gạo nếp", "glutinous rice", 365, 370), khoGoi("Bún", "rice vermicelli", 3, 110),
+  khoKg("Gạo", "rice grains", 365, 360), khoKg("Gạo nếp", "glutinous rice", 365, 370), khoGoi("Bún", "rice vermicelli", 3, 110),
   khoGoi("Bánh phở", "pho noodles", 3, 110), khoGoi("Mì gói", "instant noodles", 180, 436), khoGoi("Miến", "glass noodles", 365, 351),
   kho("Đậu xanh", "mung beans", 365, 347), kho("Lạc", "peanuts", 180, 567), item("Đồ khô & gạo", "PIECE")("Đậu phụ", "tofu", 3, 76),
   khoKg("Bột mì", "wheat flour", 180, 364), kho("Đậu đen", "black beans", 365, 341), kho("Mè", "sesame seeds", 180, 573),

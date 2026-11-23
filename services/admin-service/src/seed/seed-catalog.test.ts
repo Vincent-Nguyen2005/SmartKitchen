@@ -53,4 +53,9 @@ describe("starter catalog seed", () => {
   it("no longer lists Nước suối", () => {
     expect(catalogSeed.some((entry) => entry.name === "Nước suối")).toBe(false);
   });
+
+  it("uses real kcal per 100 g for the staples (no 50 kcal placeholder)", () => {
+    const kcal = Object.fromEntries(catalogSeed.map((entry) => [entry.name, entry.kcal]));
+    expect(kcal).toMatchObject({ "Gạo": 360, "Thịt bò": 250, "Thịt heo": 242, "Thịt gà": 215, "Trứng gà": 143, "Tôm": 99, "Cá basa": 90, "Đậu phụ": 76, "Lạc": 567, "Đậu xanh": 347, "Sữa tươi": 62, "Sữa chua": 61, "Chuối": 89, "Cam": 47, "Cà chua": 18, "Cà rốt": 41, "Bắp cải": 25, "Rau muống": 19 });
+  });
 });

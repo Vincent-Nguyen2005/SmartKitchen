@@ -9,11 +9,12 @@ type StepRow = [instruction: string, seconds: number | null, ingredients: string
  */
 const STEPS: Record<string, StepRow[]> = {
   "Phở bò": [
-    ["Nướng thơm hành tây và gừng trên bếp", 300, ["Hành tây", "Gừng"]],
-    ["Cho hành, gừng vào nồi nước, đun sôi rồi hạ lửa ninh nước dùng", 1800, []],
-    ["Thái thịt bò thật mỏng", null, ["Thịt bò"]],
-    ["Trụng bánh phở qua nước sôi rồi cho ra tô", 30, ["Bánh phở"]],
-    ["Xếp thịt bò lên bánh, chan nước dùng thật sôi, rắc hành lá", null, ["Hành lá"]],
+    ["Chần xương bò 5 phút, rửa sạch", 300, ["Xương bò"]],
+    ["Ninh xương lửa nhỏ, hớt bọt", 7200, []],
+    ["Nướng thơm hành tây và gừng, cho vào nồi cùng hoa hồi, quế, ninh thêm", 3600, ["Hành tây", "Gừng"]],
+    ["Nêm nước dùng vừa ăn", 120, []],
+    ["Thái thịt bò thật mỏng; trụng bánh phở qua nước sôi rồi cho ra tô", 30, ["Thịt bò", "Bánh phở"]],
+    ["Xếp thịt bò lên bánh, chan nước dùng đang sôi, rắc hành lá", null, ["Hành lá"]],
   ],
   "Bánh mì trứng ốp la": [
     ["Rửa sạch, thái lát dưa leo và cà chua", null, ["Dưa leo", "Cà chua"]],
@@ -27,12 +28,12 @@ const STEPS: Record<string, StepRow[]> = {
     ["Để ráo, trộn gạo nếp với đậu xanh và chút muối", null, []],
     ["Hấp xôi đến khi hạt nếp chín dẻo", 1800, []],
     ["Phi hành tím với dầu đến khi vàng giòn", 120, ["Hành tím"]],
-    ["Xới xôi ra đĩa, rắc hành phi lên trên", null, []],
+    ["Xới xôi ra đĩa, rắc hành phi, ăn kèm đường tùy thích", null, []],
   ],
   "Cháo gà": [
     ["Vo sạch gạo, rang sơ cho thơm", 180, ["Gạo"]],
     ["Luộc thịt gà với gừng đến khi chín", 1200, ["Thịt gà", "Gừng"]],
-    ["Vớt gà ra xé nhỏ, cho gạo vào nước luộc gà nấu cháo", 1200, []],
+    ["Vớt gà ra xé nhỏ, cho gạo vào nước luộc gà nấu cháo", 1800, []],
     ["Cho thịt gà xé vào cháo, nêm vừa ăn", 120, []],
     ["Múc ra tô, rắc hành lá", null, ["Hành lá"]],
   ],
@@ -43,28 +44,32 @@ const STEPS: Record<string, StepRow[]> = {
     ["Múc cháo ra bát, xếp chuối lên trên", null, []],
   ],
   "Bún riêu cua": [
-    ["Lọc cua lấy nước, để riêng phần gạch", null, ["Cua đồng"]],
+    ["Giã hoặc xay cua với chút muối, lọc lấy nước, để riêng phần gạch", null, ["Cua đồng"]],
     ["Đun nước cua lửa nhỏ đến khi riêu nổi lên", 900, []],
     ["Phi thơm rồi xào cà chua cho mềm", 180, ["Cà chua"]],
-    ["Cho cà chua, đậu phụ chiên và trứng đánh tan vào nồi", 300, ["Đậu phụ", "Trứng gà"]],
+    ["Cắt đậu phụ, chiên vàng", 480, ["Đậu phụ"]],
+    ["Cho cà chua, đậu phụ chiên và trứng đánh tan vào nồi, nêm vừa ăn", 300, ["Trứng gà"]],
     ["Trụng bún, cho ra tô và chan nước riêu", null, ["Bún"]],
   ],
   "Hủ tiếu Nam Vang": [
+    ["Chần xương heo 5 phút, rửa sạch", 300, ["Xương heo"]],
+    ["Ninh xương lấy nước dùng, hớt bọt", 5400, []],
+    ["Nêm nước dùng vừa ăn", 120, []],
     ["Luộc thịt heo trong nồi nước dùng", 900, ["Thịt heo"]],
     ["Vớt thịt ra thái lát, cho tôm vào luộc chín", 180, ["Tôm"]],
-    ["Trụng hủ tiếu và giá đỗ", 30, ["Hủ tiếu", "Giá đỗ"]],
-    ["Xếp hủ tiếu, thịt, tôm ra tô và chan nước dùng", null, []],
+    ["Trụng hủ tiếu và giá đỗ, xếp ra tô cùng thịt, tôm, chan nước dùng, rắc tỏi phi", 30, ["Hủ tiếu", "Giá đỗ"]],
   ],
   "Bún bò Huế": [
     ["Đập dập sả, cho vào nồi nước cùng giò heo", null, ["Sả", "Giò heo"]],
     ["Ninh giò heo đến khi mềm", 3600, []],
+    ["Hòa mắm ruốc với nước, lọc lấy nước cho vào nồi, nêm vừa ăn", 300, []],
     ["Cho thịt bò vào luộc chín rồi vớt ra thái lát", 900, ["Thịt bò"]],
     ["Trụng bún, cho ra tô", 30, ["Bún"]],
     ["Xếp thịt bò, giò heo lên bún và chan nước dùng", null, []],
   ],
   "Bò kho": [
-    ["Cắt thịt bò miếng vừa ăn, ướp với sả băm", 900, ["Thịt bò", "Sả"]],
-    ["Xào săn thịt bò", 300, []],
+    ["Cắt thịt bò miếng vừa ăn, ướp với sả, tỏi, hành tím băm, ngũ vị hương, nước mắm, đường", 900, ["Thịt bò", "Sả", "Tỏi", "Hành tím"]],
+    ["Phi dầu điều, xào săn thịt bò", 300, []],
     ["Đổ nước ngập thịt, hầm lửa nhỏ", 3600, []],
     ["Cho cà rốt vào hầm đến khi mềm", 900, ["Cà rốt"]],
     ["Múc ra bát, ăn kèm bánh mì", null, ["Bánh mì"]],
@@ -82,10 +87,12 @@ const STEPS: Record<string, StepRow[]> = {
     ["Hạ lửa nhỏ kho đến khi nước sánh lại", 600, []],
   ],
   "Canh chua cá": [
+    ["Làm sạch cá, cắt khúc, ướp chút muối và nước mắm", 600, ["Cá basa"]],
     ["Đun sôi nồi nước", 300, []],
     ["Cho dứa và cà chua vào nấu", 180, ["Dứa", "Cà chua"]],
-    ["Cho cá vào nấu chín", 420, ["Cá basa"]],
+    ["Cho cá vào nấu chín", 420, []],
     ["Thêm đậu bắp và giá đỗ, nêm chua ngọt", 120, ["Đậu bắp", "Giá đỗ"]],
+    ["Rắc rau thơm (ngò gai, rau om) rồi tắt bếp", null, ["Rau thơm"]],
   ],
   "Rau muống xào tỏi": [
     ["Nhặt, rửa sạch rau muống, để ráo", null, ["Rau muống"]],
@@ -100,7 +107,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Nêm vừa ăn, rắc hành lá", null, ["Hành lá"]],
   ],
   "Gà kho gừng": [
-    ["Chặt gà miếng vừa ăn, ướp với hành tím", 900, ["Thịt gà", "Hành tím"]],
+    ["Chặt gà miếng vừa ăn, ướp với hành tím, nước mắm, đường, tiêu", 900, ["Thịt gà", "Hành tím"]],
     ["Phi thơm gừng thái sợi", 60, ["Gừng"]],
     ["Cho gà vào xào săn", 300, []],
     ["Thêm chút nước, kho lửa nhỏ đến khi gà thấm", 1200, []],
@@ -112,7 +119,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Rắc hành lá rồi tắt bếp", null, ["Hành lá"]],
   ],
   "Trứng xào cà chua": [
-    ["Đánh tan trứng với chút muối", null, ["Trứng gà"]],
+    ["Đánh tan trứng với chút nước mắm", null, ["Trứng gà"]],
     ["Xào cà chua cho mềm", 180, ["Cà chua"]],
     ["Đổ trứng vào, đảo nhẹ đến khi trứng vừa chín", 120, []],
     ["Rắc hành lá rồi tắt bếp", null, ["Hành lá"]],
@@ -133,13 +140,13 @@ const STEPS: Record<string, StepRow[]> = {
   "Sườn xào chua ngọt": [
     ["Chặt sườn miếng nhỏ, chần qua nước sôi", 180, ["Sườn heo"]],
     ["Chiên sườn vàng các mặt", 600, []],
-    ["Xào hành tây, cà chua và dứa", 180, ["Hành tây", "Cà chua", "Dứa"]],
-    ["Cho sườn vào, rim lửa nhỏ đến khi sốt sánh", 600, []],
+    ["Phi tỏi, xào hành tây, cà chua và dứa, thêm tương cà", 180, ["Hành tây", "Cà chua", "Dứa"]],
+    ["Cho sườn vào, rim lửa nhỏ đến khi sốt sánh", 900, []],
   ],
   "Tôm rim": [
     ["Rửa sạch tôm, cắt râu", null, ["Tôm"]],
     ["Phi thơm tỏi", 60, ["Tỏi"]],
-    ["Cho tôm vào rim lửa vừa", 480, []],
+    ["Cho tôm vào rim cùng nước mắm, đường lửa vừa đến khi sánh", 480, []],
     ["Rắc hành lá rồi tắt bếp", null, ["Hành lá"]],
   ],
   "Cơm chiên dương châu": [
@@ -158,8 +165,8 @@ const STEPS: Record<string, StepRow[]> = {
   "Gỏi cuốn tôm thịt": [
     ["Luộc thịt ba chỉ đến khi chín", 1200, ["Thịt ba chỉ"]],
     ["Luộc tôm, bóc vỏ, chẻ đôi", 180, ["Tôm"]],
-    ["Thái mỏng thịt, chuẩn bị bún và xà lách", null, ["Bún", "Xà lách"]],
-    ["Nhúng bánh tráng, cuốn tôm, thịt, bún và rau", null, ["Bánh tráng"]],
+    ["Thái mỏng thịt, chuẩn bị bún, xà lách và rau thơm", null, ["Bún", "Xà lách", "Rau thơm"]],
+    ["Nhúng bánh tráng, cuốn tôm, thịt, bún, xà lách và rau thơm", null, ["Bánh tráng"]],
   ],
   "Mực xào cần tây": [
     ["Làm sạch mực, khứa vảy rồng, cắt miếng", null, ["Mực"]],
@@ -175,7 +182,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Xới xôi ra đĩa, xếp gà xé và hành phi lên trên", null, []],
   ],
   "Cháo thịt bằm": [
-    ["Vo sạch gạo, cho vào nồi nước nấu nhừ", 1200, ["Gạo"]],
+    ["Vo sạch gạo, cho vào nồi nước nấu nhừ", 2400, ["Gạo"]],
     ["Ướp thịt heo xay với chút gia vị", 300, ["Thịt heo xay"]],
     ["Cho thịt vào cháo, khuấy tơi cho chín", 300, []],
     ["Nêm vừa ăn, rắc hành lá", null, ["Hành lá"]],
@@ -195,7 +202,7 @@ const STEPS: Record<string, StepRow[]> = {
   "Sữa đậu nành": [
     ["Ngâm đậu nành qua đêm cho nở", null, ["Đậu nành"]],
     ["Xay đậu nành với nước, lọc lấy nước sữa", null, []],
-    ["Đun sữa lửa nhỏ, khuấy đều đến khi sôi", 900, []],
+    ["Đun sữa lửa vừa, khuấy đều; khi sôi hạ lửa đun thêm 10 phút, hớt bọt", 1500, []],
     ["Để nguội bớt, thêm đường tùy thích", null, []],
   ],
   "Nước cam": [
@@ -243,7 +250,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Nêm vừa ăn rồi tắt bếp", null, []],
   ],
   "Canh trứng cà chua": [
-    ["Xào cà chua với chút dầu", 120, ["Cà chua"]],
+    ["Phi dầu, xào cà chua cho mềm", 120, ["Cà chua"]],
     ["Đổ nước vào, đun sôi", 300, []],
     ["Đổ trứng đánh tan vào, khuấy nhẹ", 60, ["Trứng gà"]],
     ["Nêm vừa ăn, rắc hành lá", null, ["Hành lá"]],
@@ -258,7 +265,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Tách lá bắp cải, rửa sạch", null, ["Bắp cải"]],
     ["Đun sôi nước", 300, []],
     ["Luộc bắp cải đến khi mềm", 300, []],
-    ["Vớt ra đĩa, ăn kèm trứng dầm nước mắm", null, []],
+    ["Vớt ra đĩa, chấm nước mắm", null, []],
   ],
   "Đậu bắp luộc": [
     ["Rửa sạch đậu bắp, cắt cuống", null, ["Đậu bắp"]],
@@ -293,6 +300,94 @@ const STEPS: Record<string, StepRow[]> = {
     ["Bổ khổ qua, bỏ ruột, nhồi nhân thịt", null, ["Khổ qua"]],
     ["Đun sôi nước, thả khổ qua vào", 300, []],
     ["Hạ lửa nấu đến khi khổ qua mềm", 1200, []],
+  ],
+  "Su su luộc": [
+    ["Gọt vỏ su su, cắt múi cau", null, ["Su su"]],
+    ["Đun sôi nước với chút muối", 300, []],
+    ["Luộc su su đến khi mềm", 300, []],
+    ["Vớt ra đĩa, chấm muối mè hoặc nước mắm", null, []],
+  ],
+  "Cải ngọt luộc": [
+    ["Nhặt, rửa sạch cải ngọt, cắt khúc", null, ["Cải ngọt"]],
+    ["Đun sôi nước với chút muối", 300, []],
+    ["Luộc cải chín tới", 120, []],
+    ["Vớt ra, chấm nước mắm", null, []],
+  ],
+  "Rau lang luộc": [
+    ["Nhặt lấy ngọn rau lang, rửa sạch", null, ["Rau lang"]],
+    ["Đun sôi nước với chút muối", 300, []],
+    ["Luộc rau lang chín tới", 120, []],
+    ["Vớt ra, chấm nước mắm tỏi", null, []],
+  ],
+  "Bông cải xanh luộc": [
+    ["Cắt bông cải xanh thành nhánh nhỏ, ngâm nước muối, rửa sạch", 300, ["Bông cải xanh"]],
+    ["Đun sôi nước với chút muối", 300, []],
+    ["Luộc bông cải vừa chín, còn giòn xanh", 180, []],
+    ["Vớt ra, chấm nước mắm", null, []],
+  ],
+  "Đậu que luộc": [
+    ["Tước xơ, rửa sạch đậu que, cắt khúc", null, ["Đậu que"]],
+    ["Đun sôi nước với chút muối", 300, []],
+    ["Luộc đậu que chín tới", 240, []],
+    ["Vớt ra, chấm nước mắm", null, []],
+  ],
+  "Dưa leo chấm muối": [
+    ["Rửa sạch dưa leo", null, ["Dưa leo"]],
+    ["Ngâm dưa leo trong nước muối loãng", 300, []],
+    ["Cắt khúc hoặc chẻ dọc dưa leo", null, []],
+    ["Pha muối với ớt và vắt chút chanh để chấm", null, []],
+  ],
+  "Sữa tươi nóng": [
+    ["Đun sữa tươi lửa nhỏ đến khi nóng, không để sôi trào", 240, ["Sữa tươi"]],
+    ["Rót ra cốc, uống khi còn ấm", null, []],
+  ],
+  "Nước chanh": [
+    ["Vắt chanh, lọc bỏ hạt", null, ["Chanh"]],
+    ["Pha nước cốt chanh với nước và đường, khuấy tan, thêm đá", null, []],
+  ],
+  "Trà xanh nóng": [
+    ["Tráng ấm bằng nước sôi", null, []],
+    ["Cho trà vào ấm, rót nước khoảng 80-90 độ, hãm", 180, ["Trà xanh"]],
+    ["Rót trà ra chén", null, []],
+  ],
+  "Sinh tố bơ": [
+    ["Bổ đôi quả bơ, bỏ hạt, nạo lấy thịt", null, ["Quả bơ"]],
+    ["Xay bơ với sữa tươi, sữa đặc và đá đến khi mịn", 60, ["Sữa tươi", "Sữa đặc"]],
+  ],
+  "Nước ép dưa hấu": [
+    ["Bỏ vỏ, cắt miếng, bỏ hạt dưa hấu", null, ["Dưa hấu"]],
+    ["Ép hoặc xay dưa hấu, lọc lấy nước, thêm đá", 60, []],
+  ],
+  "Bánh canh cua": [
+    ["Chần xương heo 5 phút, rửa sạch", 300, ["Xương heo"]],
+    ["Ninh xương lấy nước dùng, hớt bọt", 5400, []],
+    ["Luộc tôm, bóc vỏ", 180, ["Tôm"]],
+    ["Phi hành tím với dầu điều, xào thịt cua cho thơm", 180, ["Hành tím", "Thịt cua"]],
+    ["Cho cua, tôm vào nồi nước dùng, nêm vừa ăn", 300, []],
+    ["Trụng bánh canh, cho ra tô, chan nước dùng, rắc hành lá", 60, ["Bánh canh", "Hành lá"]],
+  ],
+  "Mì Quảng": [
+    ["Thái thịt heo miếng vừa ăn, ướp với hành tím băm và nước mắm", 900, ["Thịt heo", "Hành tím"]],
+    ["Phi dầu điều, xào thịt heo săn lại", 300, []],
+    ["Cho tôm vào, thêm ít nước, nấu lửa nhỏ đến khi thịt chín mềm, nêm vừa ăn", 600, ["Tôm"]],
+    ["Rang lạc vàng, giã dập", 300, ["Lạc"]],
+    ["Trụng mì Quảng, cho ra tô cùng rau sống", 30, ["Mì Quảng", "Rau sống"]],
+    ["Chan ít nước nhân, rắc lạc rang", null, []],
+  ],
+  "Bánh cuốn": [
+    ["Ngâm nấm mèo cho nở, băm nhỏ", 900, ["Nấm mèo"]],
+    ["Phi hành tím, xào thịt heo xay với nấm mèo đến khi chín, nêm vừa ăn", 480, ["Hành tím", "Thịt heo xay"]],
+    ["Hấp nóng bánh cuốn", 120, ["Bánh cuốn"]],
+    ["Trải bánh, cho nhân vào, cuộn lại", null, []],
+    ["Thái chả lụa, xếp kèm bánh cuốn, chấm nước mắm chua ngọt", null, ["Chả lụa"]],
+  ],
+  "Bún mọc": [
+    ["Chần xương heo 5 phút, rửa sạch", 300, ["Xương heo"]],
+    ["Ninh xương lấy nước dùng, hớt bọt", 5400, []],
+    ["Ngâm nấm hương, thái nhỏ, trộn với giò sống và hành tím băm", 600, ["Nấm hương", "Giò sống", "Hành tím"]],
+    ["Viên mọc, thả vào nồi nước dùng đang sôi, nấu đến khi mọc nổi lên và chín hẳn", 480, []],
+    ["Nêm nước dùng vừa ăn", 120, []],
+    ["Trụng bún, cho ra tô, thêm mọc, chan nước dùng, rắc hành lá", 30, ["Bún", "Hành lá"]],
   ],
 };
 

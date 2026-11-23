@@ -9,9 +9,9 @@ import { seedRecipes, seedRole, type SeedRecipe } from "./recipes.data";
  * Words are matched whole, lower case WITH accents ("cá" is not "cà", "mì" is not "mì chính").
  *
  * Allergens (from ingredient names, seasonings included):
- *   tôm / cua / mực → that seafood + Hải sản; hải sản, nghêu, sò, hến, ốc → Hải sản; cá → Cá; trứng → Trứng;
+ *   tôm / cua / mực → that seafood + Hải sản; hải sản, nghêu, sò, hến, ốc, ruốc (mắm ruốc) → Hải sản; cá → Cá; trứng → Trứng;
  *   sữa (not "sữa đậu nành") → Sữa; đậu phộng, lạc → Đậu phộng; đậu nành, đậu phụ, đậu hũ, nước tương, xì dầu → Đậu nành;
- *   gluten, lúa mì, bột mì, bánh mì, mì, bột chiên → Gluten; mè, vừng → Mè.
+ *   gluten, lúa mì, bột mì, bánh mì, mì, bột chiên → Gluten (not mì chính, not mì Quảng: rice noodles); mè, vừng → Mè.
  *   (Nước mắm is not tagged as Cá: it is in almost every dish and would empty the menu of a fish-allergic family.)
  * Contraindications (simple, conservative):
  *   Tiểu đường: chè, "chua ngọt", sweet drinks (drinks with sugar), desserts with sugar, condensed milk or coconut cream.
@@ -30,13 +30,13 @@ const ALLERGEN_RULES: Array<{ words: string[]; tags: string[]; unless?: string[]
   { words: ["tôm"], tags: ["Tôm", "Hải sản"] },
   { words: ["cua"], tags: ["Cua", "Hải sản"] },
   { words: ["mực"], tags: ["Mực", "Hải sản"] },
-  { words: ["hải sản", "nghêu", "sò", "hến", "ốc"], tags: ["Hải sản"] },
+  { words: ["hải sản", "nghêu", "sò", "hến", "ốc", "ruốc"], tags: ["Hải sản"] },
   { words: ["cá"], tags: ["Cá"] },
   { words: ["trứng"], tags: ["Trứng"] },
   { words: ["sữa"], tags: ["Sữa"], unless: ["sữa đậu nành"] },
   { words: ["đậu phộng", "lạc"], tags: ["Đậu phộng"] },
   { words: ["đậu nành", "đậu phụ", "đậu hũ", "tàu hũ", "nước tương", "xì dầu"], tags: ["Đậu nành"] },
-  { words: ["gluten", "lúa mì", "bột mì", "bánh mì", "mì", "bột chiên"], tags: ["Gluten"], unless: ["mì chính"] },
+  { words: ["gluten", "lúa mì", "bột mì", "bánh mì", "mì", "bột chiên"], tags: ["Gluten"], unless: ["mì chính", "mì quảng"] },
   { words: ["mè", "vừng"], tags: ["Mè"] },
 ];
 
