@@ -2,7 +2,8 @@ import React, { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius, spacing, textStyles, touchTarget } from "../theme";
 
-type Request = { title: string; message: string; confirmLabel: string };
+/** cancelLabel defaults to "Hủy". */
+type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string };
 
 /**
  * In-app yes/no dialog (same look as the Giỏ hàng checkout confirmation). Not Alert.alert or window.confirm:
@@ -32,7 +33,7 @@ export function useConfirm() {
         <Text style={local.title} accessibilityRole="header">{request.title}</Text>
         <Text style={local.message}>{request.message}</Text>
         <View style={local.actions}>
-          <Pressable accessibilityRole="button" onPress={() => answer(false)} style={local.cancel}><Text style={local.cancelText}>Hủy</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => answer(false)} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>
           <Pressable accessibilityRole="button" onPress={() => answer(true)} style={local.primary}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
         </View>
       </View>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { BadgePercent, Carrot, Pencil, Plus, Save, Search, SearchX, TriangleExclamationPoint, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
@@ -19,6 +19,10 @@ type Ingredient = {
   allergenTags: string[];
   isActive: boolean;
   imageUrl: string | null;
+  /** Credit of a Wikimedia Commons image (scripts/fill-catalog-images); cleared by the server when the link changes. */
+  imageSource?: string | null;
+  imageAuthor?: string | null;
+  imageLicense?: string | null;
   /** 1-100; set = the ingredient is shown to users as a promotion. */
   discountPercent: number | null;
   /** ISO date (the API returns YYYY-MM-DDT00:00:00.000Z). */
@@ -48,13 +52,15 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 // Allergens field hidden from the form: no service reads allergens yet (data, API and stored values kept).
 const SHOW_ALLERGENS = false;
 
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string };
+/** credit: the stored image's credit (shown while the link is unchanged). */
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; credit?: { url: string; source: string | null; author: string; license: string } | null };
 const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "" };
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
   price: item.price?.toString() ?? "",
+  credit: item.imageUrl && item.imageAuthor && item.imageLicense ? { url: item.imageUrl, source: item.imageSource ?? null, author: item.imageAuthor, license: item.imageLicense } : null,
 });
 const DEFAULT_PROMO_DAYS = 7;
 const PROMOTION_SYNC_FAILED = "Đã lưu nguyên liệu, nhưng chưa tạo được khuyến mãi. Thử lưu lại.";
@@ -316,6 +322,17 @@ export default function IngredientsScreen(): React.JSX.Element {
                     </View>
                   ) : <AppText variant="caption" color={colors.danger}>{imageUrlError(draft.imageUrl)}</AppText>
                 ) : null}
+                {/* Commons credit of the stored image; a new link replaces the image and the server drops this credit. */}
+                {draft.credit && draft.imageUrl.trim() === draft.credit.url ? (
+                  <View style={local.creditRow}>
+                    <AppText variant="caption" color={colors.muted}>Ảnh: {draft.credit.author} · {draft.credit.license} · Wikimedia Commons</AppText>
+                    {draft.credit.source ? (
+                      <Pressable accessibilityRole="link" onPress={() => { if (draft.credit?.source) void Linking.openURL(draft.credit.source); }}>
+                        <AppText variant="caption" color={colors.primary}>Xem nguồn ảnh</AppText>
+                      </Pressable>
+                    ) : null}
+                  </View>
+                ) : null}
 
                 <Field label="% giảm giá (1-100)" keyboardType="number-pad" placeholder="Để trống nếu không khuyến mãi" value={draft.discountPercent} onChangeText={(discountPercent) => setDraft({ ...draft, discountPercent })} />
                 {percentError(draft.discountPercent) ? <AppText variant="caption" color={colors.danger}>{percentError(draft.discountPercent)}</AppText> : null}
@@ -384,6 +401,7 @@ function AllergenPicker({ value, other, onChange, onOtherChange }: AllergenPicke
 }
 
 const local = StyleSheet.create({
+  creditRow: { gap: 2 },
   formBlock: { gap: 4, marginBottom: 10 },
   otherRow: { alignItems: "flex-end" },
   otherButton: { marginBottom: 10 },

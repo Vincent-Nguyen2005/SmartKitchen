@@ -59,8 +59,7 @@ export default function MealSizeSettings(): React.JSX.Element {
   }
   return (
     <View style={local.body}>
-      <Text style={local.hint}>Số món gợi ý cho mỗi bữa khi tạo thực đơn (1 đến 6 món).</Text>
-      {!canEdit && <Text style={local.note}>Chủ gia đình có thể thay đổi</Text>}
+      {!canEdit && <Text style={local.note}>Chỉ chủ gia đình mới thay đổi được</Text>}
       {MEALS.map((meal) => (
         <View key={meal.key} style={local.row}>
           <Text style={local.label}>{meal.label}</Text>
@@ -87,7 +86,6 @@ export default function MealSizeSettings(): React.JSX.Element {
 const local = StyleSheet.create({
   body: { gap: spacing.md, paddingHorizontal: spacing.lg },
   center: { alignItems: "center", padding: spacing.xl },
-  hint: { ...textStyles.bodySmall, color: colors.muted },
   note: { ...textStyles.labelSmall, color: colors.muted },
   row: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", padding: spacing.md },
   label: { ...textStyles.label },

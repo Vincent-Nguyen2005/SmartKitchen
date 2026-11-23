@@ -6,7 +6,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   useWindowDimensions,
@@ -17,6 +16,7 @@ import {
 import { DateField } from "../admin/DateField";
 import { TagInput } from "../../components/TagInput";
 import { SegmentTabs } from "../../components/SegmentTabs";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { GenderTiles } from "./GenderTiles";
 import {
   ActivityLevel,
@@ -45,7 +45,17 @@ import {
   weightRangeError,
 } from "./profileFields";
 
-export default function NutritionProfileScreen(): React.JSX.Element {
+/** "closed": nothing to save; "saved": saved, the caller shows the toast; "stay": keep the screen open. */
+export type LeaveResult = "closed" | "saved" | "stay";
+export type NutritionProfileHandle = { leave: () => Promise<LeaveResult> };
+type Basics = { height: string; weight: string; birthDate: string; gender: Gender };
+
+/**
+ * Hồ sơ › Thông tin sức khỏe. No save button: the screen saves when it is left (App calls `leave()` on the back
+ * arrow, Android back or close). Nothing changed: close. Valid: save (basic info, then the tags) and close.
+ * Invalid: "Thông tin chưa hợp lệ. Thoát mà không lưu?" (Ở lại / Thoát). A failed save keeps the screen open.
+ */
+const NutritionProfileScreen = forwardRef<NutritionProfileHandle>(function NutritionProfileScreen(_props, ref): React.JSX.Element {
   const accessToken = useSession().accessToken ?? undefined;
   const { width: screenWidth } = useWindowDimensions();
   const isCompact = screenWidth < 400;
@@ -70,6 +80,10 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const healthRef = useRef<HealthSectionHandle>(null);
+  /** The basic info as loaded (or the empty form): what "changed" is compared with. */
+  const loaded = useRef<Basics>({ height: "", weight: "", birthDate: "", gender: "FEMALE" });
+  const leaving = useRef(false);
+  const { confirm, dialog } = useConfirm();
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
   const showToast = (message: string) => {
@@ -93,10 +107,16 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       .get()
       .then((data) => {
         if (!active) return;
-        setHeight(cmToHeightText(data.profile.height));
-        setWeight(normalizeDecimal(String(data.profile.weight)));
-        setBirthDate(data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""));
-        setGender(data.profile.gender);
+        loaded.current = {
+          height: cmToHeightText(data.profile.height),
+          weight: normalizeDecimal(String(data.profile.weight)),
+          birthDate: data.profile.birthDate ?? (typeof data.profile.age === "number" ? birthDateForAge(data.profile.age) : ""),
+          gender: data.profile.gender,
+        };
+        setHeight(loaded.current.height);
+        setWeight(loaded.current.weight);
+        setBirthDate(loaded.current.birthDate);
+        setGender(loaded.current.gender);
         setActivityLevel(data.profile.activityLevel);
         setResult(data);
         setHasProfile(true);
@@ -125,24 +145,59 @@ export default function NutritionProfileScreen(): React.JSX.Element {
   const weightError = weightRangeError(weight);
   const age = ageFrom(birthDate);
 
-  /** "Lưu": the basic info first (validated), then the allergy / health tags; one toast with the result or first error. */
-  const save = async (): Promise<void> => {
-    if (!api) {
-      setError("Vui lòng đăng nhập để lưu hồ sơ dinh dưỡng.");
-      return;
-    }
+  const basicsChanged = (): boolean => {
+    const before = loaded.current;
+    return height !== before.height || weight !== before.weight || birthDate !== before.birthDate || gender !== before.gender;
+  };
 
-    setSubmitted(true);
+  /** Leaving the screen: close, save then close, or ask (invalid) / stay (save failed). */
+  const leave = async (): Promise<LeaveResult> => {
+    if (leaving.current) return "stay";
+    if (loading || !api) return "closed";
+    const changedBasics = basicsChanged();
+    const changedTags = healthRef.current?.isDirty() ?? false;
+    if (!changedBasics && !changedTags) return "closed";
+    // The basic info is only validated (and saved) when it was changed: tags alone can be saved without it.
+    const message = changedBasics ? basicsError(height, weight, birthDate) : null;
+    if (message) {
+      setSubmitted(true);
+      setError(message);
+      const exit = await confirm({ title: "Thông tin chưa hợp lệ. Thoát mà không lưu?", message, confirmLabel: "Thoát", cancelLabel: "Ở lại" });
+      return exit ? "closed" : "stay";
+    }
+    leaving.current = true;
+    try {
+      return (await save(changedBasics, changedTags)) ? "saved" : "stay";
+    } finally {
+      leaving.current = false;
+    }
+  };
+  useImperativeHandle(ref, () => ({ leave }));
+
+  /** Saves the changed parts: the basic info first, then the allergy / health tags. False (with the error shown) on failure. */
+  const save = async (saveBasics: boolean, saveTags: boolean): Promise<boolean> => {
+    if (!api) return false;
+    setSaving(true);
+    setError("");
+    if (saveBasics) {
+      const ok = await saveProfile();
+      if (!ok) { setSaving(false); return false; }
+    }
+    const healthError = saveTags ? (await healthRef.current?.save()) ?? null : null;
+    setSaving(false);
+    if (healthError) {
+      setError(healthError);
+      showToast(healthError);
+      return false;
+    }
+    return true;
+  };
+
+  const saveProfile = async (): Promise<boolean> => {
+    if (!api) return false;
     // Entered in meters; the API keeps centimeters.
     const parsedHeight = heightToCm(height);
     const parsedWeight = Number(weight);
-    const message = basicsError(height, weight, birthDate);
-    if (message) {
-      setError(message);
-      showToast(message);
-      return;
-    }
-
     const profile: NutritionProfileInput = {
       height: parsedHeight,
       weight: parsedWeight,
@@ -151,12 +206,12 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       gender,
       activityLevel,
     };
-    setSaving(true);
-    setError("");
     try {
       const data = hasProfile ? await api.update(profile) : await api.create(profile);
       setResult(data);
       setHasProfile(true);
+      loaded.current = { height, weight, birthDate, gender };
+      return true;
     } catch (saveError: unknown) {
       const message = saveError instanceof Error && saveError.message ? saveError.message : "Đã xảy ra lỗi không xác định.";
       console.error("Failed to save nutrition profile.", {
@@ -165,17 +220,8 @@ export default function NutritionProfileScreen(): React.JSX.Element {
       });
       setError(`Không thể lưu hồ sơ. ${message}`);
       showToast(`Không thể lưu hồ sơ. ${message}`);
-      setSaving(false);
-      return;
+      return false;
     }
-    const healthError = (await healthRef.current?.save()) ?? null;
-    setSaving(false);
-    if (healthError) {
-      setError(healthError);
-      showToast(healthError);
-      return;
-    }
-    showToast("Đã lưu thông tin sức khỏe");
   };
 
   return (
@@ -240,22 +286,7 @@ export default function NutritionProfileScreen(): React.JSX.Element {
                   {error}
                 </Text>
               )}
-              <Pressable
-                accessibilityRole="button"
-                disabled={saving || !api}
-                onPress={() => void save()}
-                style={({ pressed }) => [
-                  styles.saveButton,
-                  pressed && styles.pressed,
-                  (saving || !api) && styles.disabled,
-                ]}
-              >
-                {saving ? (
-                  <ActivityIndicator color={colors.primaryText} />
-                ) : (
-                  <Text style={styles.saveText}>Lưu</Text>
-                )}
-              </Pressable>
+              {saving && <ActivityIndicator color={colors.primary} accessibilityLabel="Đang lưu" />}
 
               {result && (
                 <View accessibilityLiveRegion="polite" style={[styles.result, isCompact && styles.cardCompact]}>
@@ -279,9 +310,11 @@ export default function NutritionProfileScreen(): React.JSX.Element {
           <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
         </View>
       )}
+      {dialog}
     </SafeAreaView>
   );
-}
+});
+export default NutritionProfileScreen;
 
 /** Saves the tags; resolves to null on success or the error message. */
 export type HealthTab = "allergies" | "conditions";
@@ -289,6 +322,8 @@ export type HealthSectionHandle = {
   save: () => Promise<string | null>;
   /** Puts one list back to the tags loaded (or last saved), dropping what was added since ("Bỏ qua"). */
   reset: (kind: HealthTab) => void;
+  /** True when the tags differ from the loaded (or last saved) ones. */
+  isDirty: () => boolean;
 };
 const HEALTH_TABS: ReadonlyArray<{ value: HealthTab; label: string }> = [
   { value: "allergies", label: "Dị ứng" },
@@ -383,6 +418,11 @@ export const HealthPreferencesSection = forwardRef<HealthSectionHandle, HealthSe
     reset: (kind) => {
       if (kind === "allergies") setAllergyTags(baseline.current.allergies);
       else setConditionTags(baseline.current.conditions);
+    },
+    isDirty: () => {
+      if (loading) return false;
+      const same = (left: string[], right: string[]) => left.length === right.length && [...left].sort().join("\n") === [...right].sort().join("\n");
+      return !same(allergyTags, baseline.current.allergies) || !same(conditionTags, baseline.current.conditions);
     },
   }), [loading, allergyTags, conditionTags, allergies, conditions]);
 
@@ -534,16 +574,6 @@ const styles = StyleSheet.create({
     color: colors.danger,
     marginBottom: spacing.sm,
   },
-  saveButton: {
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius.md,
-    justifyContent: "center",
-    minHeight: touchTarget + spacing.sm,
-    paddingHorizontal: spacing.md,
-    marginTop: spacing.xs,
-  },
-  saveText: { ...textStyles.labelSmall, color: colors.primaryText },
   pressed: { opacity: 0.82 },
   disabled: { opacity: 0.5 },
   result: {
