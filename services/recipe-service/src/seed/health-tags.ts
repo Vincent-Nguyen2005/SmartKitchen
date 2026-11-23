@@ -10,12 +10,12 @@ import { seedRecipes, seedRole, type SeedRecipe } from "./recipes.data";
  *
  * Allergens (from ingredient names, seasonings included):
  *   tôm / cua / mực → that seafood + Hải sản; hải sản, nghêu, sò, hến, ốc, ruốc (mắm ruốc) → Hải sản; cá → Cá; trứng → Trứng;
- *   sữa (not "sữa đậu nành") → Sữa; đậu phộng, lạc → Đậu phộng; đậu nành, đậu phụ, đậu hũ, nước tương, xì dầu → Đậu nành;
+ *   sữa, phô mai, bơ lạt, kem tươi (not "sữa đậu nành") → Sữa; đậu phộng, lạc → Đậu phộng; đậu nành, đậu phụ, đậu hũ, nước tương, xì dầu → Đậu nành;
  *   gluten, lúa mì, bột mì, bánh mì, mì, bột chiên → Gluten (not mì chính, not mì Quảng: rice noodles); mè, vừng → Mè.
  *   (Nước mắm is not tagged as Cá: it is in almost every dish and would empty the menu of a fish-allergic family.)
  * Contraindications (simple, conservative):
  *   Tiểu đường: chè, "chua ngọt", sweet drinks (drinks with sugar), desserts with sugar, condensed milk or coconut cream.
- *   Cao huyết áp: kho, rim, mắm (as a dish), dưa muối, cà pháo; processed meats (lạp xưởng, xúc xích, pa tê).
+ *   Cao huyết áp: kho, rim, mắm (as a dish), dưa muối, cà pháo; processed meats (lạp xưởng, xúc xích, pa tê, thịt xông khói).
  *   Gout: organ meats (lòng, gan, cật, tim, tiết, dồi, pa tê); seafood (tôm, cua, mực, hải sản); rich beef / bone broth
  *   dishes (phở bò, bún bò, bò kho, bò hầm; xương, giò heo).
  *   Mỡ máu cao: fried / fatty dishes (chiên, rán, quay, giòn; thịt ba chỉ, mỡ, da heo, lạp xưởng, xúc xích, pa tê).
@@ -33,7 +33,7 @@ const ALLERGEN_RULES: Array<{ words: string[]; tags: string[]; unless?: string[]
   { words: ["hải sản", "nghêu", "sò", "hến", "ốc", "ruốc"], tags: ["Hải sản"] },
   { words: ["cá"], tags: ["Cá"] },
   { words: ["trứng"], tags: ["Trứng"] },
-  { words: ["sữa"], tags: ["Sữa"], unless: ["sữa đậu nành"] },
+  { words: ["sữa", "phô mai", "bơ lạt", "kem tươi"], tags: ["Sữa"], unless: ["sữa đậu nành"] },
   { words: ["đậu phộng", "lạc"], tags: ["Đậu phộng"] },
   { words: ["đậu nành", "đậu phụ", "đậu hũ", "tàu hũ", "nước tương", "xì dầu"], tags: ["Đậu nành"] },
   { words: ["gluten", "lúa mì", "bột mì", "bánh mì", "mì", "bột chiên"], tags: ["Gluten"], unless: ["mì chính", "mì quảng"] },
@@ -41,7 +41,7 @@ const ALLERGEN_RULES: Array<{ words: string[]; tags: string[]; unless?: string[]
 ];
 
 const SALTY_NAMES = ["kho", "rim", "mắm", "dưa muối", "cà pháo"];
-const PROCESSED_MEATS = ["lạp xưởng", "xúc xích", "pa tê"];
+const PROCESSED_MEATS = ["lạp xưởng", "xúc xích", "pa tê", "thịt xông khói"];
 const ORGANS = ["lòng", "gan", "cật", "tim", "tiết", "dồi", "pa tê"];
 const SEAFOOD = ["tôm", "cua", "mực", "hải sản", "nghêu", "sò", "hến"];
 const RICH_BEEF = ["phở bò", "bún bò", "bò kho", "bò hầm"];

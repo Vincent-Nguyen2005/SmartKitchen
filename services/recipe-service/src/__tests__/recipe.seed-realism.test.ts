@@ -77,3 +77,25 @@ test("seed is idempotent: an older database gets only the new dishes, a full one
   assert.ok(older.created.includes("Bánh cuốn") && older.created.includes("Su su luộc"));
   assert.equal(await seedMissingRecipes(older.client), 0);
 });
+
+test("cuisine: Vietnamese by default; 12-15 foreign home dishes (western / asian) with their cuisine on the record", async () => {
+  const foreign = records.filter((record) => record.cuisine !== "vietnam");
+  assert.ok(foreign.length >= 12 && foreign.length <= 15, String(foreign.length));
+  foreign.forEach((record) => assert.ok(["western", "asian"].includes(record.cuisine), record.name));
+  assert.equal(starterRecord(seedRecipes.find((recipe) => recipe.name === "Phở bò")!).cuisine, "vietnam");
+  const rows: Array<{ name: string; cuisine: string }> = [];
+  const client = {
+    recipe: { findMany: async () => [], createMany: async ({ data }: { data: typeof rows }) => { rows.push(...data); return { count: data.length }; } },
+    deletedStarterRecipe: { findMany: async () => [] },
+  } as unknown as PrismaClient;
+  await seedMissingRecipes(client);
+  assert.equal(rows.find((row) => row.name === "Kimbap")?.cuisine, "asian");
+  assert.equal(rows.find((row) => row.name === "Bún chả")?.cuisine, "vietnam");
+});
+
+test("admin API accepts only vietnam / western / asian as cuisine", () => {
+  const base = { name: "Món thử", ingredients: ["Gạo"] };
+  assert.equal(createRecipeSchema.safeParse({ ...base, cuisine: "western" }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ ...base, cuisine: "french" }).success, false);
+  assert.equal("cuisine" in createRecipeSchema.parse(base), false);
+});

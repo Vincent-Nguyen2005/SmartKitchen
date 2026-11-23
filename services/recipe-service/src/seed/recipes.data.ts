@@ -8,6 +8,8 @@ export type SeedUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | 
 export type SeedIngredient = { name: string; quantity: number; unit: SeedUnit };
 /** Role in a Vietnamese family meal (see recipe-service README). */
 export type SeedRole = "man" | "xao" | "canh" | "rau" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
+/** Internal cuisine; not set = vietnam. */
+export type SeedCuisine = "vietnam" | "western" | "asian";
 export type SeedRecipe = {
   name: string;
   description: string;
@@ -24,6 +26,7 @@ export type SeedRecipe = {
   allergens?: string[];
   contraindications?: string[];
   role?: SeedRole;
+  cuisine?: SeedCuisine;
 };
 
 const g = (name: string, quantity: number): SeedIngredient => ({ name, quantity, unit: "GRAM" });
@@ -352,6 +355,77 @@ export const seedRecipes: SeedRecipe[] = [
     name: "Bún mọc", description: "Bún với mọc giò sống, nấm hương và nước dùng xương.", mealTypes: ["breakfast", "lunch"], role: "mot_mon",
     ingredients: [g("Bún", 450), g("Giò sống", 300), g("Xương heo", 500), g("Nấm hương", 50), g("Hành tím", 20), g("Hành lá", 30)],
     servings: 3, preparationMinutes: 110, calories: 400, protein: 23, carbs: 40, fat: 16, allergens: [], contraindications: ["Gout"],
+  },
+  // Món nước ngoài quen thuộc với gia đình Việt (cuisine western / asian; menus mix in at most 1 per meal, 2 per day).
+  {
+    name: "Mì Ý sốt bò bằm", description: "Mì Ý với sốt cà chua thịt bò băm, rắc phô mai.", mealTypes: ["breakfast", "lunch"], role: "mot_mon", cuisine: "western",
+    ingredients: [g("Mì Ý", 250), g("Thịt bò", 250), pc("Cà chua", 3), g("Sốt cà chua", 200), pc("Hành tây", 1), g("Tỏi", 10), g("Phô mai", 30)],
+    servings: 3, preparationMinutes: 45, calories: 710, protein: 38, carbs: 78, fat: 27, allergens: ["gluten", "sữa"], contraindications: [],
+  },
+  {
+    name: "Cà ri gà kiểu Nhật", description: "Gà hầm khoai tây, cà rốt trong sốt cà ri sánh, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
+    ingredients: [g("Thịt gà", 600), pc("Khoai tây", 2), pc("Cà rốt", 1), pc("Hành tây", 1), g("Bột cà ri", 20), g("Bột mì", 30), g("Bơ lạt", 20)],
+    servings: 4, preparationMinutes: 60, calories: 410, protein: 22, carbs: 28, fat: 23, allergens: ["gluten", "sữa"], contraindications: [],
+  },
+  {
+    name: "Kimbap", description: "Cơm cuộn rong biển với trứng, cà rốt, dưa leo và xúc xích.", mealTypes: ["breakfast", "lunch"], role: "sang", cuisine: "asian",
+    ingredients: [g("Gạo", 300), g("Rong biển", 12), pc("Trứng gà", 2), pc("Cà rốt", 1), pc("Dưa leo", 1), pc("Xúc xích", 2), g("Mè", 10)],
+    servings: 3, preparationMinutes: 60, calories: 590, protein: 17, carbs: 84, fat: 20, allergens: ["trứng", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
+  },
+  {
+    name: "Cá hồi áp chảo", description: "Cá hồi áp chảo bơ tỏi, ăn kèm bông cải xanh.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    ingredients: [g("Cá hồi", 300), g("Bơ lạt", 20), g("Tỏi", 10), pc("Chanh", 1), g("Bông cải xanh", 200)],
+    servings: 2, preparationMinutes: 25, calories: 480, protein: 33, carbs: 9, fat: 34, allergens: ["cá", "sữa"], contraindications: [],
+  },
+  {
+    name: "Súp bí đỏ kem", description: "Súp bí đỏ xay mịn với sữa và kem tươi.", mealTypes: ["lunch", "dinner"], role: "canh", cuisine: "western",
+    ingredients: [g("Bí đỏ", 600), pc("Hành tây", 1), g("Bơ lạt", 20), ml("Sữa tươi", 200), ml("Kem tươi", 100)],
+    servings: 4, preparationMinutes: 35, calories: 210, protein: 4, carbs: 16, fat: 15, dietaryTags: ["vegetarian"], allergens: ["sữa"], contraindications: [],
+  },
+  {
+    name: "Salad trộn dầu giấm", description: "Xà lách, cà chua, dưa leo và trứng trộn dầu giấm.", mealTypes: ["lunch", "dinner"], role: "rau", cuisine: "western",
+    ingredients: [g("Xà lách", 300), pc("Cà chua", 2), pc("Dưa leo", 1), g("Hành tây", 50), pc("Trứng gà", 2)],
+    servings: 4, preparationMinutes: 20, calories: 125, protein: 4, carbs: 6, fat: 9, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
+  },
+  {
+    name: "Trứng cuộn kiểu Hàn", description: "Trứng cuộn nhiều lớp với cà rốt và hành lá.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
+    ingredients: [pc("Trứng gà", 6), g("Cà rốt", 50), g("Hành lá", 20)],
+    servings: 3, preparationMinutes: 15, calories: 190, protein: 13, carbs: 3, fat: 14, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
+  },
+  {
+    name: "Bánh mì sandwich trứng", description: "Bánh mì sandwich nướng kẹp trứng, phô mai, xà lách và cà chua.", mealTypes: ["breakfast"], role: "sang", cuisine: "western",
+    ingredients: [pc("Bánh mì sandwich", 4), pc("Trứng gà", 2), g("Xà lách", 30), pc("Cà chua", 1), g("Phô mai", 30)],
+    servings: 2, preparationMinutes: 10, calories: 320, protein: 16, carbs: 32, fat: 14, tags: ["nhanh"], allergens: ["gluten", "trứng", "sữa"], contraindications: [],
+  },
+  {
+    name: "Gà sốt cay kiểu Hàn", description: "Đùi gà áp chảo rim sốt tương ớt Hàn, rắc mè.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
+    ingredients: [g("Đùi gà", 800), g("Tương ớt Hàn", 40), g("Tỏi", 15), g("Mè", 5), g("Hành lá", 10)],
+    servings: 4, preparationMinutes: 50, calories: 400, protein: 26, carbs: 10, fat: 28, allergens: ["đậu nành", "gluten", "mè"], contraindications: [],
+  },
+  {
+    name: "Canh kim chi đậu phụ", description: "Canh kim chi chua cay với đậu phụ và thịt ba chỉ.", mealTypes: ["lunch", "dinner"], role: "canh", cuisine: "asian",
+    ingredients: [g("Kim chi", 300), pc("Đậu phụ", 2), g("Thịt ba chỉ", 100), g("Hành lá", 20), g("Tương ớt Hàn", 15)],
+    servings: 4, preparationMinutes: 25, calories: 190, protein: 10, carbs: 5, fat: 14, allergens: ["đậu nành", "gluten"], contraindications: ["Mỡ máu cao"],
+  },
+  {
+    name: "Cơm chiên kim chi", description: "Cơm chiên kim chi với thịt xông khói, trứng ốp la.", mealTypes: ["breakfast", "lunch"], role: "mot_mon", cuisine: "asian",
+    ingredients: [g("Gạo", 300), g("Kim chi", 200), pc("Trứng gà", 3), g("Thịt xông khói", 100), g("Hành lá", 20)],
+    servings: 3, preparationMinutes: 25, calories: 670, protein: 18, carbs: 82, fat: 29, allergens: ["trứng", "đậu nành", "gluten", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
+  },
+  {
+    name: "Bò bít tết", description: "Thịt bò áp chảo bơ tỏi, ăn kèm khoai tây và salad.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    ingredients: [g("Thịt bò", 400), pc("Khoai tây", 1), g("Bơ lạt", 20), g("Tỏi", 10), g("Xà lách", 50), pc("Cà chua", 1)],
+    servings: 2, preparationMinutes: 40, calories: 600, protein: 53, carbs: 18, fat: 35, allergens: ["sữa"], contraindications: [],
+  },
+  {
+    name: "Khoai tây nghiền", description: "Khoai tây nghiền mịn với bơ và sữa, món ăn kèm.", mealTypes: ["lunch", "dinner"], role: "rau", cuisine: "western",
+    ingredients: [pc("Khoai tây", 4), g("Bơ lạt", 30), ml("Sữa tươi", 150)],
+    servings: 4, preparationMinutes: 30, calories: 195, protein: 4, carbs: 28, fat: 7, dietaryTags: ["vegetarian"], allergens: ["sữa"], contraindications: [],
+  },
+  {
+    name: "Súp nấm kem", description: "Súp nấm mỡ nấu sữa và kem tươi.", mealTypes: ["lunch", "dinner"], role: "canh", cuisine: "western",
+    ingredients: [g("Nấm mỡ", 300), pc("Hành tây", 1), g("Bơ lạt", 20), g("Bột mì", 20), ml("Sữa tươi", 300), ml("Kem tươi", 100)],
+    servings: 4, preparationMinutes: 30, calories: 215, protein: 6, carbs: 13, fat: 15, dietaryTags: ["vegetarian"], allergens: ["sữa", "gluten"], contraindications: [],
   },
 ];
 

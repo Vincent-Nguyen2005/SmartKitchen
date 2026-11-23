@@ -16,6 +16,7 @@ export const PER_PERSON: Record<string, string[]> = {
   "Cam tráng miệng": ["Cam"],
   "Sữa tươi nóng": ["Sữa tươi"],
   "Nước chanh": ["Chanh"],
+  "Bánh mì sandwich trứng": ["Bánh mì sandwich", "Trứng gà"],
 };
 
 type StoredIngredient = Record<string, unknown> & { name?: unknown; perPerson?: unknown };

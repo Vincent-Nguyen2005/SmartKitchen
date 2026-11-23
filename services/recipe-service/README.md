@@ -62,6 +62,7 @@ At start, after the empty-table seed, the service gives each starter dish (match
 
 - Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).
 - **Starter seed:** on start, the service adds the starter dishes (63 common Vietnamese home dishes and drinks in `src/seed/recipes.data.ts`) whose name is missing. It never updates or deletes existing rows.
+- **Cuisine:** `cuisine` is vietnam (default; migration `20261129000000_recipe_cuisine`), western or asian. It's set in Quản trị › Món ăn ("Ẩm thực"). The starter seed includes 14 foreign home dishes (8 western, 6 asian), and menu-service mixes them in under its balance rule.
 - **Realism checks:** `src/seed/starter-record.ts` builds the full record a starter dish gets on a fresh database (seasonings, per-person flags, health tags). `recipe.seed-realism.test.ts` checks every starter dish: macros add up to the calories within 5%, allergen tags cover the ingredients (seasonings included, e.g. nước tương means Đậu nành), contraindications use the catalog spelling, steps use only listed ingredients and every main ingredient appears in a step. Calories are home-cooking estimates.
 - **Manual seed:** `pnpm --filter recipe-service prisma:seed` adds only the dishes whose name is missing.
 

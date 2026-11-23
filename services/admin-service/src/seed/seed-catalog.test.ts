@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PrismaClient } from "../../node_modules/.prisma/client-admin";
-import { catalogSeed } from "./catalog.data";
+import { catalogMacros, catalogSeed } from "./catalog.data";
 import { seedMissingIngredients } from "./seed-catalog";
 
 describe("starter catalog seed", () => {
@@ -57,5 +57,23 @@ describe("starter catalog seed", () => {
   it("uses real kcal per 100 g for the staples (no 50 kcal placeholder)", () => {
     const kcal = Object.fromEntries(catalogSeed.map((entry) => [entry.name, entry.kcal]));
     expect(kcal).toMatchObject({ "Gạo": 360, "Thịt bò": 250, "Thịt heo": 242, "Thịt gà": 215, "Trứng gà": 143, "Tôm": 99, "Cá basa": 90, "Đậu phụ": 76, "Lạc": 567, "Đậu xanh": 347, "Sữa tươi": 62, "Sữa chua": 61, "Chuối": 89, "Cam": 47, "Cà chua": 18, "Cà rốt": 41, "Bắp cải": 25, "Rau muống": 19 });
+  });
+
+  it("staple macros add up to their kcal within 5% and are stored on new rows", async () => {
+    const kcal = Object.fromEntries(catalogSeed.map((entry) => [entry.name, entry.kcal]));
+    expect(Object.keys(catalogMacros)).toHaveLength(30);
+    for (const [name, [protein, carbs, fat]] of Object.entries(catalogMacros)) {
+      const fromMacros = protein * 4 + carbs * 4 + fat * 9;
+      expect(Math.abs(fromMacros - kcal[name]) / kcal[name], name).toBeLessThanOrEqual(0.05);
+    }
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    await seedMissingIngredients(client);
+    expect(rows.find((row) => row.name === "Gạo")).toMatchObject({ proteinPer100g: 7.1, carbsPer100g: 79, fatPer100g: 0.7 });
+    expect(rows.find((row) => row.name === "Kim chi")).toMatchObject({ category: "Rau củ", defaultUnit: "PACK", caloriesPer100g: 15 });
+    expect(rows.find((row) => row.name === "Mì Ý")?.proteinPer100g).toBeUndefined();
   });
 });

@@ -18,6 +18,10 @@ import {
   type SuggestRecipe,
   usableKho,
   vnDay,
+  countForeign,
+  type ForeignCount,
+  isForeign,
+  newForeignCount,
 } from "./kho-suggest";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
 import { menuPeople, scaleIngredients } from "./portions";
@@ -46,6 +50,8 @@ interface RecipeCandidate {
   /** recipe-service health tags (family allergy exclusion, condition warnings). */
   allergens: string[];
   contraindications: string[];
+  /** recipe-service cuisine (vietnam / western / asian); null when not sent (older recipe-service). */
+  cuisine: string | null;
 }
 
 interface GenerateMenuInput {
@@ -194,6 +200,7 @@ function normalizeRecipes(values: unknown[]): RecipeCandidate[] {
       allergens: readStringList(record.allergens),
       contraindications: readStringList(record.contraindications),
       servings: typeof record.servings === "number" && Number.isFinite(record.servings) ? record.servings : null,
+      cuisine: typeof record.cuisine === "string" && record.cuisine ? record.cuisine : null,
     }];
   });
 }
@@ -364,7 +371,14 @@ const toSuggestRecipe = (recipe: RecipeCandidate, people?: number): SuggestRecip
   role: recipe.role,
   allergens: recipe.allergens,
   contraindications: recipe.contraindications,
+  cuisine: recipe.cuisine,
 });
+
+/** Foreign dishes among saved menu items, by recipe id (AI dishes and unknown recipes count as Vietnamese). */
+function foreignInItems(items: Array<{ recipeId: string | null; mealType: string }>, recipes: RecipeCandidate[]): ForeignCount {
+  const cuisine = new Map(recipes.map((recipe) => [recipe.id, recipe.cuisine]));
+  return countForeign(items.map((item) => ({ meal: item.mealType, foreign: item.recipeId ? isForeign({ cuisine: cuisine.get(item.recipeId) }) : false })));
+}
 
 /** All ingredients (seasonings included) count for allergies. */
 const healthView = (recipe: RecipeCandidate) => ({ ingredients: recipe.details, allergens: recipe.allergens, contraindications: recipe.contraindications });
@@ -577,13 +591,14 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
       history.get(dayKey(addDays(date, -back)))?.forEach((id) => recentRecipeIds.add(id));
     }
     const chosenToday = new Set<string>();
+    const foreignToday = newForeignCount();
     const excludeIds = new Set(input.excludeRecipeIds ?? []);
     const target = (meal: string) => familyMealTarget(input.health, meal);
     const plannedKcal = (list: Array<{ suggestion: DishSuggestion }>) => list.reduce((sum, pick) => sum + (pick.suggestion.recipe.calories ?? 0) * servingsForTarget, 0);
     const picks: Array<{ meal: string; role: string | null; suggestion: DishSuggestion | null }> = input.mealCounts
       ? mealTypes.flatMap((meal) => {
         const count = meal in input.mealCounts! ? input.mealCounts![meal as keyof MealCounts] : 1;
-        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, history: variety };
+        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, history: variety, foreign: foreignToday };
         const goal = (list: Array<{ suggestion: DishSuggestion }>) => (input.health ? { calories: { target: target(meal), servings: servingsForTarget, planned: plannedKcal(list) } } : {});
         // Recently removed dishes are skipped, unless that leaves the meal without enough dishes.
         let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds, ...goal([]) });
@@ -596,8 +611,8 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
         }
         return mealPicks.map((pick) => ({ meal, role: pick.role, suggestion: pick.suggestion }));
       })
-      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds }).map((pick) => {
-        const fallback = !pick.suggestion && fallbackPool.length > 0 ? pickDishes(fallbackPool, kho, [pick.meal], { today, day: dayKey(date), recentRecipeIds })[0] : pick;
+      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday }).map((pick) => {
+        const fallback = !pick.suggestion && fallbackPool.length > 0 ? pickDishes(fallbackPool, kho, [pick.meal], { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday })[0] : pick;
         return { ...fallback, role: fallback.suggestion?.recipe.role ?? null };
       });
     for (const { meal, role, suggestion } of picks) {
@@ -865,9 +880,11 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
   // The menu's people (older menus: the current member count).
   const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
   const suitable = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
+  // Foreign-dish caps: the other dishes of the same day (week menus: same weekday) count, the removed one does not.
+  const foreign = foreignInItems(others.filter((entry) => entry.dayOfWeek === item.dayOfWeek), recipes);
   // Suitable for everyone first; else a dish unsuitable for some member (with warnings); allergens never.
-  const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history })
-    ?? pickReplacement(split.fallback.map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history });
+  const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history, foreign })
+    ?? pickReplacement(split.fallback.map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history, foreign });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -978,11 +995,13 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   const day = dayKey(normalizeDate(menu.startDate));
   const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
   const creates: Prisma.MenuItemUncheckedCreateInput[] = [];
+  // Foreign-dish caps across the whole day, counting the dishes the menu already has.
+  const foreign = foreignInItems(menu.items, recipes);
   for (const meal of short) {
     const have = menu.items.filter((item) => item.mealType === meal).length;
     // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
     const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
-    const options = { today, day, recentRecipeIds: new Set<string>(), usedIds, excludeIds: removed.recipeIds, history };
+    const options = { today, day, recentRecipeIds: new Set<string>(), usedIds, excludeIds: removed.recipeIds, history, foreign };
     let picks = pickRoleDishes(pool, kho, meal, roles, options);
     if (picks.length < roles.length && fallbackPool.length > 0) {
       picks = [...picks, ...pickRoleDishes(fallbackPool, kho, meal, openRoles(roles, picks), options)];

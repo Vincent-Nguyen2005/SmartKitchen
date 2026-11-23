@@ -25,6 +25,8 @@ type Recipe = {
   ingredientDetails: IngredientDetail[] | null;
   isActive: boolean;
   role?: string | null;
+  /** vietnam (default) | western | asian; menus mix in at most 1 non-Vietnamese dish per meal, 2 per day. */
+  cuisine?: string | null;
   steps?: Array<{ order: number; instruction: string; durationSeconds: number | null; ingredients: IngredientDetail[] }> | null;
 };
 
@@ -45,6 +47,12 @@ const ROLE_OPTIONS = [
   { value: "mot_mon", label: "Món một đĩa (phở, bún...)" },
   { value: "do_uong", label: "Đồ uống" },
 ];
+/** "Ẩm thực": internal cuisine (menu-service balance rule for non-Vietnamese dishes). */
+const CUISINE_OPTIONS = [
+  { value: "vietnam", label: "Việt Nam" },
+  { value: "western", label: "Âu Mỹ" },
+  { value: "asian", label: "Châu Á khác (Hàn, Nhật...)" },
+];
 /** Same short Vietnamese unit labels as Kho / Đi chợ. */
 const UNIT_OPTIONS = INVENTORY_UNITS.map((unit) => ({ value: unit, label: UNIT_LABELS[unit] }));
 const PAGE_SIZE = 10;
@@ -63,6 +71,7 @@ type Draft = {
   /** The dish already had steps: an emptied list is sent (clears them); otherwise no steps are sent at all. */
   hadSteps: boolean;
   role: string;
+  cuisine: string;
   isActive?: boolean;
 };
 let ingredientKey = 0;
@@ -82,7 +91,7 @@ const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   perPerson: detail?.perPerson ?? false,
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
-const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none" });
+const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none", cuisine: "vietnam" });
 const toDraft = (recipe: Recipe): Draft => ({
   id: recipe.id,
   name: recipe.name,
@@ -96,6 +105,7 @@ const toDraft = (recipe: Recipe): Draft => ({
   steps: [...(recipe.steps ?? [])].sort((left, right) => left.order - right.order).map(newStep),
   hadSteps: (recipe.steps?.length ?? 0) > 0,
   role: recipe.role ?? "none",
+  cuisine: recipe.cuisine ?? "vietnam",
   isActive: recipe.isActive,
 });
 const imageUrlError = (text: string): string | null =>
@@ -192,6 +202,7 @@ export default function RecipesScreen(): React.JSX.Element {
       imageUrl: draft.imageUrl.trim() || null,
       mealTypes: draft.mealTypes,
       role: draft.role === "none" ? null : draft.role,
+      cuisine: draft.cuisine,
       calories, servings, preparationMinutes: minutes,
       ingredients: details.map((detail) => detail.name),
       ingredientDetails: details,
@@ -373,8 +384,9 @@ export default function RecipesScreen(): React.JSX.Element {
                     })}
                   </View>
                 </View>
-                <View style={[styles.row, local.formBlock]}>
+                <View style={[styles.wrapRow, local.formBlock]}>
                   <Dropdown<string> label="Loại món" value={draft.role} options={ROLE_OPTIONS} onChange={(role) => setDraft({ ...draft, role })} />
+                  <Dropdown<string> label="Ẩm thực" value={draft.cuisine} options={CUISINE_OPTIONS} onChange={(cuisine) => setDraft({ ...draft, cuisine })} />
                 </View>
                 <View style={styles.wrapRow}>
                   <View style={local.third}><Field label="Calo / phần" keyboardType="decimal-pad" value={draft.calories} onChangeText={(calories) => setDraft({ ...draft, calories })} /></View>

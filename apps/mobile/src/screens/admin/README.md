@@ -30,6 +30,10 @@ Charts (`charts/`): `BarChart` and `LineChart` (react-native-svg, `chartColors` 
 
 Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: LayoutDashboard (Tổng quan), ChartColumn (Thống kê), Flag (Báo cáo), Carrot (Nguyên liệu). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
 
+### Ẩm thực (Món ăn)
+
+The Món ăn form has an "Ẩm thực" dropdown next to "Loại món": Việt Nam (default), Âu Mỹ, Châu Á khác. It is sent as `cuisine`. Menus include at most 1 non-Vietnamese dish per meal and 2 per day.
+
 ### Safe delete (Nguyên liệu and Món ăn)
 
 `safeDelete.ts`: the edit form of an existing ingredient or dish has "Ẩn" (hide, shown while visible) and "Xóa" (danger colour).

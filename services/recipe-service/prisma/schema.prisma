@@ -37,6 +37,8 @@ model Recipe {
   /// Dish role in a Vietnamese family meal: man (món mặn), xao (món xào), canh, rau, trang_mieng (tráng miệng),
   /// sang (light breakfast dish), mot_mon (one-dish meal such as phở), do_uong (drink). Null = not classified.
   role               String?
+  /// Internal cuisine: vietnam (default), western, asian. Menus mix in at most 1 non-Vietnamese dish per meal, 2 per day.
+  cuisine            String   @default("vietnam")
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
