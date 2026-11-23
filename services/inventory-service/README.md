@@ -42,6 +42,8 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `POST /api/inventory/items/:id/photo` | Upload one product photo (multipart/form-data, JPEG/PNG/WebP, max 5 MB) for an item in your family. Re-encoded to JPEG at most 1024 px with metadata (EXIF/GPS) removed, stored under a random name; replaces and deletes the previous photo. Sets `imageUrl`. 413 too large, 400 wrong type, 403 other family. No image recognition. |
 | `DELETE /api/inventory/items/:id/photo` | Remove the photo and its file. Deleting the item also deletes its photo file. |
 | `GET /api/inventory/items/:id/photo/:file` | Serve the item's current photo to members of its family only (the `imageUrl` value). No directory listing; any other file name is 404. |
+
+`productId` (optional, migration `20261130000000_item_product_id`): the admin catalog product id. It's set when the item comes from Giỏ hàng (`POST /api/inventory/internal/purchases` with `productId`), and a restock fills it only when missing. The app shows that product's image when the item has no photo of its own. The catalog image is never copied into `imageUrl` or the photo storage.
 | `POST`/`PUT` `categoryName` | Optional free-text group ("Nhóm"); the category is created on first use. |
 | `PUT /api/inventory/items/:id?familyId=<uuid>` | Update allowed item fields for the family. Returns the updated item in `data`. |
 | `DELETE /api/inventory/items/:id?familyId=<uuid>` | Soft-delete a family item; the row is retained. |

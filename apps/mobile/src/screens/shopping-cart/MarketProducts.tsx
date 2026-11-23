@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { Badge, Pagination, ScreenState } from "../notifications/ui";
@@ -201,16 +201,6 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                   )}
                 </View>
               </View>
-              {/* Credit for Wikimedia Commons photos (license requirement); tapping opens the file page. */}
-              {selected.imageUrl && selected.imageAuthor && selected.imageLicense && (
-                <Pressable
-                  accessibilityRole="link"
-                  disabled={!selected.imageSource}
-                  onPress={() => { if (selected.imageSource) void Linking.openURL(selected.imageSource); }}
-                >
-                  <Text style={local.credit} numberOfLines={2}>Ảnh: {selected.imageAuthor}, {selected.imageLicense}, Wikimedia Commons</Text>
-                </Pressable>
-              )}
               {!familyId ? (
                 <View style={local.familyBox}>
                   <Text style={local.helper}>Tạo hoặc tham gia gia đình để thêm sản phẩm vào giỏ hàng.</Text>
@@ -282,7 +272,6 @@ const local = StyleSheet.create({
   stepInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: touchTarget, textAlign: "center", width: 64 },
   familyBox: { gap: spacing.sm },
   helper: { ...textStyles.bodySmall, color: colors.muted },
-  credit: { ...textStyles.caption, color: colors.muted },
   error: { ...textStyles.bodySmall, color: colors.danger },
   primaryButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
   primaryButtonText: { ...textStyles.label, color: colors.primaryText },

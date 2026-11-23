@@ -9,6 +9,8 @@ export interface FoodItem {
   barcode?: string | null;
   /** Gateway path of an uploaded photo, an external image URL, or null. */
   imageUrl?: string | null;
+  /** Admin catalog product id when bought from Giỏ hàng (exact match for the catalog image fallback). */
+  productId?: string | null;
   category?: { id: string; name: string } | null;
 }
 
