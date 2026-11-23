@@ -34,7 +34,8 @@ Ingredient mutations, import/export, soft deletion, and recommendation-weight ch
 - **Starter catalog:** at start, `seedMissingIngredients` (`src/seed/seed-catalog.ts`, data in `src/seed/catalog.data.ts`) adds about 100 common Vietnamese market ingredients whose name is missing.
   - Groups: Rau củ, Trái cây, Thịt, Hải sản, Trứng & sữa, Đồ khô & gạo, Gia vị, Đồ uống, Đồ đông lạnh.
   - Each has a shared unit code, `shelfLifeDays` and kcal per 100 g, and no price (admins set prices).
-  - The 30 staples also get protein / carbs / fat per 100 g (`catalogMacros`). The list also includes the ingredients the foreign starter dishes need (Mì Ý, Kem tươi, Rong biển, Kim chi, Tương ớt Hàn...).
+  - The 30 staples also get protein / carbs / fat per 100 g (`catalogMacros`).
+  - Every starter ingredient gets `englishName`, an English alias used for Kho photo recognition. It comes from `en`, with `ENGLISH_NAME_OVERRIDES` where a search term isn't how a photo would be described (migration `20261201000000_ingredient_english_name`). The admin form calls it "Tên tiếng Anh (nhận diện ảnh)", and the user catalog returns it. The list also includes the ingredients the foreign starter dishes need (Mì Ý, Kem tươi, Rong biển, Kim chi, Tương ớt Hàn...).
   - Existing databases are corrected with `scripts/data-fixes/` (see its README).
   - Existing rows are never updated or deleted, and names an admin deleted or renamed are skipped, so running it again changes nothing. The log gives a count.
 - **Image credit:** `imageSource` (Commons file page), `imageAuthor` and `imageLicense` are stored with an image that came from Wikimedia Commons (migration `20261127000000_ingredient_image_credit`).

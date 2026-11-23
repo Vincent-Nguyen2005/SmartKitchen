@@ -25,6 +25,8 @@ type Ingredient = {
   imageSource?: string | null;
   imageAuthor?: string | null;
   imageLicense?: string | null;
+  /** English alias for Kho photo recognition ("carrot"), optional. */
+  englishName?: string | null;
   /** 1-100; set = the ingredient is shown to users as a promotion. */
   discountPercent: number | null;
   /** ISO date (the API returns YYYY-MM-DDT00:00:00.000Z). */
@@ -55,13 +57,13 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 const SHOW_ALLERGENS = false;
 
 /** credit: the stored image's credit (shown while the link is unchanged). */
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
-const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "" };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
+const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "", englishName: "" };
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
-  price: item.price?.toString() ?? "", isActive: item.isActive,
+  price: item.price?.toString() ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
   credit: item.imageUrl && item.imageAuthor && item.imageLicense ? { url: item.imageUrl, source: item.imageSource ?? null, author: item.imageAuthor, license: item.imageLicense } : null,
 });
 const DEFAULT_PROMO_DAYS = 7;
@@ -159,6 +161,8 @@ export default function IngredientsScreen(): React.JSX.Element {
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
       caloriesPer100g: calories, shelfLifeDays: shelfLife, price,
+      // "" clears the alias (the server stores null).
+      englishName: draft.englishName.trim() || null,
       // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
       // (partial update) and a new ingredient gets the server default []. A typed "Khác" value is saved when shown.
       ...(SHOW_ALLERGENS ? { allergenTags: withTag(draft.allergenTags, draft.otherAllergen) } : {}),
@@ -319,6 +323,7 @@ export default function IngredientsScreen(): React.JSX.Element {
               <>
                 <Field label="Tên *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} />
                 <Field label="Nhóm *" placeholder="rau củ, thịt, ..." value={draft.category} onChangeText={(category) => setDraft({ ...draft, category })} />
+                <Field label="Tên tiếng Anh (nhận diện ảnh)" placeholder="Ví dụ: carrot" value={draft.englishName} onChangeText={(englishName) => setDraft({ ...draft, englishName })} autoCapitalize="none" autoCorrect={false} />
                 <View style={local.formBlock}>
                   <AppText variant="bodySmall" color={colors.muted}>Đơn vị mặc định *</AppText>
                   <View style={styles.row}>

@@ -18,6 +18,7 @@ docker compose -p smartkitchen exec -T auth-service node - < scripts/data-fixes/
 | Script | What it changes | Skips |
 |---|---|---|
 | `2026-11-recipe-review.js` | Corrected data for 34 starter dishes from the recipe review (PR #86): kcal and macros, ingredients, steps and timers, allergen and contraindication tags. Also sets real kcal per 100 g on the staple catalog rows that still show the 50 kcal placeholder. | Dishes an admin edited after seeding (listed by name), and dishes already corrected. Image links, visibility and names are never touched. Catalog rows whose kcal is not exactly 50. |
+| `2026-12-catalog-english-names.js` | Fills the optional `englishName` (photo recognition alias, e.g. "carrot") on catalog rows that don't have one, using the starter seed values. | Rows that already have an alias (an admin's alias is never changed). |
 | `2026-11-catalog-macros.js` | Real protein / carbs / fat per 100 g for the 30 staple catalog rows that still have the placeholder values 3 / 8 / 1 (the same values as `catalogMacros` in `services/admin-service/src/seed/catalog.data.ts`). | Rows whose macros are not exactly 3 / 8 / 1. |
 
 New starter dishes and new catalog ingredients don't need a script: recipe-service and admin-service add any missing starter names at start.

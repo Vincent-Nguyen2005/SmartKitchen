@@ -72,8 +72,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [barcode, setBarcode] = useState("");
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
-  // Product photo: only a picture stored with the item. Nothing is recognized from it.
+  // Product photo: stored with the item after saving; also sent once to the server to suggest the name.
   const [photo, setPhoto] = useState<UploadPhoto | null>(initialPhoto);
+  // Names suggested from the photo (catalog products, best first); "idle" until a photo is taken.
+  const [photoGuess, setPhotoGuess] = useState<{ state: "idle" | "loading" | "done" | "none"; options: Array<{ name: string; catalogId: string }> }>({ state: "idle", options: [] });
+  const typedSincePhoto = useRef(false);
   const [cameraDenied, setCameraDenied] = useState(false);
   const [expiryDay, setExpiryDay] = useState("");
   const [group, setGroup] = useState("");
@@ -116,6 +119,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setSuggestionApplied(false);
     setName("");
     setBarcodeResult(null);
+    setPhotoGuess({ state: "idle", options: [] });
   };
 
   // Admin catalog suggestions: the server searches accent-insensitively (paged, max 50), so ask per typed name,
@@ -142,6 +146,34 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     if (entry.group?.trim()) setGroup(entry.group.trim());
     setSuggestionApplied(true);
   };
+
+  /** Picks a suggested catalog name: fetches that product (unit, shelf life, group) and fills the form like a typed pick. */
+  const pickSuggestedName = async (option: { name: string; catalogId: string }) => {
+    setName(option.name);
+    setSuggestionApplied(true);
+    if (!accessToken) return;
+    const page = await inventoryApi.ingredientCatalog(accessToken, { search: option.name, limit: 20 }).catch(() => null);
+    const entry = page?.items.find((row) => row.id === option.catalogId) ?? page?.items.find((row) => row.name === option.name);
+    if (entry) applySuggestion(entry);
+  };
+
+  // A new photo: ask the server for name suggestions. Tên is prefilled only if the user has not typed meanwhile;
+  // errors or "unsure" just leave Tên empty (a muted hint, no popup). Saving never waits for this.
+  useEffect(() => {
+    if (mode !== "photo" || !photo || !accessToken) return;
+    let active = true;
+    typedSincePhoto.current = false;
+    setPhotoGuess({ state: "loading", options: [] });
+    inventoryApi.suggestFromPhoto(accessToken, photo)
+      .then((result) => {
+        if (!active) return;
+        const options = result.suggestions.map(({ name: suggested, catalogId }) => ({ name: suggested, catalogId }));
+        setPhotoGuess({ state: options.length > 0 ? "done" : "none", options });
+        if (options.length > 0 && !typedSincePhoto.current) void pickSuggestedName(options[0]);
+      })
+      .catch(() => { if (active) setPhotoGuess({ state: "none", options: [] }); });
+    return () => { active = false; };
+  }, [photo, mode, accessToken]);
 
   /** Camera result: a photo opens the form; cancelling before any photo just closes, nothing is saved. */
   const handlePick = (result: PhotoPickResult) => {
@@ -297,6 +329,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setExpiryDay("");
     setGroup("");
     setSuggestionApplied(false);
+    setPhotoGuess({ state: "idle", options: [] });
     if (itemPhoto) await uploadPhotoFor(created.id, itemName, itemPhoto);
     else setSuccess("Đã xác nhận và thêm thực phẩm vào kho.");
   };
@@ -566,14 +599,24 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                 ? <TextInput
                     accessibilityLabel="Tên thực phẩm, bắt buộc"
                     value={name}
-                    onChangeText={(value) => { setName(value); setSuggestionApplied(false); }}
+                    onChangeText={(value) => { typedSincePhoto.current = true; setName(value); setSuggestionApplied(false); }}
                     onFocus={() => setNameFocused(true)}
                     onBlur={() => setTimeout(() => setNameFocused(false), 200)}
-                    placeholder="Ví dụ: rau muống, thịt ba chỉ"
+                    placeholder={photoGuess.state === "loading" && !name ? "Đang nhận diện..." : "Ví dụ: rau muống, thịt ba chỉ"}
                     placeholderTextColor={colors.muted}
                     style={styles.input}
                   />
                 : <Text style={styles.recognizedName}>{name}</Text>}
+              {mode === "photo" && photoGuess.state === "done" && photoGuess.options.length > 1 && (
+                <View accessibilityLabel="Tên gợi ý từ ảnh" style={styles.guessChips}>
+                  {photoGuess.options.filter((option) => option.name !== name).map((option) => (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Chọn tên ${option.name}`} key={option.catalogId} onPress={() => { typedSincePhoto.current = true; void pickSuggestedName(option); }} style={styles.guessChip}>
+                      <Text style={styles.guessChipText}>{option.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {mode === "photo" && photoGuess.state === "none" && !name && <Text style={styles.guessHint}>Chưa nhận ra từ ảnh, hãy nhập tên.</Text>}
               {suggestions.length > 0 && (
                 <View accessibilityLabel="Gợi ý từ danh mục nguyên liệu" style={styles.suggestionList}>
                   {suggestions.map((entry) => (
@@ -703,6 +746,10 @@ const styles = StyleSheet.create({
   suggestionName: { ...textStyles.body },
   suggestionMeta: { ...textStyles.caption },
   suggestionCaption: { ...textStyles.caption, color: colors.primary },
+  guessChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  guessChip: { backgroundColor: colors.primarySoft, borderRadius: 16, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.md },
+  guessChipText: { ...textStyles.labelSmall, color: colors.primary },
+  guessHint: { ...textStyles.caption, color: colors.muted },
   retryButton: { alignSelf: "flex-start", marginTop: spacing.sm },
   successText: { ...textStyles.bodySmall, color: colors.success, marginTop: spacing.md },
 });

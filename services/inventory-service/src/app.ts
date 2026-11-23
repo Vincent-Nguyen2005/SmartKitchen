@@ -7,6 +7,7 @@ import { errorHandler } from "./middleware/error.middleware";
 import { requireInventoryUser } from "./middleware/auth.middleware";
 import { internalInventoryRouter, receiptRouter } from "./routes/capture.route";
 import consumptionRouter from "./routes/consumption.route";
+import { photoSuggestRouter } from "./controllers/photo-suggest.controller";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -20,6 +21,7 @@ export const createApp = (): express.Express => {
   app.use("/api/inventory/alerts", alertsRouter);
   app.use("/api/inventory/consumption", consumptionRouter);
   app.use("/api/inventory/receipts", receiptRouter);
+  app.use("/api/inventory/photo", photoSuggestRouter);
 
   // The gateway strips the `/api/inventory` prefix before proxying. Keep these
   // authenticated mounts alongside the direct-service paths above.
@@ -27,6 +29,7 @@ export const createApp = (): express.Express => {
   app.use("/alerts", requireInventoryUser, alertsRouter);
   app.use("/consumption", requireInventoryUser, consumptionRouter);
   app.use("/receipts", requireInventoryUser, receiptRouter);
+  app.use("/photo", requireInventoryUser, photoSuggestRouter);
 
   app.use(errorHandler);
   return app;

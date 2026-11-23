@@ -61,6 +61,10 @@ services:
       TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
       TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
       INVENTORY_UPLOAD_DIR: /data/uploads/inventory
+      # Kho photo recognition: catalog labels from admin-service; Gemini only as fallback when CLIP is unsure (empty = off).
+      ADMIN_SERVICE_URL: http://admin-service:4011
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-}
     # Item photos; the image creates /data/uploads owned by USER node, which a new named volume inherits.
     volumes: [inventory-uploads:/data/uploads]
     ports: ["4003:4003"]

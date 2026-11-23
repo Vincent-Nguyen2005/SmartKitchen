@@ -29,6 +29,27 @@ const readBody = (req: Request, res: Response): Promise<void> => new Promise((re
   });
 });
 
+/**
+ * One JPEG / PNG / WebP image (max 5 MB) from a multipart/form-data body; 400 / 413 otherwise. The declared type
+ * must match the file's magic bytes. Shared by photo upload and photo recognition.
+ */
+export const readSingleImage = async (req: Request, res: Response) => {
+    if (!/^multipart\/form-data\b/i.test(req.header("content-type") ?? "")) {
+      throw httpError(400, "INVALID_UPLOAD", "Send the photo as multipart/form-data.");
+    }
+    await readBody(req, res);
+    const files = parseMultipartFiles(req.body as Buffer, req.header("content-type"));
+    if (!files || files.length !== 1) throw httpError(400, "INVALID_UPLOAD", "Send exactly one image file.");
+    const [file] = files;
+    if (file.data.length === 0) throw httpError(400, "INVALID_UPLOAD", "The image file is empty.");
+    if (file.data.length > MAX_PHOTO_BYTES) throw httpError(413, "PHOTO_TOO_LARGE", "The photo must be 5 MB or smaller.");
+    const sniffed = sniffImageType(file.data);
+    if (!ALLOWED_PHOTO_TYPES.includes(file.mimeType as never) || !sniffed) {
+      throw httpError(400, "UNSUPPORTED_PHOTO_TYPE", "Only JPEG, PNG or WebP images are accepted.");
+    }
+  return file;
+};
+
 /** Loads a live item and checks that the signed-in user belongs to its family. */
 const loadOwnedItem = async (req: Request) => {
   const id = z.string().uuid().parse(req.params.id);
@@ -42,19 +63,7 @@ export class PhotoController {
   static async upload(req: Request, res: Response, next: NextFunction) {
     try {
       const item = await loadOwnedItem(req);
-      if (!/^multipart\/form-data\b/i.test(req.header("content-type") ?? "")) {
-        throw httpError(400, "INVALID_UPLOAD", "Send the photo as multipart/form-data.");
-      }
-      await readBody(req, res);
-      const files = parseMultipartFiles(req.body as Buffer, req.header("content-type"));
-      if (!files || files.length !== 1) throw httpError(400, "INVALID_UPLOAD", "Send exactly one image file.");
-      const [file] = files;
-      if (file.data.length === 0) throw httpError(400, "INVALID_UPLOAD", "The image file is empty.");
-      if (file.data.length > MAX_PHOTO_BYTES) throw httpError(413, "PHOTO_TOO_LARGE", "The photo must be 5 MB or smaller.");
-      const sniffed = sniffImageType(file.data);
-      if (!ALLOWED_PHOTO_TYPES.includes(file.mimeType as never) || !sniffed) {
-        throw httpError(400, "UNSUPPORTED_PHOTO_TYPE", "Only JPEG, PNG or WebP images are accepted.");
-      }
+      const file = await readSingleImage(req, res);
 
       const saved = await PhotoStorage.save(item.id, file.data);
       const updated = await prisma.foodItem.updateMany({ where: { id: item.id, deletedAt: null }, data: { imageUrl: saved.url } });

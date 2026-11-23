@@ -43,6 +43,8 @@ async function request<T>(accessToken: string, path: string, options: Omit<Reque
 const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
 
+/** POST /api/inventory/photo/suggest: catalog names guessed from a photo (best first); empty when unsure. */
+export type PhotoSuggestResult = { suggestions: Array<{ name: string; catalogId: string; score: number | null }>; confident: boolean; source: "clip" | "gemini" | null };
 /** A photo ready to upload: `blob` on web, a file `uri` on native. */
 export type UploadPhoto = { uri: string; mimeType: ReceiptMimeType; name: string; blob?: Blob };
 /** One active product from the admin catalog (GET /api/admin/catalog/ingredients). */
@@ -128,6 +130,16 @@ export const inventoryApi = {
     // React Native's FormData reads the file from `uri`; the object form is RN-specific.
     else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
     return request<{ id: string; imageUrl: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "POST", body: form }, 60_000);
+  },
+  /**
+   * Kho "Chụp ảnh": up to 3 catalog names suggested from the (already downscaled) photo. The photo is analysed
+   * on the server and not stored; the item photo is still uploaded separately after saving.
+   */
+  suggestFromPhoto: (accessToken: string, photo: UploadPhoto) => {
+    const form = new FormData();
+    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
+    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
+    return request<PhotoSuggestResult>(accessToken, "/api/inventory/photo/suggest", { method: "POST", body: form }, 25_000);
   },
   deletePhoto: (accessToken: string, itemId: string) =>
     request<{ id: string; imageUrl: null }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "DELETE" }),
