@@ -43,6 +43,54 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `DELETE /api/inventory/items/:id/photo` | Remove the photo and its file. Deleting the item also deletes its photo file. |
 | `GET /api/inventory/items/:id/photo/:file` | Serve the item's current photo to members of its family only (the `imageUrl` value). No directory listing; any other file name is 404. |
 
+## Photo name suggestions (Kho "Chụp ảnh")
+
+`POST /api/inventory/photo/suggest` (signed-in family member; multipart, one JPEG / PNG / WebP image, max 5 MB) returns `{ suggestions: [{ name, catalogId, score }], confident, source }`, at most 3 names. The photo is analysed in memory and **never stored**. Errors: 401 without a token, 403 without a family, 400 wrong type (the declared type must match the file's bytes), 413 over 5 MB.
+
+1. **CLIP:** zero-shot image classification on the CPU, using Transformers.js with quantized `Xenova/clip-vit-base-patch32`. The labels are the active catalog ingredients' `englishName` ("a photo of carrot"), read from admin-service's user catalog and cached for 10 minutes. The Vietnamese name is returned. Text embeddings are computed once per label list. The model is downloaded at image build time (`dist/scripts/download-clip-model.js`) and loaded offline (`allowRemoteModels = false`), so a request never downloads anything. Timeout 8 s.
+2. **Gemini fallback:** used when the top CLIP probability is below `PHOTO_CLIP_THRESHOLD` (default 0.4) and `GEMINI_API_KEY` / `GEMINI_MODEL` are set. Gemini gets the photo and the catalog names, and returns strict JSON with at most 3 names from the list. Limits: `PHOTO_GEMINI_DAILY_LIMIT` calls per family per day (default 20, in memory) and a 10 s timeout.
+3. **Otherwise** there are no suggestions (`confident: false`). The app never waits on this to save.
+
+### Enabling CLIP
+
+`@huggingface/transformers` is **not a dependency yet** (adding it changes the lockfile). Until it is added, the image builds, the model step prints "skipping", and only the Gemini fallback runs. To enable CLIP:
+
+```sh
+pnpm --filter inventory-service add @huggingface/transformers@^3
+docker build -t smartkitchen-inventory-service ./services/inventory-service
+```
+
+- **Base image:** Debian slim, not Alpine, because onnxruntime-node ships glibc binaries only.
+- **CUDA download:** skipped during the build (`ONNXRUNTIME_NODE_INSTALL_CUDA=skip`).
+- **Pruning:** only this CPU's onnxruntime binary is kept.
+
+### Image size
+
+| Image | Size |
+|---|---|
+| Before (Alpine) | 466 MB |
+| Debian slim, without Transformers.js (this change) | 616 MB (+150 MB) |
+| With Transformers.js (estimate) | about +330 MB more, so roughly 950 MB |
+
+The estimate is made of:
+- model 149 MB (text 62 MB + vision 85 MB, quantized)
+- onnxruntime-node linux/x64 about 43 MB
+- @huggingface/transformers about 48 MB
+- onnxruntime-web about 92 MB (a dependency of the package)
+
+### Accuracy (47 test photos, catalog Commons images; one-off check)
+
+| Measure | Result |
+|---|---|
+| Top answer correct | 51% |
+| Correct name among the 3 suggestions | 60% |
+| At threshold 0.4: photos treated as confident | 30 |
+| Of those, top answer correct | 67% (77% with the correct name among the chips) |
+
+- **Mistakes are mostly look-alike catalog items:** Rau muống → Rau mùi, Kem tươi → Kem, Đậu xanh → Đậu Hà Lan, Đùi gà → Thịt gà, Bơ lạt → Quả bơ.
+- **Packaged and liquid products are weak** (Giấm, Hạt nêm, Sữa tươi). Better `englishName` aliases help.
+- **The check was cut short:** Wikimedia throttled the image downloads, so only 2 of the planned 20 "different photo" tests ran (Chuối right at 0.88; Khoai tây wrong at 0.09, which falls back to Gemini).
+
 `productId` (optional, migration `20261130000000_item_product_id`): the admin catalog product id. It's set when the item comes from Giỏ hàng (`POST /api/inventory/internal/purchases` with `productId`), and a restock fills it only when missing. The app shows that product's image when the item has no photo of its own. The catalog image is never copied into `imageUrl` or the photo storage.
 | `POST`/`PUT` `categoryName` | Optional free-text group ("Nhóm"); the category is created on first use. |
 | `PUT /api/inventory/items/:id?familyId=<uuid>` | Update allowed item fields for the family. Returns the updated item in `data`. |

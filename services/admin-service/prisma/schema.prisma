@@ -49,6 +49,8 @@ model MasterIngredient {
   imageSource     String?
   imageAuthor     String?
   imageLicense    String?
+  /// English alias used for photo recognition prompts in Kho ("a photo of carrots"); optional.
+  englishName     String?
   /// 1-100; null = no promotion. A value creates/updates the user promotion in notification-service.
   discountPercent Int?
   /// Last day of the promotion (Asia/Ho_Chi_Minh calendar day).

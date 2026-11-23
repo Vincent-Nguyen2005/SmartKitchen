@@ -54,7 +54,7 @@ export const catalogSeed: CatalogSeed[] = [
   haiSan("Nghêu", "clams", 1, 74),
   // Trứng & sữa
   trung("Trứng gà", "chicken eggs", 21, 143), trung("Trứng vịt", "duck eggs", 21, 185), sua("Sữa tươi", "milk carton", 7, 62),
-  sua("Sữa chua", "yogurt", 14, 61), item("Trứng & sữa", "PACK")("Phô mai", "cheese", 30, 402), item("Trứng & sữa", "PACK")("Bơ", "butter", 60, 717),
+  sua("Sữa chua", "yogurt", 14, 61), item("Trứng & sữa", "PACK")("Phô mai", "cheese", 30, 402), item("Trứng & sữa", "PACK")("Bơ lạt", "butter", 60, 717),
   // Đồ khô & gạo
   khoKg("Gạo", "rice grains", 365, 360), khoKg("Gạo nếp", "glutinous rice", 365, 370), khoGoi("Bún", "rice vermicelli", 3, 110),
   khoGoi("Bánh phở", "pho noodles", 3, 110), khoGoi("Mì gói", "instant noodles", 180, 436), khoGoi("Miến", "glass noodles", 365, 351),
@@ -77,6 +77,16 @@ export const catalogSeed: CatalogSeed[] = [
   sua("Kem tươi", "whipping cream", 14, 340), traiCay("Quả bơ", "avocado fruit", 5, 160), rauCai("Ớt chuông", "bell pepper", 7, 31),
   rau("Nấm mỡ", "button mushroom", 5, 22), item("Thịt", "PACK")("Thịt xông khói", "bacon", 14, 417), item("Rau củ", "PACK")("Kim chi", "kimchi", 30, 15),
 ];
+
+/**
+ * English alias for photo recognition (CLIP prompt "a photo of <alias>"), stored as englishName. Defaults to `en`;
+ * listed here where the Commons search term is not how a photo of the product would be described.
+ */
+export const ENGLISH_NAME_OVERRIDES: Record<string, string> = {
+  "Rau ngót": "katuk leaves", "Bánh mì": "baguette bread", "Bánh phở": "flat rice noodles", "Gạo": "uncooked white rice",
+  "Cá basa": "white fish fillet", "Sữa tươi": "a carton of milk",
+};
+export const englishNameFor = (entry: CatalogSeed): string => ENGLISH_NAME_OVERRIDES[entry.name] ?? entry.en;
 
 /**
  * Protein / carbs / fat per 100 g for the staples (general food-composition values; carbs net of fiber so that

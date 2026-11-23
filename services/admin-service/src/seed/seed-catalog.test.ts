@@ -76,4 +76,17 @@ describe("starter catalog seed", () => {
     expect(rows.find((row) => row.name === "Kim chi")).toMatchObject({ category: "Rau củ", defaultUnit: "PACK", caloriesPer100g: 15 });
     expect(rows.find((row) => row.name === "Mì Ý")?.proteinPer100g).toBeUndefined();
   });
+
+  it("every starter ingredient gets an English alias for photo recognition", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    await seedMissingIngredients(client);
+    expect(rows.every((row) => typeof row.englishName === "string" && (row.englishName as string).length > 0)).toBe(true);
+    expect(rows.find((row) => row.name === "Cà rốt")?.englishName).toBe("carrot");
+    expect(rows.find((row) => row.name === "Gạo")?.englishName).toBe("uncooked white rice");
+    expect(rows.find((row) => row.name === "Bơ lạt")?.englishName).toBe("butter");
+  });
 });

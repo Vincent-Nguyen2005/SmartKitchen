@@ -13,6 +13,11 @@ concurrency:
 permissions:
   contents: read
 
+# onnxruntime-node's postinstall (photo recognition) would assume CUDA 12 and download GPU binaries (404 on
+# runners without a GPU). CPU only: skip it for every job that runs pnpm install. Also set in .npmrc.
+env:
+  ONNXRUNTIME_NODE_INSTALL_CUDA: skip
+
 jobs:
   lint-build:
     name: CI / lint-build (${{ matrix.package }})

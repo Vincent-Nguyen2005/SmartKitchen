@@ -33,7 +33,7 @@ const creditColumns = (input: Partial<IngredientInput>, before: { imageUrl: stri
     ? { imageSource: null, imageAuthor: null, imageLicense: null }
     : {};
 
-const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), discountPercent: discountPercentSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
+const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
 type IngredientInput = z.infer<typeof ingredientSchema>;
 type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null } | null;
 
@@ -89,7 +89,7 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const [rows, total, groups] = await prisma.$transaction([
     prisma.masterIngredient.findMany({
       where,
-      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, discountPercent: true, promoEndDate: true, price: true },
+      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoEndDate: true, price: true },
       orderBy: { nameNormalized: "asc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -111,6 +111,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
       imageSource: row.imageSource,
       imageAuthor: row.imageAuthor,
       imageLicense: row.imageLicense,
+      // English alias for Kho photo recognition (inventory-service); null when not set.
+      englishName: row.englishName,
       discountPercent: onPromotion ? row.discountPercent : null,
       promoEndDate: onPromotion ? endDay : null,
       price: row.price,
