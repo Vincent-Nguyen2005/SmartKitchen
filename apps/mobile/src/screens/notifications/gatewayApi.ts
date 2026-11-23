@@ -29,6 +29,7 @@ export type GatewayClient = {
   post: <T>(path: string, body?: unknown) => Promise<T>;
   put: <T>(path: string, body?: unknown) => Promise<T>;
   patch: <T>(path: string, body?: unknown) => Promise<T>;
+  delete: <T>(path: string) => Promise<T>;
 };
 
 /** Human-readable Vietnamese message for an error thrown by the client. */
@@ -67,6 +68,7 @@ export const createGatewayClient = (accessToken: string | null, timeoutMs = DEFA
     post: (path, body) => request("POST", path, body ?? {}),
     put: (path, body) => request("PUT", path, body ?? {}),
     patch: (path, body) => request("PATCH", path, body ?? {}),
+    delete: (path) => request("DELETE", path),
   };
 };
 

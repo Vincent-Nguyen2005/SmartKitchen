@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { ChevronDown, ChevronUp, CookingPot, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
+import { ChevronDown, ChevronUp, CookingPot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, query } from "../notifications/gatewayApi";
@@ -8,6 +8,8 @@ import { useGatewayApi } from "../notifications/useGatewayApi";
 import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { safeDelete } from "./safeDelete";
 
 type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 type Recipe = {
@@ -61,6 +63,7 @@ type Draft = {
   /** The dish already had steps: an emptied list is sent (clears them); otherwise no steps are sent at all. */
   hadSteps: boolean;
   role: string;
+  isActive?: boolean;
 };
 let ingredientKey = 0;
 let stepKey = 0;
@@ -93,6 +96,7 @@ const toDraft = (recipe: Recipe): Draft => ({
   steps: [...(recipe.steps ?? [])].sort((left, right) => left.order - right.order).map(newStep),
   hadSteps: (recipe.steps?.length ?? 0) > 0,
   role: recipe.role ?? "none",
+  isActive: recipe.isActive,
 });
 const imageUrlError = (text: string): string | null =>
   !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
@@ -115,6 +119,8 @@ export default function RecipesScreen(): React.JSX.Element {
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const { confirm, dialog } = useConfirm();
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Recipe>>(null);
 
@@ -215,6 +221,34 @@ export default function RecipesScreen(): React.JSX.Element {
       setError(errorMessage(caught));
     }
   };
+
+  // "Ẩn" / "Xóa" in the edit form. Delete is refused (409 IN_USE) while saved menus or dislike history use the dish;
+  // the admin can hide it instead. Afterwards the form closes and the list reloads (the page is kept when it exists).
+  const hideRecipe = async (id: string) => { await api.put<Recipe>(`/api/recipes/${encodeURIComponent(id)}`, { isActive: false }); };
+  const runFormAction = async (action: () => Promise<boolean>) => {
+    setRemoving(true); setFormError(null);
+    try {
+      if (await action()) { setDraft(null); void load(); }
+    } catch (caught) {
+      setFormError(errorMessage(caught));
+    } finally {
+      setRemoving(false);
+    }
+  };
+  const hideDraft = (current: Draft) => runFormAction(async () => { if (current.id) await hideRecipe(current.id); return true; });
+  const deleteDraft = (current: Draft) => runFormAction(async () => {
+    const id = current.id;
+    if (!id) return false;
+    const result = await safeDelete({
+      confirm,
+      name: current.name.trim() || "món này",
+      inUseText: "Món này đang được dùng nên không xóa được. Bạn có thể ẩn nó.",
+      remove: () => api.delete(`/api/recipes/${encodeURIComponent(id)}`),
+      hide: current.isActive === false ? undefined : () => hideRecipe(id),
+    });
+    if (result.kind === "inUse") setFormError(result.message);
+    return result.kind === "deleted" || result.kind === "hidden";
+  });
 
   const showState = loading || Boolean(error && recipes.length === 0);
   const goToPage = (next: number) => {
@@ -415,10 +449,17 @@ export default function RecipesScreen(): React.JSX.Element {
             ) : null}
             {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
             <View style={[styles.wrapRow, local.modalActions]}>
+              {draft?.id ? (
+                <View style={[styles.wrapRow, local.destructiveActions]}>
+                  {draft.isActive !== false ? <Button variant="secondary" label="Ẩn" icon={EyeOff} onPress={() => void hideDraft(draft)} disabled={removing || saving} /> : null}
+                  <Button variant="danger" label="Xóa" icon={Trash2} accessibilityLabel={`Xóa vĩnh viễn ${draft.name}`} onPress={() => void deleteDraft(draft)} busy={removing} disabled={saving} />
+                </View>
+              ) : null}
               <Button variant="secondary" label="Hủy" onPress={() => setDraft(null)} />
-              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} />
+              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} disabled={removing} />
             </View>
           </ScrollView>
+          {dialog}
         </SafeAreaView>
       </Modal>
     </View>
@@ -448,4 +489,6 @@ const local = StyleSheet.create({
   modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 640, padding: 20, width: "100%" },
   modalHeader: { marginBottom: 8 },
   modalActions: { justifyContent: "flex-end", marginTop: 12 },
+  // "Ẩn" / "Xóa" sit on the left, away from "Lưu".
+  destructiveActions: { marginRight: "auto" },
 });

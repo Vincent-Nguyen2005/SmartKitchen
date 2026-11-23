@@ -102,7 +102,8 @@ services:
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U postgres -d recipe_db"], interval: 5s, timeout: 5s, retries: 10 }
   recipe-service:
     build: ./services/recipe-service
-    environment: { PORT: 4006, DATABASE_URL: postgresql://postgres:postgres@recipe-db:5432/recipe_db }
+    # Deleting a dish asks menu-service whether menus still use it (GET /internal/recipes/:id/usage, INTERNAL_API_KEY).
+    environment: { PORT: 4006, DATABASE_URL: postgresql://postgres:postgres@recipe-db:5432/recipe_db, MENU_SERVICE_URL: http://menu-service:4007, INTERNAL_API_KEY: "${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}" }
     ports: ["4006:4006"]
     depends_on: { recipe-db: { condition: service_healthy } }
     healthcheck: { test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:4006/health || exit 1"], interval: 5s, timeout: 5s, retries: 10 }
@@ -149,6 +150,8 @@ services:
       INVENTORY_API_URL: http://inventory-service:4003
       MENU_SERVICE_URL: http://menu-service:4007
       PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
+      # admin-service asks GET /internal/products/:id/usage before deleting a catalog ingredient.
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
     ports: ["4008:4008"]
     depends_on:
       shopping-list-db: { condition: service_healthy }

@@ -5,9 +5,11 @@ import {
   deleteRecipe,
   getRecipe,
   listRecipes,
+  RecipeInUseError,
   RecipeNotFoundError,
   updateRecipe,
 } from "../services/recipe.service";
+import { RecipeUsageUnavailableError } from "../lib/menu-usage";
 
 function handleError(error: unknown, response: Response): void {
   if (error instanceof z.ZodError) {
@@ -16,6 +18,15 @@ function handleError(error: unknown, response: Response): void {
   }
   if (error instanceof RecipeNotFoundError) {
     response.status(404).json({ error: error.message });
+    return;
+  }
+  if (error instanceof RecipeInUseError) {
+    response.status(409).json({ error: "IN_USE", code: "IN_USE", message: error.message, reasons: error.reasons });
+    return;
+  }
+  if (error instanceof RecipeUsageUnavailableError) {
+    console.error("[recipe-service] usage check failed:", error.message);
+    response.status(503).json({ error: "USAGE_CHECK_UNAVAILABLE", message: "Không kiểm tra được món ăn đang được dùng ở đâu, chưa xóa. Thử lại sau." });
     return;
   }
   console.error("[recipe-service] request failed:", error);

@@ -42,3 +42,13 @@ model Recipe {
 
   @@index([name])
 }
+
+/// Starter dishes an admin deleted for good: the startup seed (which adds missing starter names) skips these names,
+/// so a deleted starter dish is not created again. nameKey = trimmed, lower-case (vi) name.
+model DeletedStarterRecipe {
+  nameKey   String   @id
+  name      String
+  deletedAt DateTime @default(now())
+
+  @@map("deleted_starter_recipes")
+}

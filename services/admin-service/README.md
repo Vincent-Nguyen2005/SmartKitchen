@@ -17,6 +17,14 @@ User IDs are plain strings because this service has its own database and does no
 
 Ingredient mutations, import/export, soft deletion, and recommendation-weight changes require `x-user-id` and `x-user-role: ADMIN` from the internal gateway. These headers are trusted only on the private service network until Auth Service JWT verification is available. Weight updates use optimistic locking with `expectedVersion`; values are validated in `[0, 1]` and the documented defaults are not normalized, so callers may choose their own total.
 
+### Deleting an ingredient
+
+`DELETE /ingredients/:id` (ADMIN) deletes for good, but only when nothing still uses the ingredient:
+- **Checked:** its synced promotion in notification-service (running, or already sent to users) and shopping-list items added from the market (`productId`), both through `/internal/...` with `INTERNAL_API_KEY`; also the row's own running discount. Inventory, recipes and menus store names, not catalog ids.
+- **In use:** `409 { code: "IN_USE", reasons }` and nothing is deleted; the admin can hide it instead.
+- **Not in use:** the row is deleted (a never-sent synced promotion is removed too) and a `DELETE` audit row keeps the old values. The starter catalog seed skips names with such an audit row, so a deleted starter ingredient does not come back.
+- **A check cannot be answered:** `503 USAGE_CHECK_UNAVAILABLE`, nothing deleted.
+
 ### Ingredient price
 
 `price` is optional: an integer number of Vietnamese đồng, `>= 0`, or `null` for no price (migration `20261120000000_ingredient_price`, with a database `CHECK`). In the admin form it is **Giá (đ)**; an empty field saves `null`, and negative or fractional values are rejected with `400 VALIDATION_ERROR`. The price does not change the promotion sync to notification-service.
@@ -26,7 +34,7 @@ Ingredient mutations, import/export, soft deletion, and recommendation-weight ch
 - **Starter catalog:** at start, `seedMissingIngredients` (`src/seed/seed-catalog.ts`, data in `src/seed/catalog.data.ts`) adds about 100 common Vietnamese market ingredients whose name is missing.
   - Groups: Rau củ, Trái cây, Thịt, Hải sản, Trứng & sữa, Đồ khô & gạo, Gia vị, Đồ uống, Đồ đông lạnh.
   - Each has a shared unit code, `shelfLifeDays` and kcal per 100 g, and no price (admins set prices).
-  - Existing rows are never updated or deleted, so running it again changes nothing. The log gives a count.
+  - Existing rows are never updated or deleted, and names an admin deleted or renamed are skipped, so running it again changes nothing. The log gives a count.
 - **Image credit:** `imageSource` (Commons file page), `imageAuthor` and `imageLicense` are stored with an image that came from Wikimedia Commons (migration `20261127000000_ingredient_image_credit`).
   - When an admin saves a different image link without credit fields, the old credit is cleared.
   - The market catalog returns the credit, and the app shows "Ảnh: <author>, <license>, Wikimedia Commons".

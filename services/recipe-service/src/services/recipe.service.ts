@@ -2,6 +2,8 @@ import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-rec
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { imageUrlProblem, MAX_IMAGE_URL_LENGTH } from "../lib/image-url";
+import { menuUsageCheck, type RecipeUsageCheck } from "../lib/menu-usage";
+import { seedRecipes } from "../seed/recipes.data";
 
 const recipeUnits = ["GRAM", "KILOGRAM", "MILLILITER", "LITER", "PIECE", "PACK", "BOTTLE", "CAN", "BOX"] as const;
 const nutrient = z.number().finite().nonnegative().max(10_000).nullable().optional();
@@ -141,7 +143,31 @@ export async function updateRecipe(id: string, input: unknown, client: PrismaCli
   return getRecipe(id, client);
 }
 
-export async function deleteRecipe(id: string, client: PrismaClient = prisma): Promise<void> {
-  const result = await client.recipe.deleteMany({ where: { id } });
-  if (result.count === 0) throw new RecipeNotFoundError();
+export class RecipeInUseError extends Error {
+  constructor(readonly reasons: string[]) {
+    super(`Món ăn ${reasons.join(", ")}.`);
+  }
+}
+
+const starterKey = (name: string) => name.trim().toLocaleLowerCase("vi");
+
+/**
+ * Permanent delete, only when no saved menu or dislike history points at the dish (else RecipeInUseError; the admin
+ * can hide it instead). A deleted starter dish gets a tombstone so the startup seed does not create it again.
+ */
+export async function deleteRecipe(id: string, client: PrismaClient = prisma, checkUsage: RecipeUsageCheck = menuUsageCheck): Promise<void> {
+  const recipe = await client.recipe.findUnique({ where: { id }, select: { id: true, name: true } });
+  if (!recipe) throw new RecipeNotFoundError();
+  const usage = await checkUsage(recipe.id);
+  const reasons: string[] = [];
+  if (usage.menuItems > 0) reasons.push(`có trong ${usage.menuItems} món của thực đơn đã lưu`);
+  if (usage.removedDishes > 0) reasons.push("có trong lịch sử món bị bỏ");
+  if (reasons.length > 0) throw new RecipeInUseError(reasons);
+  const key = starterKey(recipe.name);
+  const isStarter = seedRecipes.some((seed) => starterKey(seed.name) === key);
+  await client.$transaction(async (tx) => {
+    const result = await tx.recipe.deleteMany({ where: { id: recipe.id } });
+    if (result.count === 0) throw new RecipeNotFoundError();
+    if (isStarter) await tx.deletedStarterRecipe.upsert({ where: { nameKey: key }, update: { deletedAt: new Date() }, create: { nameKey: key, name: recipe.name } });
+  });
 }

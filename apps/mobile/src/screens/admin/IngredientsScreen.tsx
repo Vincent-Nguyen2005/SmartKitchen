@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { BadgePercent, Carrot, Pencil, Plus, Save, Search, SearchX, TriangleExclamationPoint, X } from "lucide-react-native";
+import { BadgePercent, Carrot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, TriangleExclamationPoint, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
@@ -8,6 +8,8 @@ import { useGatewayApi } from "../notifications/useGatewayApi";
 import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { DateField, toDisplayDate } from "./DateField";
 import { formatVnd } from "../../services/format";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { safeDelete } from "./safeDelete";
 
 type Ingredient = {
   id: string;
@@ -53,13 +55,13 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 const SHOW_ALLERGENS = false;
 
 /** credit: the stored image's credit (shown while the link is unchanged). */
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; credit?: { url: string; source: string | null; author: string; license: string } | null };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
 const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "" };
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
-  price: item.price?.toString() ?? "",
+  price: item.price?.toString() ?? "", isActive: item.isActive,
   credit: item.imageUrl && item.imageAuthor && item.imageLicense ? { url: item.imageUrl, source: item.imageSource ?? null, author: item.imageAuthor, license: item.imageLicense } : null,
 });
 const DEFAULT_PROMO_DAYS = 7;
@@ -110,6 +112,8 @@ export default function IngredientsScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const { confirm, dialog } = useConfirm();
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Ingredient>>(null);
 
@@ -189,6 +193,36 @@ export default function IngredientsScreen(): React.JSX.Element {
       setError(errorMessage(caught));
     }
   };
+
+  // "Ẩn" / "Xóa" in the edit form. Delete is refused (409 IN_USE) while promotions or shopping lists use the
+  // ingredient; the admin can hide it instead. Afterwards the form closes and the current page reloads.
+  const hideFromForm = async (id: string) => {
+    await api.patch<SavedIngredient>(`/api/admin/ingredients/${encodeURIComponent(id)}/active`, { isActive: false });
+  };
+  const runFormAction = async (action: () => Promise<boolean>) => {
+    setRemoving(true); setFormError(null);
+    try {
+      if (await action()) { setDraft(null); void load(page); }
+    } catch (caught) {
+      setFormError(errorMessage(caught));
+    } finally {
+      setRemoving(false);
+    }
+  };
+  const hideDraft = (current: Draft) => runFormAction(async () => { if (current.id) await hideFromForm(current.id); return true; });
+  const deleteDraft = (current: Draft) => runFormAction(async () => {
+    const id = current.id;
+    if (!id) return false;
+    const result = await safeDelete({
+      confirm,
+      name: current.name.trim() || "nguyên liệu này",
+      inUseText: "Nguyên liệu này đang được dùng nên không xóa được. Bạn có thể ẩn nó.",
+      remove: () => api.delete(`/api/admin/ingredients/${encodeURIComponent(id)}`),
+      hide: current.isActive === false ? undefined : () => hideFromForm(id),
+    });
+    if (result.kind === "inUse") setFormError(result.message);
+    return result.kind === "deleted" || result.kind === "hidden";
+  });
 
   // Search, add and filter are the list header, so on short screens (phones in landscape) they scroll
   // away with the list. While loading or after an error the list shows the state instead (same requests).
@@ -350,10 +384,17 @@ export default function IngredientsScreen(): React.JSX.Element {
             ) : null}
             {formError ? <Text style={styles.errorText} accessibilityLiveRegion="assertive">{formError}</Text> : null}
             <View style={[styles.wrapRow, local.modalActions]}>
+              {draft?.id ? (
+                <View style={[styles.wrapRow, local.destructiveActions]}>
+                  {draft.isActive !== false ? <Button variant="secondary" label="Ẩn" icon={EyeOff} onPress={() => void hideDraft(draft)} disabled={removing || saving} /> : null}
+                  <Button variant="danger" label="Xóa" icon={Trash2} accessibilityLabel={`Xóa vĩnh viễn ${draft.name}`} onPress={() => void deleteDraft(draft)} busy={removing} disabled={saving} />
+                </View>
+              ) : null}
               <Button variant="secondary" label="Hủy" onPress={() => setDraft(null)} />
-              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} />
+              <Button label="Lưu" icon={Save} onPress={() => void save()} busy={saving} disabled={removing} />
             </View>
           </ScrollView>
+          {dialog}
         </SafeAreaView>
       </Modal>
     </View>
@@ -421,4 +462,6 @@ const local = StyleSheet.create({
   modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 560, padding: 20, width: "100%" },
   modalHeader: { marginBottom: 8 },
   modalActions: { justifyContent: "flex-end", marginTop: 12 },
+  // "Ẩn" / "Xóa" sit on the left, away from "Lưu".
+  destructiveActions: { marginRight: "auto" },
 });
