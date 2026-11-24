@@ -44,7 +44,7 @@ const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
 
 /** POST /api/inventory/photo/suggest: catalog names guessed from a photo (best first); empty when unsure. */
-export type PhotoSuggestResult = { suggestions: Array<{ name: string; catalogId: string; productId: string; imageUrl: string | null; score: number | null }>; confident: boolean; source: "clip" | "gemini" | null };
+export type PhotoSuggestResult = { suggestions: Array<{ name: string; catalogId: string; productId: string; imageUrl: string | null; score: number | null }>; confident: boolean; autofill: boolean; source: "clip" | "gemini" | null };
 /** GET /api/inventory/items/match: the catalog product a name matches and the family's existing row (same unit). */
 export type ItemMatch = {
   product: { id: string; name: string; imageUrl: string | null } | null;

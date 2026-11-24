@@ -76,7 +76,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   // Product photo: stored with the item after saving; also sent once to the server to suggest the name.
   const [photo, setPhoto] = useState<UploadPhoto | null>(initialPhoto);
   // Names suggested from the photo (catalog products, best first); "idle" until a photo is taken.
-  const [photoGuess, setPhotoGuess] = useState<{ state: "idle" | "loading" | "done" | "none"; options: Array<{ name: string; catalogId: string; imageUrl?: string | null }> }>({ state: "idle", options: [] });
+  // autofilled: the top name was put in Tên (server said it is sure); otherwise all suggestions are only offered.
+  const [photoGuess, setPhotoGuess] = useState<{ state: "idle" | "loading" | "done" | "none"; options: Array<{ name: string; catalogId: string; imageUrl?: string | null }>; autofilled?: boolean }>({ state: "idle", options: [] });
   const typedSincePhoto = useRef(false);
   // Catalog product the current name matches (server rule): its image replaces the captured photo in the preview,
   // and the captured photo is then not uploaded (Kho shows the catalog image).
@@ -187,8 +188,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       .then((result) => {
         if (!active) return;
         const options = result.suggestions.map(({ name: suggested, catalogId, imageUrl }) => ({ name: suggested, catalogId, imageUrl }));
-        setPhotoGuess({ state: options.length > 0 ? "done" : "none", options });
-        if (options.length > 0 && !typedSincePhoto.current) void pickSuggestedName(options[0]);
+        // Tên is filled only when recognition is sure (server `autofill`); else the user taps a suggestion or types.
+        const autofilled = result.autofill === true && options.length > 0 && !typedSincePhoto.current;
+        setPhotoGuess({ state: options.length > 0 ? "done" : "none", options, autofilled });
+        if (autofilled) void pickSuggestedName(options[0]);
       })
       .catch(() => { if (active) setPhotoGuess({ state: "none", options: [] }); });
     return () => { active = false; };
@@ -655,7 +658,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                     style={styles.input}
                   />
                 : <Text style={styles.recognizedName}>{name}</Text>}
-              {mode === "photo" && photoGuess.state === "done" && photoGuess.options.length > 1 && (
+              {mode === "photo" && photoGuess.state === "done" && photoGuess.options.some((option) => option.name !== name) && (
                 <View accessibilityLabel="Tên gợi ý từ ảnh" style={styles.guessChips}>
                   {photoGuess.options.filter((option) => option.name !== name).map((option) => (
                     <Pressable accessibilityRole="button" accessibilityLabel={`Chọn tên ${option.name}`} key={option.catalogId} onPress={() => { typedSincePhoto.current = true; void pickSuggestedName(option); }} style={styles.guessChip}>
@@ -664,7 +667,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   ))}
                 </View>
               )}
-              {mode === "photo" && photoGuess.state === "none" && !name && <Text style={styles.guessHint}>Chưa nhận ra từ ảnh, hãy nhập tên.</Text>}
+              {mode === "photo" && (photoGuess.state === "none" || (photoGuess.state === "done" && !photoGuess.autofilled)) && !name && <Text style={styles.guessHint}>Chọn gợi ý hoặc nhập tên nguyên liệu</Text>}
               {suggestions.length > 0 && (
                 <View accessibilityLabel="Gợi ý từ danh mục nguyên liệu" style={styles.suggestionList}>
                   {suggestions.map((entry) => (

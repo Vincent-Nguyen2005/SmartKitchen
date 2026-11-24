@@ -70,6 +70,8 @@ The service supports the prefixed paths below for direct calls and matching shor
 3. **Otherwise** there are no suggestions (`confident: false`). The app never waits on this to save.
 
 - **Suggestions:** each one also carries `productId` (= `catalogId`) and the product's `imageUrl`.
+- **`autofill`** tells the app whether it may put the top name in Tên by itself. It's true when the top final CLIP score is at least `AUTOFILL_MIN_SCORE` (0.6), or when Gemini's answer matched the catalog. On the PR #89 photos, 0.6 fills 14 of 47 photos with 11 right (79%) and 3 wrong; 0.4 would make 10 wrong fills.
+- **When nobody is sure** (CLIP below 0.4 and Gemini off or missed), CLIP's top 3 are still returned with `confident: false, autofill: false`, so they can be tapped.
 - **Image-to-image signal (`PHOTO_IMAGE_MATCH=on`, off by default):**
   - The photo is also compared with each catalog product's own image, using only the stored `imageUrl`.
   - Embeddings live in memory and are recomputed only when the URL changes. They're built in the background, one image every 2 s, pausing 10 minutes on HTTP 429.

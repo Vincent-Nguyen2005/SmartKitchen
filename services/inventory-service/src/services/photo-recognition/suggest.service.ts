@@ -11,7 +11,11 @@ import { createDailyLimit, createGeminiPicker, geminiConfig, type GeminiPicker }
  */
 /** productId = catalogId (the admin catalog product); imageUrl = that product's image (shown in the add form). */
 export type PhotoSuggestion = { name: string; catalogId: string; productId: string; imageUrl: string | null; score: number | null };
-export type SuggestResult = { suggestions: PhotoSuggestion[]; confident: boolean; source: "clip" | "gemini" | null };
+/**
+ * confident: CLIP reached CLIP_THRESHOLD or Gemini matched the catalog. autofill: the app may put the top name in Tên
+ * by itself (otherwise it only shows the suggestions to tap).
+ */
+export type SuggestResult = { suggestions: PhotoSuggestion[]; confident: boolean; autofill: boolean; source: "clip" | "gemini" | null };
 
 /**
  * Top-1 probability (softmax over ~100 catalog labels) needed to trust CLIP. Tuned on 47 test photos (README): at 0.4,
@@ -21,6 +25,11 @@ export type SuggestResult = { suggestions: PhotoSuggestion[]; confident: boolean
  */
 export const CLIP_THRESHOLD = Number(process.env.PHOTO_CLIP_THRESHOLD) || 0.4;
 export const CLIP_TIMEOUT_MS = 8000;
+/**
+ * Final CLIP score needed to fill Tên automatically. On the PR #89 set (47 photos): >= 0.6 fills 14, 11 right (79%),
+ * 3 wrong; >= 0.4 would fill 30 with 10 wrong; >= 0.7 fills 11 with 2 wrong. Below it the user picks a suggestion.
+ */
+export const AUTOFILL_MIN_SCORE = 0.6;
 export const GEMINI_DAILY_LIMIT = Number(process.env.PHOTO_GEMINI_DAILY_LIMIT) || 20;
 const MAX_SUGGESTIONS = 3;
 /**
@@ -45,7 +54,7 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => new Prom
   promise.then((value) => { clearTimeout(timer); resolve(value); }, (error) => { clearTimeout(timer); reject(error); });
 });
 
-const NONE: SuggestResult = { suggestions: [], confident: false, source: null };
+const NONE: SuggestResult = { suggestions: [], confident: false, autofill: false, source: null };
 
 export function createPhotoSuggester(deps: SuggestDeps) {
   return async (input: { image: Buffer; mimeType: string; userId: string; familyId: string }): Promise<SuggestResult> => {
@@ -61,6 +70,8 @@ export function createPhotoSuggester(deps: SuggestDeps) {
     const suggestion = (entry: CatalogLabel, score: number | null): PhotoSuggestion =>
       ({ name: entry.name, catalogId: entry.id, productId: entry.id, imageUrl: entry.imageUrl ?? null, score: score === null ? null : Math.round(score * 1000) / 1000 });
 
+    // CLIP's best guesses, kept to show as tap-to-fill suggestions when nobody is sure.
+    let unsure: PhotoSuggestion[] = [];
     const labelled = catalog.filter((entry) => entry.englishName);
     if (labelled.length > 0) {
       try {
@@ -78,9 +89,11 @@ export function createPhotoSuggester(deps: SuggestDeps) {
         }
         const byId = new Map(catalog.map((entry) => [entry.id, entry]));
         const ranked = [...final].map(([id, score]) => ({ entry: byId.get(id) as CatalogLabel, score })).filter(({ entry }) => entry).sort((left, right) => right.score - left.score);
+        const top = ranked.slice(0, MAX_SUGGESTIONS).map(({ entry, score }) => suggestion(entry, score));
         if (ranked.length > 0 && ranked[0].score >= deps.threshold) {
-          return { suggestions: ranked.slice(0, MAX_SUGGESTIONS).map(({ entry, score }) => suggestion(entry, score)), confident: true, source: "clip" };
+          return { suggestions: top, confident: true, autofill: ranked[0].score >= AUTOFILL_MIN_SCORE, source: "clip" };
         }
+        unsure = top;
       } catch (error) {
         if (!(error instanceof ClipUnavailableError)) deps.log("photo_suggest_clip_failed", { message: error instanceof Error ? error.message : String(error) });
       }
@@ -92,12 +105,14 @@ export function createPhotoSuggester(deps: SuggestDeps) {
         const byName = new Map(catalog.map((entry) => [entry.name, entry]));
         // Anything that is not a catalog ingredient is discarded.
         const suggestions = names.flatMap((name) => { const entry = byName.get(name); return entry ? [suggestion(entry, null)] : []; });
-        if (suggestions.length > 0) return { suggestions, confident: true, source: "gemini" };
+        // A Gemini answer that matched the catalog may fill Tên.
+        if (suggestions.length > 0) return { suggestions, confident: true, autofill: true, source: "gemini" };
       } catch (error) {
         deps.log("photo_suggest_gemini_failed", { message: error instanceof Error ? error.message : String(error) });
       }
     }
-    return NONE;
+    // Nobody is sure: CLIP's top guesses are still offered to tap (Tên stays empty).
+    return unsure.length > 0 ? { suggestions: unsure, confident: false, autofill: false, source: "clip" } : NONE;
   };
 }
 

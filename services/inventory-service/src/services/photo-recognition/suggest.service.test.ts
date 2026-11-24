@@ -29,7 +29,7 @@ describe("photo suggestions", () => {
     const result = await createPhotoSuggester(deps({ classify }))(input);
     expect(classify).toHaveBeenCalledWith(image, ["carrot", "tomato", "potato"]);
     expect(result).toEqual({
-      confident: true, source: "clip",
+      confident: true, autofill: true, source: "clip",
       suggestions: [
         { name: "Cà chua", catalogId: "c2", productId: "c2", imageUrl: null, score: 0.75 },
         { name: "Khoai tây", catalogId: "c3", productId: "c3", imageUrl: null, score: 0.15 },
@@ -42,13 +42,13 @@ describe("photo suggestions", () => {
     const gemini = vi.fn(async () => ["Rau ngót", "Bánh pizza"]);
     const result = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.3, 0.4 - 0.01], gemini }))(input);
     expect(gemini).toHaveBeenCalledWith(image, "image/jpeg", ["Cà rốt", "Cà chua", "Khoai tây", "Rau ngót"]);
-    expect(result).toEqual({ confident: true, source: "gemini", suggestions: [{ name: "Rau ngót", catalogId: "c4", productId: "c4", imageUrl: null, score: null }] });
+    expect(result).toEqual({ confident: true, autofill: true, source: "gemini", suggestions: [{ name: "Rau ngót", catalogId: "c4", productId: "c4", imageUrl: null, score: null }] });
   });
 
   it("CLIP not installed -> Gemini; no Gemini or daily limit used up -> no suggestion", async () => {
     const unavailable = async () => { throw new ClipUnavailableError("missing"); };
     expect((await createPhotoSuggester(deps({ classify: unavailable, gemini: async () => ["Cà rốt"] }))(input)).source).toBe("gemini");
-    expect(await createPhotoSuggester(deps({ classify: unavailable }))(input)).toEqual({ suggestions: [], confident: false, source: null });
+    expect(await createPhotoSuggester(deps({ classify: unavailable }))(input)).toEqual({ suggestions: [], confident: false, autofill: false, source: null });
     const gemini = vi.fn(async () => ["Cà rốt"]);
     expect((await createPhotoSuggester(deps({ classify: async () => [0.2, 0.2, 0.2], gemini, geminiAllowed: () => false }))(input)).confident).toBe(false);
     expect(gemini).not.toHaveBeenCalled();
@@ -58,12 +58,12 @@ describe("photo suggestions", () => {
     const failing = createPhotoSuggester(deps({
       loadCatalog: async () => { throw new Error("admin down"); },
     }));
-    expect(await failing(input)).toEqual({ suggestions: [], confident: false, source: null });
+    expect(await failing(input)).toEqual({ suggestions: [], confident: false, autofill: false, source: null });
     const bothFail = createPhotoSuggester(deps({
       classify: async () => { throw new Error("onnx crashed"); },
       gemini: async () => { throw new Error("timeout"); },
     }));
-    expect(await bothFail(input)).toEqual({ suggestions: [], confident: false, source: null });
+    expect(await bothFail(input)).toEqual({ suggestions: [], confident: false, autofill: false, source: null });
   });
 
   it("daily Gemini limit per family (Vietnam day)", () => {
@@ -117,6 +117,24 @@ describe("CLIP math and catalog labels", () => {
     await loadCatalogLabels("u1", fetchImpl as unknown as typeof fetch);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     resetCatalogLabelCache();
+  });
+});
+
+describe("auto-fill only when sure", () => {
+  it("top score >= 0.6 fills Tên; 0.4-0.6 is confident but only suggested; below 0.4 without Gemini the guesses are still offered", async () => {
+    const high = await createPhotoSuggester(deps({ classify: async () => [0.65, 0.2, 0.15] }))(input);
+    expect([high.confident, high.autofill, high.suggestions.length]).toEqual([true, true, 3]);
+    const middle = await createPhotoSuggester(deps({ classify: async () => [0.5, 0.3, 0.2] }))(input);
+    expect([middle.confident, middle.autofill, middle.suggestions[0].name]).toEqual([true, false, "Cà rốt"]);
+    const low = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.35, 0.35] }))(input);
+    expect([low.confident, low.autofill, low.source, low.suggestions.length]).toEqual([false, false, "clip", 3]);
+  });
+
+  it("a Gemini answer that matched the catalog fills Tên; a Gemini miss falls back to the unsure CLIP guesses", async () => {
+    const gemini = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.35, 0.35], gemini: async () => ["Cà rốt"] }))(input);
+    expect([gemini.autofill, gemini.source, gemini.suggestions[0].name]).toEqual([true, "gemini", "Cà rốt"]);
+    const miss = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.35, 0.35], gemini: async () => ["Bánh pizza"] }))(input);
+    expect([miss.autofill, miss.confident, miss.source, miss.suggestions.length]).toEqual([false, false, "clip", 3]);
   });
 });
 
