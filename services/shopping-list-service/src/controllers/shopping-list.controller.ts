@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { ShoppingListService } from "../services/shopping-list.service";
 import {
   addItemBodySchema,
+  ensureItemsBodySchema,
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
@@ -51,6 +52,17 @@ export class ShoppingListController {
       await requireFamilyMembership(auth(req), input.familyId);
       const item = await ShoppingListService.addItem(input);
       res.status(201).json({ success: true, data: item });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async ensureItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { familyId, items } = ensureItemsBodySchema.parse(req.body);
+      await requireFamilyMembership(auth(req), familyId);
+      const result = await ShoppingListService.ensureItems(familyId, items);
+      res.json({ success: true, data: result });
     } catch (err) {
       next(err);
     }

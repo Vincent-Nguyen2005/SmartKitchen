@@ -7,7 +7,7 @@ const prismaMock = vi.hoisted(() => ({
   deviceToken: { upsert: vi.fn(), updateMany: vi.fn(), findMany: vi.fn() },
   notificationPreference: { upsert: vi.fn() },
   partnerSupermarket: { findFirst: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
-  promotion: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn() },
+  promotion: { findFirst: vi.fn(), create: vi.fn(), update: vi.fn(), findMany: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
   notification: { findMany: vi.fn(), count: vi.fn(), update: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -231,5 +231,17 @@ describe("promotions and notifications", () => {
     prismaMock.deviceToken.findMany.mockResolvedValue([{ userId: "u9" }]);
     await request(app).post("/promotions/p1/dispatch").set(ADMIN).send({});
     expect(dispatchMock).toHaveBeenLastCalledWith("p1", ["u9"]);
+  });
+});
+
+describe("DELETE /promotions/:id (admin cleanup, e2e teardown)", () => {
+  it("admin deletes a promotion; unknown id 404; users and partner keys cannot (403 / 401)", async () => {
+    prismaMock.promotion.deleteMany.mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ count: 0 });
+    expect((await request(app).delete("/promotions/p1").set(ADMIN)).body).toEqual({ deleted: 1 });
+    expect(prismaMock.promotion.deleteMany).toHaveBeenLastCalledWith({ where: { id: "p1" } });
+    expect((await request(app).delete("/promotions/missing").set(ADMIN)).status).toBe(404);
+    expect((await request(app).delete("/promotions/p1").set(USER_A)).status).toBe(403);
+    expect((await request(app).delete("/promotions/p1").set("x-api-key", KEY)).status).toBe(401);
+    expect(prismaMock.promotion.deleteMany).toHaveBeenCalledTimes(2);
   });
 });

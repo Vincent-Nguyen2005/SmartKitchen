@@ -65,6 +65,24 @@ describe("Giỏ hàng: add with a price snapshot", () => {
   });
 });
 
+describe("Cần mua tuần này: Thêm vào Giỏ hàng (at least, idempotent)", () => {
+  it("raises an existing line to at least the missing amount, never doubles it; a bigger cart line stays as it is; new products are added", async () => {
+    // A tiny in-memory cart so running the same request twice can be checked.
+    const cart = [item({ id: "egg", name: "Trứng gà", unit: "PIECE", quantity: 2, productId: "p-egg" }), item({ id: "pork", name: "Thịt heo", unit: "KILOGRAM", quantity: 3, productId: "p-pork" })];
+    tx.shoppingItem.findMany.mockImplementation(async ({ where }: { where: { unit: string } }) => cart.filter((line) => line.unit === where.unit));
+    tx.shoppingItem.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: { quantity: number } }) => { const line = cart.find((entry) => entry.id === where.id)!; Object.assign(line, data); return line; });
+    tx.shoppingItem.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => { const line = item({ id: `new-${cart.length}`, ...data }); cart.push(line); return line; });
+    const wanted = [
+      { name: "Trứng gà", quantity: 5, unit: "PIECE", productId: "p-egg" },
+      { name: "Thịt heo", quantity: 1, unit: "KILOGRAM", productId: "p-pork" },
+      { name: "Cà rốt", quantity: 1, unit: "KILOGRAM", productId: "p-carrot", unitPrice: 25000 },
+    ];
+    await ShoppingListService.ensureItems(familyId, wanted);
+    await ShoppingListService.ensureItems(familyId, wanted);
+    expect(cart.map((line) => [line.name, line.quantity])).toEqual([["Trứng gà", 5], ["Thịt heo", 3], ["Cà rốt", 1]]);
+  });
+});
+
 describe("Giỏ hàng: checkout into Kho", () => {
   beforeEach(() => {
     mocks.prisma.shoppingList.findFirst.mockResolvedValue({ id: listId, familyId, status: "ACTIVE" });

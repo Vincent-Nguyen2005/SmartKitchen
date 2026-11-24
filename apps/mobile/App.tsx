@@ -146,6 +146,8 @@ function AppContent(): React.JSX.Element {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>("inventory");
+  // Bumped to open Đi chợ directly on Giỏ hàng (from "Cần mua tuần này" in Thông báo).
+  const [cartOpenKey, setCartOpenKey] = useState(0);
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -624,7 +626,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} />}
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} />}
         {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
@@ -636,6 +638,7 @@ function AppContent(): React.JSX.Element {
           <NotificationsHome
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
             onChanged={() => void refreshNotificationBadge()}
+            onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
           />
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}

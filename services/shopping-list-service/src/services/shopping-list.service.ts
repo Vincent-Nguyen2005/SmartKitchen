@@ -295,7 +295,11 @@ export class ShoppingListService {
    * still in the cart only gets its quantity raised, so the cart never holds duplicates. A price snapshot from the
    * market is stored (or refreshed) on the row.
    */
-  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null } & PriceSnapshot) {
+  /**
+   * mode "add" (Đi chợ): the same product and unit already in the cart gets the quantity added.
+   * mode "atLeast" ("Cần mua tuần này"): it is raised to at least `quantity`, never added twice (idempotent).
+   */
+  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null } & PriceSnapshot, mode: "add" | "atLeast" = "add") {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         return await prisma.$transaction(async (transaction) => {
@@ -316,9 +320,10 @@ export class ShoppingListService {
           const existing = inCart.find((item) =>
             (data.productId && item.productId ? item.productId === data.productId : normalizedName(item.name) === key));
           if (existing) {
+            const quantity = mode === "atLeast" ? Math.max(existing.quantity, data.quantity) : existing.quantity + data.quantity;
             return transaction.shoppingItem.update({
               where: { id: existing.id },
-              data: { quantity: roundQuantity(existing.quantity + data.quantity), ...snapshotData(data) },
+              data: { quantity: roundQuantity(quantity), ...snapshotData(data) },
             });
           }
           return transaction.shoppingItem.create({
@@ -338,6 +343,16 @@ export class ShoppingListService {
       }
     }
     throw new AppError(503, "SHOPPING_LIST_CONFLICT", "The active list changed while adding the item. Retry the request.");
+  }
+
+  /**
+   * "Thêm vào Giỏ hàng" from "Cần mua tuần này": puts every item in the family's cart with at least the given
+   * quantity (same product and unit: raised, not doubled; otherwise added). Running it again changes nothing.
+   */
+  static async ensureItems(familyId: string, items: Array<{ name: string; quantity: number; unit: string } & PriceSnapshot>) {
+    const results = [];
+    for (const item of items) results.push(await this.addItem({ familyId, ...item }, "atLeast"));
+    return results;
   }
 
   static async getSuggestions(familyId: string, authorization: string) {

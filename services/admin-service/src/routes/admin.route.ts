@@ -5,7 +5,7 @@ import { adminUserId, requireAdmin } from "../middleware/require-admin";
 import { requireUser } from "../middleware/require-user";
 import { defaultWeights, knownWeightKeys } from "../config/weights";
 import { imageUrlProblem } from "../lib/image-url";
-import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
+import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionStatus, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
 import { ingredientUsage, UsageCheckError } from "../lib/ingredient-usage";
 
 const router = Router();
@@ -19,6 +19,8 @@ const discountPercentSchema = z.preprocess(emptyToNull, z.number().int().min(1).
 /** Optional price in whole VND; "" from a cleared form field means "no price". */
 const priceSchema = z.preprocess(emptyToNull, z.number().int("Giá phải là số nguyên (đồng)").nonnegative("Giá không được âm").max(1_000_000_000).nullable().optional());
 const isCalendarDay = (day: string): boolean => !Number.isNaN(Date.parse(`${day}T00:00:00Z`)) && new Date(`${day}T00:00:00Z`).toISOString().startsWith(day);
+/** First day of the discount (YYYY-MM-DD); may be in the past for a running promotion. */
+const promoStartDateSchema = z.preprocess(emptyToNull, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").refine(isCalendarDay, "Not a valid date").nullable().optional());
 const promoEndDateSchema = z.preprocess(emptyToNull, z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").refine(isCalendarDay, "Not a valid date").refine((day) => day >= vnToday(), "Must be today or later").nullable().optional());
 /** Optional image credit text (Commons author / license / page link); "" means none. */
 const creditSchema = (max: number) => z.preprocess(emptyToNull, z.string().trim().max(max).nullable()).optional();
@@ -33,9 +35,9 @@ const creditColumns = (input: Partial<IngredientInput>, before: { imageUrl: stri
     ? { imageSource: null, imageAuthor: null, imageLicense: null }
     : {};
 
-const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
+const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoStartDate: promoStartDateSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
 type IngredientInput = z.infer<typeof ingredientSchema>;
-type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null } | null;
+type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null; promoStartDate?: Date | null } | null;
 
 /**
  * Final promotion columns after merging the request into the stored row. Without a discount there is no end
@@ -45,13 +47,23 @@ const promoColumns = (input: Partial<IngredientInput>, before: PromoBefore) => {
   const discountPercent = input.discountPercent !== undefined ? input.discountPercent ?? null : before?.discountPercent ?? null;
   const imageUrl = input.imageUrl !== undefined ? input.imageUrl ?? null : before?.imageUrl ?? null;
   let promoEndDate: Date | null = null;
+  let promoStartDate: Date | null = null;
   if (discountPercent !== null) {
+    // Start: given, else the stored one, else today. End: given, else the stored one, else start + DEFAULT_PROMO_DAYS.
+    if (input.promoStartDate) promoStartDate = new Date(`${input.promoStartDate}T00:00:00.000Z`);
+    else if (input.promoStartDate === undefined && before?.promoStartDate) promoStartDate = before.promoStartDate;
+    else promoStartDate = new Date(`${vnToday()}T00:00:00.000Z`);
     if (input.promoEndDate) promoEndDate = new Date(`${input.promoEndDate}T00:00:00.000Z`);
     else if (input.promoEndDate === undefined && before?.promoEndDate) promoEndDate = before.promoEndDate;
-    else promoEndDate = new Date(`${addDays(vnToday(), DEFAULT_PROMO_DAYS)}T00:00:00.000Z`);
+    else promoEndDate = new Date(`${addDays(dayOf(promoStartDate), DEFAULT_PROMO_DAYS)}T00:00:00.000Z`);
   }
-  return { imageUrl, discountPercent, promoEndDate };
+  return { imageUrl, discountPercent, promoStartDate, promoEndDate };
 };
+/** "Giảm đến ngày" must not be before "Giảm từ ngày" (checked on the merged values, so partial updates count too). */
+const promoWindowProblem = (columns: { promoStartDate: Date | null; promoEndDate: Date | null }): string | null =>
+  columns.promoStartDate && columns.promoEndDate && columns.promoEndDate < columns.promoStartDate ? "Ngày kết thúc phải từ ngày bắt đầu trở đi" : null;
+const promoWindowError = (response: { status: (code: number) => { json: (body: unknown) => void } }, message: string): void =>
+  response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details: { fieldErrors: { promoEndDate: [message] } } });
 const hadPromotion = (before: PromoBefore): boolean => typeof before?.discountPercent === "number";
 const normalize = (value: string): string => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 const resultError = (response: { status: (code: number) => { json: (body: unknown) => void } }, details: unknown): void => response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details });
@@ -59,7 +71,13 @@ const audit = (userId: string, action: string, targetId: string | null, metadata
 
 router.get("/weights/effective", async (_request, response) => { const weights = await prisma.recommendationWeight.findMany(); return response.json({ weights: Object.fromEntries(weights.map((weight) => [weight.key, weight.value])), version: weights.reduce((max, weight) => Math.max(max, weight.version), 0), updatedAt: weights.reduce((latest, weight) => weight.updatedAt > latest ? weight.updatedAt : latest, new Date(0)) }); });
 /** A discount counts only while its last day (Vietnam time) has not passed; no end date = rolling default. */
-const activeDiscountWhere = (today: Date) => ({ discountPercent: { not: null }, OR: [{ promoEndDate: null }, { promoEndDate: { gte: today } }] });
+const activeDiscountWhere = (today: Date) => ({
+  discountPercent: { not: null },
+  AND: [
+    { OR: [{ promoStartDate: null }, { promoStartDate: { lte: today } }] },
+    { OR: [{ promoEndDate: null }, { promoEndDate: { gte: today } }] },
+  ],
+});
 const catalogQuerySchema = z.object({
   search: z.string().optional(),
   q: z.string().optional(), // older name of `search` (Kho add-item suggestions)
@@ -89,7 +107,7 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const [rows, total, groups] = await prisma.$transaction([
     prisma.masterIngredient.findMany({
       where,
-      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoEndDate: true, price: true },
+      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoStartDate: true, promoEndDate: true, price: true },
       orderBy: { nameNormalized: "asc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -99,7 +117,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   ]);
   const items = rows.map((row) => {
     const endDay = row.promoEndDate ? dayOf(row.promoEndDate) : null;
-    const onPromotion = row.discountPercent !== null && (endDay === null || endDay >= todayDay);
+    // Only between the first and the last day (Vietnam time): an upcoming or ended discount is not shown.
+    const onPromotion = row.discountPercent !== null && promotionStatus(row.promoStartDate ? dayOf(row.promoStartDate) : null, endDay, todayDay) === "running";
     return {
       id: row.id,
       name: row.name,
@@ -130,7 +149,9 @@ router.get("/ingredients/export", async (_request, response) => response.json(aw
 router.get("/ingredients/:id", async (request, response) => { const item = await prisma.masterIngredient.findUnique({ where: { id: request.params.id } }); return item ? response.json(item) : response.status(404).json({ error: "NOT_FOUND", message: "Ingredient not found" }); });
 router.post("/ingredients", async (request, response) => {
   const parsed = ingredientSchema.safeParse(request.body); if (!parsed.success) return resultError(response, parsed.error.flatten());
-  const data = { ...parsed.data, ...promoColumns(parsed.data, null), nameNormalized: normalize(parsed.data.name) };
+  const columns = promoColumns(parsed.data, null);
+  const windowProblem = promoWindowProblem(columns); if (windowProblem) return promoWindowError(response, windowProblem);
+  const data = { ...parsed.data, ...columns, nameNormalized: normalize(parsed.data.name) };
   let item;
   try { item = await prisma.$transaction(async (tx) => { const created = await tx.masterIngredient.create({ data }); await tx.auditLog.create({ data: { adminUserId: adminUserId(request), action: "CREATE", targetType: "MasterIngredient", targetId: created.id, metadata: { after: created } } }); return created; }); } catch { return response.status(409).json({ error: "CONFLICT", message: "Ingredient name already exists" }); }
   // The ingredient is saved first; a failed promotion sync is reported, never rolled back.
@@ -139,8 +160,10 @@ router.post("/ingredients", async (request, response) => {
 router.put("/ingredients/:id", async (request, response) => {
   const parsed = ingredientSchema.partial().safeParse(request.body); if (!parsed.success) return resultError(response, parsed.error.flatten());
   const before = await prisma.masterIngredient.findUnique({ where: { id: request.params.id } }); if (!before) return response.status(404).json({ error: "NOT_FOUND", message: "Ingredient not found" });
+  const columns = promoColumns(parsed.data, before);
+  const windowProblem = promoWindowProblem(columns); if (windowProblem) return promoWindowError(response, windowProblem);
   let after;
-  try { after = await prisma.$transaction(async (tx) => { const updated = await tx.masterIngredient.update({ where: { id: before.id }, data: { ...parsed.data, ...promoColumns(parsed.data, before), ...creditColumns(parsed.data, before), ...(parsed.data.name ? { nameNormalized: normalize(parsed.data.name) } : {}) } }); await tx.auditLog.create({ data: { adminUserId: adminUserId(request), action: "UPDATE", targetType: "MasterIngredient", targetId: updated.id, metadata: { before, after: updated } } }); return updated; }); } catch { return response.status(409).json({ error: "CONFLICT", message: "Ingredient name already exists" }); }
+  try { after = await prisma.$transaction(async (tx) => { const updated = await tx.masterIngredient.update({ where: { id: before.id }, data: { ...parsed.data, ...columns, ...creditColumns(parsed.data, before), ...(parsed.data.name ? { nameNormalized: normalize(parsed.data.name) } : {}) } }); await tx.auditLog.create({ data: { adminUserId: adminUserId(request), action: "UPDATE", targetType: "MasterIngredient", targetId: updated.id, metadata: { before, after: updated } } }); return updated; }); } catch { return response.status(409).json({ error: "CONFLICT", message: "Ingredient name already exists" }); }
   return response.json({ ...after, promotionSync: await promotionSync.sync(after, hadPromotion(before)) });
 });
 // Hiding an ingredient (soft delete) withdraws its promotion; showing it again republishes it.

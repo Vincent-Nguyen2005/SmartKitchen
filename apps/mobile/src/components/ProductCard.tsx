@@ -44,7 +44,8 @@ type Props = {
   subtitle?: string;
   /** Price row (Đi chợ) or expiry line (Kho). */
   footer?: React.ReactNode;
-  onPress: () => void;
+  /** Omitted = a display-only card (not a button), e.g. "Cần mua tuần này". */
+  onPress?: () => void;
   accessibilityLabel: string;
   /** Small label in the image's bottom-left corner (Nấu ăn: "Đã ăn" with a check). */
   marker?: string;
@@ -56,9 +57,10 @@ type Props = {
 export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, cornerAction, marker }: Props): React.JSX.Element {
   return (
     <Pressable
-      accessibilityRole="button"
+      accessibilityRole={onPress ? "button" : undefined}
       accessibilityLabel={accessibilityLabel}
       onPress={onPress}
+      disabled={!onPress}
       style={({ pressed }) => [local.card, { width }, pressed && ui.pressed]}
     >
       <View style={local.imageArea}>

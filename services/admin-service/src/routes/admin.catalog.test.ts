@@ -76,7 +76,10 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
       nameNormalized: { contains: "ca  chua" },
       category: { equals: "rau củ", mode: "insensitive" },
       discountPercent: { not: null },
-      OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }],
+      AND: [
+        { OR: [{ promoStartDate: null }, { promoStartDate: { lte: day(0) } }] },
+        { OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }] },
+      ],
     });
   });
 

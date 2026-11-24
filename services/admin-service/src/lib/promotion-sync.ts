@@ -13,6 +13,8 @@ export type SyncableIngredient = {
   imageUrl: string | null;
   discountPercent: number | null;
   promoEndDate: Date | null;
+  /** First day of the discount; null on rows saved before start dates existed (= already running). */
+  promoStartDate?: Date | null;
 };
 
 type FetchLike = (input: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number }>;
@@ -42,6 +44,16 @@ export const addDays = (day: string, days: number): string => {
   return date.toISOString().slice(0, 10);
 };
 
+/** A promotion starts at the beginning of its first day, Vietnam time (00:00 +07:00). */
+export const startOfVnDay = (day: string): Date => new Date(`${day}T00:00:00.000+07:00`);
+
+/**
+ * Where a promotion window stands on Vietnam day `today`: before the first day "upcoming", from the first through the
+ * whole last day "running", after it "ended". No start = already running; no end = no last day.
+ */
+export const promotionStatus = (startDay: string | null, endDay: string | null, today: string = vnToday()): "upcoming" | "running" | "ended" =>
+  startDay !== null && today < startDay ? "upcoming" : endDay !== null && today > endDay ? "ended" : "running";
+
 /** A promotion lasts through the whole last day, Vietnam time (23:59:59.999 +07:00). */
 export const endOfVnDay = (day: string): Date => new Date(`${day}T23:59:59.999+07:00`);
 
@@ -60,8 +72,12 @@ export const promotionPayload = (ingredient: SyncableIngredient, now: Date) => {
     discountInfo: `${percent}%`,
     productKeywords: [ingredient.name],
     imageUrl: ingredient.imageUrl,
-    // startsAt never after endsAt, so an already-ended promotion is stored (inactive by date) instead of rejected.
-    startsAt: (now < endsAt ? now : endsAt).toISOString(),
+    // From the start of the first day (Vietnam time). Rows without a start began "now". Never after endsAt, so an
+    // already-ended promotion is stored (inactive by date) instead of rejected.
+    startsAt: (() => {
+      const startsAt = ingredient.promoStartDate ? startOfVnDay(dayOf(ingredient.promoStartDate)) : now;
+      return (startsAt < endsAt ? startsAt : endsAt).toISOString();
+    })(),
     endsAt: endsAt.toISOString(),
   };
 };

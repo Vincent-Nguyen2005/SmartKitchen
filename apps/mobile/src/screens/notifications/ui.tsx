@@ -369,16 +369,18 @@ type RemoteImageProps = {
   accessibilityLabel?: string;
   onLoadError?: () => void;
   onLoad?: () => void;
+  /** Icon shown when there is no image (default: the "no image" icon); promotions use a neutral tag icon. */
+  placeholderIcon?: LucideIcon;
 };
 
 /** Image from a pasted https link, or a neutral placeholder when there is none or it fails to load. */
-export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad }: RemoteImageProps): React.JSX.Element {
+export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad, placeholderIcon = ImageOff }: RemoteImageProps): React.JSX.Element {
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const box = { width: size, height: size };
   if (!uri || failedUri === uri) {
     return (
       <View style={[styles.imagePlaceholder, box]} accessible={Boolean(accessibilityLabel)} accessibilityLabel={accessibilityLabel ? `${accessibilityLabel} (không có ảnh)` : undefined}>
-        <AppIcon icon={ImageOff} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
+        <AppIcon icon={placeholderIcon} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
       </View>
     );
   }

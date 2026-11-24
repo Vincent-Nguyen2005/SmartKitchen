@@ -34,6 +34,12 @@ export const addItemBodySchema = z.object({
   imageUrl: z.string().trim().url().max(2048).nullable().optional(),
 });
 
+/** POST /items/ensure: "Thêm vào Giỏ hàng" from "Cần mua tuần này" (at least these quantities, idempotent). */
+export const ensureItemsBodySchema = z.object({
+  familyId: z.string().uuid(),
+  items: z.array(addItemBodySchema.omit({ familyId: true, shoppingListId: true, note: true })).min(1).max(100),
+});
+
 /** "Mua" in Giỏ hàng. `items` only adds catalog details per cart line (group, shelf-life days for the expiry). */
 export const checkoutBodySchema = z.object({
   familyId: z.string().uuid(),

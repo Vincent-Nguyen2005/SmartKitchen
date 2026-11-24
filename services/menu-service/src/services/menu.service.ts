@@ -31,7 +31,7 @@ const prisma = new PrismaClient();
 
 type JsonRecord = Record<string, unknown>;
 
-interface RecipeCandidate {
+export interface RecipeCandidate {
   id: string;
   name: string;
   /** Normalized plain names (older matching in autoRefreshMenu / constraints). */
@@ -209,7 +209,7 @@ const RECIPES_UNAVAILABLE = "Không tải được danh sách món ăn (recipe-s
 const NO_RECIPES = "Chưa có món ăn nào để gợi ý. Hãy thêm công thức trong recipe-service.";
 
 /** Active recipes from recipe-service (or the supplied list). Unreachable or empty → 503 with a clear message. */
-async function getRecipes(suppliedRecipes?: unknown[]): Promise<RecipeCandidate[]> {
+export async function getRecipes(suppliedRecipes?: unknown[]): Promise<RecipeCandidate[]> {
   let values = suppliedRecipes;
   if (values === undefined) {
     const baseUrl = (process.env.RECIPE_SERVICE_URL ?? "http://localhost:4006").replace(/\/+$/, "");
@@ -243,6 +243,8 @@ function readKhoItems(values: unknown[]): KhoItem[] {
       quantity: typeof record.quantity === "number" ? record.quantity : null,
       unit: typeof record.unit === "string" ? record.unit : null,
       expiryDate: typeof record.expiryDate === "string" ? record.expiryDate : null,
+      productId: typeof record.productId === "string" && record.productId ? record.productId : null,
+      status: typeof record.status === "string" ? record.status : null,
     }];
   });
 }
@@ -279,7 +281,7 @@ const dayKey = (date: Date): string => date.toISOString().slice(0, 10);
 const addDays = (date: Date, days: number): Date => new Date(date.getTime() + days * 86_400_000);
 
 /** Calendar day of a stored menu item (menus store a weekday, counted from the menu's start date). */
-function itemDate(menuStart: Date, dayOfWeek: number): Date {
+export function itemDate(menuStart: Date, dayOfWeek: number): Date {
   const start = normalizeDate(menuStart);
   const startWeekday = ((start.getUTCDay() + 6) % 7) + 1;
   return addDays(start, (dayOfWeek - startWeekday + 7) % 7);

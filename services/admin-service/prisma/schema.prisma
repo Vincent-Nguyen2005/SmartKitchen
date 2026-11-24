@@ -55,6 +55,8 @@ model MasterIngredient {
   discountPercent Int?
   /// Last day of the promotion (Asia/Ho_Chi_Minh calendar day).
   promoEndDate    DateTime? @db.Date
+  /// First day of the discount (Vietnam calendar day); with promoEndDate it is the promotion window.
+  promoStartDate  DateTime? @db.Date
   /// Optional price in whole VND (>= 0), shown in the user market; null = no price.
   price           Int?
   createdAt       DateTime @default(now())

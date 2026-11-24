@@ -129,6 +129,8 @@ services:
       FAMILY_SERVICE_URL: http://family-service:4002
       # Family health rules: members' allergies, conditions and meal targets (POST /internal/profiles).
       NUTRITION_SERVICE_URL: http://nutrition-service:4004
+      # "Tuần này còn thiếu": catalog products (image, price, sale unit) for the missing ingredients.
+      ADMIN_SERVICE_URL: http://admin-service:4011
       # Family menus: the caller's family and the startup backfill come from family-service /internal/families/memberships.
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
       # AI dishes from Kho; empty = feature off. Values only in the root .env.

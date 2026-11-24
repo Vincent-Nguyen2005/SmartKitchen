@@ -19,3 +19,7 @@ Promotion ingestion uses `POST /partners/:partnerId/promotions` with `x-api-key`
 ## Internal: synced promotions of catalog ingredients
 
 admin-service keeps one promotion per discounted ingredient (`externalId = admin-ingredient:<id>`) through `/internal/promotions/:externalId` (x-api-key = `INTERNAL_API_KEY`; the gateway answers 404 for `/internal/*`): `PUT` upserts, `POST .../deactivate` hides. Before an ingredient is deleted for good, `GET .../usage` returns `{ exists, active, notified }` (running now; PROMOTION notifications sent for it), and `DELETE` removes a promotion that was never sent.
+
+## Admin: delete a promotion
+
+`DELETE /promotions/:id` (ADMIN) deletes one promotion for good; 404 when unknown. It's used by `scripts/data-fixes/2026-12-delete-e2e-promotions.js` and by the smoke test's teardown. Users only ever get running promotions (`GET /promotions?active=true`: `isActive`, `startsAt ≤ now ≤ endsAt`).

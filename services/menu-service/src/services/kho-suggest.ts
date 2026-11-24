@@ -15,7 +15,8 @@ const EXPIRING_BONUS = 15;
 const MAX_EXPIRING_COUNTED = 2;
 const REPEAT_PENALTY = 10;
 
-export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null };
+/** productId: admin catalog product (items bought in Đi chợ / matched by name); status: inventory status when known. */
+export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null; productId?: string | null; status?: string | null };
 /**
  * isSeasoning: pantry staple (muối, nước mắm, dầu ăn...), never matched against Kho or counted as missing.
  * perPerson: eaten one per person (portions.ts scales it per person).

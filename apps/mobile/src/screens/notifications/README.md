@@ -48,3 +48,11 @@ Preparation: `docker compose -p smartkitchen up -d`, then in `apps/mobile` run `
 9. **Push registration (dev build):** allow notifications → `device_tokens` has a row for the user; deny → app keeps working.
 10. **Responsive:** on a wide window or tablet → inbox shows 2 columns, promotions 2–3 columns (a lone last card keeps the column width), preferences are centred (max 640 px). Native builds are portrait-locked by `app.config.ts`, so check landscape on web (`pnpm --filter mobile exec expo start --web`) or a tablet.
 11. **Accessibility:** with TalkBack/VoiceOver, every card reads its title and unread state; switches and buttons have labels.
+
+## "Tuần này còn thiếu" and "Cần mua tuần này"
+
+- **The item:** Thông báo shows one entry at the top, "Tuần này còn thiếu N nguyên liệu", when menu-service's `GET /api/menus/week-missing` returns N > 0. There's no entry when N = 0 or the check fails. It's computed on every load, with no push and no duplicates.
+- **The screen:** tapping it opens `WeekShoppingScreen`, a ProductCard grid with image, name and "Thiếu <số lượng> <đơn vị>".
+  - Items not sold in Đi chợ say "Chưa có bán" and are not added. "Kho có nhưng khác đơn vị" marks stock in another measure.
+  - "Thêm vào Giỏ hàng" calls `POST /api/shopping-list/items/ensure` (amount rounded up to the sale unit; an existing cart line is raised to at least that, never doubled), then opens Đi chợ on Giỏ hàng.
+- **Promotions without an image:** shown with the neutral tag icon instead of the broken-image icon.

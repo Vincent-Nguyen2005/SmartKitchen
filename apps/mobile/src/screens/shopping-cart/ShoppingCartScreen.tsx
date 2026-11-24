@@ -28,17 +28,19 @@ import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi,
  * "Tạo danh sách từ thực đơn", per-item "Đã mua"/"Sửa" and "Hoàn tất" list actions.
  */
 type ScreenView = "market" | "cart";
-type Props = { onOpenFamily?: () => void };
+/** openCartKey: bump it to show Giỏ hàng (e.g. after "Thêm vào Giỏ hàng" in Thông báo). */
+type Props = { onOpenFamily?: () => void; openCartKey?: number };
 const AUTO_REFRESH_MS = 30_000;
 
-export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.Element {
+export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const isWide = width >= 720;
   // Same horizontal padding as Kho, so the shared search box lines up identically.
   const horizontalPadding = isCompact ? spacing.lg : spacing.xl;
-  const [view, setView] = useState<ScreenView>("market");
+  const [view, setView] = useState<ScreenView>(openCartKey > 0 ? "cart" : "market");
+  useEffect(() => { if (openCartKey > 0) setView("cart"); }, [openCartKey]);
   // Bumped to make the product grid reload in place (same search text and page).
   const [productsRefresh, setProductsRefresh] = useState(0);
   const productsLoading = useRef(false);
