@@ -43,7 +43,8 @@ A discount has a first and a last day: `promoStartDate` (migration `202612020000
 
 - **Starter catalog:** at start, `seedMissingIngredients` (`src/seed/seed-catalog.ts`, data in `src/seed/catalog.data.ts`) adds about 100 common Vietnamese market ingredients whose name is missing.
   - Groups: Rau củ, Trái cây, Thịt, Hải sản, Trứng & sữa, Đồ khô & gạo, Gia vị, Đồ uống, Đồ đông lạnh.
-  - Each has a shared unit code, `shelfLifeDays` and kcal per 100 g, and no price (admins set prices).
+  - Each has a shared unit code, `shelfLifeDays` and kcal per 100 g. `catalog-details.ts` adds a market price for the sale unit (approximate late-2026 retail, rounded to 500 VND; GRAM-unit products per gram), protein/carbs/fat per 100 g and obvious allergens.
+  - It includes every ingredient the starter recipes use, so "Cần mua tuần này" can find them in Đi chợ.
   - The 30 staples also get protein / carbs / fat per 100 g (`catalogMacros`).
   - Every starter ingredient gets `englishName`, an English alias used for Kho photo recognition. It comes from `en`, with `ENGLISH_NAME_OVERRIDES` where a search term isn't how a photo would be described (migration `20261201000000_ingredient_english_name`). The admin form calls it "Tên tiếng Anh (nhận diện ảnh)", and the user catalog returns it. The list also includes the ingredients the foreign starter dishes need (Mì Ý, Kem tươi, Rong biển, Kim chi, Tương ớt Hàn...).
   - Existing databases are corrected with `scripts/data-fixes/` (see its README).

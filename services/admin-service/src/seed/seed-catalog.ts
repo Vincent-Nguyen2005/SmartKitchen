@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-admin";
 import { catalogMacros, catalogSeed, englishNameFor, type CatalogSeed } from "./catalog.data";
+import { catalogDetails } from "./catalog-details";
 
 /** Same normalisation as the ingredient routes (search key). */
 const normalize = (value: string): string => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -17,6 +18,12 @@ const removedNames = async (client: PrismaClient): Promise<string[]> => {
     if (row.action === "UPDATE" && (typeof metadata?.after?.name !== "string" || normalize(metadata.after.name) === normalize(before))) return [];
     return [normalize(before)];
   });
+};
+
+/** Protein / carbs / fat per 100 g: the staples' catalogMacros, else catalog-details.ts. */
+const macrosFor = (name: string) => {
+  const macros = catalogMacros[name] ?? catalogDetails[name]?.macros;
+  return macros ? { proteinPer100g: macros[0], carbsPer100g: macros[1], fatPer100g: macros[2] } : {};
 };
 
 /**
@@ -38,8 +45,10 @@ export async function seedMissingIngredients(client: PrismaClient, seed: Catalog
       shelfLifeDays: entry.shelfLifeDays,
       caloriesPer100g: entry.kcal,
       englishName: englishNameFor(entry),
-      ...(catalogMacros[entry.name] ? { proteinPer100g: catalogMacros[entry.name][0], carbsPer100g: catalogMacros[entry.name][1], fatPer100g: catalogMacros[entry.name][2] } : {}),
-      allergenTags: [],
+      ...macrosFor(entry.name),
+      // Market price for the sale unit and obvious allergens (catalog-details.ts).
+      ...(catalogDetails[entry.name] ? { price: catalogDetails[entry.name].price } : {}),
+      allergenTags: catalogDetails[entry.name]?.allergens ?? [],
     })),
     skipDuplicates: true,
   });

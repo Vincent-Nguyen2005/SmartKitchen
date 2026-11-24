@@ -40,7 +40,7 @@ const BY_NAME: Record<string, SeasoningLine[]> = {
   "Sinh tố chuối": [line("Đường", "vừa ăn")],
   // Recipe review corrections (spices, broth seasoning, oil the steps use).
   "Phở bò": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Hoa hồi", "3 cánh"), line("Quế", "1 thanh nhỏ")],
-  "Hủ tiếu Nam Vang": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Tỏi phi", "1 muỗng canh")],
+  "Hủ tiếu Nam Vang": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Tỏi", "1 muỗng canh (phi vàng)")],
   "Bún bò Huế": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Mắm ruốc", "1 muỗng canh")],
   "Bún riêu cua": [line("Muối", "1 muỗng cà phê"), line("Hạt nêm", "1 muỗng canh"), line("Nước mắm", "2 muỗng canh"), line("Tiêu", "vừa ăn"), line("Ớt", "vừa ăn"), line("Dầu ăn", "2 muỗng canh")],
   "Bò kho": [line("Nước mắm", "2 muỗng canh"), line("Đường", "1 muỗng canh"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "2 muỗng canh"), line("Hạt nêm", "vừa ăn"), line("Ngũ vị hương", "1/2 muỗng cà phê"), line("Dầu điều", "1 muỗng canh")],

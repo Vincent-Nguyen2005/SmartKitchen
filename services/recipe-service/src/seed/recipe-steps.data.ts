@@ -233,9 +233,9 @@ const STEPS: Record<string, StepRow[]> = {
   ],
   "Đậu cô ve xào thịt bò": [
     ["Thái mỏng thịt bò, ướp gia vị", 600, ["Thịt bò"]],
-    ["Chần đậu cô ve", 120, ["Đậu cô ve"]],
+    ["Chần đậu que (đậu cô ve)", 120, ["Đậu que"]],
     ["Phi thơm tỏi, xào thịt bò lửa lớn", 120, ["Tỏi"]],
-    ["Cho đậu cô ve vào đảo đều, nêm vừa ăn", 180, []],
+    ["Cho đậu que vào đảo đều, nêm vừa ăn", 180, []],
   ],
   "Cải thìa xào nấm": [
     ["Rửa sạch cải thìa và nấm hương", null, ["Cải thìa", "Nấm hương"]],

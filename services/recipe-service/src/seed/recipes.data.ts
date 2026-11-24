@@ -222,7 +222,7 @@ export const seedRecipes: SeedRecipe[] = [
   },
   {
     name: "Đậu cô ve xào thịt bò", description: "Đậu cô ve giòn xào thịt bò và tỏi.", mealTypes: ["lunch", "dinner"], role: "xao",
-    ingredients: [g("Đậu cô ve", 300), g("Thịt bò", 200), g("Tỏi", 20)],
+    ingredients: [g("Đậu que", 300), g("Thịt bò", 200), g("Tỏi", 20)],
     servings: 3, preparationMinutes: 20, calories: 230, protein: 20, carbs: 10, fat: 12,
   },
   {
