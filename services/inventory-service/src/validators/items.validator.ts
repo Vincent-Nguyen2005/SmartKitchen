@@ -47,6 +47,20 @@ export const updateItemSchema = createItemSchema.omit({ familyId: true, expiryDa
   message: "At least one field is required",
 });
 
+/** GET /items/match: catalog product and existing Kho rows for a name (before creating). */
+export const matchItemQuerySchema = z.object({
+  familyId: z.string().uuid(),
+  name: z.string().trim().min(1).max(100),
+  unit: UnitEnum.default("PIECE"),
+});
+
+/** POST /items/:id/add ("Cộng thêm"): quantity in the item's own unit; optional expiry of the added stock. */
+export const addQuantitySchema = z.object({
+  quantity: z.number().finite().positive().max(1_000_000),
+  unit: UnitEnum,
+  expiryDate: z.string().datetime().optional().transform((value) => (value ? new Date(value) : undefined)),
+});
+
 export const listItemsQuerySchema = z.object({
   familyId: z.string().uuid(),
   categoryId: z.string().uuid().optional(),

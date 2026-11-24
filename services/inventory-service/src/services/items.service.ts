@@ -1,4 +1,5 @@
 import { prisma } from "../lib/prisma";
+import { normalizeName } from "../lib/names";
 import { PhotoStorage, managedPhotoFileName } from "./photo-storage.service";
 import {
   CreateItemInput,
@@ -15,13 +16,44 @@ const resolveCategoryId = async (client: CategoryClient, name: string | undefine
   return category.id;
 };
 
+/** Statuses an added quantity may join: not expired or thrown away (a consumed row is revived as fresh). */
+const MERGEABLE_STATUSES = ["FRESH", "NEAR_EXPIRY", "CONSUMED"] as const;
+const httpError = (statusCode: number, code: string, message: string) => Object.assign(new Error(message), { statusCode, code });
+/** Same default window as GET /alerts/expiring (alerts.validator `days`). */
+export const NEAR_EXPIRY_DAYS = 3;
+
+/** Status from an expiry day, by the same rule as AlertsService.updateExpiringStatus (UTC calendar days). */
+export function statusForExpiry(expiryDate: Date | null | undefined, now: Date = new Date(), days = NEAR_EXPIRY_DAYS): "FRESH" | "NEAR_EXPIRY" | "EXPIRED" {
+  if (!expiryDate) return "FRESH";
+  const today = new Date(now);
+  today.setUTCHours(0, 0, 0, 0);
+  const threshold = new Date(today);
+  threshold.setUTCDate(threshold.getUTCDate() + days);
+  threshold.setUTCHours(23, 59, 59, 999);
+  const expiryDay = new Date(expiryDate);
+  expiryDay.setUTCHours(0, 0, 0, 0);
+  return expiryDay < today ? "EXPIRED" : expiryDay <= threshold ? "NEAR_EXPIRY" : "FRESH";
+}
+
+export type DuplicateMatch = {
+  /** Oldest live row of the same product (same productId, or same normalized name) with the same unit. */
+  sameUnit: Awaited<ReturnType<typeof prisma.foodItem.findFirst>>;
+  /** Live rows of the same product in another unit (a new row is created for them, no unit conversion). */
+  otherUnits: number;
+};
+
 export class ItemsService {
-  static async create(data: CreateItemInput) {
+  /**
+   * `productId`: the admin catalog product matched from the name by the caller (catalog-match.service); null when the
+   * name matches no product. The server decides it, never the client.
+   */
+  static async create(data: CreateItemInput, productId: string | null = null) {
     const categoryId = data.categoryId ?? await resolveCategoryId(prisma, data.categoryName);
     return prisma.foodItem.create({
       data: {
         familyId: data.familyId,
         name: data.name,
+        productId,
         description: data.description,
         quantity: data.quantity,
         unit: data.unit,
@@ -74,7 +106,71 @@ export class ItemsService {
     return item;
   }
 
-  static async update(id: string, familyId: string, data: UpdateItemInput, userId?: string) {
+  /**
+   * Existing Kho rows of the same product in this family: same productId, or the same normalized name (older rows
+   * have no productId). Only live rows that new stock may join (not expired, discarded or deleted).
+   */
+  static async findDuplicate(familyId: string, match: { name: string; productId: string | null; unit: string }): Promise<DuplicateMatch> {
+    const key = normalizeName(match.name);
+    const rows = await prisma.foodItem.findMany({
+      where: { familyId, deletedAt: null, status: { in: [...MERGEABLE_STATUSES] } },
+      orderBy: { createdAt: "asc" },
+      include: { category: true },
+    });
+    const same = rows.filter((row) => (match.productId !== null && row.productId === match.productId) || (key.length > 0 && normalizeName(row.name) === key));
+    return { sameUnit: same.find((row) => row.unit === match.unit) ?? null, otherUnits: same.filter((row) => row.unit !== match.unit).length };
+  }
+
+  /**
+   * "Cộng thêm", only with the same unit (409 UNIT_MISMATCH otherwise; no unit conversion). The row's productId,
+   * photo and name are untouched.
+   * - Fresh / near-expiry row: adds `quantity` atomically (SQL increment). Expiry: the earlier of the two dates is
+   *   kept (the row then warns by its oldest stock; a later date never hides an earlier one); a row without expiry
+   *   takes the new date.
+   * - Consumed row ("đã dùng hết"): becomes a fresh batch and inherits nothing stale: quantity = the new quantity,
+   *   expiry = the new expiry (or none), status computed from that expiry.
+   */
+  static async addQuantity(id: string, familyId: string, input: { quantity: number; unit: string; expiryDate?: Date }, userId: string) {
+    return prisma.$transaction(async (transaction) => {
+      const previous = await transaction.foodItem.findFirst({ where: { id, familyId, deletedAt: null } });
+      if (!previous) throw new Error("Item not found");
+      if (!(MERGEABLE_STATUSES as readonly string[]).includes(previous.status)) {
+        throw httpError(409, "ITEM_NOT_MERGEABLE", "This item is expired or discarded; add a new row instead.");
+      }
+      if (previous.unit !== input.unit) throw httpError(409, "UNIT_MISMATCH", "Units differ; add a new row instead.");
+      const consumed = previous.status === "CONSUMED";
+      const keepEarlier = input.expiryDate && (!previous.expiryDate || input.expiryDate < previous.expiryDate);
+      const changed = await transaction.foodItem.updateMany({
+        // The status is part of the condition, so a row that changed meanwhile is not merged with the wrong rule.
+        where: { id, familyId, deletedAt: null, unit: input.unit, status: previous.status },
+        data: consumed
+          ? { quantity: input.quantity, expiryDate: input.expiryDate ?? null, status: statusForExpiry(input.expiryDate) }
+          : { quantity: { increment: input.quantity }, ...(keepEarlier ? { expiryDate: input.expiryDate } : {}) },
+      });
+      if (changed.count !== 1) throw httpError(409, "ITEM_CHANGED", "The item changed meanwhile; try again.");
+      const updated = await transaction.foodItem.findFirst({ where: { id, familyId, deletedAt: null }, include: { category: true } });
+      if (!updated) throw new Error("Item not found");
+      await transaction.inventoryLog.create({
+        data: {
+          itemId: id,
+          action: "MANUAL_MERGE",
+          oldValue: { quantity: previous.quantity, unit: previous.unit, status: previous.status },
+          newValue: { quantity: updated.quantity, unit: updated.unit, status: updated.status },
+          note: consumed
+            ? `Restocked a used-up item with ${input.quantity} ${input.unit} as a new batch (user chose "Cộng thêm")`
+            : `Added ${input.quantity} ${input.unit} to an existing item (user chose "Cộng thêm")`,
+          createdBy: userId,
+        },
+      });
+      return updated;
+    });
+  }
+
+  /**
+   * `product`: the catalog product matched from a NEW name (renames only): a product sets productId, null clears it,
+   * undefined (no rename, or catalog unreachable) leaves it as it is.
+   */
+  static async update(id: string, familyId: string, data: UpdateItemInput, userId?: string, product?: { id: string } | null) {
     let replacedImageUrl: string | null = null;
     const result = await prisma.$transaction(async (transaction) => {
       const previous = await transaction.foodItem.findFirst({
@@ -86,7 +182,8 @@ export class ItemsService {
       }
 
       const { categoryName, ...fields } = data;
-      const updateData: Omit<UpdateItemInput, "categoryName"> = { ...fields };
+      const updateData: Omit<UpdateItemInput, "categoryName"> & { productId?: string | null } = { ...fields };
+      if (product !== undefined) updateData.productId = product?.id ?? null;
       if (categoryName && !fields.categoryId) updateData.categoryId = await resolveCategoryId(transaction, categoryName);
       if (typeof data.quantity === "number" && data.quantity > 0 && previous.status === "CONSUMED" && data.status === undefined) {
         updateData.status = "FRESH";

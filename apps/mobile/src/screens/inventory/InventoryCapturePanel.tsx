@@ -23,6 +23,7 @@ import { DateField } from "../admin/DateField";
 import { inventoryApi, type CatalogIngredient, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { dayFromToday, matchCatalog, UNIT_LABELS, unitFromCatalog } from "./catalogSuggest";
+import { useConfirm } from "../../components/ConfirmDialog";
 
 const isWeb = Platform.OS === "web";
 const UPLOAD_FAILED_NOTE = "Đã lưu, nhưng chưa tải được ảnh. Thử lại";
@@ -75,8 +76,13 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   // Product photo: stored with the item after saving; also sent once to the server to suggest the name.
   const [photo, setPhoto] = useState<UploadPhoto | null>(initialPhoto);
   // Names suggested from the photo (catalog products, best first); "idle" until a photo is taken.
-  const [photoGuess, setPhotoGuess] = useState<{ state: "idle" | "loading" | "done" | "none"; options: Array<{ name: string; catalogId: string }> }>({ state: "idle", options: [] });
+  // autofilled: the top name was put in Tên (server said it is sure); otherwise all suggestions are only offered.
+  const [photoGuess, setPhotoGuess] = useState<{ state: "idle" | "loading" | "done" | "none"; options: Array<{ name: string; catalogId: string; imageUrl?: string | null }>; autofilled?: boolean }>({ state: "idle", options: [] });
   const typedSincePhoto = useRef(false);
+  // Catalog product the current name matches (server rule): its image replaces the captured photo in the preview,
+  // and the captured photo is then not uploaded (Kho shows the catalog image).
+  const [catalogMatch, setCatalogMatch] = useState<{ productId: string; name: string; imageUrl: string | null } | null>(null);
+  const { choose, dialog } = useConfirm();
   const [cameraDenied, setCameraDenied] = useState(false);
   const [expiryDay, setExpiryDay] = useState("");
   const [group, setGroup] = useState("");
@@ -138,6 +144,18 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
 
   const suggestions = mode === "photo" && nameFocused && !suggestionApplied && catalog ? matchCatalog(catalog, name) : [];
 
+  useEffect(() => {
+    const typed = name.trim();
+    if (mode !== "photo" || !accessToken || !familyId || !typed) { setCatalogMatch(null); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      inventoryApi.match(accessToken, familyId, typed, unit)
+        .then((result) => { if (active) setCatalogMatch(result.product ? { productId: result.product.id, name: result.product.name, imageUrl: result.product.imageUrl } : null); })
+        .catch(() => { if (active) setCatalogMatch(null); });
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [mode, accessToken, familyId, name, unit]);
+
   const applySuggestion = (entry: CatalogIngredient) => {
     setName(entry.name);
     const catalogUnit = unitFromCatalog(entry.unit);
@@ -148,9 +166,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   };
 
   /** Picks a suggested catalog name: fetches that product (unit, shelf life, group) and fills the form like a typed pick. */
-  const pickSuggestedName = async (option: { name: string; catalogId: string }) => {
+  const pickSuggestedName = async (option: { name: string; catalogId: string; imageUrl?: string | null }) => {
     setName(option.name);
     setSuggestionApplied(true);
+    // Instant preview with the product's catalog image (the name check confirms it).
+    setCatalogMatch({ productId: option.catalogId, name: option.name, imageUrl: option.imageUrl ?? null });
     if (!accessToken) return;
     const page = await inventoryApi.ingredientCatalog(accessToken, { search: option.name, limit: 20 }).catch(() => null);
     const entry = page?.items.find((row) => row.id === option.catalogId) ?? page?.items.find((row) => row.name === option.name);
@@ -167,9 +187,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     inventoryApi.suggestFromPhoto(accessToken, photo)
       .then((result) => {
         if (!active) return;
-        const options = result.suggestions.map(({ name: suggested, catalogId }) => ({ name: suggested, catalogId }));
-        setPhotoGuess({ state: options.length > 0 ? "done" : "none", options });
-        if (options.length > 0 && !typedSincePhoto.current) void pickSuggestedName(options[0]);
+        const options = result.suggestions.map(({ name: suggested, catalogId, imageUrl }) => ({ name: suggested, catalogId, imageUrl }));
+        // Tên is filled only when recognition is sure (server `autofill`); else the user taps a suggestion or types.
+        const autofilled = result.autofill === true && options.length > 0 && !typedSincePhoto.current;
+        setPhotoGuess({ state: options.length > 0 ? "done" : "none", options, autofilled });
+        if (autofilled) void pickSuggestedName(options[0]);
       })
       .catch(() => { if (active) setPhotoGuess({ state: "none", options: [] }); });
     return () => { active = false; };
@@ -274,18 +296,42 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setNote(null);
     setSuccess(null);
     try {
+      const cleanName = itemName.trim();
+      const expiryDate = extras.expiryDay ? `${extras.expiryDay}T00:00:00.000Z` : undefined;
+      // Same product already in Kho with the same unit: ask (never merge silently). A failed check just creates.
+      const found = await inventoryApi.match(accessToken, familyId, cleanName, itemUnit).catch(() => null);
+      if (found?.existing) {
+        const existing = found.existing;
+        setBusy(false);
+        const choice = await choose({
+          title: "Đã có trong kho",
+          // A used-up row is restocked as a new batch on the server (new quantity and expiry), so no old amount is shown.
+          message: existing.status === "CONSUMED"
+            ? `Kho đã có ${existing.name} (đã dùng hết). Thêm lại vào?`
+            : `Kho đã có ${existing.name} (${existing.quantity} ${UNIT_LABELS[existing.unit as InventoryUnit] ?? existing.unit}). Cộng thêm vào?`,
+          confirmLabel: "Cộng thêm",
+          cancelLabel: "Thêm riêng",
+        });
+        if (choice === "dismiss") return null;
+        setBusy(true);
+        if (choice === "confirm") {
+          const merged = await inventoryApi.addQuantity(accessToken, familyId, existing.id, { quantity: parsedQuantity, unit: itemUnit, ...(expiryDate ? { expiryDate } : {}) });
+          onSaved();
+          return { ...merged, merged: true as const };
+        }
+      }
       const created = await inventoryApi.create(accessToken, {
         familyId,
-        name: itemName.trim(),
+        name: cleanName,
         quantity: parsedQuantity,
         unit: itemUnit,
         storageLocation: "PANTRY",
         ...(extras.barcode ? { barcode: extras.barcode } : {}),
-        ...(extras.expiryDay ? { expiryDate: `${extras.expiryDay}T00:00:00.000Z` } : {}),
+        ...(expiryDate ? { expiryDate } : {}),
         ...(extras.group?.trim() ? { categoryName: extras.group.trim().slice(0, 50) } : {}),
       });
       onSaved();
-      return created;
+      return { ...created, merged: false as const };
     } catch (error) {
       setNote(error instanceof Error ? error.message : "Không lưu được thực phẩm. Thử lại nhé.");
       return null;
@@ -330,7 +376,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setGroup("");
     setSuggestionApplied(false);
     setPhotoGuess({ state: "idle", options: [] });
-    if (itemPhoto) await uploadPhotoFor(created.id, itemName, itemPhoto);
+    setCatalogMatch(null);
+    // Catalog product (productId set by the server): Kho shows the catalog image, the captured photo is not stored.
+    // Added to an existing row: that row keeps its own image. Otherwise the captured photo is uploaded as before.
+    if (created.merged) setSuccess(`Đã cộng thêm vào ${created.name} trong kho.`);
+    else if (created.productId) setSuccess(`Đã thêm ${created.name} vào kho (dùng ảnh sản phẩm trong danh mục).`);
+    else if (itemPhoto) await uploadPhotoFor(created.id, itemName, itemPhoto);
     else setSuccess("Đã xác nhận và thêm thực phẩm vào kho.");
   };
 
@@ -590,8 +641,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
             <View style={styles.section}>
               {mode === "photo" && photoUri && (
                 <Pressable accessibilityRole="button" accessibilityLabel="Ảnh sản phẩm. Chạm để chụp lại" disabled={busy} onPress={() => void startPhotoCamera()}>
-                  <Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="contain" />
-                  <Text style={styles.retakeHint}>Chạm ảnh để chụp lại</Text>
+                  <Image source={{ uri: catalogMatch?.imageUrl ?? photoUri }} style={styles.photoPreview} resizeMode="contain" />
+                  <Text style={styles.retakeHint}>{catalogMatch ? `Dùng ảnh ${catalogMatch.name} trong danh mục · chạm để chụp lại` : "Chạm ảnh để chụp lại"}</Text>
                 </Pressable>
               )}
               <Text style={styles.label}>{mode === "photo" ? "Tên *" : "Sản phẩm nhận diện"}</Text>
@@ -607,7 +658,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                     style={styles.input}
                   />
                 : <Text style={styles.recognizedName}>{name}</Text>}
-              {mode === "photo" && photoGuess.state === "done" && photoGuess.options.length > 1 && (
+              {mode === "photo" && photoGuess.state === "done" && photoGuess.options.some((option) => option.name !== name) && (
                 <View accessibilityLabel="Tên gợi ý từ ảnh" style={styles.guessChips}>
                   {photoGuess.options.filter((option) => option.name !== name).map((option) => (
                     <Pressable accessibilityRole="button" accessibilityLabel={`Chọn tên ${option.name}`} key={option.catalogId} onPress={() => { typedSincePhoto.current = true; void pickSuggestedName(option); }} style={styles.guessChip}>
@@ -616,7 +667,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   ))}
                 </View>
               )}
-              {mode === "photo" && photoGuess.state === "none" && !name && <Text style={styles.guessHint}>Chưa nhận ra từ ảnh, hãy nhập tên.</Text>}
+              {mode === "photo" && (photoGuess.state === "none" || (photoGuess.state === "done" && !photoGuess.autofilled)) && !name && <Text style={styles.guessHint}>Chọn gợi ý hoặc nhập tên nguyên liệu</Text>}
               {suggestions.length > 0 && (
                 <View accessibilityLabel="Gợi ý từ danh mục nguyên liệu" style={styles.suggestionList}>
                   {suggestions.map((entry) => (
@@ -673,6 +724,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       )}
       {success && !note && <Text accessibilityLiveRegion="polite" style={styles.successText}>{success}</Text>}
       {busy && <View style={styles.busyRow}><ActivityIndicator color={colors.primary} /><Text style={styles.helper}>Đang xử lý…</Text></View>}
+      {dialog}
     </View>
   );
 }

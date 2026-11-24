@@ -3,7 +3,8 @@
  * from admin-service's user catalog endpoint, cached for 10 minutes. admin-service trusts x-user-id on the private
  * network (the gateway sets it), so the caller's id is forwarded.
  */
-export type CatalogLabel = { id: string; name: string; englishName: string | null };
+/** imageUrl: the catalog product image (stored URL), used for previews and image-to-image matching. */
+export type CatalogLabel = { id: string; name: string; englishName: string | null; imageUrl?: string | null };
 
 const CACHE_MS = 10 * 60 * 1000;
 const PAGE_SIZE = 50;
@@ -21,11 +22,12 @@ export async function loadCatalogLabels(userId: string, fetchImpl: typeof fetch 
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error(`Catalog answered ${response.status}`);
-    const body = await response.json() as { items?: Array<{ id?: unknown; name?: unknown; englishName?: unknown }>; totalPages?: number };
+    const body = await response.json() as { items?: Array<{ id?: unknown; name?: unknown; englishName?: unknown; imageUrl?: unknown }>; totalPages?: number };
     for (const item of body.items ?? []) {
       if (typeof item.id !== "string" || typeof item.name !== "string") continue;
       const englishName = typeof item.englishName === "string" && item.englishName.trim() ? item.englishName.trim() : null;
-      labels.push({ id: item.id, name: item.name, englishName });
+      const imageUrl = typeof item.imageUrl === "string" && item.imageUrl ? item.imageUrl : null;
+      labels.push({ id: item.id, name: item.name, englishName, imageUrl });
     }
     if (page >= (body.totalPages ?? 1)) break;
   }
