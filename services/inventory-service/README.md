@@ -51,12 +51,13 @@ The service supports the prefixed paths below for direct calls and matching shor
   - If admin-service is unreachable, `productId` is left as it is and saving never fails.
 - **`GET /api/inventory/items/match?familyId&name&unit`:** returns the matched catalog product (`id`, `name`, `imageUrl`) and `existing`, the family's oldest live row of the same product in the same unit, plus `otherUnits`.
   - The same product means the same `productId`, or the same normalized name (older rows have no `productId`).
-  - Live means not expired, discarded or deleted. A consumed row may be topped up again.
+  - Live means not expired, discarded or deleted. A consumed row may be restocked (see below).
   - Rows of other families are never considered.
 - **`POST /api/inventory/items/:id/add?familyId`** (`{ quantity, unit, expiryDate? }`): "Cộng thêm", which the user explicitly chooses in the app.
   - Adds quantity atomically (SQL increment) and logs `MANUAL_MERGE`.
   - Same unit only, with no unit conversion: `409 UNIT_MISMATCH` otherwise.
   - Expiry: the earlier date is kept. The row then warns by its oldest stock, and a later date never hides an earlier one. A row without expiry takes the new date.
+  - **A used-up (consumed) row** is restocked as a new batch and inherits nothing stale: quantity = the new quantity (no old remainder added), expiry = the new expiry or none, and status computed from that expiry (same 3-day rule as the expiry alerts). Its catalog link (`productId`) and image are kept. The app asks "Kho đã có <Tên> (đã dùng hết). Thêm lại vào?".
   - "Thêm riêng" is a normal create.
 - **Đi chợ → Kho purchases** (`/internal/purchases`) are unchanged. They still restock automatically: same family, case-insensitive name, same unit; they set `productId` when missing.
 

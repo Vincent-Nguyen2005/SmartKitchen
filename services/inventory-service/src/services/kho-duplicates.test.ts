@@ -131,6 +131,43 @@ describe("duplicates in the family's Kho", () => {
     expect(db.rows[0].expiryDate?.toISOString()).toBe("2026-12-05T00:00:00.000Z");
   });
 
+  it("a used-up (CONSUMED) row is restocked as a fresh batch: new quantity, new expiry, status from that expiry", async () => {
+    const existing = (await add("Cà rốt", "KILOGRAM", 2)).body.data;
+    Object.assign(db.rows[0], { status: "CONSUMED", quantity: 0.4, expiryDate: new Date("2026-01-01T00:00:00.000Z") });
+    const newExpiry = new Date(Date.now() + 20 * 86_400_000);
+    newExpiry.setUTCHours(0, 0, 0, 0);
+    const restocked = await api("POST", `/api/inventory/items/${existing.id}/add?familyId=${familyId}`, { quantity: 1.5, unit: "KILOGRAM", expiryDate: newExpiry.toISOString() });
+    expect(restocked.status).toBe(200);
+    expect(restocked.body.data.quantity).toBe(1.5); // the old 0.4 is not added
+    expect(new Date(restocked.body.data.expiryDate).toISOString()).toBe(newExpiry.toISOString());
+    expect(restocked.body.data.status).toBe("FRESH");
+    expect(restocked.body.data.productId).toBe("p-carrot");
+    expect(db.rows).toHaveLength(1);
+
+    // Without a new expiry the stale date is cleared, not inherited.
+    Object.assign(db.rows[0], { status: "CONSUMED", quantity: 0, expiryDate: new Date("2026-01-01T00:00:00.000Z") });
+    const noExpiry = await api("POST", `/api/inventory/items/${existing.id}/add?familyId=${familyId}`, { quantity: 2, unit: "KILOGRAM" });
+    expect(noExpiry.body.data).toMatchObject({ quantity: 2, expiryDate: null, status: "FRESH" });
+  });
+
+  it("fresh rows keep the add rule: quantity added, a row without expiry takes the new date", async () => {
+    const existing = (await add("Cà rốt", "KILOGRAM", 2)).body.data;
+    const newExpiry = new Date(Date.now() + 20 * 86_400_000);
+    newExpiry.setUTCHours(0, 0, 0, 0);
+    const merged = await api("POST", `/api/inventory/items/${existing.id}/add?familyId=${familyId}`, { quantity: 1, unit: "KILOGRAM", expiryDate: newExpiry.toISOString() });
+    expect(merged.body.data).toMatchObject({ quantity: 3, status: "FRESH" });
+    expect(new Date(merged.body.data.expiryDate).toISOString()).toBe(newExpiry.toISOString());
+  });
+
+  it("status from an expiry follows the alerts rule (3-day window)", async () => {
+    const { statusForExpiry } = await import("./items.service");
+    const now = new Date("2026-11-24T10:00:00.000Z");
+    expect(statusForExpiry(null, now)).toBe("FRESH");
+    expect(statusForExpiry(new Date("2026-11-23T00:00:00.000Z"), now)).toBe("EXPIRED");
+    expect(statusForExpiry(new Date("2026-11-27T00:00:00.000Z"), now)).toBe("NEAR_EXPIRY");
+    expect(statusForExpiry(new Date("2026-11-28T00:00:00.000Z"), now)).toBe("FRESH");
+  });
+
   it("different unit: no same-unit row (a new row is created), and the merge endpoint refuses other units", async () => {
     const existing = (await add("Cà rốt", "KILOGRAM")).body.data;
     const found = await match("Cà rốt", "PIECE");

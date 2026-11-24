@@ -302,7 +302,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         setBusy(false);
         const choice = await choose({
           title: "Đã có trong kho",
-          message: `Kho đã có ${existing.name} (${existing.quantity} ${UNIT_LABELS[existing.unit as InventoryUnit] ?? existing.unit}). Cộng thêm vào?`,
+          // A used-up row is restocked as a new batch on the server (new quantity and expiry), so no old amount is shown.
+          message: existing.status === "CONSUMED"
+            ? `Kho đã có ${existing.name} (đã dùng hết). Thêm lại vào?`
+            : `Kho đã có ${existing.name} (${existing.quantity} ${UNIT_LABELS[existing.unit as InventoryUnit] ?? existing.unit}). Cộng thêm vào?`,
           confirmLabel: "Cộng thêm",
           cancelLabel: "Thêm riêng",
         });
