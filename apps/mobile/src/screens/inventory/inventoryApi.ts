@@ -44,7 +44,13 @@ const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
 
 /** POST /api/inventory/photo/suggest: catalog names guessed from a photo (best first); empty when unsure. */
-export type PhotoSuggestResult = { suggestions: Array<{ name: string; catalogId: string; score: number | null }>; confident: boolean; source: "clip" | "gemini" | null };
+export type PhotoSuggestResult = { suggestions: Array<{ name: string; catalogId: string; productId: string; imageUrl: string | null; score: number | null }>; confident: boolean; source: "clip" | "gemini" | null };
+/** GET /api/inventory/items/match: the catalog product a name matches and the family's existing row (same unit). */
+export type ItemMatch = {
+  product: { id: string; name: string; imageUrl: string | null } | null;
+  existing: import("./types").FoodItem | null;
+  otherUnits: number;
+};
 /** A photo ready to upload: `blob` on web, a file `uri` on native. */
 export type UploadPhoto = { uri: string; mimeType: ReceiptMimeType; name: string; blob?: Blob };
 /** One active product from the admin catalog (GET /api/admin/catalog/ingredients). */
@@ -104,6 +110,12 @@ export const inventoryApi = {
   },
   create: (accessToken: string, input: NewFoodItem) =>
     request<import("./types").FoodItem>(accessToken, "/api/inventory/items", { method: "POST", body: JSON.stringify(input) }),
+  /** Before adding: catalog product for the name (server rule: exact normalized name) and an existing same-unit row. */
+  match: (accessToken: string, familyId: string, name: string, unit: InventoryUnit) =>
+    request<ItemMatch>(accessToken, `/api/inventory/items/match${query({ familyId, name, unit })}`),
+  /** "Cộng thêm": adds quantity to an existing row on the server (atomic; same unit only). */
+  addQuantity: (accessToken: string, familyId: string, id: string, input: { quantity: number; unit: InventoryUnit; expiryDate?: string }) =>
+    request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}/add${query({ familyId })}`, { method: "POST", body: JSON.stringify(input) }),
   update: (accessToken: string, familyId: string, id: string, input: UpdateFoodItem) =>
     request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}${query({ familyId })}`, { method: "PUT", body: JSON.stringify(input) }),
   remove: (accessToken: string, familyId: string, id: string) =>

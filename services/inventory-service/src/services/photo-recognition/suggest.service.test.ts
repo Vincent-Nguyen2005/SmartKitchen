@@ -30,7 +30,11 @@ describe("photo suggestions", () => {
     expect(classify).toHaveBeenCalledWith(image, ["carrot", "tomato", "potato"]);
     expect(result).toEqual({
       confident: true, source: "clip",
-      suggestions: [{ name: "Cà chua", catalogId: "c2", score: 0.75 }, { name: "Khoai tây", catalogId: "c3", score: 0.15 }, { name: "Cà rốt", catalogId: "c1", score: 0.1 }],
+      suggestions: [
+        { name: "Cà chua", catalogId: "c2", productId: "c2", imageUrl: null, score: 0.75 },
+        { name: "Khoai tây", catalogId: "c3", productId: "c3", imageUrl: null, score: 0.15 },
+        { name: "Cà rốt", catalogId: "c1", productId: "c1", imageUrl: null, score: 0.1 },
+      ],
     });
   });
 
@@ -38,7 +42,7 @@ describe("photo suggestions", () => {
     const gemini = vi.fn(async () => ["Rau ngót", "Bánh pizza"]);
     const result = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.3, 0.4 - 0.01], gemini }))(input);
     expect(gemini).toHaveBeenCalledWith(image, "image/jpeg", ["Cà rốt", "Cà chua", "Khoai tây", "Rau ngót"]);
-    expect(result).toEqual({ confident: true, source: "gemini", suggestions: [{ name: "Rau ngót", catalogId: "c4", score: null }] });
+    expect(result).toEqual({ confident: true, source: "gemini", suggestions: [{ name: "Rau ngót", catalogId: "c4", productId: "c4", imageUrl: null, score: null }] });
   });
 
   it("CLIP not installed -> Gemini; no Gemini or daily limit used up -> no suggestion", async () => {
@@ -108,10 +112,53 @@ describe("CLIP math and catalog labels", () => {
       ? { items: [{ id: "c1", name: "Cà rốt", englishName: "carrot" }], totalPages: 2 }
       : { items: [{ id: "c2", name: "Rau ngót", englishName: " " }], totalPages: 2 })));
     const labels = await loadCatalogLabels("u1", fetchImpl as unknown as typeof fetch);
-    expect(labels).toEqual([{ id: "c1", name: "Cà rốt", englishName: "carrot" }, { id: "c2", name: "Rau ngót", englishName: null }]);
+    expect(labels).toEqual([{ id: "c1", name: "Cà rốt", englishName: "carrot", imageUrl: null }, { id: "c2", name: "Rau ngót", englishName: null, imageUrl: null }]);
     expect((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toEqual({ "x-user-id": "u1" });
     await loadCatalogLabels("u1", fetchImpl as unknown as typeof fetch);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     resetCatalogLabelCache();
+  });
+});
+
+describe("image-to-image signal", () => {
+  it("final score = max(text, image): a strong image match lifts a product over the threshold; products without an image keep their text score", async () => {
+    const result = await createPhotoSuggester(deps({
+      classify: async () => [0.3, 0.35, 0.35],
+      imageScores: async () => new Map([["c1", 0.9]]),
+    }))(input);
+    expect(result.source).toBe("clip");
+    expect(result.suggestions.map((entry) => [entry.productId, entry.score])).toEqual([["c1", 0.9], ["c2", 0.35], ["c3", 0.35]]);
+    const off = await createPhotoSuggester(deps({ classify: async () => [0.3, 0.35, 0.35], imageScores: null }))(input);
+    expect(off.confident).toBe(false);
+  });
+
+  it("the index fetches only the stored catalog image URLs, re-embeds only when a URL changes, and pauses on 429", async () => {
+    const { createImageIndex } = await import("./image-index");
+    const fetched: string[] = [];
+    let status = 200;
+    const index = createImageIndex({
+      fetchImpl: (async (url: string) => { fetched.push(url); return new Response(new Uint8Array([1, 2, 3]), { status }); }) as unknown as typeof fetch,
+      embed: async () => normalize(new Float32Array([1, 0])),
+      sleep: async () => undefined,
+      now: () => 0,
+    });
+    const items = [
+      { id: "a", name: "A", englishName: "a", imageUrl: "https://upload.wikimedia.org/a.jpg" },
+      { id: "b", name: "B", englishName: "b", imageUrl: null },
+      { id: "c", name: "C", englishName: "c", imageUrl: "http://insecure.example/c.jpg" },
+    ];
+    index.refresh(items);
+    await vi.waitFor(() => expect(index.size()).toBe(1));
+    expect(fetched).toEqual(["https://upload.wikimedia.org/a.jpg"]);
+    index.refresh(items);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetched).toHaveLength(1);
+    expect([...index.scores(normalize(new Float32Array([1, 0])), items).keys()]).toEqual(["a"]);
+    status = 429;
+    index.refresh([{ ...items[0], imageUrl: "https://upload.wikimedia.org/a2.jpg" }]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    index.refresh([{ ...items[0], imageUrl: "https://upload.wikimedia.org/a3.jpg" }]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetched).toEqual(["https://upload.wikimedia.org/a.jpg", "https://upload.wikimedia.org/a2.jpg"]);
   });
 });

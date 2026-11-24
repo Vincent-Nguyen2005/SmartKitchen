@@ -43,6 +43,23 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `DELETE /api/inventory/items/:id/photo` | Remove the photo and its file. Deleting the item also deletes its photo file. |
 | `GET /api/inventory/items/:id/photo/:file` | Serve the item's current photo to members of its family only (the `imageUrl` value). No directory listing; any other file name is 404. |
 
+## One product, no accidental duplicates
+
+- **Catalog product (`productId`):** on create and rename the server matches the name against the active admin catalog. The match is exact after `normalizeName` (NFC, trim, collapsed spaces, lower case, diacritics kept: "  CÀ  RỐT " = "Cà rốt", but "ca rot" ≠ "Cà rốt"), on the Vietnamese name, then on the English alias.
+  - A match sets `productId`; renaming away clears it.
+  - The client never sends `productId`.
+  - If admin-service is unreachable, `productId` is left as it is and saving never fails.
+- **`GET /api/inventory/items/match?familyId&name&unit`:** returns the matched catalog product (`id`, `name`, `imageUrl`) and `existing`, the family's oldest live row of the same product in the same unit, plus `otherUnits`.
+  - The same product means the same `productId`, or the same normalized name (older rows have no `productId`).
+  - Live means not expired, discarded or deleted. A consumed row may be topped up again.
+  - Rows of other families are never considered.
+- **`POST /api/inventory/items/:id/add?familyId`** (`{ quantity, unit, expiryDate? }`): "Cộng thêm", which the user explicitly chooses in the app.
+  - Adds quantity atomically (SQL increment) and logs `MANUAL_MERGE`.
+  - Same unit only, with no unit conversion: `409 UNIT_MISMATCH` otherwise.
+  - Expiry: the earlier date is kept. The row then warns by its oldest stock, and a later date never hides an earlier one. A row without expiry takes the new date.
+  - "Thêm riêng" is a normal create.
+- **Đi chợ → Kho purchases** (`/internal/purchases`) are unchanged. They still restock automatically: same family, case-insensitive name, same unit; they set `productId` when missing.
+
 ## Photo name suggestions (Kho "Chụp ảnh")
 
 `POST /api/inventory/photo/suggest` (signed-in family member; multipart, one JPEG / PNG / WebP image, max 5 MB) returns `{ suggestions: [{ name, catalogId, score }], confident, source }`, at most 3 names. The photo is analysed in memory and **never stored**. Errors: 401 without a token, 403 without a family, 400 wrong type (the declared type must match the file's bytes), 413 over 5 MB.
@@ -50,6 +67,13 @@ The service supports the prefixed paths below for direct calls and matching shor
 1. **CLIP:** zero-shot image classification on the CPU, using Transformers.js with quantized `Xenova/clip-vit-base-patch32`. The labels are the active catalog ingredients' `englishName` ("a photo of carrot"), read from admin-service's user catalog and cached for 10 minutes. The Vietnamese name is returned. Text embeddings are computed once per label list. The model is downloaded at image build time (`dist/scripts/download-clip-model.js`) and loaded offline (`allowRemoteModels = false`), so a request never downloads anything. Timeout 8 s.
 2. **Gemini fallback:** used when the top CLIP probability is below `PHOTO_CLIP_THRESHOLD` (default 0.4) and `GEMINI_API_KEY` / `GEMINI_MODEL` are set. Gemini gets the photo and the catalog names, and returns strict JSON with at most 3 names from the list. Limits: `PHOTO_GEMINI_DAILY_LIMIT` calls per family per day (default 20, in memory) and a 10 s timeout.
 3. **Otherwise** there are no suggestions (`confident: false`). The app never waits on this to save.
+
+- **Suggestions:** each one also carries `productId` (= `catalogId`) and the product's `imageUrl`.
+- **Image-to-image signal (`PHOTO_IMAGE_MATCH=on`, off by default):**
+  - The photo is also compared with each catalog product's own image, using only the stored `imageUrl`.
+  - Embeddings live in memory and are recomputed only when the URL changes. They're built in the background, one image every 2 s, pausing 10 minutes on HTTP 429.
+  - The final score per product is `max(text, image)`, so a strong visual match can win and products without an image keep their text score. The 0.4 threshold applies to the final score.
+  - **Why it's off:** it isn't measured yet. PR #89's evaluation photos are the catalog images themselves, so an image-to-image comparison would just find each photo itself. Measure it on fresh phone photos before enabling it.
 
 ### Enabling CLIP
 

@@ -10,37 +10,44 @@ type Request = { title: string; message: string; confirmLabel: string; cancelLab
  * those do nothing or are suppressed on some web browsers. It is an overlay (not a Modal), so it also works inside
  * a screen that is itself a Modal (the dish detail): render `dialog` as the last child of that screen.
  */
+/** choose(): which button was pressed, or "dismiss" when the dialog was closed by tapping outside it. */
+export type ConfirmChoice = "confirm" | "cancel" | "dismiss";
+
 export function useConfirm() {
   const [request, setRequest] = useState<Request | null>(null);
-  const resolver = useRef<((ok: boolean) => void) | null>(null);
+  const resolver = useRef<((choice: ConfirmChoice) => void) | null>(null);
 
-  const confirm = useCallback((next: Request): Promise<boolean> => {
-    resolver.current?.(false);
+  /** Two real choices plus closing (e.g. "Cộng thêm" / "Thêm riêng" / do nothing). */
+  const choose = useCallback((next: Request): Promise<ConfirmChoice> => {
+    resolver.current?.("dismiss");
     setRequest(next);
     return new Promise((resolve) => { resolver.current = resolve; });
   }, []);
 
-  const answer = (ok: boolean) => {
-    resolver.current?.(ok);
+  /** Yes / no: only the confirm button answers true. */
+  const confirm = useCallback((next: Request): Promise<boolean> => choose(next).then((choice) => choice === "confirm"), [choose]);
+
+  const answer = (choice: ConfirmChoice) => {
+    resolver.current?.(choice);
     resolver.current = null;
     setRequest(null);
   };
 
   const dialog = request ? (
     <View style={local.backdrop} accessibilityViewIsModal>
-      <Pressable accessibilityRole="button" accessibilityLabel="Hủy" onPress={() => answer(false)} style={StyleSheet.absoluteFill} />
+      <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => answer("dismiss")} style={StyleSheet.absoluteFill} />
       <View style={local.card}>
         <Text style={local.title} accessibilityRole="header">{request.title}</Text>
         <Text style={local.message}>{request.message}</Text>
         <View style={local.actions}>
-          <Pressable accessibilityRole="button" onPress={() => answer(false)} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>
-          <Pressable accessibilityRole="button" onPress={() => answer(true)} style={[local.primary, request.destructive && local.destructive]}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => answer("cancel")} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>
+          <Pressable accessibilityRole="button" onPress={() => answer("confirm")} style={[local.primary, request.destructive && local.destructive]}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
         </View>
       </View>
     </View>
   ) : null;
 
-  return { confirm, dialog };
+  return { confirm, choose, dialog };
 }
 
 const local = StyleSheet.create({

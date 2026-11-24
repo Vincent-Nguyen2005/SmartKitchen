@@ -88,6 +88,22 @@ export const clipClassifier: ImageClassifier = async (image, labels) => {
     const { text_embeds } = await loaded.textModel(loaded.tokenizer(labels.map((label) => `a photo of ${label}`), { padding: true, truncation: true }));
     textCache = { key, vectors: rows(text_embeds) };
   }
-  const { image_embeds } = await loaded.visionModel(await loaded.processor(await loaded.readImage(image)));
-  return probabilities(rows(image_embeds)[0], textCache.vectors);
+  return probabilities(await embedImage(image), textCache.vectors);
 };
+
+// The same photo is embedded once per request: text scores and image-to-image scores share the vector.
+const imageVectors = new WeakMap<Buffer, Promise<Float32Array>>();
+
+/** Normalized CLIP image embedding (one vision pass); cached per Buffer object. */
+export function embedImage(image: Buffer): Promise<Float32Array> {
+  let vector = imageVectors.get(image);
+  if (!vector) {
+    vector = models().then(async (loaded) => {
+      const { image_embeds } = await loaded.visionModel(await loaded.processor(await loaded.readImage(image)));
+      return rows(image_embeds)[0];
+    });
+    vector.catch(() => imageVectors.delete(image));
+    imageVectors.set(image, vector);
+  }
+  return vector;
+}

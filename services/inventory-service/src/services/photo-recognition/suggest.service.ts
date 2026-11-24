@@ -1,5 +1,6 @@
 import { loadCatalogLabels, type CatalogLabel } from "./catalog-labels";
-import { clipClassifier, ClipUnavailableError, type ImageClassifier } from "./clip";
+import { clipClassifier, ClipUnavailableError, embedImage, type ImageClassifier } from "./clip";
+import { catalogImageIndex } from "./image-index";
 import { createDailyLimit, createGeminiPicker, geminiConfig, type GeminiPicker } from "./gemini";
 
 /**
@@ -8,7 +9,8 @@ import { createDailyLimit, createGeminiPicker, geminiConfig, type GeminiPicker }
  * 2. Otherwise Gemini (when configured and the family's daily limit allows) picks from the same catalog names.
  * 3. Otherwise no suggestion (confident = false). Saving the item never waits on or depends on this.
  */
-export type PhotoSuggestion = { name: string; catalogId: string; score: number | null };
+/** productId = catalogId (the admin catalog product); imageUrl = that product's image (shown in the add form). */
+export type PhotoSuggestion = { name: string; catalogId: string; productId: string; imageUrl: string | null; score: number | null };
 export type SuggestResult = { suggestions: PhotoSuggestion[]; confident: boolean; source: "clip" | "gemini" | null };
 
 /**
@@ -21,6 +23,11 @@ export const CLIP_THRESHOLD = Number(process.env.PHOTO_CLIP_THRESHOLD) || 0.4;
 export const CLIP_TIMEOUT_MS = 8000;
 export const GEMINI_DAILY_LIMIT = Number(process.env.PHOTO_GEMINI_DAILY_LIMIT) || 20;
 const MAX_SUGGESTIONS = 3;
+/**
+ * Image-to-image signal (photo vs the catalog products' own images). Off by default: on the PR #89 evaluation set it
+ * cannot be measured fairly (those test photos ARE the catalog images), see README. PHOTO_IMAGE_MATCH=on enables it.
+ */
+export const IMAGE_MATCH_ENABLED = process.env.PHOTO_IMAGE_MATCH === "on";
 
 export type SuggestDeps = {
   loadCatalog: (userId: string) => Promise<CatalogLabel[]>;
@@ -28,6 +35,8 @@ export type SuggestDeps = {
   gemini: GeminiPicker | null;
   geminiAllowed: (familyId: string) => boolean;
   threshold: number;
+  /** Image score per product id (null = feature off). Combined with the text score as max(text, image). */
+  imageScores?: ((image: Buffer, catalog: CatalogLabel[]) => Promise<Map<string, number>>) | null;
   log: (event: string, details: Record<string, unknown>) => void;
 };
 
@@ -49,17 +58,28 @@ export function createPhotoSuggester(deps: SuggestDeps) {
     }
     if (catalog.length === 0) return NONE;
 
+    const suggestion = (entry: CatalogLabel, score: number | null): PhotoSuggestion =>
+      ({ name: entry.name, catalogId: entry.id, productId: entry.id, imageUrl: entry.imageUrl ?? null, score: score === null ? null : Math.round(score * 1000) / 1000 });
+
     const labelled = catalog.filter((entry) => entry.englishName);
     if (labelled.length > 0) {
       try {
         const scores = await withTimeout(deps.classify(input.image, labelled.map((entry) => entry.englishName as string)), CLIP_TIMEOUT_MS);
-        const ranked = labelled.map((entry, index) => ({ entry, score: scores[index] ?? 0 })).sort((left, right) => right.score - left.score);
+        const final = new Map(labelled.map((entry, index) => [entry.id, scores[index] ?? 0]));
+        // Image signal: final = max(text, image). A strong visual match can win, and products without an image
+        // keep their text score (a weighted blend would pull those down). The same threshold applies to `final`.
+        if (deps.imageScores) {
+          try {
+            const images = await withTimeout(deps.imageScores(input.image, catalog), CLIP_TIMEOUT_MS);
+            for (const [id, score] of images) final.set(id, Math.max(final.get(id) ?? 0, score));
+          } catch (error) {
+            deps.log("photo_suggest_image_match_failed", { message: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        const byId = new Map(catalog.map((entry) => [entry.id, entry]));
+        const ranked = [...final].map(([id, score]) => ({ entry: byId.get(id) as CatalogLabel, score })).filter(({ entry }) => entry).sort((left, right) => right.score - left.score);
         if (ranked.length > 0 && ranked[0].score >= deps.threshold) {
-          return {
-            suggestions: ranked.slice(0, MAX_SUGGESTIONS).map(({ entry, score }) => ({ name: entry.name, catalogId: entry.id, score: Math.round(score * 1000) / 1000 })),
-            confident: true,
-            source: "clip",
-          };
+          return { suggestions: ranked.slice(0, MAX_SUGGESTIONS).map(({ entry, score }) => suggestion(entry, score)), confident: true, source: "clip" };
         }
       } catch (error) {
         if (!(error instanceof ClipUnavailableError)) deps.log("photo_suggest_clip_failed", { message: error instanceof Error ? error.message : String(error) });
@@ -70,7 +90,8 @@ export function createPhotoSuggester(deps: SuggestDeps) {
       try {
         const names = await deps.gemini(input.image, input.mimeType, catalog.map((entry) => entry.name));
         const byName = new Map(catalog.map((entry) => [entry.name, entry]));
-        const suggestions = names.flatMap((name) => { const entry = byName.get(name); return entry ? [{ name: entry.name, catalogId: entry.id, score: null }] : []; });
+        // Anything that is not a catalog ingredient is discarded.
+        const suggestions = names.flatMap((name) => { const entry = byName.get(name); return entry ? [suggestion(entry, null)] : []; });
         if (suggestions.length > 0) return { suggestions, confident: true, source: "gemini" };
       } catch (error) {
         deps.log("photo_suggest_gemini_failed", { message: error instanceof Error ? error.message : String(error) });
@@ -90,5 +111,12 @@ export const suggestFromPhoto = createPhotoSuggester({
   gemini: config ? createGeminiPicker(config) : null,
   geminiAllowed: (familyId) => geminiLimit.take(familyId),
   threshold: CLIP_THRESHOLD,
+  imageScores: IMAGE_MATCH_ENABLED
+    ? async (image, catalog) => {
+      catalogImageIndex.refresh(catalog);
+      if (catalogImageIndex.size() === 0) return new Map();
+      return catalogImageIndex.scores(await embedImage(image), catalog);
+    }
+    : null,
   log: (event, details) => console.error(JSON.stringify({ event, ...details })),
 });
