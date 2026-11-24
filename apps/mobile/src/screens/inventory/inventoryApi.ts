@@ -71,6 +71,8 @@ export type CatalogIngredient = {
   promoEndDate: string | null;
   /** Whole VND, or null when the admin set no price. */
   price: number | null;
+  /** Grams in one pack / bunch (PACK / PIECE products, e.g. Hành lá 1 bó ≈ 100 g); null or absent when unknown. */
+  packGrams?: number | null;
 };
 export type CatalogPage = { items: CatalogIngredient[]; page: number; limit: number; total: number; totalPages: number; groups: string[] };
 export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number };

@@ -10,6 +10,7 @@ import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inven
 import { unitLabel } from "../inventory/catalogSuggest";
 import { shoppingUnitLabels } from "./shoppingApi";
 import { addToCart, shoppingUnitFor } from "./cart";
+import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 
 type Props = {
   accessToken: string | null;
@@ -67,7 +68,8 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [selected, setSelected] = useState<CatalogIngredient | null>(null);
-  const [quantity, setQuantity] = useState(1);
+  // Typed text (kg may hold "1," while typing); the quantity follows the product's rule (kg: 0.1 .. 20, else 1 .. 999).
+  const [quantityText, setQuantityText] = useState("1");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -117,10 +119,13 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
-    setQuantity(1);
+    setQuantityText("1");
     setAddError(null);
   };
   const closeSheet = () => { if (!adding) setSelected(null); };
+  const rule = quantityRuleFor(selected ? shoppingUnitFor(selected) : "PIECE");
+  const quantity = parseQuantity(quantityText, rule) ?? rule.min;
+  const step = (direction: 1 | -1) => setQuantityText(formatQuantity(stepQuantity(quantity, direction, rule)));
 
   /** "Thêm vào giỏ": the server raises the quantity when the same product + unit is already in the cart. */
   const addSelectedToCart = async () => {
@@ -214,17 +219,18 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                 <>
                   <Text style={local.fieldLabel}>Số lượng ({shoppingUnitLabels[shoppingUnitFor(selected)]})</Text>
                   <View style={local.stepper}>
-                    <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng" disabled={quantity <= 1 || adding} onPress={() => setQuantity((value) => Math.max(1, value - 1))} style={[local.stepButton, quantity <= 1 && local.dimmed]}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng" disabled={quantity <= rule.min || adding} onPress={() => step(-1)} style={[local.stepButton, quantity <= rule.min && local.dimmed]}>
                       <AppIcon icon={Minus} size="md" color={colors.primary} />
                     </Pressable>
                     <TextInput
                       accessibilityLabel="Số lượng"
-                      keyboardType="number-pad"
-                      value={String(quantity)}
-                      onChangeText={(text) => { const value = Number(text.replace(/[^0-9]/g, "")); setQuantity(Number.isFinite(value) && value > 0 ? Math.min(value, 999) : 1); }}
+                      keyboardType={rule.decimals ? "decimal-pad" : "number-pad"}
+                      value={quantityText}
+                      onChangeText={(text) => setQuantityText(rule.decimals ? text.replace(/[^0-9.,]/g, "") : text.replace(/[^0-9]/g, ""))}
+                      onBlur={() => setQuantityText(formatQuantity(quantity))}
                       style={local.stepInput}
                     />
-                    <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng" disabled={quantity >= 999 || adding} onPress={() => setQuantity((value) => Math.min(999, value + 1))} style={local.stepButton}>
+                    <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng" disabled={quantity >= rule.max || adding} onPress={() => step(1)} style={[local.stepButton, quantity >= rule.max && local.dimmed]}>
                       <AppIcon icon={Plus} size="md" color={colors.primary} />
                     </Pressable>
                     <Text style={local.unit}>{shoppingUnitLabels[shoppingUnitFor(selected)]}</Text>

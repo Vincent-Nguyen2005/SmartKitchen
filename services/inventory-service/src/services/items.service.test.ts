@@ -220,7 +220,7 @@ describe("PurchasesService", () => {
     unit: "KILOGRAM" as const,
   };
   const tx = {
-    foodItem: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
+    foodItem: { findMany: vi.fn(), update: vi.fn(), create: vi.fn() },
     inventoryLog: { create: vi.fn() },
     purchaseApplication: { create: vi.fn() },
     category: { upsert: vi.fn() },
@@ -231,7 +231,7 @@ describe("PurchasesService", () => {
     prismaMock.purchaseApplication.findUnique.mockResolvedValue(null);
     prismaMock.foodItem.findUnique.mockResolvedValue(null);
     prismaMock.$transaction.mockImplementation((callback: (transaction: typeof tx) => Promise<unknown>) => callback(tx));
-    tx.foodItem.findFirst.mockResolvedValue(null);
+    tx.foodItem.findMany.mockResolvedValue([]);
     tx.foodItem.create.mockResolvedValue({ id: itemId, familyId, name: input.name, quantity: input.quantity, unit: input.unit, status: "FRESH" });
     tx.foodItem.update.mockResolvedValue({ id: itemId, name: input.name, quantity: 5, unit: input.unit, status: "FRESH" });
     tx.inventoryLog.create.mockResolvedValue({ id: "log-1" });
@@ -262,13 +262,13 @@ describe("PurchasesService", () => {
   });
 
   it("fills a missing expiry on restock but keeps an expiry the family already set", async () => {
-    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null });
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null }]);
     await PurchasesService.apply({ ...input, expiryDate: "2026-12-01" });
     expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({
       data: { quantity: { increment: 2 }, status: "FRESH", expiryDate: new Date("2026-12-01T00:00:00.000Z") },
     }));
 
-    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: new Date("2026-11-25T00:00:00.000Z"), categoryId: null });
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, quantity: 3, status: "FRESH", expiryDate: new Date("2026-11-25T00:00:00.000Z"), categoryId: null }]);
     await PurchasesService.apply({ ...input, expiryDate: "2026-12-01" });
     expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({
       data: { quantity: { increment: 2 }, status: "FRESH" },
@@ -279,17 +279,17 @@ describe("PurchasesService", () => {
     await PurchasesService.apply({ ...input, productId: "prod-1" });
     expect(tx.foodItem.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ productId: "prod-1" }) }));
 
-    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: null });
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: null }]);
     await PurchasesService.apply({ ...input, productId: "prod-1" });
     expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { quantity: { increment: 2 }, status: "FRESH", productId: "prod-1" } }));
 
-    tx.foodItem.findFirst.mockResolvedValueOnce({ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: "prod-old" });
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, quantity: 3, status: "FRESH", expiryDate: null, categoryId: null, productId: "prod-old" }]);
     await PurchasesService.apply({ ...input, productId: "prod-1" });
     expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { quantity: { increment: 2 }, status: "FRESH" } }));
   });
 
   it("restocks a matching active inventory item", async () => {
-    tx.foodItem.findFirst.mockResolvedValue({ id: itemId, quantity: 3, status: "NEAR_EXPIRY" });
+    tx.foodItem.findMany.mockResolvedValue([{ id: itemId, quantity: 3, status: "NEAR_EXPIRY" }]);
 
     await PurchasesService.apply(input);
 
@@ -298,6 +298,30 @@ describe("PurchasesService", () => {
       data: { quantity: { increment: 2 }, status: "FRESH" },
     }));
     expect(tx.foodItem.create).not.toHaveBeenCalled();
+  });
+
+  it("merges kg bought into a Kho row in g (and l into ml), converting the amount; packs never convert", async () => {
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, name: "Thịt ba chỉ", quantity: 500, unit: "GRAM", status: "FRESH", expiryDate: null, categoryId: null, productId: null }]);
+    await PurchasesService.apply({ ...input, name: "Thịt ba chỉ", quantity: 1.5, unit: "KILOGRAM" });
+    expect(tx.foodItem.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ unit: { in: ["KILOGRAM", "GRAM"] } }) }));
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: itemId }, data: { quantity: { increment: 1500 }, status: "FRESH" } }));
+
+    // A row already in kg wins over an older row in g.
+    tx.foodItem.findMany.mockResolvedValueOnce([
+      { id: "g-row", quantity: 200, unit: "GRAM", status: "FRESH" },
+      { id: itemId, quantity: 1, unit: "KILOGRAM", status: "FRESH" },
+    ]);
+    await PurchasesService.apply({ ...input, name: "Thịt ba chỉ", quantity: 0.3, unit: "KILOGRAM" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ where: { id: itemId }, data: { quantity: { increment: 0.3 }, status: "FRESH" } }));
+
+    tx.foodItem.findMany.mockResolvedValueOnce([{ id: itemId, quantity: 400, unit: "MILLILITER", status: "FRESH" }]);
+    await PurchasesService.apply({ ...input, name: "Sữa tươi", quantity: 1, unit: "LITER" });
+    expect(tx.foodItem.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: { quantity: { increment: 1000 }, status: "FRESH" } }));
+
+    tx.foodItem.findMany.mockResolvedValueOnce([]);
+    await PurchasesService.apply({ ...input, name: "Hành lá", quantity: 2, unit: "PACK" });
+    expect(tx.foodItem.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ unit: { in: ["PACK"] } }) }));
+    expect(tx.foodItem.create).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ name: "Hành lá", quantity: 2, unit: "PACK" }) }));
   });
 
   it("returns a previously applied purchase without opening another transaction", async () => {

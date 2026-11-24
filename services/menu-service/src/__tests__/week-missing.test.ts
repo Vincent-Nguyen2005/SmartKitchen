@@ -8,6 +8,8 @@ const catalog: CatalogProduct[] = [
   { id: "p-carrot", name: "Cà rốt", englishName: "carrot", unit: "KILOGRAM", imageUrl: "https://img/carrot.jpg", price: 25000, discountPercent: null },
   { id: "p-egg", name: "Trứng gà", englishName: "chicken eggs", unit: "PIECE", imageUrl: null, price: 3500, discountPercent: 10 },
   { id: "p-pork", name: "Thịt heo", englishName: "pork", unit: "KILOGRAM", imageUrl: null, price: 120000, discountPercent: null },
+  { id: "p-scallion", name: "Hành lá", englishName: "scallion", unit: "PACK", imageUrl: null, price: 5000, discountPercent: null, packGrams: 100 },
+  { id: "p-garlic", name: "Tỏi", englishName: "garlic", unit: "PACK", imageUrl: null, price: 15000, discountPercent: null, packGrams: 200 },
 ];
 const dish = (ingredients: WeekDish["ingredients"], servings = 2, people = 4): WeekDish => ({ ingredients, servings, people });
 const run = (dishes: WeekDish[], kho: Parameters<typeof computeWeekMissing>[0]["kho"] = []) => computeWeekMissing({ dishes, kho, catalog, today });
@@ -19,8 +21,8 @@ test("amounts scale to the family size and add up across dishes; seasonings and 
     dish([{ name: "cà RỐT", quantity: 300, unit: "GRAM" }], 4, 4),
   ]);
   assert.equal(missing.length, 1);
-  // 200 g for 2 → 400 g for 4, plus 300 g → 700 g; sold by the kg: 1 kg to buy.
-  assert.deepEqual([missing[0].name, missing[0].quantity, missing[0].unit, missing[0].productId, missing[0].cartQuantity, missing[0].saleUnit], ["Cà rốt", 700, "GRAM", "p-carrot", 1, "KILOGRAM"]);
+  // 200 g for 2 → 400 g for 4, plus 300 g → 700 g; sold by the kg in 0.1 kg steps: 0.7 kg to buy.
+  assert.deepEqual([missing[0].name, missing[0].quantity, missing[0].unit, missing[0].productId, missing[0].cartQuantity, missing[0].saleUnit], ["Cà rốt", 700, "GRAM", "p-carrot", 0.7, "KILOGRAM"]);
   assert.equal(missing[0].price, 25000);
 });
 
@@ -49,6 +51,20 @@ test("a different measure is not subtracted and is reported as a unit mismatch; 
   assert.deepEqual([egg?.quantity, egg?.unit, egg?.cartQuantity, egg?.unitMismatch], [5, "PIECE", 5, false]); // 3 for 2 → 4.5 → 5 for 3 people
   const carrot = missing.find((item) => item.productId === "p-carrot");
   assert.deepEqual([carrot?.quantity, carrot?.unit, carrot?.unitMismatch, carrot?.cartQuantity], [2, "PIECE", true, 1]);
+});
+
+test("kg products round the missing amount up to 0.1 kg (at least 0.1 kg, at most 20 kg)", () => {
+  const cart = (grams: number) => run([dish([{ name: "Thịt heo", quantity: grams, unit: "GRAM" }], 1, 1)])[0].cartQuantity;
+  assert.deepEqual([cart(30), cart(100), cart(650), cart(1501), cart(25000)], [0.1, 0.1, 0.7, 1.6, 20]);
+});
+
+test("pack products convert grams through their pack weight, in recipes and in Kho", () => {
+  // 150 g of Hành lá at 100 g a bó → 2 bó; 250 g of Tỏi at 200 g a gói → 2 gói.
+  const missing = run([dish([{ name: "Hành lá", quantity: 150, unit: "GRAM" }, { name: "Tỏi", quantity: 250, unit: "GRAM" }], 1, 1)]);
+  assert.deepEqual(missing.map((item) => [item.name, item.quantity, item.unit, item.saleUnit, item.cartQuantity]), [["Hành lá", 150, "GRAM", "PACK", 2], ["Tỏi", 250, "GRAM", "PACK", 2]]);
+  // 1 bó in Kho covers 100 g: 50 g still missing → 1 bó. 2 gói of Tỏi (400 g) cover 250 g.
+  const withKho = run([dish([{ name: "Hành lá", quantity: 150, unit: "GRAM" }, { name: "Tỏi", quantity: 250, unit: "GRAM" }], 1, 1)], [kho("Hành lá", 1, "PACK", { productId: "p-scallion" }), kho("Tỏi", 2, "PACK")]);
+  assert.deepEqual(withKho.map((item) => [item.name, item.quantity, item.unit, item.cartQuantity, item.unitMismatch]), [["Hành lá", 50, "GRAM", 1, false]]);
 });
 
 test("items not sold in Đi chợ have no product, image, price or cart quantity", () => {

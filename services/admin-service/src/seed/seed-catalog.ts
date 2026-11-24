@@ -41,7 +41,9 @@ export async function seedMissingIngredients(client: PrismaClient, seed: Catalog
       name: entry.name,
       nameNormalized: normalize(entry.name),
       category: entry.group,
-      defaultUnit: entry.unit,
+      // Sale unit: catalog-details overrides it where admins settled on another one (nothing is sold by the gram).
+      defaultUnit: catalogDetails[entry.name]?.unit ?? entry.unit,
+      packGrams: catalogDetails[entry.name]?.packGrams ?? null,
       shelfLifeDays: entry.shelfLifeDays,
       caloriesPer100g: entry.kcal,
       englishName: englishNameFor(entry),

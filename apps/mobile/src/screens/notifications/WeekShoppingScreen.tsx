@@ -6,6 +6,7 @@ import { useSession } from "../../services/session";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
 import { UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
+import { formatQuantity } from "../shopping-cart/quantityRule";
 import { errorMessage } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
 import { Button, colors, EmptyState, ScreenState, styles } from "./ui";
@@ -115,9 +116,10 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
               width={cardGrid.cardWidth}
               image={item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={cardImageStyle} resizeMode="cover" /> : <ImagePlaceholder />}
               name={item.name}
-              subtitle={`Thiếu ${item.quantity} ${unitText(item.unit)}`}
-              footer={!item.productId ? <CardCaption text="Chưa có bán" warning /> : item.unitMismatch ? <CardCaption text="Kho có nhưng khác đơn vị" /> : undefined}
-              accessibilityLabel={`${item.name}, thiếu ${item.quantity} ${unitText(item.unit)}${item.productId ? "" : ", chưa có bán"}`}
+              subtitle={`Thiếu ${formatQuantity(item.quantity)} ${unitText(item.unit)}`}
+              // What "Thêm vào Giỏ hàng" puts in the cart: kg in 0.1 steps, packs from their weight (150 g → 2 gói).
+              footer={!item.productId ? <CardCaption text="Chưa có bán" warning /> : item.unitMismatch ? <CardCaption text="Kho có nhưng khác đơn vị" /> : item.cartQuantity && item.saleUnit ? <CardCaption text={`Mua ${formatQuantity(item.cartQuantity)} ${unitText(item.saleUnit)}`} /> : undefined}
+              accessibilityLabel={`${item.name}, thiếu ${formatQuantity(item.quantity)} ${unitText(item.unit)}${!item.productId ? ", chưa có bán" : item.cartQuantity && item.saleUnit && !item.unitMismatch ? `, mua ${formatQuantity(item.cartQuantity)} ${unitText(item.saleUnit)}` : ""}`}
             />
           )}
         />

@@ -35,7 +35,7 @@ const creditColumns = (input: Partial<IngredientInput>, before: { imageUrl: stri
     ? { imageSource: null, imageAuthor: null, imageLicense: null }
     : {};
 
-const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoStartDate: promoStartDateSchema, promoEndDate: promoEndDateSchema, price: priceSchema });
+const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoStartDate: promoStartDateSchema, promoEndDate: promoEndDateSchema, price: priceSchema, packGrams: z.preprocess(emptyToNull, z.number().int("Khối lượng phải là số nguyên (g)").positive("Khối lượng phải lớn hơn 0").max(100_000).nullable().optional()) });
 type IngredientInput = z.infer<typeof ingredientSchema>;
 type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null; promoStartDate?: Date | null } | null;
 
@@ -107,7 +107,7 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const [rows, total, groups] = await prisma.$transaction([
     prisma.masterIngredient.findMany({
       where,
-      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoStartDate: true, promoEndDate: true, price: true },
+      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoStartDate: true, promoEndDate: true, price: true, packGrams: true },
       orderBy: { nameNormalized: "asc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -135,6 +135,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
       discountPercent: onPromotion ? row.discountPercent : null,
       promoEndDate: onPromotion ? endDay : null,
       price: row.price,
+      // Grams in one pack / bunch (PACK / PIECE products); null when unknown.
+      packGrams: row.packGrams,
     };
   });
   return response.json({ items, page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)), groups: groups.map((row) => row.category) });

@@ -26,8 +26,8 @@ describe("starter catalog seed", () => {
     expect(added).toBe(catalogSeed.length - 1);
     expect(rows[0]).toEqual({ name: "cà chua", category: "common", defaultUnit: "g" });
     const created = rows.find((row) => row.name === "Thịt bò")!;
-    expect(created).toMatchObject({ category: "Thịt", defaultUnit: "GRAM", shelfLifeDays: 3, caloriesPer100g: 250, nameNormalized: "thit bo" });
-    expect(created.price).toBe(300); // GRAM unit: per gram (300 000 đ/kg)
+    expect(created).toMatchObject({ category: "Thịt", defaultUnit: "KILOGRAM", shelfLifeDays: 3, caloriesPer100g: 250, nameNormalized: "thit bo" });
+    expect(created.price).toBe(300000); // per kg
     expect(await seedMissingIngredients(client)).toBe(0);
   });
 
@@ -91,12 +91,27 @@ describe("starter catalog seed", () => {
     expect(rows.find((row) => row.name === "Bơ lạt")?.englishName).toBe("butter");
   });
 
-  it("every starter product has a market price (whole VND; 500 VND steps unless priced per gram) and macros that fit its kcal", () => {
+  it("nothing is sold by the gram: kg products are priced per kg, small aromatics per pack with a pack weight", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    await seedMissingIngredients(client);
+    expect(rows.filter((row) => row.defaultUnit === "GRAM").map((row) => row.name)).toEqual([]);
+    expect(rows.find((row) => row.name === "Thịt ba chỉ")).toMatchObject({ defaultUnit: "KILOGRAM", price: 170000, packGrams: null, caloriesPer100g: 350 });
+    expect(rows.find((row) => row.name === "Hành lá")).toMatchObject({ defaultUnit: "PACK", price: 5000, packGrams: 100 });
+    expect(rows.find((row) => row.name === "Cà chua")).toMatchObject({ defaultUnit: "KILOGRAM", price: 30000 });
+    // Every pack weight belongs to a pack / piece product.
+    for (const row of rows.filter((entry) => entry.packGrams !== null)) expect(["PACK", "PIECE"], String(row.name)).toContain(row.defaultUnit);
+  });
+
+  it("every starter product has a market price (whole VND, 500 VND steps) and macros that fit its kcal", () => {
     for (const entry of catalogSeed) {
       const detail = catalogDetails[entry.name];
       expect(detail, entry.name).toBeDefined();
       expect(Number.isInteger(detail.price) && detail.price > 0, entry.name).toBe(true);
-      if (entry.unit !== "GRAM") expect(detail.price % 500, entry.name).toBe(0);
+      expect(detail.price % 500, entry.name).toBe(0);
       const [protein, carbs, fat] = catalogMacros[entry.name] ?? detail.macros ?? [];
       expect(protein, entry.name).toBeDefined();
       // 4 / 4 / 9 kcal per gram within 25% (vinegar's acetic acid and near-zero drinks excepted).

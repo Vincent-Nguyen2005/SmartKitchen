@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/app-error";
+import { mergedQuantity, quantityProblem } from "../lib/quantity-rule";
 import { LIST_STATUS } from "../lib/constants";
 import { UpdateItemBody } from "../validators/shopping-list.validator";
 
@@ -323,7 +324,8 @@ export class ShoppingListService {
             const quantity = mode === "atLeast" ? Math.max(existing.quantity, data.quantity) : existing.quantity + data.quantity;
             return transaction.shoppingItem.update({
               where: { id: existing.id },
-              data: { quantity: roundQuantity(quantity), ...snapshotData(data) },
+              // kg lines stay on the 0.1 kg grid and at most 20 kg (lib/quantity-rule).
+              data: { quantity: roundQuantity(mergedQuantity(quantity, data.unit)), ...snapshotData(data) },
             });
           }
           return transaction.shoppingItem.create({
@@ -463,11 +465,14 @@ export class ShoppingListService {
   static async updateItem(id: string, familyId: string, data: UpdateItemBody) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
-      select: { isPurchased: true, shoppingList: { select: { status: true } } },
+      select: { isPurchased: true, unit: true, productId: true, shoppingList: { select: { status: true } } },
     });
     if (!item) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     if (item.isPurchased) throw new AppError(409, "ITEM_ALREADY_PURCHASED", "Purchased items cannot be changed");
+    // Same quantity rule as adding (kg in 0.1 steps up to 20; catalog count units whole), checked on the line's unit.
+    const problem = data.quantity === undefined ? null : quantityProblem(data.quantity, item.unit, Boolean(item.productId));
+    if (problem) throw new AppError(400, "INVALID_QUANTITY", problem);
     return prisma.shoppingItem.update({ where: { id }, data });
   }
 

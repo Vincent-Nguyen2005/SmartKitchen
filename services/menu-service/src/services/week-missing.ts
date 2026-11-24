@@ -12,13 +12,16 @@ import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type Reci
  * - Seasonings (isSeasoning) and free-text amounts ("vừa ăn") are left out.
  * - Product key: the admin catalog product (by productId on Kho rows; by exact normalized name, then English alias,
  *   for recipe ingredients), else the normalized name.
- * - Units: only the same measure is subtracted (g with kg, ml with l, pieces with the same piece unit). A Kho row in
- *   another measure does not count; the item is then marked `unitMismatch`.
+ * - Units: only the same measure is subtracted (g with kg, ml with l, pieces with the same piece unit). A product
+ *   sold in packs with a known pack weight (catalog packGrams, e.g. Hành lá 1 bó ≈ 100 g) counts its packs as grams,
+ *   in recipes and in Kho. A Kho row in another measure does not count; the item is then marked `unitMismatch`.
+ * - Cart quantity: kg products round the missing amount up to 0.1 kg (at least 0.1, at most 20); everything else
+ *   rounds up to whole sale units (packs through their pack weight).
  * - Usable Kho: quantity > 0, status not EXPIRED / CONSUMED / DISCARDED, expiry day not before today.
  */
 export type WeekIngredient = PortionIngredient;
 export type WeekDish = { ingredients: WeekIngredient[]; servings: number | null; people: number };
-export type CatalogProduct = { id: string; name: string; englishName?: string | null; unit: string; imageUrl: string | null; price: number | null; discountPercent: number | null };
+export type CatalogProduct = { id: string; name: string; englishName?: string | null; unit: string; imageUrl: string | null; price: number | null; discountPercent: number | null; packGrams?: number | null };
 export type MissingIngredient = {
   name: string;
   /** Missing amount in `unit` (g / ml switch to kg / l from 1000). */
@@ -28,7 +31,7 @@ export type MissingIngredient = {
   imageUrl: string | null;
   price: number | null;
   discountPercent: number | null;
-  /** Catalog sale unit and how many of it to put in Giỏ hàng (whole numbers, at least 1); null when not sold. */
+  /** Catalog sale unit and how many of it to put in Giỏ hàng (kg: 0.1 steps; other units: whole numbers); null when not sold. */
   saleUnit: string | null;
   cartQuantity: number | null;
   /** Kho has this product only in another measure (e.g. cái vs kg): not subtracted. */
@@ -50,6 +53,15 @@ const measureOf = (unit: string): { measure: string; factor: number } => {
     case "LITER": return { measure: "VOLUME", factor: 1000 };
     default: return { measure: unit, factor: 1 };
   }
+};
+/** Cart limits for kg products (same as shopping-list-service's quantity rule). */
+const KG_STEP_GRAMS = 100;
+const KG_MAX = 20;
+/** Like measureOf, but a product's own pack unit with a known pack weight is mass (1 bó = packGrams g). */
+const measureFor = (unit: string, product: CatalogProduct | null): { measure: string; factor: number } => {
+  const plain = measureOf(unit);
+  if (product?.packGrams && product.packGrams > 0 && plain.measure === unit && unit === unitCode(product.unit)) return { measure: "MASS", factor: product.packGrams };
+  return plain;
 };
 const displayAmount = (base: number, measure: string): { quantity: number; unit: string } => {
   if (measure === "MASS") return base >= 1000 ? { quantity: roundQuantity(base / 1000, "KILOGRAM"), unit: "KILOGRAM" } : { quantity: roundQuantity(base, "GRAM"), unit: "GRAM" };
@@ -85,7 +97,7 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
       if (!unit || quantity === null || !(quantity > 0)) continue;
       const key = keyFor(ingredient.name);
       const entry = needed.get(key) ?? { name: ingredient.name.trim(), product: productFor(ingredient.name), measures: new Map<string, number>() };
-      const { measure, factor } = measureOf(unit);
+      const { measure, factor } = measureFor(unit, entry.product);
       entry.measures.set(measure, (entry.measures.get(measure) ?? 0) + quantity * factor);
       needed.set(key, entry);
     }
@@ -97,7 +109,7 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
     const unit = unitCode(item.unit);
     if (!unit || !isUsableKho(item, input.today)) continue;
     const key = keyFor(item.name, item.productId);
-    const { measure, factor } = measureOf(unit);
+    const { measure, factor } = measureFor(unit, productFor(item.name, item.productId));
     const measures = stock.get(key) ?? new Map<string, number>();
     measures.set(measure, (measures.get(measure) ?? 0) + (item.quantity as number) * factor);
     stock.set(key, measures);
@@ -115,9 +127,12 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
       let cartQuantity: number | null = null;
       const saleUnit = product ? unitCode(product.unit) : null;
       if (product && saleUnit) {
-        const sale = measureOf(saleUnit);
-        // Same measure: missing amount in the sale unit, rounded up to whole units; otherwise one unit.
-        cartQuantity = sale.measure === measure ? Math.max(1, Math.ceil(short / sale.factor - 1e-9)) : 1;
+        const sale = measureFor(saleUnit, product);
+        if (sale.measure !== measure) cartQuantity = 1; // another measure: one unit
+        // kg: rounded up to 0.1 kg (0.65 kg -> 0.7 kg), within the cart's 0.1 .. 20 kg.
+        else if (saleUnit === "KILOGRAM") cartQuantity = Math.min(KG_MAX, Math.max(1, Math.ceil(short / KG_STEP_GRAMS - 1e-9)) / 10);
+        // Whole sale units (packs through their weight: 150 g of Hành lá at 100 g a bó -> 2 bó).
+        else cartQuantity = Math.max(1, Math.ceil(short / sale.factor - 1e-9));
       }
       missing.push({
         name: product?.name ?? entry.name,
@@ -188,6 +203,7 @@ export async function loadCatalogProducts(userId: string, fetchImpl: typeof fetc
         imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : null,
         price: typeof item.price === "number" ? item.price : null,
         discountPercent: typeof item.discountPercent === "number" ? item.discountPercent : null,
+        packGrams: typeof item.packGrams === "number" && item.packGrams > 0 ? item.packGrams : null,
       });
     }
     if (page >= (body.totalPages ?? 1)) break;

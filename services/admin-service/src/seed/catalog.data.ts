@@ -45,9 +45,9 @@ export const catalogSeed: CatalogSeed[] = [
   traiCay("Đu đủ", "papaya", 5, 43), traiCay("Bưởi", "pomelo", 21, 38), traiCay("Dứa", "pineapple", 5, 50),
   traiCay("Ổi", "guava", 5, 68), traiCay("Chanh", "lime fruit", 14, 30), traiCayKg("Nho", "grapes", 7, 69),
   // Thịt
-  thit("Thịt heo", "pork meat", 3, 242), thit("Thịt ba chỉ", "pork belly", 3, 518), thit("Sườn heo", "pork ribs", 3, 277),
+  thit("Thịt heo", "pork meat", 3, 242), thit("Thịt ba chỉ", "pork belly", 3, 350), thit("Sườn heo", "pork ribs", 3, 277),
   thit("Thịt bò", "beef meat", 3, 250), thit("Thịt gà", "chicken meat", 2, 215), thit("Đùi gà", "chicken drumstick", 2, 214),
-  thit("Thịt vịt", "duck meat", 2, 337), thit("Thịt heo xay", "ground pork", 2, 263),
+  thit("Thịt vịt", "duck meat", 2, 400), thit("Thịt heo xay", "ground pork", 2, 263),
   // Hải sản
   haiSan("Cá basa", "pangasius fillet", 2, 90), haiSan("Cá thu", "mackerel fish", 2, 205), haiSan("Cá hồi", "salmon fillet", 2, 208),
   haiSan("Tôm", "shrimp", 2, 99), haiSan("Mực", "squid", 2, 92), haiSan("Cua đồng", "freshwater crab", 1, 87),
