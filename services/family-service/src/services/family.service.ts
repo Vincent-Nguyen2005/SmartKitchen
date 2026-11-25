@@ -6,7 +6,8 @@ const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
 export class FamilyServiceError extends Error {
-  constructor(message: string, readonly statusCode: number) {
+  /** `code`: optional machine-readable reason for the app (e.g. QR_EXPIRED, ALREADY_MEMBER). */
+  constructor(message: string, readonly statusCode: number, readonly code?: string) {
     super(message);
     this.name = "FamilyServiceError";
   }

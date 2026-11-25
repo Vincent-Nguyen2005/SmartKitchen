@@ -45,7 +45,9 @@ import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import FamilyScreenFlow from "./src/screens/family/FamilyScreenFlow";
 import InventoryScreen from "./src/screens/inventory/InventoryListScreen";
 import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/inventory/InventoryCapturePanel";
-import ReceiptQrCapturePanel from "./src/screens/inventory/ReceiptQrCapturePanel";
+import FamilyQrSheet from "./src/screens/family/FamilyQrSheet";
+import FamilyQrScanner from "./src/screens/family/FamilyQrScanner";
+import { familyQrAction, type FamilyQrAction } from "./src/screens/family/familyQr";
 import { CaptureDialog, MIC_PERMISSION_TEXT, useInstantVoice } from "./src/screens/inventory/InstantCapture";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto } from "./src/screens/inventory/inventoryPhoto";
 import type { UploadPhoto } from "./src/screens/inventory/inventoryApi";
@@ -119,7 +121,7 @@ const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = (["recipes", "nutrition", "menu"] as const).map((key) => tabs.find((tab) => tab.key === key)!);
 const captureActions = [
   { key: "photo", label: "Chụp ảnh", icon: Camera },
-  { key: "scan", label: "QR hóa đơn", icon: QrCode },
+  { key: "familyQr", label: "QR gia đình", icon: QrCode },
   { key: "voice", label: "Giọng nói", icon: Mic },
 ] as const;
 
@@ -176,6 +178,8 @@ function AppContent(): React.JSX.Element {
   const badgeRunning = useRef(false);
   const badgePending = useRef(false);
   const [captureMode, setCaptureMode] = useState<InventoryCaptureMode | null>(null);
+  // "QR gia đình" sheet (owner) or scanner (everyone else).
+  const [familyQr, setFamilyQr] = useState<FamilyQrAction | null>(null);
   const [captureReady, setCaptureReady] = useState(false);
   // Result of the bottom-bar camera / microphone, handed to the capture panel when its sheet opens.
   const [capturePhoto, setCapturePhoto] = useState<UploadPhoto | null>(null);
@@ -193,8 +197,10 @@ function AppContent(): React.JSX.Element {
    * inside it); after the shot the Kho photo form opens. "Giọng nói": listening starts in this tap with a small
    * overlay. Without a family the sheet opens instead, to explain why nothing can be saved.
    */
-  const startCapture = (key: InventoryCaptureMode) => {
-    if (key === "scan" || !session.family?.id || !session.accessToken) { setCaptureReady(false); setCaptureMode(key); return; }
+  const startCapture = (key: (typeof captureActions)[number]["key"]) => {
+    // "QR gia đình": the owner shows the family's one-time join QR; everyone else scans one.
+    if (key === "familyQr") { setFamilyQr(familyQrAction(session.family?.currentUserRole)); return; }
+    if (!session.family?.id || !session.accessToken) { setCaptureReady(false); setCaptureMode(key); return; }
     if (key === "voice") { voice.start(); return; }
     void takeItemPhoto().then((result) => {
       if (result.status === "picked") { setCapturePhoto(result.photo); setCaptureReady(false); setCaptureMode("photo"); }
@@ -564,16 +570,14 @@ function AppContent(): React.JSX.Element {
         </SafeAreaView>
       </Modal>
 
-      <Modal animationType="fade" visible={captureMode === "scan" && !isAdmin} onRequestClose={() => setCaptureMode(null)}>
-        <ReceiptQrCapturePanel
-          familyId={session.family?.id ?? null}
-          accessToken={session.accessToken}
-          onSaved={() => setInventoryRefreshKey((current) => current + 1)}
-          onClose={() => setCaptureMode(null)}
-        />
-      </Modal>
+      <FamilyQrSheet visible={familyQr === "show" && !isAdmin} onClose={() => setFamilyQr(null)} />
+      <FamilyQrScanner
+        visible={familyQr === "scan" && !isAdmin}
+        onClose={() => setFamilyQr(null)}
+        onJoined={(name) => { setNotice(`Đã tham gia gia đình ${name}`); setInventoryRefreshKey((current) => current + 1); }}
+      />
 
-      <Modal transparent animationType="slide" visible={captureMode !== null && captureMode !== "scan" && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={closeCapture}>
+      <Modal transparent animationType="slide" visible={captureMode !== null && !isAdmin} onShow={() => setCaptureReady(true)} onRequestClose={closeCapture}>
         <KeyboardAvoidingView style={styles.captureOverlay} behavior={Platform.OS === "ios" ? "padding" : undefined}>
           <Pressable accessibilityLabel="Đóng chức năng" accessibilityRole="button" onPress={closeCapture} style={StyleSheet.absoluteFill} />
           <View style={styles.captureSheet}>
@@ -584,7 +588,7 @@ function AppContent(): React.JSX.Element {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.captureScroll} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + spacing.lg }}>
-              {captureMode !== "scan" && captureMode && (
+              {captureMode && (
                 <InventoryCapturePanel
                   key={captureMode}
                   initialMode={captureMode}
@@ -652,8 +656,8 @@ function AppContent(): React.JSX.Element {
           {captureActions.map(({ key, label, icon: Icon }) => (
             <TouchableOpacity key={key} accessibilityLabel={label} accessibilityRole="button"
               onPress={() => startCapture(key)} style={styles.captureAction}>
-              <View style={[styles.captureActionIcon, key === "scan" && styles.captureActionIconPrimary]}>
-                <AppIcon icon={Icon} size="md" color={key === "scan" ? colors.surface : colors.primary} />
+              <View style={[styles.captureActionIcon, key === "familyQr" && styles.captureActionIconPrimary]}>
+                <AppIcon icon={Icon} size="md" color={key === "familyQr" ? colors.surface : colors.primary} />
               </View>
               <Text numberOfLines={2} style={styles.captureActionLabel}>{label}</Text>
             </TouchableOpacity>

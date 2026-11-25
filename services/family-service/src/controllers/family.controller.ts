@@ -2,12 +2,16 @@ import { Request, Response } from "express";
 import { FamilyRole } from ".prisma/client-family";
 import { z } from "zod";
 import { FamilyService, FamilyServiceError } from "../services/family.service";
+import { FamilyQrService } from "../services/family-qr.service";
 import { isDatabaseUnavailable } from "../database-error";
 import { ProfileLookupError } from "../services/user-profiles";
 
 export type AuthenticatedRequest = Request & { authUser: { userId: string; email?: string } };
 
 const createFamilySchema = z.object({ name: z.string().trim().min(2).max(80) });
+/** Scanned QR text (the full smartkitchen://join?t=... value or the bare token). */
+const qrTokenSchema = z.object({ token: z.string().trim().min(1).max(200) });
+const qrRevokeSchema = z.object({ token: z.string().trim().min(1).max(200).optional() });
 const inviteSchema = z.object({
   email: z.string().trim().email(),
   role: z.nativeEnum(FamilyRole).optional().default(FamilyRole.MEMBER),
@@ -26,7 +30,7 @@ const verifyInvitationSchema = z.object({ code: z.string().trim().min(6).max(200
   .refine(({ code, token }) => Boolean(code || token), { message: "Provide an invite code or invitation token" });
 
 export class FamilyController {
-  constructor(private readonly familyService: FamilyService) {}
+  constructor(private readonly familyService: FamilyService, private readonly qrService: FamilyQrService) {}
 
   create = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
     const input = createFamilySchema.safeParse(req.body);
@@ -78,6 +82,38 @@ export class FamilyController {
     try {
       const codeOrToken = input.data.token ?? input.data.code!;
       res.json({ success: true, data: { invitation: await this.familyService.verifyInvitation(codeOrToken) } });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  /** "QR gia đình" (owner): a fresh one-time join token; the previous one stops working. */
+  createQr = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    try {
+      res.status(201).json({ success: true, data: await this.qrService.create(req.authUser.userId) });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  /** Owner closed the QR sheet (or the app went to the background): the token stops working now. */
+  revokeQr = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const input = qrRevokeSchema.safeParse(req.body ?? {});
+    if (!input.success) { res.status(400).json({ success: false, error: "Invalid revoke request" }); return; }
+    try {
+      res.json({ success: true, data: await this.qrService.revoke(req.authUser.userId, input.data.token) });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  verifyQr = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const input = qrTokenSchema.safeParse(req.body);
+    if (!input.success) { res.status(400).json({ success: false, error: "Invalid QR", code: "QR_EXPIRED" }); return; }
+    try {
+      res.json({ success: true, data: await this.qrService.verify(req.authUser.userId, input.data.token) });
+    } catch (error) { this.respondError(res, error); }
+  };
+
+  joinQr = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+    const input = qrTokenSchema.safeParse(req.body);
+    if (!input.success) { res.status(400).json({ success: false, error: "Invalid QR", code: "QR_EXPIRED" }); return; }
+    try {
+      res.status(201).json({ success: true, data: await this.qrService.join(req.authUser.userId, input.data.token) });
     } catch (error) { this.respondError(res, error); }
   };
 
@@ -145,7 +181,7 @@ export class FamilyController {
       return;
     }
     if (error instanceof FamilyServiceError) {
-      res.status(error.statusCode).json({ success: false, error: error.message });
+      res.status(error.statusCode).json({ success: false, error: error.message, ...(error.code ? { code: error.code } : {}) });
       return;
     }
     console.error("[family-service] request failed", error);
