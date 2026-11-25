@@ -21,6 +21,10 @@ export class AuthServiceError extends Error {
   }
 }
 
+/** Avatar photo path written by inventory-service (POST /api/inventory/avatars) for this user. */
+export const isOwnAvatarUrl = (userId: string, url: string): boolean =>
+  /^\/api\/inventory\/avatars\/([0-9a-f-]{36})\/[a-f0-9]{32}\.jpg$/.exec(url)?.[1] === userId.toLowerCase();
+
 export type PublicUser = Pick<User, "id" | "email" | "fullName" | "avatarUrl" | "role" | "isVerified">;
 
 export type AuthResult = {
@@ -250,6 +254,23 @@ export class AuthService {
       if (revoked.count !== 1) throw new Error("INVALID_REFRESH_TOKEN");
       return this.issueTokens(storedToken.user, requestContext, transaction);
     });
+  }
+
+  /**
+   * Hồ sơ: display name and avatar of the signed-in user. The avatar is a photo stored by inventory-service (same
+   * storage as Kho photos) under this user's own path; null removes it. Returns null when the user does not exist.
+   */
+  async updateProfile(userId: string, changes: { fullName?: string; avatarUrl?: string | null }): Promise<PublicUser | null> {
+    const data: { fullName?: string; avatarUrl?: string | null } = {};
+    if (changes.fullName !== undefined) data.fullName = changes.fullName;
+    if (changes.avatarUrl !== undefined) {
+      if (changes.avatarUrl !== null && !isOwnAvatarUrl(userId, changes.avatarUrl)) throw new AuthServiceError("Avatar must be a photo uploaded by this user", "INVALID_AVATAR_URL");
+      data.avatarUrl = changes.avatarUrl;
+    }
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) return null;
+    if (Object.keys(data).length === 0) return this.toPublicUser(existing);
+    return this.toPublicUser(await this.prisma.user.update({ where: { id: userId }, data }));
   }
 
   async getUser(userId: string): Promise<PublicUser | null> {

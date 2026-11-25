@@ -30,6 +30,8 @@ type SessionContextValue = {
   regenerateJoinCode: () => Promise<void>;
   transferOwnership: (memberId: string) => Promise<void>;
   updateFamilySettings: (settings: Partial<Omit<ApiFamilySettings, "id" | "familyId" | "createdAt" | "updatedAt">>) => Promise<void>;
+  /** Hồ sơ: saves the display name and/or avatar URL and updates `user`. */
+  updateProfile: (changes: { fullName?: string; avatarUrl?: string | null }) => Promise<void>;
 };
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -201,6 +203,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setFamilySettings(result.settings);
   }, [withToken]);
 
+  const updateProfile = useCallback(async (changes: { fullName?: string; avatarUrl?: string | null }) => {
+    const result = await withToken((token) => authApi.updateMe(token, changes));
+    setUser(result.user);
+  }, [withToken]);
+
   const signOut = useCallback(async () => {
     const access = accessToken ?? await tokenStorage.get(ACCESS_KEY);
     const refresh = await tokenStorage.get(REFRESH_KEY);
@@ -261,11 +268,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const value = useMemo(() => ({
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
-    transferOwnership, updateFamilySettings,
+    transferOwnership, updateFamilySettings, updateProfile,
   }), [
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
-    transferOwnership, updateFamilySettings,
+    transferOwnership, updateFamilySettings, updateProfile,
   ]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

@@ -8,6 +8,8 @@ import { requireInventoryUser } from "./middleware/auth.middleware";
 import { internalInventoryRouter, receiptRouter } from "./routes/capture.route";
 import consumptionRouter from "./routes/consumption.route";
 import { photoSuggestRouter } from "./controllers/photo-suggest.controller";
+import avatarRouter from "./routes/avatar.route";
+import { CookController } from "./controllers/cook.controller";
 
 export const createApp = (): express.Express => {
   const app = express();
@@ -22,6 +24,8 @@ export const createApp = (): express.Express => {
   app.use("/api/inventory/consumption", consumptionRouter);
   app.use("/api/inventory/receipts", receiptRouter);
   app.use("/api/inventory/photo", photoSuggestRouter);
+  app.use("/api/inventory/avatars", avatarRouter);
+  app.post("/api/inventory/cook", CookController.cook);
 
   // The gateway strips the `/api/inventory` prefix before proxying. Keep these
   // authenticated mounts alongside the direct-service paths above.
@@ -30,6 +34,8 @@ export const createApp = (): express.Express => {
   app.use("/consumption", requireInventoryUser, consumptionRouter);
   app.use("/receipts", requireInventoryUser, receiptRouter);
   app.use("/photo", requireInventoryUser, photoSuggestRouter);
+  app.use("/avatars", requireInventoryUser, avatarRouter);
+  app.post("/cook", requireInventoryUser, CookController.cook);
 
   app.use(errorHandler);
   return app;

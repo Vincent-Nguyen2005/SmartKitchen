@@ -119,6 +119,16 @@ describe("inventory item photos", () => {
     expect(prismaMock.foodItem.updateMany).not.toHaveBeenCalled();
   });
 
+  it("refuses adding, changing or removing the photo of an item bought in Đi chợ (409)", async () => {
+    prismaMock.foodItem.findFirst.mockResolvedValue(item({ origin: "PURCHASE" }));
+    const added = await upload(imageForm(JPEG));
+    expect(added.status).toBe(409);
+    expect((await added.json()).error).toBe("PURCHASED_ITEM_LOCKED");
+    const removed = await fetch(`${baseUrl}/items/${itemId}/photo`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    expect(removed.status).toBe(409);
+    expect(prismaMock.foodItem.updateMany).not.toHaveBeenCalled();
+  });
+
   it("deletes the old file when a photo is replaced", async () => {
     const oldName = `${"b".repeat(32)}.jpg`;
     await writeFile(path.join(uploadDir, oldName), JPEG);

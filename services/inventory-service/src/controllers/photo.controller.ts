@@ -53,16 +53,22 @@ export const readSingleImage = async (req: Request, res: Response) => {
 /** Loads a live item and checks that the signed-in user belongs to its family. */
 const loadOwnedItem = async (req: Request) => {
   const id = z.string().uuid().parse(req.params.id);
-  const item = await prisma.foodItem.findFirst({ where: { id, deletedAt: null }, select: { id: true, familyId: true, imageUrl: true } });
+  const item = await prisma.foodItem.findFirst({ where: { id, deletedAt: null }, select: { id: true, familyId: true, imageUrl: true, origin: true } });
   if (!item) throw new Error("Item not found");
   await requireFamilyMembership(req as InventoryAuthRequest, item.familyId);
   return item;
+};
+
+/** Photo changes are refused on rows bought in Đi chợ (only their storage place can change). */
+const refuseIfPurchased = (item: { origin?: string | null }) => {
+  if (item.origin === "PURCHASE") throw httpError(409, "PURCHASED_ITEM_LOCKED", "Items bought in Đi chợ cannot change their photo.");
 };
 
 export class PhotoController {
   static async upload(req: Request, res: Response, next: NextFunction) {
     try {
       const item = await loadOwnedItem(req);
+      refuseIfPurchased(item);
       const file = await readSingleImage(req, res);
 
       const saved = await PhotoStorage.save(item.id, file.data);
@@ -81,6 +87,7 @@ export class PhotoController {
   static async remove(req: Request, res: Response, next: NextFunction) {
     try {
       const item = await loadOwnedItem(req);
+      refuseIfPurchased(item);
       await prisma.foodItem.updateMany({ where: { id: item.id, deletedAt: null }, data: { imageUrl: null } });
       await PhotoStorage.removeByUrl(item.imageUrl);
       res.json({ success: true, data: { id: item.id, imageUrl: null } });

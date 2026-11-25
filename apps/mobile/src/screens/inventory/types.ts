@@ -12,6 +12,10 @@ export interface FoodItem {
   /** Admin catalog product id when bought from Giỏ hàng (exact match for the catalog image fallback). */
   productId?: string | null;
   category?: { id: string; name: string } | null;
+  /** PURCHASE = bought in Đi chợ: name, unit, quantity and expiry are read-only (the server refuses changes). */
+  origin?: "MANUAL" | "PURCHASE";
+  /** Day of the latest Đi chợ purchase in this row (ISO); null for manual rows. */
+  purchasedAt?: string | null;
 }
 
 export interface ShoppingItem {

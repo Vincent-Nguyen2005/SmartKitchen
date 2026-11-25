@@ -178,6 +178,32 @@ export const vnDayFromToday = (days: number, now: Date = new Date()): string => 
 export type PriceSnapshot = { unitPrice?: number | null; discountPercent?: number | null; productId?: string | null; imageUrl?: string | null };
 export type PurchaseExtras = { categoryName?: string; expiryDate?: string };
 export type CheckoutLine = { id: string; categoryName?: string; shelfLifeDays?: number };
+
+const ADMIN_SERVICE_URL = (process.env.ADMIN_SERVICE_URL ?? "http://localhost:4011").replace(/\/+$/, "");
+/**
+ * Shelf-life days of the cart's catalog products (admin-service user catalog, `ids` filter): the expiry of a bought
+ * item is the purchase day (Vietnam) + these days. Empty when the catalog cannot be read; the app's value is used then.
+ */
+export async function catalogShelfLife(userId: string, productIds: string[]): Promise<Map<string, number>> {
+  const days = new Map<string, number>();
+  const ids = [...new Set(productIds)].slice(0, 100);
+  if (ids.length === 0) return days;
+  try {
+    for (let page = 1; page <= 2; page += 1) {
+      const response = await axios.get(`${ADMIN_SERVICE_URL}/catalog/ingredients`, {
+        params: { ids: ids.join(","), page, limit: 50 }, headers: { "x-user-id": userId }, timeout: 5000,
+      });
+      const body = response.data as { items?: Array<{ id?: unknown; shelfLifeDays?: unknown }>; totalPages?: number };
+      for (const item of body.items ?? []) {
+        if (typeof item.id === "string" && typeof item.shelfLifeDays === "number" && Number.isInteger(item.shelfLifeDays) && item.shelfLifeDays >= 0) days.set(item.id, item.shelfLifeDays);
+      }
+      if (page >= (body.totalPages ?? 1)) break;
+    }
+  } catch {
+    // The app's shelfLifeDays (from its own catalog lookup) is used instead.
+  }
+  return days;
+}
 export type CheckoutResult = {
   purchased: Array<{ id: string; name: string; inventoryItemId: string | null }>;
   failed: Array<{ id: string; name: string; code: string; message: string }>;
@@ -583,12 +609,15 @@ export class ShoppingListService {
       orderBy: { createdAt: "asc" },
     });
     const extrasById = new Map(lines.map((line) => [line.id, line]));
+    // Expiry = purchase day + the product's shelf-life days: the catalog's value first, else the one the app sent.
+    const shelfLife = await catalogShelfLife(userId, cart.flatMap((item) => (item.productId ? [item.productId] : [])));
     const result: CheckoutResult = { purchased: [], failed: [], listCompleted: false };
     for (const item of cart) {
       const line = extrasById.get(item.id);
+      const days = (item.productId ? shelfLife.get(item.productId) : undefined) ?? line?.shelfLifeDays;
       const extras: PurchaseExtras = {
         ...(line?.categoryName ? { categoryName: line.categoryName } : {}),
-        ...(typeof line?.shelfLifeDays === "number" ? { expiryDate: vnDayFromToday(line.shelfLifeDays) } : {}),
+        ...(typeof days === "number" ? { expiryDate: vnDayFromToday(days) } : {}),
       };
       try {
         const purchase = await this.confirmPurchase(item.id, familyId, userId, extras);
