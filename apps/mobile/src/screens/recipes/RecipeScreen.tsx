@@ -18,6 +18,8 @@ import { menuPeople, scaleRecipe } from "./portions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
+import { cookLines, cookSummary, newCookId } from "./cookFromKho";
+import { inventoryApi } from "../inventory/inventoryApi";
 import { createMealDiaryApi } from "../meal-diary/mealDiaryApi";
 import { isLogged, loggedNames, logServing, servingOf, vnToday } from "../nutrition/nutritionToday";
 
@@ -125,19 +127,38 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   const startCooking = (recipe: Recipe) => { setCookingItem(openedItem); closeDetail(); setCooking(recipe); };
 
   /**
-   * "Hoàn thành" in cooking mode: one serving goes into today's nutrition (recipe kcal/macros; an AI dish uses the
-   * menu kcal, macros 0). The same dish twice in one day asks first.
+   * The cooked dish's ingredients (scaled to the people it was cooked for) leave Kho: earliest expiry first, g/kg
+   * and packs / pieces converted; a row reaching 0 disappears from Kho. Returns the toast part, never throws.
+   */
+  const deductFromKho = async (recipe: Recipe, dishName: string): Promise<string | null> => {
+    const lines = cookLines(recipe.ingredientDetails ?? []);
+    if (!familyId || !accessToken || lines.length === 0) return null;
+    try {
+      const result = await inventoryApi.cook(accessToken, { familyId, cookId: newCookId(), dishName, ingredients: lines });
+      return result.alreadyApplied ? null : cookSummary(result.lines);
+    } catch (requestError) {
+      return `Chưa trừ được Kho: ${errorMessage(requestError)}`;
+    }
+  };
+
+  /**
+   * "Hoàn thành" in cooking mode: the ingredients leave Kho and one serving goes into today's nutrition (recipe
+   * kcal/macros; an AI dish uses the menu kcal, macros 0). The same dish twice in one day asks first.
    */
   const logCooked = async (recipe: Recipe) => {
     const item = cookingItem;
     const name = item?.dishName ?? recipe.name;
-    if (isLogged(logged, name) && !(await confirm({ title: "Tính thêm một phần nữa?", message: `${name} đã được tính vào dinh dưỡng hôm nay.`, confirmLabel: "Tính thêm" }))) return;
-    try {
-      await logServing(accessToken, servingOf({ ...recipe, name, calories: recipe.calories ?? item?.calories }), item?.mealType ?? "LUNCH");
+    if (isLogged(logged, name) && !(await confirm({ title: "Nấu thêm một lần nữa?", message: `${name} đã được tính hôm nay. Nguyên liệu sẽ được trừ khỏi Kho thêm một lần.`, confirmLabel: "Nấu thêm" }))) return;
+    const [kho, nutrition] = await Promise.allSettled([
+      deductFromKho(recipe, name),
+      logServing(accessToken, servingOf({ ...recipe, name, calories: recipe.calories ?? item?.calories }), item?.mealType ?? "LUNCH"),
+    ]);
+    const khoText = kho.status === "fulfilled" ? kho.value : null;
+    if (nutrition.status === "fulfilled") {
       setLogged((current) => new Set(current).add(name.trim().toLocaleLowerCase("vi")));
-      showToast("Đã tính vào dinh dưỡng hôm nay");
-    } catch (requestError) {
-      showToast(errorMessage(requestError));
+      showToast(["Đã tính vào dinh dưỡng hôm nay", khoText].filter(Boolean).join(". "));
+    } else {
+      showToast([errorMessage(nutrition.reason), khoText].filter(Boolean).join(". "));
     }
   };
 

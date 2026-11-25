@@ -67,6 +67,8 @@ import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
+import ProfileHeader from "./src/screens/profile/ProfileHeader";
+import { captureBarVisible } from "./src/navigation/captureBar";
 
 type Tab =
   | "inventory"
@@ -219,7 +221,8 @@ function AppContent(): React.JSX.Element {
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
-  const showCaptureBar = !isAdmin && activeTab !== "notifications" && !profileOpen && !paymentUrl;
+  // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
+  const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen, paymentOpen: !!paymentUrl });
 
   /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */
   const refreshNotificationBadge = useCallback(async (): Promise<void> => {
@@ -501,35 +504,36 @@ function AppContent(): React.JSX.Element {
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
             </View>
-            <Text style={styles.profileLabel}>Họ tên</Text>
-            <Text style={styles.profileValue}>{session.user.fullName?.trim() || "Chưa cập nhật"}</Text>
-            <Text style={styles.profileLabel}>Email</Text>
-            <Text style={styles.profileValue}>{session.user.email}</Text>
-            <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
-            <Text style={styles.profileValue}>{session.family?.currentUserRole === "OWNER" ? "Chủ gia đình" : session.family?.currentUserRole === "ADMIN" ? "Quản trị viên" : session.family?.currentUserRole === "MEMBER" ? "Thành viên" : "Chưa tham gia gia đình"}</Text>
-            <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
-              onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
-              <AppIcon icon={Bell} size="md" color={colors.primary} />
-              <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
-              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-            </TouchableOpacity>
-            <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
-              onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
-              <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
-              <Text style={styles.sheetItemText}>Thông tin sức khỏe</Text>
-              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-            </TouchableOpacity>
-            <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
-              onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
-              <AppIcon icon={Utensils} size="md" color={colors.primary} />
-              <Text style={styles.sheetItemText}>Số món mỗi bữa</Text>
-              <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-            </TouchableOpacity>
-            <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
-              onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
-              <AppIcon icon={LogOut} size="md" color={colors.danger} />
-              <Text style={styles.sheetSignOutText}>Đăng xuất</Text>
-            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <ProfileHeader />
+              <Text style={styles.profileLabel}>Email</Text>
+              <Text style={styles.profileValue}>{session.user.email}</Text>
+              <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
+              <Text style={styles.profileValue}>{session.family?.currentUserRole === "OWNER" ? "Chủ gia đình" : session.family?.currentUserRole === "ADMIN" ? "Quản trị viên" : session.family?.currentUserRole === "MEMBER" ? "Thành viên" : "Chưa tham gia gia đình"}</Text>
+              <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
+                onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
+                <AppIcon icon={Bell} size="md" color={colors.primary} />
+                <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
+                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
+                onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
+                <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
+                <Text style={styles.sheetItemText}>Thông tin sức khỏe</Text>
+                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
+                onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
+                <AppIcon icon={Utensils} size="md" color={colors.primary} />
+                <Text style={styles.sheetItemText}>Số món mỗi bữa</Text>
+                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+              </TouchableOpacity>
+              <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
+                onPress={() => { setProfileOpen(false); signOut(); }} style={styles.sheetItem}>
+                <AppIcon icon={LogOut} size="md" color={colors.danger} />
+                <Text style={styles.sheetSignOutText}>Đăng xuất</Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -750,6 +754,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+    maxHeight: "90%",
     maxWidth: 440,
     padding: spacing.lg,
     paddingBottom: spacing.xl,

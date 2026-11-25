@@ -28,6 +28,13 @@ enum StorageLocation {
   COUNTER
 }
 
+/// Where a Kho row came from: PURCHASE = bought in Đi chợ (read-only name / unit / quantity / expiry; quantity
+/// changes only through cooking and purchase / Cộng thêm merges); MANUAL = added in Kho (photo, typed, voice, receipt).
+enum ItemOrigin {
+  MANUAL
+  PURCHASE
+}
+
 enum ItemStatus {
   FRESH
   NEAR_EXPIRY
@@ -62,6 +69,9 @@ model FoodItem {
   /// when the item has no photo of its own. Never copied into imageUrl.
   productId       String?         @db.VarChar(64)
   barcode         String?         @db.VarChar(32)
+  origin          ItemOrigin      @default(MANUAL)
+  /// Day of the latest Đi chợ purchase in this row (origin PURCHASE); null for manual rows.
+  purchasedAt     DateTime?
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
@@ -88,6 +98,15 @@ model InventoryLog {
   item FoodItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
+}
+
+/// One "Đã ăn / nấu xong" deduction from Kho (POST /cook); the client's cookId makes a retried request a no-op.
+model CookApplication {
+  cookId    String   @id @db.Uuid
+  familyId  String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([familyId, createdAt])
 }
 
 model PurchaseApplication {

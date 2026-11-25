@@ -137,6 +137,20 @@ describe("Giỏ hàng: checkout into Kho", () => {
     expect(tx.shoppingItem.update).toHaveBeenCalledTimes(1);
   });
 
+  it("expiry = purchase day (Vietnam) + the catalog product's shelf-life days, before the app's value", async () => {
+    mocks.prisma.shoppingItem.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) =>
+      where.id === fishId ? item({ id: fishId, name: "Cá thu", productId: "prod-fish" }) : item());
+    mocks.prisma.shoppingItem.findMany.mockResolvedValueOnce([item(), item({ id: fishId, name: "Cá thu", productId: "prod-fish" })]).mockResolvedValueOnce([]);
+    mocks.axios.get.mockResolvedValue({ data: { items: [{ id: "prod-fish", shelfLifeDays: 2 }], totalPages: 1 } });
+    mocks.axios.post.mockResolvedValue({ data: { success: true, data: { item: { id: "66666666-6666-4666-8666-666666666666" } } } });
+    await ShoppingListService.checkout(familyId, userId, [{ id: fishId, shelfLifeDays: 5 }, { id: milkId, shelfLifeDays: 7 }]);
+    expect(mocks.axios.get).toHaveBeenCalledWith(expect.stringContaining("/catalog/ingredients"), expect.objectContaining({ params: expect.objectContaining({ ids: "prod-fish" }), headers: { "x-user-id": userId } }));
+    expect(mocks.axios.post.mock.calls[1][1]).toMatchObject({ name: "Cá thu", expiryDate: vnDayFromToday(2) });
+    // No catalog product: the app's value.
+    expect(mocks.axios.post.mock.calls[0][1]).toMatchObject({ expiryDate: vnDayFromToday(7) });
+    expect(vnDayFromToday(2, new Date("2026-11-30T18:30:00Z"))).toBe("2026-12-03"); // 01:30 on 1/12 in Vietnam
+  });
+
   it("does nothing without an active cart", async () => {
     mocks.prisma.shoppingList.findFirst.mockResolvedValue(null);
     await expect(ShoppingListService.checkout(familyId, userId)).resolves.toEqual({ purchased: [], failed: [], listCompleted: false });

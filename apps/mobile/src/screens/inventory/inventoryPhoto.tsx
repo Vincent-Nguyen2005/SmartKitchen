@@ -21,11 +21,14 @@ const mimeFrom = (asset: PickedAsset): ReceiptMimeType | null => {
   return extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : "image/jpeg";
 };
 
-/** Web: redraw on a canvas no larger than MAX_UPLOAD_EDGE and re-encode as JPEG (also drops EXIF). */
-const downscaleOnWeb = (uri: string): Promise<Blob> => new Promise((resolve, reject) => {
+/** Hồ sơ avatars: smaller than item photos (the server re-encodes them to the same 512 px). */
+export const AVATAR_UPLOAD_EDGE = 512;
+
+/** Web: redraw on a canvas no larger than `maxEdge` and re-encode as JPEG (also drops EXIF). */
+const downscaleOnWeb = (uri: string, maxEdge: number): Promise<Blob> => new Promise((resolve, reject) => {
   const image = new window.Image();
   image.onload = () => {
-    const scale = Math.min(1, MAX_UPLOAD_EDGE / Math.max(image.naturalWidth, image.naturalHeight));
+    const scale = Math.min(1, maxEdge / Math.max(image.naturalWidth, image.naturalHeight));
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
@@ -38,14 +41,14 @@ const downscaleOnWeb = (uri: string): Promise<Blob> => new Promise((resolve, rej
   image.src = uri;
 });
 
-/** Longer edge to MAX_UPLOAD_EDGE (the other follows the aspect ratio); null = already small enough. */
-const resizeFor = (width: number, height: number): { width: number } | { height: number } | null => {
-  if (Math.max(width, height) <= MAX_UPLOAD_EDGE) return null;
-  return width >= height ? { width: MAX_UPLOAD_EDGE } : { height: MAX_UPLOAD_EDGE };
+/** Longer edge to `maxEdge` (the other follows the aspect ratio); null = already small enough. */
+const resizeFor = (width: number, height: number, maxEdge: number): { width: number } | { height: number } | null => {
+  if (Math.max(width, height) <= maxEdge) return null;
+  return width >= height ? { width: maxEdge } : { height: maxEdge };
 };
 
-/** Phones: resize to MAX_UPLOAD_EDGE and save as JPEG ~0.8 with expo-image-manipulator (also drops EXIF). */
-const downscaleOnDevice = async (asset: PickedAsset): Promise<string> => {
+/** Phones: resize to `maxEdge` and save as JPEG ~0.8 with expo-image-manipulator (also drops EXIF). */
+const downscaleOnDevice = async (asset: PickedAsset, maxEdge: number): Promise<string> => {
   let width = asset.width ?? 0;
   let height = asset.height ?? 0;
   if (!width || !height) {
@@ -54,7 +57,7 @@ const downscaleOnDevice = async (asset: PickedAsset): Promise<string> => {
     height = probe.height;
   }
   const context = ImageManipulator.manipulate(asset.uri);
-  const size = resizeFor(width, height);
+  const size = resizeFor(width, height, maxEdge);
   if (size) context.resize(size);
   const image = await context.renderAsync();
   const saved = await image.saveAsync({ compress: 0.8, format: SaveFormat.JPEG });
@@ -62,20 +65,20 @@ const downscaleOnDevice = async (asset: PickedAsset): Promise<string> => {
 };
 
 /**
- * Turns a picked or captured image into an upload: at most MAX_UPLOAD_EDGE px, JPEG ~0.8, on every platform
- * (canvas on web, expo-image-manipulator on phones). The server re-encodes again to 1024 px.
+ * Turns a picked or captured image into an upload: at most `maxEdge` px (default MAX_UPLOAD_EDGE), JPEG ~0.8, on
+ * every platform (canvas on web, expo-image-manipulator on phones). The server re-encodes again (1024 / 512 px).
  */
-export async function prepareUploadPhoto(asset: PickedAsset): Promise<UploadPhoto> {
+export async function prepareUploadPhoto(asset: PickedAsset, maxEdge = MAX_UPLOAD_EDGE): Promise<UploadPhoto> {
   const mimeType = mimeFrom(asset);
   if (!mimeType) throw new PhotoPrepareError("Ảnh cần ở định dạng JPEG, PNG hoặc WebP.");
   if (Platform.OS === "web") {
-    const blob = await downscaleOnWeb(asset.uri);
+    const blob = await downscaleOnWeb(asset.uri, maxEdge);
     if (blob.size > MAX_UPLOAD_BYTES) throw new PhotoPrepareError("Ảnh quá lớn. Hãy chọn ảnh nhỏ hơn 5 MB.");
     return { uri: URL.createObjectURL(blob), blob, mimeType: "image/jpeg", name: "photo.jpg" };
   }
   let uri: string;
   try {
-    uri = await downscaleOnDevice(asset);
+    uri = await downscaleOnDevice(asset, maxEdge);
   } catch {
     throw new PhotoPrepareError("Không xử lý được ảnh. Hãy chụp lại hoặc chọn ảnh khác.");
   }
@@ -94,11 +97,11 @@ export const CAMERA_PERMISSION_TEXT = "Cần quyền camera để chụp sản p
  * Web (localhost testing): a file input with accept="image/*" and capture="environment", so mobile browsers open
  * the rear camera. Must run from a tap; browsers block a programmatic picker otherwise.
  */
-const captureOnWeb = (): Promise<PhotoPickResult> => new Promise((resolve) => {
+const captureOnWeb = (capture: "environment" | "user" | null = "environment", maxEdge = MAX_UPLOAD_EDGE): Promise<PhotoPickResult> => new Promise((resolve) => {
   const input = document.createElement("input");
   input.type = "file";
   input.accept = "image/*";
-  input.setAttribute("capture", "environment");
+  if (capture) input.setAttribute("capture", capture);
   input.style.display = "none";
   let settled = false;
   const finish = (result: PhotoPickResult) => {
@@ -112,7 +115,7 @@ const captureOnWeb = (): Promise<PhotoPickResult> => new Promise((resolve) => {
     const file = input.files?.[0];
     if (!file) { finish({ status: "cancelled" }); return; }
     const uri = URL.createObjectURL(file);
-    prepareUploadPhoto({ uri, mimeType: file.type || "image/jpeg", fileName: file.name })
+    prepareUploadPhoto({ uri, mimeType: file.type || "image/jpeg", fileName: file.name }, maxEdge)
       .then((photo) => finish({ status: "picked", photo }))
       .catch((error: unknown) => finish({ status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không đọc được ảnh. Hãy chụp lại." }))
       .finally(() => URL.revokeObjectURL(uri));
@@ -132,6 +135,28 @@ export async function takeItemPhoto(): Promise<PhotoPickResult> {
     return { status: "picked", photo: await prepareUploadPhoto(result.assets[0]) };
   } catch (error) {
     return { status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không mở được camera. Hãy thử lại." };
+  }
+}
+
+export const LIBRARY_PERMISSION_TEXT = "Cần quyền truy cập ảnh để chọn ảnh đại diện";
+
+/**
+ * Hồ sơ avatar: the front camera or the photo library, cropped square on phones and resized to AVATAR_UPLOAD_EDGE
+ * (JPEG, EXIF dropped). Web: the file input (with the front camera for "camera").
+ */
+export async function pickAvatarPhoto(source: "camera" | "library"): Promise<PhotoPickResult> {
+  if (Platform.OS === "web") return captureOnWeb(source === "camera" ? "user" : null, AVATAR_UPLOAD_EDGE);
+  try {
+    const permission = source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return { status: "denied" };
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.8, exif: false, allowsEditing: true, aspect: [1, 1] };
+    const result = source === "camera"
+      ? await ImagePicker.launchCameraAsync({ ...options, cameraType: ImagePicker.CameraType.front })
+      : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled || !result.assets[0]) return { status: "cancelled" };
+    return { status: "picked", photo: await prepareUploadPhoto(result.assets[0], AVATAR_UPLOAD_EDGE) };
+  } catch (error) {
+    return { status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không mở được ảnh. Hãy thử lại." };
   }
 }
 

@@ -109,6 +109,9 @@ export const authApi = {
     method: "POST", headers: { "X-Refresh-Token-Mode": "body" }, body: JSON.stringify({ refreshToken }),
   }, accessToken),
   me: (accessToken: string) => request<{ user: AuthUser }>(AUTH_BASE_URL, "/me", { method: "GET" }, accessToken),
+  /** Hồ sơ: display name (1-50 characters) and/or avatar (an URL from inventoryApi.uploadAvatar, or null). */
+  updateMe: (accessToken: string, changes: { fullName?: string; avatarUrl?: string | null }) =>
+    request<{ user: AuthUser }>(AUTH_BASE_URL, "/me", { method: "PATCH", body: JSON.stringify(changes) }, accessToken),
 };
 
 export type AuthUser = { id: string; email: string; fullName: string | null; avatarUrl: string | null; role: string; isVerified: boolean };

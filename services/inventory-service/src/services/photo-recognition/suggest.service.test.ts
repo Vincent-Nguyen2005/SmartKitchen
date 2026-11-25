@@ -112,7 +112,7 @@ describe("CLIP math and catalog labels", () => {
       ? { items: [{ id: "c1", name: "Cà rốt", englishName: "carrot" }], totalPages: 2 }
       : { items: [{ id: "c2", name: "Rau ngót", englishName: " " }], totalPages: 2 })));
     const labels = await loadCatalogLabels("u1", fetchImpl as unknown as typeof fetch);
-    expect(labels).toEqual([{ id: "c1", name: "Cà rốt", englishName: "carrot", imageUrl: null }, { id: "c2", name: "Rau ngót", englishName: null, imageUrl: null }]);
+    expect(labels).toEqual([{ id: "c1", name: "Cà rốt", englishName: "carrot", imageUrl: null, unit: null, packGrams: null }, { id: "c2", name: "Rau ngót", englishName: null, imageUrl: null, unit: null, packGrams: null }]);
     expect((fetchImpl.mock.calls[0] as unknown as [string, RequestInit])[1].headers).toEqual({ "x-user-id": "u1" });
     await loadCatalogLabels("u1", fetchImpl as unknown as typeof fetch);
     expect(fetchImpl).toHaveBeenCalledTimes(2);

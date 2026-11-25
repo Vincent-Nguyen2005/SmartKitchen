@@ -154,6 +154,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in the root .env file}
       FAMILY_SERVICE_URL: http://family-service:4002
       INVENTORY_API_URL: http://inventory-service:4003
+      # Catalog shelf-life days for the expiry of bought items (checkout).
+      ADMIN_SERVICE_URL: http://admin-service:4011
       MENU_SERVICE_URL: http://menu-service:4007
       PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
       # admin-service asks GET /internal/products/:id/usage before deleting a catalog ingredient.

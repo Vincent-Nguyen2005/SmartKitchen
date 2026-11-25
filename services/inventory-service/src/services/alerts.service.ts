@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { ExpiringQuery } from "../validators/alerts.validator";
 import type { Prisma } from "../../node_modules/.prisma/client-inventory";
+import { hiddenPurchaseFilter } from "./items.service";
 
 export class AlertsService {
   static async getExpiringItems(query: ExpiringQuery) {
@@ -19,6 +20,8 @@ export class AlertsService {
         lte: threshold,
       },
       status: { notIn: ["CONSUMED", "DISCARDED"] },
+      // Bought rows expired more than 3 days ago have left Kho, so they leave the alerts too.
+      ...hiddenPurchaseFilter(),
     };
 
     if (familyId) where.familyId = familyId;

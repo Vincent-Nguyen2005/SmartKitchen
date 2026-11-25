@@ -160,6 +160,20 @@ export const inventoryApi = {
   },
   deletePhoto: (accessToken: string, itemId: string) =>
     request<{ id: string; imageUrl: null }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "DELETE" }),
+  /** Hồ sơ avatar: stored like Kho photos (re-encoded to 512 px); save the returned URL with authApi.updateMe. */
+  uploadAvatar: (accessToken: string, photo: UploadPhoto) => {
+    const form = new FormData();
+    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
+    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
+    return request<{ avatarUrl: string }>(accessToken, "/api/inventory/avatars", { method: "POST", body: form }, 60_000);
+  },
+  deleteAvatar: (accessToken: string) => request<{ avatarUrl: null }>(accessToken, "/api/inventory/avatars", { method: "DELETE" }),
+  /**
+   * Nấu ăn "Hoàn thành": takes the dish's ingredients out of Kho (earliest expiry first; g/kg, packs and pieces
+   * converted). `cookId` makes a retried request a no-op.
+   */
+  cook: (accessToken: string, body: { familyId: string; cookId: string; dishName?: string; ingredients: Array<{ name: string; quantity: number; unit: string }> }) =>
+    request<{ alreadyApplied: boolean; lines: Array<{ name: string; quantity: number; unit: string; used: number; missing: number }> }>(accessToken, "/api/inventory/cook", { method: "POST", body: JSON.stringify(body) }),
   /** Admin product catalog (active rows only), readable by any signed-in user; search is accent-insensitive. */
   ingredientCatalog: (accessToken: string, options: CatalogQuery = {}) => {
     const params: Record<string, string | number> = { page: options.page ?? 1, limit: options.limit ?? 20 };
