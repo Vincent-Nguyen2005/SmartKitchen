@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { Prisma, type Unit } from "../../node_modules/.prisma/client-inventory";
 import { ApplyPurchaseInput } from "../validators/purchase.validator";
+import { MERGEABLE_STATUSES, statusForExpiry } from "./items.service";
 
 /** Units of the same kind and their size in the smaller one: a purchase in kg joins a Kho row in g (and l / ml). */
 const SAME_KIND: Record<string, Record<string, number>> = {
@@ -46,29 +47,39 @@ export class PurchasesService {
           ? (await transaction.category.upsert({ where: { name: input.categoryName }, create: { name: input.categoryName }, update: {}, select: { id: true } })).id
           : undefined;
         const expiryDate = input.expiryDate ? new Date(`${input.expiryDate}T00:00:00.000Z`) : undefined;
-        // The same product already in Kho: same unit first, else a unit of the same kind (1.5 kg bought joins
-        // "500 g" as 2000 g). Packs, pieces and other kinds never convert (a new row is created).
+        // The same product already in Kho, among rows new stock may join (fresh, near expiry, or used up; never
+        // expired or discarded): live rows before used-up ones, the same unit before a unit of the same kind (1.5 kg
+        // bought joins "500 g" as 2000 g). Packs, pieces and other kinds never convert (a new row is created).
         const sameKind = Object.keys(SAME_KIND[input.unit] ?? { [input.unit]: 1 }) as Unit[];
         const candidates = await transaction.foodItem.findMany({
           where: {
             familyId: input.familyId,
             name: { equals: input.name, mode: "insensitive" },
             unit: { in: sameKind },
+            status: { in: [...MERGEABLE_STATUSES] },
             deletedAt: null,
           },
           orderBy: { createdAt: "asc" },
         });
-        const previous = candidates.find((row) => row.unit === input.unit) ?? candidates[0] ?? null;
+        const rank = (row: { status: string; unit: string }) => (row.status === "CONSUMED" ? 2 : 0) + (row.unit === input.unit ? 0 : 1);
+        const previous = [...candidates].sort((left, right) => rank(left) - rank(right))[0] ?? null;
         const added = previous ? convertQuantity(input.quantity, input.unit, previous.unit) ?? input.quantity : input.quantity;
         const oldValue = previous ? { quantity: previous.quantity, status: previous.status } : null;
+        const purchasedAt = new Date();
+        const restarted = previous?.status === "CONSUMED";
+        // Live row: the earlier expiry wins (the row warns by its oldest stock); its origin stays (a manual row stays
+        // editable). Used-up row: a fresh purchased batch that inherits nothing stale.
+        const mergedExpiry = previous && !restarted
+          ? (expiryDate && (!previous.expiryDate || expiryDate < previous.expiryDate) ? expiryDate : previous.expiryDate)
+          : expiryDate ?? null;
         const updated = previous
           ? await transaction.foodItem.update({
               where: { id: previous.id },
               data: {
-                quantity: { increment: added },
-                status: "FRESH",
-                // A restock fills a missing expiry/group but never overwrites what the family already set.
-                ...(expiryDate && !previous.expiryDate ? { expiryDate } : {}),
+                ...(restarted
+                  ? { quantity: added, expiryDate: mergedExpiry, origin: "PURCHASE", purchasedAt }
+                  : { quantity: { increment: added }, expiryDate: mergedExpiry, ...(previous.origin === "PURCHASE" ? { purchasedAt } : {}) }),
+                status: statusForExpiry(mergedExpiry),
                 ...(categoryId && !previous.categoryId ? { categoryId } : {}),
                 ...(input.productId && !previous.productId ? { productId: input.productId } : {}),
               },
@@ -81,7 +92,9 @@ export class PurchasesService {
                 quantity: input.quantity,
                 unit: input.unit,
                 storageLocation: "PANTRY",
-                status: "FRESH",
+                status: statusForExpiry(expiryDate),
+                origin: "PURCHASE",
+                purchasedAt,
                 ...(expiryDate ? { expiryDate } : {}),
                 ...(categoryId ? { categoryId } : {}),
                 ...(input.productId ? { productId: input.productId } : {}),

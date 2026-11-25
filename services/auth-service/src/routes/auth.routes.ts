@@ -18,6 +18,7 @@ export const createAuthRouter = (prisma: PrismaClient): Router => {
   router.post("/refresh", controller.refresh);
   router.post("/logout", controller.logout);
   router.get("/me", controller.me);
+  router.patch("/me", controller.updateMe);
 
   return router;
 };

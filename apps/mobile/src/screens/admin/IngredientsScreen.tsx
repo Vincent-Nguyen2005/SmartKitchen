@@ -379,7 +379,7 @@ export default function IngredientsScreen(): React.JSX.Element {
                   <Field label={packWeightLabel(draft.defaultUnit)} keyboardType="number-pad" placeholder={draft.defaultUnit === "PACK" ? "Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" : "Không bắt buộc, ví dụ 1 quả bưởi ≈ 1200"} value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
                 ) : null}
                 <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
-                <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
+                <Field label="Hạn dùng (ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
                 <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}
                   options={SHELF_LIFE_PICKS.map((days) => ({ value: days, label: `${days} ngày` }))} />
                 {SHOW_ALLERGENS ? (

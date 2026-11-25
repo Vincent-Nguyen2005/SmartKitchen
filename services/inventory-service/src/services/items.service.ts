@@ -17,7 +17,7 @@ const resolveCategoryId = async (client: CategoryClient, name: string | undefine
 };
 
 /** Statuses an added quantity may join: not expired or thrown away (a consumed row is revived as fresh). */
-const MERGEABLE_STATUSES = ["FRESH", "NEAR_EXPIRY", "CONSUMED"] as const;
+export const MERGEABLE_STATUSES = ["FRESH", "NEAR_EXPIRY", "CONSUMED"] as const;
 const httpError = (statusCode: number, code: string, message: string) => Object.assign(new Error(message), { statusCode, code });
 /** Same default window as GET /alerts/expiring (alerts.validator `days`). */
 export const NEAR_EXPIRY_DAYS = 3;
@@ -34,6 +34,26 @@ export function statusForExpiry(expiryDate: Date | null | undefined, now: Date =
   expiryDay.setUTCHours(0, 0, 0, 0);
   return expiryDay < today ? "EXPIRED" : expiryDay <= threshold ? "NEAR_EXPIRY" : "FRESH";
 }
+
+/**
+ * Kho rows bought in Đi chợ (origin PURCHASE) keep the market's name, unit, quantity and expiry: a manual update that
+ * changes one of them is refused (the quantity then changes only through cooking and Cộng thêm / purchase merges).
+ * Storage place, photo and group stay editable, and the row can still be discarded or deleted.
+ */
+export const LOCKED_PURCHASE_FIELDS = ["name", "unit", "quantity", "expiryDate"] as const;
+const sameDay = (left: Date | string | null | undefined, right: Date | string | null | undefined): boolean =>
+  (left ? new Date(left).getTime() : null) === (right ? new Date(right).getTime() : null);
+/** Locked fields this update would change on a PURCHASE row (unchanged values sent back by the form are fine). */
+export function lockedChanges(previous: { origin?: string; name: string; unit: string; quantity: number; expiryDate: Date | null }, data: Partial<UpdateItemInput>): string[] {
+  if (previous.origin !== "PURCHASE") return [];
+  const changed: string[] = [];
+  if (data.name !== undefined && data.name.trim() !== previous.name) changed.push("name");
+  if (data.unit !== undefined && data.unit !== previous.unit) changed.push("unit");
+  if (data.quantity !== undefined && data.quantity !== previous.quantity) changed.push("quantity");
+  if (data.expiryDate !== undefined && !sameDay(data.expiryDate, previous.expiryDate)) changed.push("expiryDate");
+  return changed;
+}
+const lockedError = (fields: string[]) => httpError(409, "PURCHASED_ITEM_LOCKED", `Items bought in Đi chợ keep their ${fields.join(", ")}; delete or discard the item instead.`);
 
 export type DuplicateMatch = {
   /** Oldest live row of the same product (same productId, or same normalized name) with the same unit. */
@@ -72,7 +92,9 @@ export class ItemsService {
     const { page, limit, search, ...filters } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = { deletedAt: null, ...filters };
+    // Used-up rows (CONSUMED, quantity 0) are hidden unless asked for by status; they stay in the database so
+    // "Cộng thêm" can restart them as a fresh batch (findDuplicate) and consumption history keeps their logs.
+    const where: any = { deletedAt: null, ...filters, status: filters.status ?? { not: "CONSUMED" } };
     if (search) {
       where.name = { contains: search, mode: "insensitive" };
     }
@@ -139,12 +161,14 @@ export class ItemsService {
       }
       if (previous.unit !== input.unit) throw httpError(409, "UNIT_MISMATCH", "Units differ; add a new row instead.");
       const consumed = previous.status === "CONSUMED";
+      // A used-up bought row restarted by hand holds only manual stock now: it becomes an editable manual row.
+      const becomesManual = consumed && previous.origin === "PURCHASE";
       const keepEarlier = input.expiryDate && (!previous.expiryDate || input.expiryDate < previous.expiryDate);
       const changed = await transaction.foodItem.updateMany({
         // The status is part of the condition, so a row that changed meanwhile is not merged with the wrong rule.
         where: { id, familyId, deletedAt: null, unit: input.unit, status: previous.status },
         data: consumed
-          ? { quantity: input.quantity, expiryDate: input.expiryDate ?? null, status: statusForExpiry(input.expiryDate) }
+          ? { quantity: input.quantity, expiryDate: input.expiryDate ?? null, status: statusForExpiry(input.expiryDate), ...(becomesManual ? { origin: "MANUAL" as const, purchasedAt: null } : {}) }
           : { quantity: { increment: input.quantity }, ...(keepEarlier ? { expiryDate: input.expiryDate } : {}) },
       });
       if (changed.count !== 1) throw httpError(409, "ITEM_CHANGED", "The item changed meanwhile; try again.");
@@ -177,6 +201,8 @@ export class ItemsService {
         where: { id, familyId, deletedAt: null },
       });
       if (!previous) throw new Error("Item not found");
+      const locked = lockedChanges(previous, data);
+      if (locked.length > 0) throw lockedError(locked);
       if (data.imageUrl !== undefined && data.imageUrl !== previous.imageUrl && managedPhotoFileName(previous.imageUrl)) {
         replacedImageUrl = previous.imageUrl;
       }
@@ -188,6 +214,8 @@ export class ItemsService {
       if (typeof data.quantity === "number" && data.quantity > 0 && previous.status === "CONSUMED" && data.status === undefined) {
         updateData.status = "FRESH";
       }
+      // Quantity 0: the row is used up and leaves the Kho list.
+      if (data.quantity === 0 && data.status === undefined) updateData.status = "CONSUMED";
       const updated = await transaction.foodItem.update({
         where: { id },
         data: updateData,
@@ -221,6 +249,7 @@ export class ItemsService {
         where: { id, familyId, deletedAt: null },
       });
       if (!previous) throw new Error("Item not found");
+      if (previous.origin === "PURCHASE") throw lockedError(["quantity"]);
       if (["EXPIRED", "DISCARDED", "CONSUMED"].includes(previous.status)) {
         throw Object.assign(new Error("This item cannot be consumed in its current status"), {
           statusCode: 409,

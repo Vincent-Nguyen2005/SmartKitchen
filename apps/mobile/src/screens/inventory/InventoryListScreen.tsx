@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Archive, Camera, ImageMinus, Search, Trash2 } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { EmptyState } from "../notifications/ui";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid, type CardPillTone } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
@@ -34,7 +35,6 @@ const inventoryUnitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 const inventoryLocationLabels: Record<InventoryLocation, string> = {
   FRIDGE: "Tủ lạnh", FREEZER: "Ngăn đông", PANTRY: "Tủ đựng thực phẩm", COUNTER: "Kệ bếp",
 };
-type InventoryDialogMode = "edit" | "consume";
 
 function formatDateDdMmYyyy(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -42,6 +42,11 @@ function formatDateDdMmYyyy(value: string): string {
 }
 
 const EXPIRING_SOON_DAYS = 3;
+
+/** Bought in Đi chợ: name, unit, quantity and expiry are read-only (quantity changes through cooking). */
+const isLocked = (item: FoodItem): boolean => item.origin === "PURCHASE";
+const lockedNote = (item: FoodItem): string =>
+  `Mua ở Đi chợ${item.purchasedAt ? ` ngày ${formatDateDdMmYyyy(item.purchasedAt)}` : ""}. Tên, số lượng, đơn vị và hạn dùng không sửa được; số lượng tự giảm khi bạn nấu món có nguyên liệu này. Bạn vẫn có thể đổi vị trí bảo quản, ảnh, hoặc xóa.`;
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
 /** Card expiry line ("HSD 25/11") and corner pill for expired items or ones expiring within 3 days. */
@@ -80,6 +85,7 @@ export default function InventoryListScreen({
   onFocusHandled,
 }: Props): React.JSX.Element {
   const { user, family, accessToken, ready } = useSession();
+  const { confirm, dialog: confirmDialog } = useConfirm();
   // Items without their own photo show the matching catalog product image (display only, never stored).
   const catalogImages = useCatalogImages(accessToken);
   const { width } = useWindowDimensions();
@@ -91,14 +97,12 @@ export default function InventoryListScreen({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [dialogMode, setDialogMode] = useState<InventoryDialogMode>("edit");
   const [activeItem, setActiveItem] = useState<FoodItem | null>(null);
   const [editName, setEditName] = useState("");
   const [editQuantity, setEditQuantity] = useState("");
   const [editUnit, setEditUnit] = useState<InventoryUnit>("PIECE");
   const [editLocation, setEditLocation] = useState<InventoryLocation>("FRIDGE");
   const [editExpiryDate, setEditExpiryDate] = useState("");
-  const [consumeQuantity, setConsumeQuantity] = useState("1");
   const [savingItem, setSavingItem] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -160,7 +164,6 @@ export default function InventoryListScreen({
   useEffect(() => { listRef.current?.scrollToOffset({ offset: 0, animated: false }); }, [search]);
 
   const openEdit = (item: FoodItem) => {
-    setDialogMode("edit");
     setActiveItem(item);
     setPhotoError(null);
     setEditName(item.name);
@@ -170,12 +173,6 @@ export default function InventoryListScreen({
     setEditExpiryDate(item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "");
   };
 
-  const openConsume = (item: FoodItem) => {
-    setDialogMode("consume");
-    setActiveItem(item);
-    setConsumeQuantity("1");
-  };
-
   const closeDialog = () => {
     if (savingItem || photoBusy) return;
     setActiveItem(null);
@@ -183,6 +180,20 @@ export default function InventoryListScreen({
 
   const saveItem = async () => {
     if (!activeItem || !family?.id || !accessToken) return;
+    if (isLocked(activeItem)) {
+      setSavingItem(true);
+      setError(null);
+      try {
+        await inventoryApi.update(accessToken, family.id, activeItem.id, { storageLocation: editLocation });
+        setActiveItem(null);
+        await loadItems();
+      } catch (requestError) {
+        setError(requestError instanceof Error ? requestError.message : "Không thể cập nhật nguyên liệu.");
+      } finally {
+        setSavingItem(false);
+      }
+      return;
+    }
     const parsedQuantity = Number(editQuantity.replace(",", "."));
     if (!editName.trim()) { setError("Tên nguyên liệu không được để trống."); return; }
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) { setError("Số lượng phải là số không âm."); return; }
@@ -214,38 +225,15 @@ export default function InventoryListScreen({
     }
   };
 
-  const consumeItem = async () => {
-    if (!activeItem || !family?.id || !accessToken) return;
-    const amount = Number(consumeQuantity.replace(",", "."));
-    if (!Number.isFinite(amount) || amount <= 0) { setError("Số lượng đã dùng phải lớn hơn 0."); return; }
-    setSavingItem(true);
-    setError(null);
+  const deleteItem = async (item: FoodItem) => {
+    if (!family?.id || !accessToken) return;
+    if (!(await confirm({ title: "Xóa nguyên liệu?", message: `“${item.name}” sẽ được ẩn khỏi kho.`, confirmLabel: "Xóa", destructive: true }))) return;
     try {
-      await inventoryApi.consume(accessToken, family.id, activeItem.id, amount);
-      setActiveItem(null);
+      await inventoryApi.remove(accessToken, family.id, item.id);
       await loadItems();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Không thể ghi nhận lượng đã dùng.");
-    } finally {
-      setSavingItem(false);
+      setError(requestError instanceof Error ? requestError.message : "Không thể xóa nguyên liệu.");
     }
-  };
-
-  const deleteItem = (item: FoodItem) => {
-    if (!family?.id || !accessToken) return;
-    Alert.alert("Xóa nguyên liệu?", `“${item.name}” sẽ được ẩn khỏi kho.`, [
-      { text: "Hủy", style: "cancel" },
-      { text: "Xóa", style: "destructive", onPress: () => {
-        void (async () => {
-          try {
-            await inventoryApi.remove(accessToken, family.id, item.id);
-            await loadItems();
-          } catch (requestError) {
-            setError(requestError instanceof Error ? requestError.message : "Không thể xóa nguyên liệu.");
-          }
-        })();
-      } },
-    ]);
   };
 
   const applyPhotoChange = (itemId: string, imageUrl: string | null) => {
@@ -378,8 +366,8 @@ export default function InventoryListScreen({
       <Modal animationType="slide" onRequestClose={closeDialog} transparent visible={activeItem !== null}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, isWide && styles.modalWide]}>
-            <Text style={styles.modalTitle}>{dialogMode === "edit" ? `Sửa ${activeItem?.name ?? "nguyên liệu"}` : `Ghi lượng đã dùng`}</Text>
-            {dialogMode === "edit" ? (
+            <Text style={styles.modalTitle}>{activeItem && isLocked(activeItem) ? activeItem.name : `Sửa ${activeItem?.name ?? "nguyên liệu"}`}</Text>
+            {(
               <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
                 {activeItem && (
                   <View style={styles.photoBlock}>
@@ -397,42 +385,49 @@ export default function InventoryListScreen({
                     </View>
                     {photoError && <Text accessibilityRole="alert" style={styles.photoErrorText}>{photoError}</Text>}
                     <View style={styles.photoActions}>
-                      {activeItem.status !== "CONSUMED" && activeItem.quantity > 0 && (
-                        <Pressable accessibilityRole="button" accessibilityLabel={`Ghi nhận đã dùng ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => openConsume(activeItem)} style={styles.itemAction}>
-                          <Text style={styles.itemActionText}>Đã dùng</Text>
-                        </Pressable>
-                      )}
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => { const item = activeItem; setActiveItem(null); deleteItem(item); }} style={styles.itemAction}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => { const item = activeItem; setActiveItem(null); void deleteItem(item); }} style={styles.itemAction}>
                         <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
                       </Pressable>
                     </View>
                   </View>
                 )}
-                <Text style={styles.fieldLabel}>Tên nguyên liệu</Text>
-                <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
-                <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
-                <TextInput accessibilityLabel="Số lượng còn lại" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                <RadioDropdown<InventoryUnit> label="Đơn vị" value={editUnit} options={inventoryUnits.map((choice) => ({ value: choice, label: inventoryUnitLabels[choice] }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
+                {activeItem && isLocked(activeItem) ? (
+                  // Bought in Đi chợ: shown, not editable (the server refuses changes); cooking lowers the quantity.
+                  <View style={styles.lockedBox}>
+                    <Text style={styles.alertHint}>{lockedNote(activeItem)}</Text>
+                    <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
+                    <Text style={styles.lockedValue}>{activeItem.quantity} {inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit}</Text>
+                    <Text style={styles.fieldLabel}>Hạn dùng</Text>
+                    <Text style={styles.lockedValue}>{activeItem.expiryDate ? formatDateDdMmYyyy(activeItem.expiryDate) : "Chưa có"}</Text>
+                  </View>
+                ) : (
+                  <>
+                    <Text style={styles.fieldLabel}>Tên nguyên liệu</Text>
+                    <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
+                    <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
+                    <TextInput accessibilityLabel="Số lượng còn lại" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
+                    <RadioDropdown<InventoryUnit> label="Đơn vị" value={editUnit} options={inventoryUnits.map((choice) => ({ value: choice, label: inventoryUnitLabels[choice] }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
+                  </>
+                )}
                 <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={editLocation} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={setEditLocation} />
-                <Text style={styles.fieldLabel}>Hạn dùng · DD/MM/YYYY</Text>
-                <TextInput accessibilityLabel="Hạn dùng theo DD/MM/YYYY, để trống nếu không có" value={editExpiryDate} onChangeText={setEditExpiryDate} placeholder="31/12/2026" style={styles.modalInput} />
+                {activeItem && !isLocked(activeItem) && (
+                  <>
+                    <Text style={styles.fieldLabel}>Hạn dùng · DD/MM/YYYY</Text>
+                    <TextInput accessibilityLabel="Hạn dùng theo DD/MM/YYYY, để trống nếu không có" value={editExpiryDate} onChangeText={setEditExpiryDate} placeholder="31/12/2026" style={styles.modalInput} />
+                  </>
+                )}
               </ScrollView>
-            ) : (
-              <View style={styles.modalForm}>
-                <Text style={styles.fieldLabel}>Số lượng đã dùng ({activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""})</Text>
-                <TextInput accessibilityLabel={`Số lượng đã dùng, đơn vị ${activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""}`} value={consumeQuantity} onChangeText={setConsumeQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                <Text style={styles.alertHint}>Còn trong kho: {activeItem?.quantity} {activeItem ? inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit : ""}. Lượng dùng được ghi vào lịch sử tiêu thụ để tạo gợi ý mua.</Text>
-              </View>
             )}
             <View style={styles.modalActions}>
               <Pressable accessibilityRole="button" disabled={savingItem} onPress={closeDialog} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Hủy</Text></Pressable>
-              <Pressable accessibilityRole="button" accessibilityState={{ busy: savingItem, disabled: savingItem }} disabled={savingItem} onPress={() => void (dialogMode === "edit" ? saveItem() : consumeItem())} style={[styles.saveButton, savingItem && styles.saveButtonDisabled]}>
-                {savingItem ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.saveButtonText}>{dialogMode === "edit" ? "Lưu thay đổi" : "Xác nhận đã dùng"}</Text>}
+              <Pressable accessibilityRole="button" accessibilityState={{ busy: savingItem, disabled: savingItem }} disabled={savingItem} onPress={() => void saveItem()} style={[styles.saveButton, savingItem && styles.saveButtonDisabled]}>
+                {savingItem ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.saveButtonText}>Lưu thay đổi</Text>}
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
+      {confirmDialog}
     </SafeAreaView>
   );
 }
@@ -488,4 +483,6 @@ const styles = StyleSheet.create({
   detailPhoto: { alignSelf: "center", height: 180, width: "100%" },
   photoActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   photoErrorText: { ...textStyles.bodySmall, color: colors.danger },
+  lockedBox: { backgroundColor: colors.background, borderRadius: 7, gap: spacing.xs, padding: spacing.md },
+  lockedValue: { color: colors.text, ...typography.body },
 });

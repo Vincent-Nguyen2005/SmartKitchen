@@ -7,8 +7,8 @@
     "build": "prisma generate && tsc",
     "start": "node dist/index.js",
     "lint": "tsc --noEmit",
-    "test": "node --test --require ts-node/register src/controllers/auth.controller.test.ts src/routes/admin-users.routes.test.ts src/services/auth.service.test.ts src/seed-admin.test.ts",
-    "test:coverage": "node --experimental-test-coverage --test --require ts-node/register src/controllers/auth.controller.test.ts src/routes/admin-users.routes.test.ts src/services/auth.service.test.ts src/seed-admin.test.ts",
+    "test": "node --test --require ts-node/register src/controllers/auth.controller.test.ts src/routes/admin-users.routes.test.ts src/services/auth.service.test.ts src/seed-admin.test.ts src/controllers/update-me.test.ts",
+    "test:coverage": "node --experimental-test-coverage --test --require ts-node/register src/controllers/auth.controller.test.ts src/routes/admin-users.routes.test.ts src/services/auth.service.test.ts src/seed-admin.test.ts src/controllers/update-me.test.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio"

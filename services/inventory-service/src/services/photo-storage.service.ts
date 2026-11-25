@@ -7,8 +7,8 @@ export const MAX_PHOTO_EDGE = 1024;
 export type PhotoMimeType = "image/jpeg" | "image/png" | "image/webp";
 export const ALLOWED_PHOTO_TYPES: readonly PhotoMimeType[] = ["image/jpeg", "image/png", "image/webp"];
 
-/** Re-encodes an uploaded image to a metadata-free JPEG no larger than MAX_PHOTO_EDGE on either side. */
-export type ImageProcessor = (input: Buffer) => Promise<Buffer>;
+/** Re-encodes an uploaded image to a metadata-free JPEG no larger than `maxEdge` (default MAX_PHOTO_EDGE) per side. */
+export type ImageProcessor = (input: Buffer, maxEdge?: number) => Promise<Buffer>;
 
 type SharpPipeline = {
   rotate(): SharpPipeline;
@@ -19,13 +19,13 @@ type SharpPipeline = {
 type SharpFactory = (input: Buffer, options: { failOn: "error"; limitInputPixels: number }) => SharpPipeline;
 
 // sharp is loaded on first use so type checks and unit tests do not need its native binary.
-const sharpProcessor: ImageProcessor = async (input) => {
+const sharpProcessor: ImageProcessor = async (input, maxEdge = MAX_PHOTO_EDGE) => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const sharp = require("sharp") as SharpFactory;
   // rotate() applies the EXIF orientation; sharp drops EXIF/GPS and other metadata unless asked to keep it.
   return sharp(input, { failOn: "error", limitInputPixels: 40_000_000 })
     .rotate()
-    .resize({ width: MAX_PHOTO_EDGE, height: MAX_PHOTO_EDGE, fit: "inside", withoutEnlargement: true })
+    .resize({ width: maxEdge, height: maxEdge, fit: "inside", withoutEnlargement: true })
     .jpeg({ quality: 82, mozjpeg: true })
     .toBuffer();
 };
@@ -34,6 +34,9 @@ let processor: ImageProcessor = sharpProcessor;
 export const setImageProcessor = (next: ImageProcessor | null): void => {
   processor = next ?? sharpProcessor;
 };
+
+/** Same pipeline as item photos (EXIF dropped, JPEG), for other images such as avatars. */
+export const processImage = (input: Buffer, maxEdge: number): Promise<Buffer> => processor(input, maxEdge);
 
 export const photoUploadDir = (): string =>
   path.resolve(process.env.INVENTORY_UPLOAD_DIR || path.join(process.cwd(), "uploads", "inventory"));

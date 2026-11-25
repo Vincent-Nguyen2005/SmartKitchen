@@ -32,6 +32,12 @@ const registerSchema = credentialsSchema.extend({
   }
 });
 
+/** PATCH /me (Hồ sơ): display name 1-50 characters after trimming; avatarUrl: own uploaded photo or null. */
+export const updateMeSchema = z.object({
+  fullName: z.string().trim().min(1, "Tên không được để trống").max(50, "Tên tối đa 50 ký tự").optional(),
+  avatarUrl: z.string().max(200).nullable().optional(),
+}).strict().refine((body) => body.fullName !== undefined || body.avatarUrl !== undefined, { message: "Nothing to update" });
+
 const googleRequestSchema = z.object({
   idToken: z.string().min(1).optional(),
   accessToken: z.string().min(1).optional(),
@@ -290,6 +296,41 @@ export class AuthController {
     }
   };
 
+  /** Hồ sơ: change the signed-in user's display name and/or avatar (the token is verified here, like GET /me). */
+  updateMe = async (req: Request, res: Response): Promise<void> => {
+    const token = this.getBearerToken(req);
+    if (!token) {
+      res.status(401).json({ error: "Authentication required" });
+      return;
+    }
+    let payload;
+    try {
+      payload = this.authService.verifyAccessToken(token);
+    } catch {
+      res.status(401).json({ error: "Invalid or expired access token" });
+      return;
+    }
+    const parsed = updateMeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Invalid profile data", details: parsed.error.flatten().fieldErrors });
+      return;
+    }
+    try {
+      const user = await this.authService.updateProfile(payload.sub, parsed.data);
+      if (!user) {
+        res.status(401).json({ error: "User not found" });
+        return;
+      }
+      res.json({ user });
+    } catch (error) {
+      if (error instanceof AuthServiceError) {
+        this.respondAuthServiceError(res, error);
+        return;
+      }
+      this.respondUnexpected(res, error, "Unable to update the profile");
+    }
+  };
+
   me = async (req: Request, res: Response): Promise<void> => {
     const token = this.getBearerToken(req);
     if (!token) {
@@ -381,6 +422,7 @@ export class AuthController {
       ACCOUNT_ALREADY_VERIFIED: 409,
       OTP_RESEND_COOLDOWN: 429,
       INVALID_RESET_CODE: 400,
+      INVALID_AVATAR_URL: 400,
     };
     const statusCode = statusByCode[error.code] ?? 500;
     if (error.code === "OTP_RESEND_COOLDOWN") {
