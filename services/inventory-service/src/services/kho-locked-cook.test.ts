@@ -6,10 +6,11 @@ const tx = vi.hoisted(() => ({
   cookApplication: { create: vi.fn() },
   category: { upsert: vi.fn() },
 }));
-const prismaMock = vi.hoisted(() => ({ $transaction: vi.fn() }));
+const prismaMock = vi.hoisted(() => ({ $transaction: vi.fn(), foodItem: { findFirst: vi.fn(), update: vi.fn() } }));
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("./photo-storage.service", () => ({ PhotoStorage: { removeByUrl: vi.fn() }, managedPhotoFileName: () => null }));
 
-import { ItemsService, lockedChanges } from "./items.service";
+import { ItemsService, hiddenPurchaseFilter, lockedChanges } from "./items.service";
 import { CookService, fefo, measureFor, planDeduction, type KhoRow } from "./cook.service";
 
 const familyId = "11111111-1111-4111-8111-111111111111";
@@ -28,10 +29,11 @@ beforeEach(() => {
 describe("Kho rows bought in Đi chợ are read-only", () => {
   const bought = { id: "i1", familyId, origin: "PURCHASE", name: "Thịt ba chỉ", unit: "KILOGRAM", quantity: 1.5, expiryDate: day("2026-12-01"), status: "FRESH", imageUrl: null };
 
-  it("lists the locked fields an update would change; unchanged values and other fields are fine", () => {
-    expect(lockedChanges(bought, { name: "Thịt heo", quantity: 2, unit: "GRAM", expiryDate: day("2026-12-09") })).toEqual(["name", "unit", "quantity", "expiryDate"]);
+  it("only the storage place may change on a bought row; values sent back unchanged are fine; manual rows are free", () => {
+    expect(lockedChanges(bought, { name: "Thịt heo", quantity: 2, unit: "GRAM", expiryDate: day("2026-12-09"), status: "DISCARDED", imageUrl: "https://x/y.jpg" })).toEqual(["name", "quantity", "unit", "expiryDate", "status", "imageUrl"]);
     expect(lockedChanges(bought, { name: "Thịt ba chỉ", quantity: 1.5, unit: "KILOGRAM", expiryDate: day("2026-12-01"), storageLocation: "FREEZER" })).toEqual([]);
-    expect(lockedChanges({ ...bought, origin: "MANUAL" }, { name: "Thịt heo", quantity: 2 })).toEqual([]);
+    expect(lockedChanges(bought, { categoryName: "Thịt" })).toEqual(["categoryName"]);
+    expect(lockedChanges({ ...bought, origin: "MANUAL" }, { name: "Thịt heo", quantity: 2, status: "DISCARDED" })).toEqual([]);
   });
 
   it("the server refuses a locked change with 409 PURCHASED_ITEM_LOCKED and saves nothing", async () => {
@@ -41,14 +43,33 @@ describe("Kho rows bought in Đi chợ are read-only", () => {
     expect(tx.foodItem.update).not.toHaveBeenCalled();
   });
 
-  it("still allows the storage place, discarding, and any change on a manual row", async () => {
+  it("allows the storage place on a bought row, refuses discarding or deleting it, and leaves manual rows free", async () => {
     tx.foodItem.findFirst.mockResolvedValue(bought);
     tx.foodItem.update.mockImplementation(async ({ data }: { data: object }) => ({ ...bought, ...data }));
     await ItemsService.update("i1", familyId, { storageLocation: "FREEZER" }, userId);
-    await ItemsService.update("i1", familyId, { status: "DISCARDED" }, userId);
+    await expect(ItemsService.update("i1", familyId, { status: "DISCARDED" }, userId)).rejects.toMatchObject({ code: "PURCHASED_ITEM_LOCKED" });
     tx.foodItem.findFirst.mockResolvedValue({ ...bought, origin: "MANUAL" });
-    await ItemsService.update("i1", familyId, { quantity: 0.5, name: "Thịt heo" }, userId);
-    expect(tx.foodItem.update).toHaveBeenCalledTimes(3);
+    await ItemsService.update("i1", familyId, { quantity: 0.5, name: "Thịt heo", status: "DISCARDED" }, userId);
+    expect(tx.foodItem.update).toHaveBeenCalledTimes(2);
+  });
+
+  it("delete is refused for a bought row (409), allowed for a manual one", async () => {
+    prismaMock.foodItem.findFirst.mockResolvedValue({ ...bought, logs: [] });
+    await expect(ItemsService.softDelete("i1", familyId)).rejects.toMatchObject({ statusCode: 409, code: "PURCHASED_ITEM_LOCKED" });
+    prismaMock.foodItem.findFirst.mockResolvedValue({ ...bought, origin: "MANUAL", logs: [] });
+    prismaMock.foodItem.update.mockResolvedValue({ ...bought, deletedAt: new Date() });
+    await ItemsService.softDelete("i1", familyId);
+    expect(prismaMock.foodItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }));
+  });
+
+  it("expired bought rows stay listed up to 3 days after the expiry day (Vietnam), then leave Kho, alerts and cooking", () => {
+    // 2026-12-04 08:00 in Vietnam: expiry 01/12 still shown (cutoff 01/12), expiry 30/11 hidden.
+    const filter = hiddenPurchaseFilter(new Date("2026-12-04T01:00:00Z"));
+    expect(filter).toEqual({ NOT: { origin: "PURCHASE", expiryDate: { lt: day("2026-12-01") } } });
+    const hidden = (expiry: string) => day(expiry) < filter.NOT.expiryDate.lt;
+    expect([hidden("2026-12-01"), hidden("2026-11-30")]).toEqual([false, true]);
+    // 23:30 UTC on 04/12 is already 05/12 in Vietnam: 01/12 is now hidden.
+    expect(hiddenPurchaseFilter(new Date("2026-12-04T23:30:00Z")).NOT.expiryDate.lt).toEqual(day("2026-12-02"));
   });
 
   it("the old manual 'Đã dùng' cannot change a bought row's quantity", async () => {

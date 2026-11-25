@@ -119,9 +119,11 @@ export default function ProfileHeader(): React.JSX.Element | null {
             returnKeyType="done"
             style={[styles.input, nameError && styles.inputError]}
           />
-          <Text accessibilityLiveRegion="polite" style={[styles.status, nameError && styles.error]}>
-            {nameError ?? (nameState === "saving" ? "Đang lưu..." : nameState === "saved" ? "Đã lưu" : "Tự lưu khi bạn sửa")}
-          </Text>
+          {nameError || nameState === "saving" || nameState === "saved" ? (
+            <Text accessibilityLiveRegion="polite" style={[styles.status, nameError && styles.error]}>
+              {nameError ?? (nameState === "saving" ? "Đang lưu..." : "Đã lưu")}
+            </Text>
+          ) : null}
         </View>
       </View>
       <View style={styles.actions}>

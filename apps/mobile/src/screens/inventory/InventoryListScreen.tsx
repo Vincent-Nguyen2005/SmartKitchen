@@ -43,10 +43,11 @@ function formatDateDdMmYyyy(value: string): string {
 
 const EXPIRING_SOON_DAYS = 3;
 
-/** Bought in Đi chợ: name, unit, quantity and expiry are read-only (quantity changes through cooking). */
+/** Bought in Đi chợ: only the storage place can change (no photo, no delete); cooking lowers the quantity. */
 const isLocked = (item: FoodItem): boolean => item.origin === "PURCHASE";
+/** One line for a bought item: "Mua ở Đi chợ ngày 28/11/2026 · Tự trừ khi nấu". */
 const lockedNote = (item: FoodItem): string =>
-  `Mua ở Đi chợ${item.purchasedAt ? ` ngày ${formatDateDdMmYyyy(item.purchasedAt)}` : ""}. Tên, số lượng, đơn vị và hạn dùng không sửa được; số lượng tự giảm khi bạn nấu món có nguyên liệu này. Bạn vẫn có thể đổi vị trí bảo quản, ảnh, hoặc xóa.`;
+  `Mua ở Đi chợ${item.purchasedAt ? ` ngày ${formatDateDdMmYyyy(item.purchasedAt)}` : ""} · Tự trừ khi nấu`;
 const pad2 = (value: number) => String(value).padStart(2, "0");
 
 /** Card expiry line ("HSD 25/11") and corner pill for expired items or ones expiring within 3 days. */
@@ -372,6 +373,7 @@ export default function InventoryListScreen({
                 {activeItem && (
                   <View style={styles.photoBlock}>
                     <InventoryPhoto imageUrl={activeItem.imageUrl} fallbackUrl={catalogImageFor(activeItem, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${activeItem.name}`} style={styles.detailPhoto} />
+                    {!isLocked(activeItem) && (<>
                     <View style={styles.photoActions}>
                       <Pressable accessibilityRole="button" accessibilityState={{ busy: photoBusy, disabled: photoBusy }} disabled={photoBusy} onPress={() => changePhoto(activeItem)} style={styles.itemAction}>
                         <AppIcon icon={Camera} size="sm" color={colors.primary} /><Text style={styles.itemActionText}>{activeItem.imageUrl ? "Đổi ảnh" : "Thêm ảnh"}</Text>
@@ -389,6 +391,7 @@ export default function InventoryListScreen({
                         <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
                       </Pressable>
                     </View>
+                    </>)}
                   </View>
                 )}
                 {activeItem && isLocked(activeItem) ? (

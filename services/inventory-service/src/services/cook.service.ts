@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { normalizeName } from "../lib/names";
 import type { CatalogLabel } from "./photo-recognition/catalog-labels";
 import { matchCatalogProduct } from "./catalog-match.service";
+import { hiddenPurchaseFilter } from "./items.service";
 
 /**
  * "Đã ăn" in Nấu ăn: the dish's ingredients (already scaled to the family by the app) are taken out of Kho.
@@ -95,7 +96,8 @@ export class CookService {
       // Created first: a second request with the same cookId fails here (P2002) before touching Kho.
       await transaction.cookApplication.create({ data: { cookId: input.cookId, familyId: input.familyId } });
       const rows: KhoRow[] = await transaction.foodItem.findMany({
-        where: { familyId: input.familyId, deletedAt: null, status: { in: USABLE as never }, quantity: { gt: 0 } },
+        // Never rows that left Kho: expired bought rows past the hide window (hiddenPurchaseFilter) included.
+        where: { familyId: input.familyId, deletedAt: null, status: { in: USABLE as never }, quantity: { gt: 0 }, ...hiddenPurchaseFilter() },
         select: { id: true, name: true, productId: true, quantity: true, unit: true, status: true, expiryDate: true, createdAt: true },
       });
       const lines: CookLineResult[] = [];

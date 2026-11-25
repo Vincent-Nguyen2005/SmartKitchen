@@ -215,7 +215,7 @@ function AppContent(): React.JSX.Element {
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
-  // Hồ sơ's own screens (thông báo, sức khỏe, số món) count as Hồ sơ: the bar adds food to Kho, not to them.
+  // Hidden only in Hồ sơ and its own screens (cài đặt thông báo, sức khỏe, số món).
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen, paymentOpen: !!paymentUrl });
 
   /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */

@@ -36,24 +36,43 @@ export function statusForExpiry(expiryDate: Date | null | undefined, now: Date =
 }
 
 /**
- * Kho rows bought in Đi chợ (origin PURCHASE) keep the market's name, unit, quantity and expiry: a manual update that
- * changes one of them is refused (the quantity then changes only through cooking and Cộng thêm / purchase merges).
- * Storage place, photo and group stay editable, and the row can still be discarded or deleted.
+ * Kho rows bought in Đi chợ (origin PURCHASE) are read-only except their storage place: name, unit, quantity, expiry,
+ * status, photo and the other fields cannot be changed by hand, and the row cannot be deleted. The quantity changes
+ * only through cooking and Cộng thêm / purchase merges; an expired bought row leaves the list by itself
+ * (hiddenPurchaseFilter).
  */
-export const LOCKED_PURCHASE_FIELDS = ["name", "unit", "quantity", "expiryDate"] as const;
-const sameDay = (left: Date | string | null | undefined, right: Date | string | null | undefined): boolean =>
-  (left ? new Date(left).getTime() : null) === (right ? new Date(right).getTime() : null);
-/** Locked fields this update would change on a PURCHASE row (unchanged values sent back by the form are fine). */
-export function lockedChanges(previous: { origin?: string; name: string; unit: string; quantity: number; expiryDate: Date | null }, data: Partial<UpdateItemInput>): string[] {
+const sameValue = (left: unknown, right: unknown): boolean => {
+  if (left instanceof Date || right instanceof Date || (typeof left === "string" && typeof right !== "string")) {
+    return (left ? new Date(left as string | Date).getTime() : null) === (right ? new Date(right as string | Date).getTime() : null);
+  }
+  return (left ?? null) === (right ?? null);
+};
+/** Fields other than storageLocation this update would change on a PURCHASE row (values sent back unchanged are fine). */
+export function lockedChanges(previous: Record<string, unknown> & { origin?: string }, data: Partial<UpdateItemInput>): string[] {
   if (previous.origin !== "PURCHASE") return [];
-  const changed: string[] = [];
-  if (data.name !== undefined && data.name.trim() !== previous.name) changed.push("name");
-  if (data.unit !== undefined && data.unit !== previous.unit) changed.push("unit");
-  if (data.quantity !== undefined && data.quantity !== previous.quantity) changed.push("quantity");
-  if (data.expiryDate !== undefined && !sameDay(data.expiryDate, previous.expiryDate)) changed.push("expiryDate");
-  return changed;
+  return Object.entries(data).filter(([field, value]) => {
+    if (value === undefined || field === "storageLocation") return false;
+    if (field === "categoryName") return true; // a group change cannot be compared before it is resolved
+    if (field === "name" && typeof value === "string") return value.trim() !== previous.name;
+    return !sameValue(value, previous[field]);
+  }).map(([field]) => field);
 }
-const lockedError = (fields: string[]) => httpError(409, "PURCHASED_ITEM_LOCKED", `Items bought in Đi chợ keep their ${fields.join(", ")}; delete or discard the item instead.`);
+export const lockedError = (fields: string[]) => httpError(409, "PURCHASED_ITEM_LOCKED", `Items bought in Đi chợ cannot change ${fields.join(", ")}; only the storage place can be changed.`);
+
+/** A bought row expired more than this many days ago (Vietnam calendar) is hidden from Kho, alerts and the weekly list. */
+export const PURCHASE_HIDE_AFTER_EXPIRY_DAYS = 3;
+const VN_OFFSET_MS = 7 * 3_600_000;
+/**
+ * Prisma condition that leaves out expired bought rows whose expiry day is more than
+ * PURCHASE_HIDE_AFTER_EXPIRY_DAYS days before today (Asia/Ho_Chi_Minh): expiry 01/12 is still listed on 04/12 (the
+ * Thông báo alert keeps showing it) and gone on 05/12. The rows stay in the database; manual rows are never hidden.
+ */
+export function hiddenPurchaseFilter(now: Date = new Date()) {
+  const vnToday = new Date(now.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
+  const cutoff = new Date(`${vnToday}T00:00:00.000Z`);
+  cutoff.setUTCDate(cutoff.getUTCDate() - PURCHASE_HIDE_AFTER_EXPIRY_DAYS);
+  return { NOT: { origin: "PURCHASE" as const, expiryDate: { lt: cutoff } } };
+}
 
 export type DuplicateMatch = {
   /** Oldest live row of the same product (same productId, or same normalized name) with the same unit. */
@@ -94,7 +113,7 @@ export class ItemsService {
 
     // Used-up rows (CONSUMED, quantity 0) are hidden unless asked for by status; they stay in the database so
     // "Cộng thêm" can restart them as a fresh batch (findDuplicate) and consumption history keeps their logs.
-    const where: any = { deletedAt: null, ...filters, status: filters.status ?? { not: "CONSUMED" } };
+    const where: any = { deletedAt: null, ...filters, status: filters.status ?? { not: "CONSUMED" }, ...hiddenPurchaseFilter() };
     if (search) {
       where.name = { contains: search, mode: "insensitive" };
     }
@@ -329,6 +348,7 @@ export class ItemsService {
 
   static async softDelete(id: string, familyId: string) {
     const item = await this.getById(id, familyId);
+    if (item.origin === "PURCHASE") throw lockedError(["deletion"]);
     const deleted = await prisma.foodItem.update({
       where: { id },
       data: { deletedAt: new Date(), imageUrl: null },
