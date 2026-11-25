@@ -73,9 +73,12 @@ export type CatalogIngredient = {
   price: number | null;
   /** Grams in one pack / bunch (PACK / PIECE products, e.g. Hành lá 1 bó ≈ 100 g); null or absent when unknown. */
   packGrams?: number | null;
+  /** Word for one piece-type unit ("quả", "bìa"...); null / absent = the unit's own word ("cái", "chai"...). */
+  unitLabel?: string | null;
 };
 export type CatalogPage = { items: CatalogIngredient[]; page: number; limit: number; total: number; totalPages: number; groups: string[] };
-export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number };
+/** `ids`: only these products (Đi chợ: this week's missing products first); at most 100. */
+export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number; ids?: string[] };
 
 /** Absolute URL and auth headers for an item photo; external URLs (e.g. Open Food Facts) need no headers. */
 export const photoRequest = (imageUrl: string, accessToken: string | null): { uri: string; headers?: Record<string, string> } => {
@@ -163,6 +166,7 @@ export const inventoryApi = {
     if (options.search?.trim()) params.search = options.search.trim();
     if (options.group) params.group = options.group;
     if (options.onSale) params.onSale = "true";
+    if (options.ids?.length) params.ids = options.ids.slice(0, 100).join(",");
     return request<CatalogPage>(accessToken, `/api/admin/catalog/ingredients${query(params)}`);
   },
   recognizeReceipt: (accessToken: string, imageBase64: string, mimeType: ReceiptMimeType) =>

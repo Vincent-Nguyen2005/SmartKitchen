@@ -62,6 +62,24 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
     expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ packGrams: null }) }));
   });
 
+  it("filters by product ids (this week's missing products) and returns the piece unit word", async () => {
+    rows = [row({ id: "p-1", name: "Bưởi", defaultUnit: "PIECE", price: 60000, packGrams: 1200, unitLabel: "quả" })];
+    const response = await asUser(request(app).get("/catalog/ingredients?ids=p-1,%20p-2,,"));
+    expect(catalogCall().where).toEqual({ isActive: true, id: { in: ["p-1", "p-2"] } });
+    expect(catalogCall().select).toMatchObject({ unitLabel: true, packGrams: true });
+    expect(response.body.items[0]).toMatchObject({ unit: "PIECE", packGrams: 1200, unitLabel: "quả" });
+  });
+
+  it("accepts only the fixed unit words on admin writes; empty clears it", async () => {
+    prismaMock.masterIngredient.findUnique.mockResolvedValue(row());
+    prismaMock.masterIngredient.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...row(), ...data }));
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ unitLabel: "con" }))).status).toBe(400);
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ unitLabel: "bìa" }))).status).toBe(200);
+    expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ unitLabel: "bìa" }) }));
+    await asAdmin(request(app).put("/ingredients/i1").send({ unitLabel: "" }));
+    expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ unitLabel: null }) }));
+  });
+
   it("requires sign-in and keeps the admin list admin-only", async () => {
     expect((await request(app).get("/catalog/ingredients")).status).toBe(401);
     expect((await asUser(request(app).get("/ingredients"))).status).toBe(403);

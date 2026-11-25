@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Linking,
   Modal,
   Platform,
@@ -154,6 +155,10 @@ export default function InventoryListScreen({
     return items.filter((item) => !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch));
   }, [items, search]);
 
+  // A new search shows its results from the top.
+  const listRef = useRef<FlatList<FoodItem>>(null);
+  useEffect(() => { listRef.current?.scrollToOffset({ offset: 0, animated: false }); }, [search]);
+
   const openEdit = (item: FoodItem) => {
     setDialogMode("edit");
     setActiveItem(item);
@@ -302,72 +307,74 @@ export default function InventoryListScreen({
     ]);
   };
 
+  const renderItem = (item: FoodItem) => {
+    const expiry = expiryInfo(item);
+    const quantityText = `${item.quantity} ${inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}`;
+    return (
+      <ProductCard
+        width={cardGrid.cardWidth}
+        accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. Mở để sửa, ghi đã dùng hoặc xóa`}
+        onPress={() => (onItemPress ? onItemPress(item) : openEdit(item))}
+        image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
+        pill={expiry.pill}
+        name={item.name}
+        subtitle={quantityText}
+        footer={<CardCaption text={expiry.text} warning={expiry.warning} />}
+      />
+    );
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
         <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
-        style={styles.resultsScroller}
-        contentContainerStyle={[styles.listContent, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent, !loading && !error && filteredItems.length === 0 && styles.listFill]}
-        keyboardShouldPersistTaps="handled"
-      >
-        {loading ? (
-          <View style={styles.center}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Đang tải kho...</Text>
-          </View>
-        ) : error ? (
-          <View style={styles.center}>
-            <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{error}</Text>
-            {user && !family?.id ? (
-              onOpenFamily && (
-                <Pressable accessibilityRole="button" onPress={onOpenFamily} style={styles.retryBtn}>
-                  <Text style={styles.retryText}>Mở tab Gia đình</Text>
+      <View style={[styles.resultsScroller, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
+        {/* One virtualized grid of every Kho item (the API pages are loaded up front; search filters them here). */}
+        <FlatList
+          ref={listRef}
+          // numColumns cannot change on a mounted FlatList.
+          key={`cols-${cardGrid.columns}`}
+          data={loading || error ? [] : filteredItems}
+          numColumns={cardGrid.columns}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => renderItem(item)}
+          onLayout={cardGrid.onLayout}
+          columnWrapperStyle={cardGrid.columns > 1 ? { gap: cardGrid.gap } : undefined}
+          contentContainerStyle={[styles.listContent, { gap: cardGrid.gap }, (loading || !!error || filteredItems.length === 0) && styles.listFill]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+          ListEmptyComponent={loading ? (
+            <View style={styles.center}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Đang tải kho...</Text>
+            </View>
+          ) : error ? (
+            <View style={styles.center}>
+              <Text accessibilityRole="alert" accessibilityLiveRegion="assertive" style={styles.errorText}>{error}</Text>
+              {user && !family?.id ? (
+                onOpenFamily && (
+                  <Pressable accessibilityRole="button" onPress={onOpenFamily} style={styles.retryBtn}>
+                    <Text style={styles.retryText}>Mở tab Gia đình</Text>
+                  </Pressable>
+                )
+              ) : user && family?.id ? (
+                <Pressable accessibilityRole="button" onPress={() => void loadItems()} style={styles.retryBtn}>
+                  <Text style={styles.retryText}>Thử lại</Text>
                 </Pressable>
-              )
-            ) : user && family?.id ? (
-              <Pressable accessibilityRole="button" onPress={() => void loadItems()} style={styles.retryBtn}>
-                <Text style={styles.retryText}>Thử lại</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        ) : (
-          <>
-            {filteredItems.length === 0 && (
-              !family ? (
-                <EmptyState fill icon={Archive} text="Tạo hoặc tham gia gia đình để bắt đầu quản lý kho." />
-              ) : search.trim() && items.length > 0 ? (
-                <EmptyState fill icon={Search} text="Không tìm thấy nguyên liệu phù hợp." />
-              ) : (
-                <EmptyState fill icon={Archive} text="Kho chưa có nguyên liệu nào." />
-              )
-            )}
-            {filteredItems.length > 0 && (
-              <View onLayout={cardGrid.onLayout} style={[styles.cardGrid, { gap: cardGrid.gap }]}>
-                {filteredItems.map((item) => {
-                  const expiry = expiryInfo(item);
-                  const quantityText = `${item.quantity} ${inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}`;
-                  return (
-                    <ProductCard
-                      key={item.id}
-                      width={cardGrid.cardWidth}
-                      accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. Mở để sửa, ghi đã dùng hoặc xóa`}
-                      onPress={() => (onItemPress ? onItemPress(item) : openEdit(item))}
-                      image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
-                      pill={expiry.pill}
-                      name={item.name}
-                      subtitle={quantityText}
-                      footer={<CardCaption text={expiry.text} warning={expiry.warning} />}
-                    />
-                  );
-                })}
-              </View>
-            )}
-          </>
-        )}
-      </ScrollView>
+              ) : null}
+            </View>
+          ) : !family ? (
+            <EmptyState fill icon={Archive} text="Tạo hoặc tham gia gia đình để bắt đầu quản lý kho." />
+          ) : search.trim() && items.length > 0 ? (
+            <EmptyState fill icon={Search} text="Không tìm thấy nguyên liệu phù hợp." />
+          ) : (
+            <EmptyState fill icon={Archive} text="Kho chưa có nguyên liệu nào." />
+          )}
+        />
+      </View>
       <Modal animationType="slide" onRequestClose={closeDialog} transparent visible={activeItem !== null}>
         <View style={styles.modalBackdrop}>
           <View style={[styles.modalCard, isWide && styles.modalWide]}>
@@ -434,9 +441,9 @@ const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
   header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
   wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
-  listContent: { alignSelf: "center", paddingBottom: spacing.xl, paddingTop: SEARCH_CONTENT_GAP, width: "100%" },
+  // Extra bottom room so the last row clears the bottom action bar's shadow edge.
+  listContent: { paddingBottom: spacing.xl * 2, paddingTop: SEARCH_CONTENT_GAP },
   resultsScroller: { flex: 1 },
-  cardGrid: { flexDirection: "row", flexWrap: "wrap" },
   listFill: { flexGrow: 1 },
   center: {
     alignItems: "center",

@@ -23,15 +23,17 @@ function convertQuantity(quantity: number, from: ShoppingUnit, to: ShoppingUnit)
 }
 
 /**
- * Amount to buy in the product's sale unit: kg rounded up to 0.1 kg (0.1 .. 20); a pack product with a known weight
- * from recipe grams (150 g of Hành lá at 100 g a bó -> 2 bó); other count units rounded up to whole units.
+ * Amount to buy in the product's sale unit: kg rounded up to 0.1 kg (0.1 .. 20); a pack or piece-type product with a
+ * known weight per unit from recipe grams / ml (150 g of Hành lá at 100 g a bó -> 2 bó; 750 ml at 500 ml a chai -> 2
+ * chai); other count units rounded up to whole units.
  * null when the recipe's unit cannot become the sale unit.
  */
 function saleQuantity(quantity: number, unit: ShoppingUnit | null, product: CatalogIngredient, productUnit: ShoppingUnit): number | null {
   const rule = quantityRuleFor(productUnit);
-  const grams = unit ? convertQuantity(quantity, unit, "GRAM") : null;
-  if (grams !== null && product.packGrams && product.packGrams > 0 && (productUnit === "PACK" || productUnit === "PIECE")) {
-    return Math.min(rule.max, Math.max(1, Math.ceil(grams / product.packGrams - 1e-9)));
+  // Weight per unit: grams for packs, pieces, cans and boxes; ml for a bottle (1 chai ≈ 500 ml).
+  const perUnit = productUnit === "BOTTLE" ? (unit ? convertQuantity(quantity, unit, "MILLILITER") : null) : (unit ? convertQuantity(quantity, unit, "GRAM") : null);
+  if (perUnit !== null && product.packGrams && product.packGrams > 0 && ["PACK", "PIECE", "BOTTLE", "CAN", "BOX"].includes(productUnit)) {
+    return Math.min(rule.max, Math.max(1, Math.ceil(perUnit / product.packGrams - 1e-9)));
   }
   const converted = unit ? convertQuantity(quantity, unit, productUnit) : quantity;
   if (converted === null) return null;

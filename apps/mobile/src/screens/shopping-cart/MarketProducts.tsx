@@ -1,16 +1,17 @@
-import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
-import { Badge, Pagination, ScreenState } from "../notifications/ui";
+import { Badge, ScreenState } from "../notifications/ui";
+import { useGatewayApi } from "../notifications/useGatewayApi";
 import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
-import { inventoryApi, type CatalogIngredient, type CatalogPage } from "../inventory/inventoryApi";
-import { unitLabel } from "../inventory/catalogSuggest";
-import { shoppingUnitLabels } from "./shoppingApi";
+import { inventoryApi, type CatalogIngredient } from "../inventory/inventoryApi";
 import { addToCart, shoppingUnitFor } from "./cart";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
+import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
+import { unitLine, unitWord } from "./unitDisplay";
 
 type Props = {
   accessToken: string | null;
@@ -22,13 +23,25 @@ type Props = {
   /** Same horizontal padding as Kho, so the search box and grid line up the same way. */
   horizontalPadding: number;
   onOpenFamily?: () => void;
-  /** Changing this reloads the current page in place (auto refresh / pull-to-refresh), keeping search and page. */
+  /** Changing this reloads the loaded products in place (auto refresh / pull-to-refresh), keeping search and scroll. */
   refreshSignal?: number;
   /** Reports whether a catalog request is running, so the parent never starts an overlapping refresh. */
   onLoadingChange?: (loading: boolean) => void;
 };
 
-const unitText = (product: CatalogIngredient): string => unitLabel(product.unit);
+/** Products loaded so far (pages 1..page of the current search). */
+type Loaded = { items: CatalogIngredient[]; page: number; totalPages: number };
+/** This week's missing products: their ids in the weekly order and the products themselves. */
+type Needed = { ids: string[]; products: CatalogIngredient[] };
+const NO_NEEDED: Needed = { ids: [], products: [] };
+/** Room below the last row for the floating cart button (56 px + its margin). */
+const LIST_BOTTOM_SPACE = 96;
+const NEEDED_REFRESH_MS = 120_000;
+
+/** Unit line under the name: "1 kg", "1 gói", "1 quả ≈ 1,2 kg". */
+const unitText = (product: CatalogIngredient): string => unitLine(product);
+/** Word for the product's sale unit in the quantity stepper ("kg", "gói", "quả"). */
+const saleWord = (product: CatalogIngredient): string => unitWord(shoppingUnitFor(product), product.unitLabel);
 
 /** Image link set by the admin, or a neutral placeholder when there is none or it fails to load. */
 export function ProductImage({ uri, style }: { uri: string | null | undefined; style: object }): React.JSX.Element {
@@ -54,68 +67,138 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
   return <Text style={local.price}>{formatVnd(product.price)}</Text>;
 }
 
+/** Every page of this week's missing products (catalog `ids` filter, 50 per page, at most 100 ids). */
+async function loadNeededProducts(accessToken: string, ids: string[]): Promise<CatalogIngredient[]> {
+  const products: CatalogIngredient[] = [];
+  for (let page = 1; page <= 2; page += 1) {
+    const result = await inventoryApi.ingredientCatalog(accessToken, { ids: ids.slice(0, 100), page, limit: 50 });
+    products.push(...result.items);
+    if (page >= result.totalPages) break;
+  }
+  return products;
+}
+
 /**
- * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid (6 rows per page), added to Giỏ hàng. The search box stays on
- * top (like Kho); the grid scrolls below it as plain mapped Views.
+ * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid that loads the next page while
+ * scrolling (no pager). Products this week's menus still need (Cần mua tuần này) come first, in that list's order,
+ * then the rest in the usual order, once (the amounts are shown in Thông báo › Cần mua tuần này). The search box stays on top (like Kho); a new search starts at the top.
  */
 export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
-  const { layout, pageSize, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
+  const { layout, columns, pageSize, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
+  const { api } = useGatewayApi();
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
-  const [page, setPage] = useState(1);
-  const [data, setData] = useState<CatalogPage | null>(null);
+  const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [needed, setNeeded] = useState<Needed>(NO_NEEDED);
   const [selected, setSelected] = useState<CatalogIngredient | null>(null);
   // Typed text (kg may hold "1," while typing); the quantity follows the product's rule (kg: 0.1 .. 20, else 1 .. 999).
   const [quantityText, setQuantityText] = useState("1");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
+  const listRef = useRef<FlatList<CatalogIngredient>>(null);
 
-  // Debounce typing; a new search starts again at page 1.
+  // Debounce typing.
   useEffect(() => {
-    const timer = setTimeout(() => { setTerm(search.trim()); setPage(1); }, 300);
+    const timer = setTimeout(() => setTerm(search.trim()), 300);
     return () => clearTimeout(timer);
   }, [search]);
-
-  // A different column count changes the page size: start again at page 1 so pages stay aligned.
-  const lastPageSize = useRef(pageSize);
-  useEffect(() => {
-    if (lastPageSize.current === pageSize) return;
-    lastPageSize.current = pageSize;
-    setPage(1);
-  }, [pageSize]);
 
   const lastSignal = useRef(refreshSignal);
   const loadingChange = useRef(onLoadingChange);
   loadingChange.current = onLoadingChange;
+  // Bumped by every list (re)load: an older answer, or a "next page" from before a new search, is dropped.
+  const generation = useRef(0);
 
+  // First page of a new search / column count / retry (back to the top), or a quiet reload of every loaded page.
   useEffect(() => {
     if (!accessToken) { setLoading(false); setError("Đăng nhập để xem sản phẩm."); return; }
-    // A refresh signal reloads quietly: the grid stays as it is (no dimming, no error over existing data).
-    const background = lastSignal.current !== refreshSignal && data !== null;
+    const background = lastSignal.current !== refreshSignal && loaded !== null;
     lastSignal.current = refreshSignal;
-    let active = true;
-    if (!background) { setLoading(true); setError(null); }
+    const current = ++generation.current;
+    const pages = background && loaded ? loaded.page : 1;
+    if (!background) {
+      setLoading(true);
+      setError(null);
+      listRef.current?.scrollToOffset({ offset: 0, animated: false });
+    }
     loadingChange.current?.(true);
-    inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: pageSize })
+    (async (): Promise<Loaded> => {
+      const items: CatalogIngredient[] = [];
+      let last = { page: 1, totalPages: 1 };
+      for (let page = 1; page <= pages; page += 1) {
+        const result = await inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: pageSize });
+        items.push(...result.items);
+        last = { page: result.page, totalPages: result.totalPages };
+        if (page >= result.totalPages) break;
+      }
+      return { items, ...last };
+    })()
       .then((result) => {
-        if (!active) return;
-        setData(result);
+        if (current !== generation.current) return;
+        setLoaded(result);
         setError(null);
       })
       .catch((requestError: unknown) => {
-        if (active && !background) setError(requestError instanceof Error ? requestError.message : "Không tải được sản phẩm.");
+        if (current === generation.current && !background) setError(requestError instanceof Error ? requestError.message : "Không tải được sản phẩm.");
       })
       .finally(() => {
         loadingChange.current?.(false);
-        if (active) setLoading(false);
+        if (current === generation.current) setLoading(false);
       });
-    return () => { active = false; };
-    // `data` only decides quiet vs. visible loading; it must not trigger a reload.
+    // `loaded` only decides quiet vs. visible loading (and how many pages to reload); it must not trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, term, page, pageSize, reloadKey, refreshSignal]);
+  }, [accessToken, term, pageSize, reloadKey, refreshSignal]);
+
+  /** Next page when the list nears its end; nothing once every page is loaded. */
+  const loadMore = () => {
+    if (!accessToken || !loaded || loading || loadingMore || error || loaded.page >= loaded.totalPages) return;
+    const current = generation.current;
+    setLoadingMore(true);
+    loadingChange.current?.(true);
+    inventoryApi.ingredientCatalog(accessToken, { search: term, page: loaded.page + 1, limit: pageSize })
+      .then((result) => {
+        if (current !== generation.current) return;
+        setLoaded((previous) => (previous ? { items: [...previous.items, ...result.items], page: result.page, totalPages: result.totalPages } : previous));
+      })
+      // A failed page is asked again the next time the end is reached.
+      .catch(() => undefined)
+      .finally(() => {
+        loadingChange.current?.(false);
+        setLoadingMore(false);
+      });
+  };
+
+  // This week's missing products (the family's menus vs. Kho). No family or a failed call: the normal list, silently.
+  // Refresh ticks ask again at most every NEEDED_REFRESH_MS (the list depends on menus and Kho, not on the cart).
+  const neededAt = useRef<{ key: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!familyId || !accessToken) { setNeeded(NO_NEEDED); neededAt.current = null; return; }
+    const key = `${familyId}|${accessToken}`;
+    if (neededAt.current?.key === key && Date.now() - neededAt.current.at < NEEDED_REFRESH_MS) return;
+    neededAt.current = { key, at: Date.now() };
+    let active = true;
+    let done = false;
+    (async (): Promise<Needed> => {
+      const week = await api.get<{ items?: NeededItem[] }>("/api/menus/week-missing");
+      const ids = neededProductIds(Array.isArray(week?.items) ? week.items : []);
+      if (ids.length === 0) return { ids, products: [] };
+      return { ids, products: await loadNeededProducts(accessToken, ids) };
+    })()
+      .then((result) => { if (active) setNeeded(result); })
+      .catch(() => undefined)
+      .finally(() => { done = true; });
+    // Cancelled before it finished (e.g. a new token): the next run asks again instead of waiting for the throttle.
+    return () => { active = false; if (!done) neededAt.current = null; };
+  }, [api, familyId, accessToken, refreshSignal]);
+
+  const shown = useMemo(
+    () => orderNeededFirst(needed.products, needed.ids, loaded?.items ?? [], term),
+    [needed, loaded, term],
+  );
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
@@ -143,49 +226,57 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     }
   };
 
-  const items = data?.items ?? [];
+  const renderProduct = ({ item: product }: { item: CatalogIngredient }) => {
+    const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
+    return (
+      <ProductCard
+        width={cardWidth}
+        accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
+        onPress={() => openProduct(product)}
+        image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
+        pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
+        name={product.name}
+        subtitle={unitText(product)}
+        footer={<CardPrice
+          price={product.price !== null ? formatVnd(product.price) : null}
+          discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
+        />}
+      />
+    );
+  };
 
   return (
     <View style={local.container}>
       <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
         <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} />
       </View>
-      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[local.content, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}
-        keyboardShouldPersistTaps="handled"
-        refreshControl={refreshControl}
-      >
-      {loading && !data ? (
-        <ScreenState loading />
-      ) : error ? (
-        <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />
-      ) : items.length === 0 ? (
-        <ScreenState empty emptyText={term ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
-      ) : (
-        <View onLayout={onGridLayout} style={[local.grid, { gap }, loading && local.dimmed]}>
-          {items.map((product) => {
-            const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
-            return (
-              <ProductCard
-                key={product.id}
-                width={cardWidth}
-                accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
-                onPress={() => openProduct(product)}
-                image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
-                pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
-                name={product.name}
-                subtitle={unitText(product)}
-                footer={<CardPrice
-                  price={product.price !== null ? formatVnd(product.price) : null}
-                  discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
-                />}
-              />
-            );
-          })}
-        </View>
-      )}
-      {data && <Pagination page={data.page} totalPages={data.totalPages} onChange={setPage} disabled={loading} />}
-      </ScrollView>
+      <View style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
+        <FlatList
+          ref={listRef}
+          // numColumns cannot change on a mounted FlatList.
+          key={`cols-${columns}`}
+          data={error ? [] : shown}
+          numColumns={columns}
+          keyExtractor={(product) => product.id}
+          renderItem={renderProduct}
+          onLayout={onGridLayout}
+          columnWrapperStyle={columns > 1 ? { gap } : undefined}
+          contentContainerStyle={[local.content, { gap }, (error || shown.length === 0) && local.fill]}
+          style={loading && loaded ? local.dimmed : undefined}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={loadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm sản phẩm" color={colors.primary} style={local.footer} /> : undefined}
+          ListEmptyComponent={
+            loading && !loaded ? <ScreenState loading />
+              : error ? <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />
+                : <ScreenState empty emptyText={term ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
+          }
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          showsHorizontalScrollIndicator={false}
+        />
+      </View>
 
       <Modal animationType="slide" transparent visible={selected !== null} onRequestClose={closeSheet}>
         <View style={local.backdrop}>
@@ -217,7 +308,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                 </View>
               ) : (
                 <>
-                  <Text style={local.fieldLabel}>Số lượng ({shoppingUnitLabels[shoppingUnitFor(selected)]})</Text>
+                  <Text style={local.fieldLabel}>Số lượng ({saleWord(selected)})</Text>
                   <View style={local.stepper}>
                     <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng" disabled={quantity <= rule.min || adding} onPress={() => step(-1)} style={[local.stepButton, quantity <= rule.min && local.dimmed]}>
                       <AppIcon icon={Minus} size="md" color={colors.primary} />
@@ -233,7 +324,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                     <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng" disabled={quantity >= rule.max || adding} onPress={() => step(1)} style={[local.stepButton, quantity >= rule.max && local.dimmed]}>
                       <AppIcon icon={Plus} size="md" color={colors.primary} />
                     </Pressable>
-                    <Text style={local.unit}>{shoppingUnitLabels[shoppingUnitFor(selected)]}</Text>
+                    <Text style={local.unit}>{saleWord(selected)}</Text>
                   </View>
                   {addError && <Text accessibilityRole="alert" style={local.error}>{addError}</Text>}
                   <Pressable accessibilityRole="button" accessibilityState={{ busy: adding, disabled: adding }} disabled={adding} onPress={() => void addSelectedToCart()} style={[local.primaryButton, adding && local.dimmed]}>
@@ -254,10 +345,12 @@ const local = StyleSheet.create({
   // Same placement as Kho's search box (top padding, centred max width on wide screens).
   searchHeader: { paddingTop: spacing.xl, width: "100%" },
   wide: { alignSelf: "center", maxWidth: 920, width: "100%" },
+  listArea: { flex: 1 },
   // SEARCH_CONTENT_GAP above the grid like Kho's list; bottom room for the floating cart button.
-  content: { gap: spacing.md, paddingBottom: 96, paddingTop: SEARCH_CONTENT_GAP },
+  content: { paddingBottom: LIST_BOTTOM_SPACE, paddingTop: SEARCH_CONTENT_GAP },
+  fill: { flexGrow: 1 },
+  footer: { paddingVertical: spacing.md },
   buttonContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
-  grid: { flexDirection: "row", flexWrap: "wrap" },
   dimmed: { opacity: 0.6 },
   image: { backgroundColor: colors.background },
   unit: { ...textStyles.caption },

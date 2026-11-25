@@ -62,6 +62,9 @@ model MasterIngredient {
   /// Weight in grams of one sale unit for PACK / PIECE products (Hành lá 1 bó ≈ 100 g), so recipe grams convert to
   /// packs ("Cần mua tuần này") and back; null = unknown.
   packGrams       Int?
+  /// Specific word for one PIECE / BOTTLE / CAN / BOX sale unit ("quả", "bìa"...), one of the fixed words in
+  /// admin.route.ts (UNIT_WORDS); null = the unit's own word ("cái", "chai", "lon", "hộp").
+  unitLabel       String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
