@@ -1,11 +1,35 @@
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { afterVerify, familyQrAction, QR_EXPIRED_TEXT, qrErrorText, QrSession } from "./familyQr";
+import { afterVerify, familyQrAction, QR_CAPTION, QR_EXPIRED_TEXT, QR_TITLE, qrDisplaySize, qrErrorText, QrSession } from "./familyQr";
 
 test("owner shows the family QR; members and users without a family scan", () => {
   assert.equal(familyQrAction("OWNER"), "show");
   for (const role of ["ADMIN", "MEMBER", null, undefined]) assert.equal(familyQrAction(role), "scan", String(role));
+});
+
+test("owner's QR page: title, one caption line, QR about 75% of the width up to 320 px", () => {
+  assert.equal(QR_TITLE, "QR gia đình");
+  assert.equal(QR_CAPTION, "Quét mã QR để tham gia gia đình");
+  assert.equal(qrDisplaySize(360), 270);
+  assert.equal(qrDisplaySize(412), 309);
+  assert.equal(qrDisplaySize(1024), 320);
+  assert.equal(qrDisplaySize(200), 180);
+});
+
+test("retrying after a failed request shows the new token; an older request finishing late is revoked", async () => {
+  const shown: Array<string | null> = [];
+  const revoked: string[] = [];
+  let calls = 0;
+  const session = new QrSession({
+    create: async () => { calls += 1; if (calls === 1) throw new Error("offline"); return { token: `t${calls}` }; },
+    revoke: async (token: string) => { revoked.push(token); },
+  }, (qr) => shown.push(qr?.token ?? null));
+  await assert.rejects(session.open());
+  assert.equal((await session.open())?.token, "t2");
+  assert.deepEqual(shown, ["t2"]);
+  session.close();
+  assert.deepEqual(revoked, ["t2"]);
 });
 
 test("messages for the scan results", () => {

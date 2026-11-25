@@ -8,8 +8,11 @@ export type FamilyQrAction = "show" | "scan";
 
 export const familyQrAction = (role: string | null | undefined): FamilyQrAction => (role === "OWNER" ? "show" : "scan");
 
-/** Shown under the owner's QR. */
-export const QR_HINT = "Mã chỉ dùng khi màn hình này đang mở";
+/** Owner's full-screen QR page: the title and the one line under the QR. */
+export const QR_TITLE = "QR gia đình";
+export const QR_CAPTION = "Quét mã QR để tham gia gia đình";
+/** QR side in px: 75% of the screen width, at most 320 (at least 180 on very small screens). */
+export const qrDisplaySize = (screenWidth: number): number => Math.max(180, Math.min(320, Math.round(screenWidth * 0.75)));
 export const QR_EXPIRED_TEXT = "Mã QR đã hết hạn, nhờ chủ nhà mở lại mã";
 export const ALREADY_MEMBER_TEXT = "Bạn đã ở trong gia đình này";
 export const OTHER_FAMILY_TEXT = "Bạn đang ở một gia đình khác. Hãy rời gia đình đó trong tab Gia đình trước khi tham gia gia đình mới.";
