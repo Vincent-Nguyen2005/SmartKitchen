@@ -1,36 +1,18 @@
-import { amountText } from "./unitDisplay";
-
 /**
  * Đi chợ "needed first": products this week's menus still need (menu-service GET /api/menus/week-missing) come
- * first, in the weekly list's order, each with "Thiếu 0,7 kg"; then every other product in the usual order, once.
+ * first, in the weekly list's order; then every other product in the usual order, once. The amounts themselves are
+ * shown in Thông báo › "Cần mua tuần này", not on the product cards.
  * Pure functions (no React Native), covered by neededFirst.test.ts.
  */
 
-/** The fields of a week-missing item used here (same shape as WeekShoppingScreen's WeekMissingItem). */
-export type NeededItem = {
-  productId: string | null;
-  quantity: number;
-  unit: string;
-  saleUnit: string | null;
-  saleUnitLabel?: string | null;
-  cartQuantity: number | null;
-  unitMismatch: boolean;
-};
+/** The field of a week-missing item used here (WeekShoppingScreen's WeekMissingItem has it too). */
+export type NeededItem = { productId: string | null };
 
-/**
- * "Thiếu …" per catalog product id, in the weekly list's order (first row per product). The amount is what
- * "Thêm vào Giỏ hàng" would buy in the sale unit ("0,7 kg", "2 gói", "3 quả"); without one, the missing amount.
- */
-export function neededLabels(items: NeededItem[]): Map<string, string> {
-  const labels = new Map<string, string>();
-  for (const item of items) {
-    if (!item.productId || labels.has(item.productId)) continue;
-    const amount = item.cartQuantity && item.saleUnit && !item.unitMismatch
-      ? amountText(item.cartQuantity, item.saleUnit, item.saleUnitLabel)
-      : amountText(item.quantity, item.unit);
-    labels.set(item.productId, `Thiếu ${amount}`);
-  }
-  return labels;
+/** Catalog product ids in the weekly list's order, each once (items not sold in Đi chợ have none). */
+export function neededProductIds(items: NeededItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) if (item.productId && !ids.includes(item.productId)) ids.push(item.productId);
+  return ids;
 }
 
 /** Lowercase without Vietnamese accents (the catalog search compares the same way). */

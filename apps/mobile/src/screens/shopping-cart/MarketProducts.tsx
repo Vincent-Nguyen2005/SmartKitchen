@@ -4,13 +4,13 @@ import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native"
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { Badge, ScreenState } from "../notifications/ui";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { CardCaption, CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
+import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { inventoryApi, type CatalogIngredient } from "../inventory/inventoryApi";
 import { addToCart, shoppingUnitFor } from "./cart";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
-import { neededLabels, orderNeededFirst, type NeededItem } from "./neededFirst";
+import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
 import { unitLine, unitWord } from "./unitDisplay";
 
 type Props = {
@@ -31,9 +31,9 @@ type Props = {
 
 /** Products loaded so far (pages 1..page of the current search). */
 type Loaded = { items: CatalogIngredient[]; page: number; totalPages: number };
-/** This week's missing products: "Thiếu …" per product id (weekly order) and the products themselves. */
-type Needed = { labels: Map<string, string>; products: CatalogIngredient[] };
-const NO_NEEDED: Needed = { labels: new Map(), products: [] };
+/** This week's missing products: their ids in the weekly order and the products themselves. */
+type Needed = { ids: string[]; products: CatalogIngredient[] };
+const NO_NEEDED: Needed = { ids: [], products: [] };
 /** Room below the last row for the floating cart button (56 px + its margin). */
 const LIST_BOTTOM_SPACE = 96;
 const NEEDED_REFRESH_MS = 120_000;
@@ -80,8 +80,8 @@ async function loadNeededProducts(accessToken: string, ids: string[]): Promise<C
 
 /**
  * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid that loads the next page while
- * scrolling (no pager). Products this week's menus still need (Cần mua tuần này) come first with "Thiếu 0,7 kg",
- * then the rest in the usual order, once. The search box stays on top (like Kho); a new search starts at the top.
+ * scrolling (no pager). Products this week's menus still need (Cần mua tuần này) come first, in that list's order,
+ * then the rest in the usual order, once (the amounts are shown in Thông báo › Cần mua tuần này). The search box stays on top (like Kho); a new search starts at the top.
  */
 export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
   const { layout, columns, pageSize, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
@@ -184,9 +184,9 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     let done = false;
     (async (): Promise<Needed> => {
       const week = await api.get<{ items?: NeededItem[] }>("/api/menus/week-missing");
-      const labels = neededLabels(Array.isArray(week?.items) ? week.items : []);
-      if (labels.size === 0) return { labels, products: [] };
-      return { labels, products: await loadNeededProducts(accessToken, [...labels.keys()]) };
+      const ids = neededProductIds(Array.isArray(week?.items) ? week.items : []);
+      if (ids.length === 0) return { ids, products: [] };
+      return { ids, products: await loadNeededProducts(accessToken, ids) };
     })()
       .then((result) => { if (active) setNeeded(result); })
       .catch(() => undefined)
@@ -196,7 +196,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   }, [api, familyId, accessToken, refreshSignal]);
 
   const shown = useMemo(
-    () => orderNeededFirst(needed.products, [...needed.labels.keys()], loaded?.items ?? [], term),
+    () => orderNeededFirst(needed.products, needed.ids, loaded?.items ?? [], term),
     [needed, loaded, term],
   );
 
@@ -228,25 +228,19 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 
   const renderProduct = ({ item: product }: { item: CatalogIngredient }) => {
     const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
-    const missing = needed.labels.get(product.id);
     return (
       <ProductCard
         width={cardWidth}
-        accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}${missing ? `, ${missing} cho thực đơn tuần này` : ""}`}
+        accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
         onPress={() => openProduct(product)}
         image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
         pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
         name={product.name}
         subtitle={unitText(product)}
-        footer={(
-          <>
-            {missing ? <CardCaption text={missing} warning /> : null}
-            <CardPrice
-              price={product.price !== null ? formatVnd(product.price) : null}
-              discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
-            />
-          </>
-        )}
+        footer={<CardPrice
+          price={product.price !== null ? formatVnd(product.price) : null}
+          discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
+        />}
       />
     );
   };
@@ -271,7 +265,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
           style={loading && loaded ? local.dimmed : undefined}
           onEndReached={loadMore}
           onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm sản phẩm" color={colors.primary} style={local.footer} /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm sản phẩm" color={colors.primary} style={local.footer} /> : undefined}
           ListEmptyComponent={
             loading && !loaded ? <ScreenState loading />
               : error ? <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />

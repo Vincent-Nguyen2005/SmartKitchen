@@ -4,8 +4,8 @@
     "noEmit": false,
     "outDir": "dist/unit-tests",
     "rootDir": "src",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    "module": "node16",
+    "moduleResolution": "node16",
     "customConditions": null,
     "types": ["node"]
   },

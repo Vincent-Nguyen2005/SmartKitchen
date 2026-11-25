@@ -1,20 +1,15 @@
+/// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { matchesSearch, neededLabels, orderNeededFirst, type NeededItem } from "./neededFirst";
+import { matchesSearch, neededProductIds, orderNeededFirst } from "./neededFirst";
 
-const item = (overrides: Partial<NeededItem>): NeededItem => ({ productId: null, quantity: 1, unit: "GRAM", saleUnit: null, cartQuantity: null, unitMismatch: false, ...overrides });
 const product = (id: string, name: string) => ({ id, name });
 
-test("labels: what the cart would get in the sale unit, first row per product, in the weekly order", () => {
-  const labels = neededLabels([
-    item({ productId: "p-pork", quantity: 650, unit: "GRAM", saleUnit: "KILOGRAM", cartQuantity: 0.7 }),
-    item({ productId: "p-scallion", quantity: 150, unit: "GRAM", saleUnit: "PACK", cartQuantity: 2 }),
-    item({ productId: "p-egg", quantity: 3, unit: "PIECE", saleUnit: "PIECE", saleUnitLabel: "quả", cartQuantity: 3 }),
-    item({ productId: "p-pork", quantity: 2, unit: "PIECE", saleUnit: "KILOGRAM", cartQuantity: 1, unitMismatch: true }),
-    item({ productId: "p-carrot", quantity: 2, unit: "PIECE", saleUnit: "KILOGRAM", cartQuantity: 1, unitMismatch: true }),
-    item({ productId: null, quantity: 50, unit: "GRAM" }),
+test("needed ids: the weekly list's order, each product once, items not sold in Đi chợ left out", () => {
+  const ids = neededProductIds([
+    { productId: "p-pork" }, { productId: "p-scallion" }, { productId: null }, { productId: "p-pork" }, { productId: "p-egg" },
   ]);
-  assert.deepEqual([...labels], [["p-pork", "Thiếu 0,7 kg"], ["p-scallion", "Thiếu 2 gói"], ["p-egg", "Thiếu 3 quả"], ["p-carrot", "Thiếu 2 cái"]]);
+  assert.deepEqual(ids, ["p-pork", "p-scallion", "p-egg"]);
 });
 
 test("needed products first in the weekly order, then the rest in their order, without duplicates", () => {
