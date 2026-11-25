@@ -1,5 +1,3 @@
-import type { ShoppingUnit } from "./shoppingApi";
-
 /**
  * Giỏ hàng / Đi chợ quantity rules (the server checks the same, shopping-list-service lib/quantity-rule):
  * - kg: steps of 0.1 kg, from 0.1 to 20 kg (1,5 kg thịt).
@@ -10,7 +8,7 @@ export type QuantityRule = { step: number; min: number; max: number; decimals: b
 const KG_RULE: QuantityRule = { step: 0.1, min: 0.1, max: 20, decimals: true };
 const WHOLE_RULE: QuantityRule = { step: 1, min: 1, max: 999, decimals: false };
 
-export const quantityRuleFor = (unit: ShoppingUnit | string): QuantityRule => (unit === "KILOGRAM" ? KG_RULE : WHOLE_RULE);
+export const quantityRuleFor = (unit: string): QuantityRule => (unit === "KILOGRAM" ? KG_RULE : WHOLE_RULE);
 
 const tenths = (value: number): number => Math.round(value * 10) / 10;
 const clamp = (value: number, rule: QuantityRule): number => Math.min(rule.max, Math.max(rule.min, value));

@@ -4,9 +4,7 @@ import { ChevronLeft, CircleCheck, ShoppingCart } from "lucide-react-native";
 import { IconButton, spacing } from "../../theme";
 import { useSession } from "../../services/session";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
-import { UNIT_LABELS } from "../inventory/catalogSuggest";
-import type { InventoryUnit } from "../inventory/inventoryApi";
-import { formatQuantity } from "../shopping-cart/quantityRule";
+import { amountText } from "../shopping-cart/unitDisplay";
 import { errorMessage } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
 import { Button, colors, EmptyState, ScreenState, styles } from "./ui";
@@ -21,6 +19,8 @@ export type WeekMissingItem = {
   price: number | null;
   discountPercent: number | null;
   saleUnit: string | null;
+  /** Word for one piece-type sale unit ("quả", "bìa"); null = the unit's own word. */
+  saleUnitLabel?: string | null;
   cartQuantity: number | null;
   unitMismatch: boolean;
 };
@@ -32,7 +32,10 @@ type Props = {
   onOpenCart: () => void;
 };
 
-const unitText = (unit: string): string => UNIT_LABELS[unit as InventoryUnit] ?? unit;
+/** "500 g", "0,7 kg", "3 quả": the missing amount (in the sale unit's own word when it is that unit). */
+const missingText = (item: WeekMissingItem): string => amountText(item.quantity, item.unit, item.unit === item.saleUnit ? item.saleUnitLabel : null);
+/** What "Thêm vào Giỏ hàng" puts in the cart: "0,7 kg", "2 gói", "1 quả". */
+const buyText = (item: WeekMissingItem): string => amountText(item.cartQuantity ?? 0, item.saleUnit ?? item.unit, item.saleUnitLabel);
 const shortDay = (day: string): string => day.slice(5).split("-").reverse().join("/");
 
 /**
@@ -116,10 +119,10 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
               width={cardGrid.cardWidth}
               image={item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={cardImageStyle} resizeMode="cover" /> : <ImagePlaceholder />}
               name={item.name}
-              subtitle={`Thiếu ${formatQuantity(item.quantity)} ${unitText(item.unit)}`}
+              subtitle={`Thiếu ${missingText(item)}`}
               // What "Thêm vào Giỏ hàng" puts in the cart: kg in 0.1 steps, packs from their weight (150 g → 2 gói).
-              footer={!item.productId ? <CardCaption text="Chưa có bán" warning /> : item.unitMismatch ? <CardCaption text="Kho có nhưng khác đơn vị" /> : item.cartQuantity && item.saleUnit ? <CardCaption text={`Mua ${formatQuantity(item.cartQuantity)} ${unitText(item.saleUnit)}`} /> : undefined}
-              accessibilityLabel={`${item.name}, thiếu ${formatQuantity(item.quantity)} ${unitText(item.unit)}${!item.productId ? ", chưa có bán" : item.cartQuantity && item.saleUnit && !item.unitMismatch ? `, mua ${formatQuantity(item.cartQuantity)} ${unitText(item.saleUnit)}` : ""}`}
+              footer={!item.productId ? <CardCaption text="Chưa có bán" warning /> : item.unitMismatch ? <CardCaption text="Kho có nhưng khác đơn vị" /> : item.cartQuantity && item.saleUnit ? <CardCaption text={`Mua ${buyText(item)}`} /> : undefined}
+              accessibilityLabel={`${item.name}, thiếu ${missingText(item)}${!item.productId ? ", chưa có bán" : item.cartQuantity && item.saleUnit && !item.unitMismatch ? `, mua ${buyText(item)}` : ""}`}
             />
           )}
         />

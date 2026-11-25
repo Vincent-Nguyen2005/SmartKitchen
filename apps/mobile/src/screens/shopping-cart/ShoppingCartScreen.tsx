@@ -16,12 +16,13 @@ import { ChevronLeft, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react-nat
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
-import { normalizeVi, unitLabel } from "../inventory/catalogSuggest";
+import { normalizeVi } from "../inventory/catalogSuggest";
 import type { CatalogIngredient } from "../inventory/inventoryApi";
 import MarketProducts, { ProductImage } from "./MarketProducts";
 import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
 import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
-import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi, shoppingUnitLabels } from "./shoppingApi";
+import { unitWord } from "./unitDisplay";
+import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
 
 /**
  * "market" = Đi chợ product grid (main view); "cart" = Giỏ hàng, opened from the floating cart button.
@@ -211,7 +212,8 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   const renderLine = (item: ShoppingItem) => {
     const price = unitPriceOf(item, catalogFor(item));
     const image = item.imageUrl ?? catalogFor(item)?.imageUrl ?? null;
-    const unit = shoppingUnitLabels[item.unit] ?? unitLabel(item.unit);
+    // "kg", "gói", "quả": the catalog product's own word for piece-type units (unitDisplay.ts).
+    const unit = unitWord(item.unit, catalogFor(item)?.unitLabel);
     const busy = busyItemId === item.id || checkingOut;
     // Older rows already marked bought (never synced) can only go through "Mua".
     const locked = item.isPurchased;

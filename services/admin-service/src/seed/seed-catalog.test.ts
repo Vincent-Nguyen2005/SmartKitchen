@@ -115,8 +115,24 @@ describe("starter catalog seed", () => {
     expect(rows.find((row) => row.name === "Thịt ba chỉ")).toMatchObject({ defaultUnit: "KILOGRAM", price: 170000, packGrams: null, caloriesPer100g: 350 });
     expect(rows.find((row) => row.name === "Hành lá")).toMatchObject({ defaultUnit: "PACK", price: 5000, packGrams: 100 });
     expect(rows.find((row) => row.name === "Cà chua")).toMatchObject({ defaultUnit: "KILOGRAM", price: 30000 });
-    // Every pack weight belongs to a pack / piece product.
-    for (const row of rows.filter((entry) => entry.packGrams !== null)) expect(["PACK", "PIECE"], String(row.name)).toContain(row.defaultUnit);
+    // Every weight per unit belongs to a pack or piece-type product (never kg).
+    for (const row of rows.filter((entry) => entry.packGrams !== null)) expect(["PACK", "PIECE", "BOTTLE", "CAN", "BOX"], String(row.name)).toContain(row.defaultUnit);
+  });
+
+  it("piece products (cái / quả, chai, lon, hộp) have a weight per unit; PIECE ones a specific word", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    await seedMissingIngredients(client);
+    const pieces = rows.filter((row) => ["PIECE", "BOTTLE", "CAN", "BOX"].includes(String(row.defaultUnit)));
+    expect(pieces.filter((row) => !(Number(row.packGrams) > 0)).map((row) => row.name)).toEqual([]);
+    expect(pieces.filter((row) => row.defaultUnit === "PIECE" && !row.unitLabel).map((row) => row.name)).toEqual([]);
+    expect(rows.filter((row) => row.unitLabel && !["cái", "quả", "trái", "chai", "lon", "hộp", "nải", "bìa"].includes(String(row.unitLabel)))).toEqual([]);
+    expect(rows.find((row) => row.name === "Bưởi")).toMatchObject({ defaultUnit: "PIECE", unitLabel: "quả", packGrams: 1200 });
+    expect(rows.find((row) => row.name === "Đậu phụ")).toMatchObject({ unitLabel: "bìa", packGrams: 200 });
+    expect(rows.find((row) => row.name === "Nước mắm")).toMatchObject({ defaultUnit: "BOTTLE", unitLabel: null, packGrams: 500 });
   });
 
   it("every starter product has a market price (whole VND, 500 VND steps) and macros that fit its kcal", () => {

@@ -10,6 +10,7 @@ import { DateField, toDisplayDate } from "./DateField";
 import { formatVnd } from "../../services/format";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
+import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
 
 type Ingredient = {
   id: string;
@@ -37,6 +38,8 @@ type Ingredient = {
   price: number | null;
   /** Grams in one pack / bunch / piece (PACK / PIECE products), for recipe grams <-> packs; null = unknown. */
   packGrams?: number | null;
+  /** Word for one piece-type unit ("quả", "bìa"...); null = the unit's own word. */
+  unitLabel?: string | null;
 };
 type SavedIngredient = Ingredient & { promotionSync?: "synced" | "failed" | "none" };
 
@@ -61,17 +64,24 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 const SHOW_ALLERGENS = false;
 
 /** credit: the stored image's credit (shown while the link is unchanged). */
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoStartDate: string; promoEndDate: string; price: string; packGrams: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoStartDate: string; promoEndDate: string; price: string; packGrams: string; unitLabel: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
 /** Promotion dates start filled: from today, for DEFAULT_PROMO_DAYS (sent only when there is a % giảm giá). */
 /** Units whose weight per unit is worth storing (recipes in grams -> packs in "Cần mua tuần này"). */
-const hasPackWeight = (unit: string): boolean => unit === "PACK" || unit === "PIECE";
-const newDraft = (): Draft => ({ name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoStartDate: dayFromToday(0), promoEndDate: dayFromToday(DEFAULT_PROMO_DAYS), price: "", packGrams: "", englishName: "" });
+const hasPackWeight = (unit: string): boolean => unit === "PACK" || isPieceUnit(unit);
+/** Weight field label: grams, or ml for a bottle (Đi chợ shows "1 chai ≈ 500 ml"). */
+const packWeightLabel = (unit: string): string => (unit === "BOTTLE" ? "Thể tích 1 chai (ml)" : "Khối lượng 1 đơn vị (g)");
+/** "Gọi 1 đơn vị là": empty = the unit's own word (cái, chai, lon, hộp). */
+const unitWordOptions = (unit: string): { value: string; label: string }[] => [
+  { value: "", label: `Mặc định (${unitWord(unit)})` },
+  ...UNIT_WORDS.map((word) => ({ value: word, label: word })),
+];
+const newDraft = (): Draft => ({ name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoStartDate: dayFromToday(0), promoEndDate: dayFromToday(DEFAULT_PROMO_DAYS), price: "", packGrams: "", unitLabel: "", englishName: "" });
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "",
   promoStartDate: item.promoStartDate?.slice(0, 10) ?? dayFromToday(0), promoEndDate: item.promoEndDate?.slice(0, 10) ?? dayFromToday(DEFAULT_PROMO_DAYS),
-  price: item.price?.toString() ?? "", packGrams: item.packGrams?.toString() ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
+  price: item.price?.toString() ?? "", packGrams: item.packGrams?.toString() ?? "", unitLabel: item.unitLabel ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
   credit: item.imageUrl && item.imageAuthor && item.imageLicense ? { url: item.imageUrl, source: item.imageSource ?? null, author: item.imageAuthor, license: item.imageLicense } : null,
 });
 const DEFAULT_PROMO_DAYS = 7;
@@ -174,7 +184,9 @@ export default function IngredientsScreen(): React.JSX.Element {
     if (price !== null && (!Number.isInteger(price) || price < 0 || price > 1_000_000_000)) return setFormError("Giá là số đồng nguyên, không âm.");
     // Pack weight only means something for products sold by the pack / piece; other units clear it.
     const packGrams = hasPackWeight(draft.defaultUnit) && draft.packGrams.trim() !== "" ? Number(draft.packGrams.trim()) : null;
-    if (packGrams !== null && (!Number.isInteger(packGrams) || packGrams < 1 || packGrams > 100_000)) return setFormError("Khối lượng 1 đơn vị là số gam nguyên, lớn hơn 0.");
+    if (packGrams !== null && (!Number.isInteger(packGrams) || packGrams < 1 || packGrams > 100_000)) return setFormError(draft.defaultUnit === "BOTTLE" ? "Thể tích 1 chai là số ml nguyên, lớn hơn 0." : "Khối lượng 1 đơn vị là số gam nguyên, lớn hơn 0.");
+    // The unit word only applies to piece-type units; other units clear it.
+    const unitLabelValue = isPieceUnit(draft.defaultUnit) && draft.unitLabel ? draft.unitLabel : null;
     const hasDiscount = draft.discountPercent.trim() !== "";
     // Both dates are required with a discount, and the end may not be before the start (the server checks too).
     const windowProblem = !hasDiscount ? null
@@ -185,7 +197,7 @@ export default function IngredientsScreen(): React.JSX.Element {
     const discount = draft.discountPercent.trim() ? Number(draft.discountPercent.trim()) : null;
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
-      caloriesPer100g: calories, shelfLifeDays: shelfLife, price, packGrams,
+      caloriesPer100g: calories, shelfLifeDays: shelfLife, price, packGrams, unitLabel: unitLabelValue,
       // "" clears the alias (the server stores null).
       englishName: draft.englishName.trim() || null,
       // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
@@ -358,8 +370,13 @@ export default function IngredientsScreen(): React.JSX.Element {
                   </View>
                 </View>
                 <Field label={`Giá (đ / ${unitLabel(draft.defaultUnit)})`} keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
+                {isPieceUnit(draft.defaultUnit) ? (
+                  <View style={styles.row}>
+                    <Dropdown<string> label="Gọi 1 đơn vị là" value={draft.unitLabel} options={unitWordOptions(draft.defaultUnit)} onChange={(unitLabel) => setDraft({ ...draft, unitLabel })} />
+                  </View>
+                ) : null}
                 {hasPackWeight(draft.defaultUnit) ? (
-                  <Field label="Khối lượng 1 đơn vị (g)" keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
+                  <Field label={packWeightLabel(draft.defaultUnit)} keyboardType="number-pad" placeholder={draft.defaultUnit === "PACK" ? "Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" : "Không bắt buộc, ví dụ 1 quả bưởi ≈ 1200"} value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
                 ) : null}
                 <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
                 <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />

@@ -13,15 +13,17 @@ import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type Reci
  * - Product key: the admin catalog product (by productId on Kho rows; by exact normalized name, then English alias,
  *   for recipe ingredients), else the normalized name.
  * - Units: only the same measure is subtracted (g with kg, ml with l, pieces with the same piece unit). A product
- *   sold in packs with a known pack weight (catalog packGrams, e.g. Hành lá 1 bó ≈ 100 g) counts its packs as grams,
- *   in recipes and in Kho. A Kho row in another measure does not count; the item is then marked `unitMismatch`.
+ *   sold in packs or pieces with a known weight per unit (catalog packGrams, e.g. Hành lá 1 bó ≈ 100 g, Bưởi 1 quả
+ *   ≈ 1200 g; ml for bottles) counts those units as grams (ml), in recipes and in Kho. A Kho row in another measure
+ *   does not count; the item is then marked `unitMismatch`. When every recipe line counted in the sale unit itself
+ *   (3 quả trứng), the missing amount is shown in that unit too.
  * - Cart quantity: kg products round the missing amount up to 0.1 kg (at least 0.1, at most 20); everything else
  *   rounds up to whole sale units (packs through their pack weight).
  * - Usable Kho: quantity > 0, status not EXPIRED / CONSUMED / DISCARDED, expiry day not before today.
  */
 export type WeekIngredient = PortionIngredient;
 export type WeekDish = { ingredients: WeekIngredient[]; servings: number | null; people: number };
-export type CatalogProduct = { id: string; name: string; englishName?: string | null; unit: string; imageUrl: string | null; price: number | null; discountPercent: number | null; packGrams?: number | null };
+export type CatalogProduct = { id: string; name: string; englishName?: string | null; unit: string; imageUrl: string | null; price: number | null; discountPercent: number | null; packGrams?: number | null; unitLabel?: string | null };
 export type MissingIngredient = {
   name: string;
   /** Missing amount in `unit` (g / ml switch to kg / l from 1000). */
@@ -33,6 +35,8 @@ export type MissingIngredient = {
   discountPercent: number | null;
   /** Catalog sale unit and how many of it to put in Giỏ hàng (kg: 0.1 steps; other units: whole numbers); null when not sold. */
   saleUnit: string | null;
+  /** Specific word for one piece-type sale unit ("quả", "bìa"); null = the unit's own word. */
+  saleUnitLabel: string | null;
   cartQuantity: number | null;
   /** Kho has this product only in another measure (e.g. cái vs kg): not subtracted. */
   unitMismatch: boolean;
@@ -57,10 +61,13 @@ const measureOf = (unit: string): { measure: string; factor: number } => {
 /** Cart limits for kg products (same as shopping-list-service's quantity rule). */
 const KG_STEP_GRAMS = 100;
 const KG_MAX = 20;
-/** Like measureOf, but a product's own pack unit with a known pack weight is mass (1 bó = packGrams g). */
+/**
+ * Like measureOf, but a product's own pack / piece unit with a known weight per unit is mass (1 bó = packGrams g);
+ * a bottle is volume (1 chai = packGrams ml).
+ */
 const measureFor = (unit: string, product: CatalogProduct | null): { measure: string; factor: number } => {
   const plain = measureOf(unit);
-  if (product?.packGrams && product.packGrams > 0 && plain.measure === unit && unit === unitCode(product.unit)) return { measure: "MASS", factor: product.packGrams };
+  if (product?.packGrams && product.packGrams > 0 && plain.measure === unit && unit === unitCode(product.unit)) return { measure: unit === "BOTTLE" ? "VOLUME" : "MASS", factor: product.packGrams };
   return plain;
 };
 const displayAmount = (base: number, measure: string): { quantity: number; unit: string } => {
@@ -88,7 +95,8 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
   };
 
   // Needed, per product key and measure, in base units.
-  const needed = new Map<string, { name: string; product: CatalogProduct | null; measures: Map<string, number> }>();
+  // `units`: recipe units seen per measure (a shortage counted only in pieces is shown in pieces).
+  const needed = new Map<string, { name: string; product: CatalogProduct | null; measures: Map<string, number>; units: Map<string, Set<string>> }>();
   for (const dish of input.dishes) {
     for (const ingredient of dish.ingredients) {
       if (ingredient.isSeasoning) continue;
@@ -96,9 +104,10 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
       const quantity = scaleQuantity(ingredient, dish.servings, dish.people);
       if (!unit || quantity === null || !(quantity > 0)) continue;
       const key = keyFor(ingredient.name);
-      const entry = needed.get(key) ?? { name: ingredient.name.trim(), product: productFor(ingredient.name), measures: new Map<string, number>() };
+      const entry = needed.get(key) ?? { name: ingredient.name.trim(), product: productFor(ingredient.name), measures: new Map<string, number>(), units: new Map<string, Set<string>>() };
       const { measure, factor } = measureFor(unit, entry.product);
       entry.measures.set(measure, (entry.measures.get(measure) ?? 0) + quantity * factor);
+      entry.units.set(measure, (entry.units.get(measure) ?? new Set<string>()).add(unit));
       needed.set(key, entry);
     }
   }
@@ -122,8 +131,11 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
       const covered = have?.get(measure) ?? 0;
       const short = required - covered;
       if (short <= 1e-9) continue;
-      const shown = displayAmount(short, measure);
       const product = entry.product;
+      const saleCode = product ? unitCode(product.unit) : null;
+      const recipeUnits = entry.units.get(measure);
+      const pieceFactor = saleCode && recipeUnits?.size === 1 && recipeUnits.has(saleCode) ? measureFor(saleCode, product).factor : 1;
+      const shown = pieceFactor > 1 && saleCode ? { quantity: roundQuantity(short / pieceFactor, saleCode), unit: saleCode } : displayAmount(short, measure);
       let cartQuantity: number | null = null;
       const saleUnit = product ? unitCode(product.unit) : null;
       if (product && saleUnit) {
@@ -143,6 +155,7 @@ export function computeWeekMissing(input: { dishes: WeekDish[]; kho: KhoItem[]; 
         price: product?.price ?? null,
         discountPercent: product?.discountPercent ?? null,
         saleUnit,
+        saleUnitLabel: product?.unitLabel ?? null,
         cartQuantity,
         unitMismatch: covered === 0 && [...(have?.values() ?? [])].some((value) => value > 0),
       });
@@ -204,6 +217,7 @@ export async function loadCatalogProducts(userId: string, fetchImpl: typeof fetc
         price: typeof item.price === "number" ? item.price : null,
         discountPercent: typeof item.discountPercent === "number" ? item.discountPercent : null,
         packGrams: typeof item.packGrams === "number" && item.packGrams > 0 ? item.packGrams : null,
+        unitLabel: typeof item.unitLabel === "string" && item.unitLabel.trim() ? item.unitLabel.trim() : null,
       });
     }
     if (page >= (body.totalPages ?? 1)) break;

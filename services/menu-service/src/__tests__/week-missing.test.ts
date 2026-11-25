@@ -67,6 +67,26 @@ test("pack products convert grams through their pack weight, in recipes and in K
   assert.deepEqual(withKho.map((item) => [item.name, item.quantity, item.unit, item.cartQuantity, item.unitMismatch]), [["Hành lá", 50, "GRAM", 1, false]]);
 });
 
+test("piece products with a weight per unit: pieces stay pieces, grams become pieces, bottles count ml", () => {
+  const pieceCatalog: CatalogProduct[] = [
+    { id: "p-egg", name: "Trứng gà", unit: "PIECE", imageUrl: null, price: 3500, discountPercent: null, packGrams: 55, unitLabel: "quả" },
+    { id: "p-pomelo", name: "Bưởi", unit: "PIECE", imageUrl: null, price: 60000, discountPercent: null, packGrams: 1200, unitLabel: "quả" },
+    { id: "p-milk", name: "Sữa tươi", unit: "BOTTLE", imageUrl: null, price: 35000, discountPercent: null, packGrams: 1000, unitLabel: null },
+  ];
+  const missing = computeWeekMissing({
+    dishes: [dish([{ name: "Trứng gà", quantity: 3, unit: "PIECE" }], 2, 3), dish([{ name: "Bưởi", quantity: 500, unit: "GRAM" }, { name: "Sữa tươi", quantity: 1500, unit: "MILLILITER" }], 1, 1)],
+    kho: [kho("Trứng gà", 2, "PIECE"), kho("Sữa tươi", 1, "BOTTLE")],
+    catalog: pieceCatalog, today,
+  });
+  const row = (name: string) => { const item = missing.find((entry) => entry.name === name)!; return [item.quantity, item.unit, item.cartQuantity, item.saleUnit, item.saleUnitLabel, item.unitMismatch]; };
+  // 3 eggs for 2 → 4.5 for 3 people, 2 in Kho: 2.5 → 3 quả (shown in quả, not grams).
+  assert.deepEqual(row("Trứng gà"), [3, "PIECE", 3, "PIECE", "quả", false]);
+  // 500 g of bưởi at 1.2 kg a quả → 1 quả.
+  assert.deepEqual(row("Bưởi"), [500, "GRAM", 1, "PIECE", "quả", false]);
+  // 1.5 l of milk, 1 bottle (1 l) in Kho → 500 ml missing → 1 chai.
+  assert.deepEqual(row("Sữa tươi"), [500, "MILLILITER", 1, "BOTTLE", null, false]);
+});
+
 test("items not sold in Đi chợ have no product, image, price or cart quantity", () => {
   const [item] = run([dish([{ name: "Lá lốt", quantity: 50, unit: "GRAM" }], 1, 1)]);
   assert.deepEqual([item.productId, item.imageUrl, item.price, item.cartQuantity, item.saleUnit], [null, null, null, null, null]);
