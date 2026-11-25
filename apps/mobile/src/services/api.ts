@@ -116,6 +116,9 @@ export const authApi = {
 
 export type AuthUser = { id: string; email: string; fullName: string | null; avatarUrl: string | null; role: string; isVerified: boolean };
 
+/** POST /families/qr: the token (as QR text) lives while the owner's sheet is open, 10 minutes at most. */
+export type FamilyQr = { token: string; payload: string; expiresAt: string; family: { id: string; name: string } };
+
 export type ApiFamilyRole = "OWNER" | "ADMIN" | "MEMBER";
 export type ApiFamilyMember = { id: string; userId: string; role: ApiFamilyRole; joinedAt: string; displayName?: string | null; email?: string | null; avatarUrl?: string | null };
 export type ApiFamily = { id: string; name: string; code: string; codeExpiresAt: string; members: ApiFamilyMember[]; currentUserRole: ApiFamilyRole };
@@ -134,6 +137,13 @@ export const familyApi = {
   getMine: (token: string) => request<{ family: ApiFamily }>(FAMILY_BASE_URL, "/me", {}, token),
   create: (token: string, name: string) => request<{ family: ApiFamily }>(FAMILY_BASE_URL, "/", { method: "POST", body: JSON.stringify({ name }) }, token),
   join: (token: string, code: string) => request<{ membership: ApiFamilyMember }>(FAMILY_BASE_URL, "/join", { method: "POST", body: JSON.stringify({ code }) }, token),
+  /** "QR gia đình" (owner): a fresh one-time join QR; the previous one stops working. */
+  createQr: (token: string) => request<FamilyQr>(FAMILY_BASE_URL, "/qr", { method: "POST" }, token),
+  /** Owner closed the QR sheet: that token stops working now. */
+  revokeQr: (token: string, qrToken?: string) => request<{ revoked: boolean }>(FAMILY_BASE_URL, "/qr/revoke", { method: "POST", body: JSON.stringify(qrToken ? { token: qrToken } : {}) }, token),
+  /** Scanned family QR: the family's name and whether the user is already in it / in another family. */
+  verifyQr: (token: string, scanned: string) => request<{ family: { id: string; name: string }; membership: "none" | "this" | "other" }>(FAMILY_BASE_URL, "/qr/verify", { method: "POST", body: JSON.stringify({ token: scanned }) }, token),
+  joinQr: (token: string, scanned: string) => request<{ membership: ApiFamilyMember; family: { id: string; name: string } }>(FAMILY_BASE_URL, "/qr/join", { method: "POST", body: JSON.stringify({ token: scanned }) }, token),
   leave: (token: string) => request<void>(FAMILY_BASE_URL, "/me", { method: "DELETE" }, token),
   updateRole: (token: string, memberId: string, role: Exclude<ApiFamilyRole, "OWNER">) => request<{ member: ApiFamilyMember }>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }, token),
   removeMember: (token: string, memberId: string) => request<void>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}`, { method: "DELETE" }, token),

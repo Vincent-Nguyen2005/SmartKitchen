@@ -5,6 +5,8 @@ import { AuthenticatedRequest, FamilyController } from "../controllers/family.co
 import { FamilyRole } from ".prisma/client-family";
 import { requireRole } from "../middleware/authorization.middleware";
 import { FamilyService } from "../services/family.service";
+import { FamilyQrService } from "../services/family-qr.service";
+import { createRateLimit } from "../middleware/rate-limit";
 
 type FamilyAuthClaims = { sub: string; email?: string; exp?: number; [key: string]: unknown };
 
@@ -41,9 +43,12 @@ const requireAuthentication = (req: Request, res: Response, next: NextFunction):
   }
 };
 
-export const createFamilyRouter = (prisma: PrismaClient): Router => {
+/** `now`: clock for the QR token expiry (tests). */
+export const createFamilyRouter = (prisma: PrismaClient, now: () => Date = () => new Date()): Router => {
   const router = Router();
-  const controller = new FamilyController(new FamilyService(prisma));
+  const controller = new FamilyController(new FamilyService(prisma), new FamilyQrService(prisma, now));
+  // QR verify / join: at most 10 tries per user per 5 minutes (a token is 32 random characters; this stops guessing).
+  const qrLimit = createRateLimit({ limit: 10, windowMs: 5 * 60 * 1000 });
   const managers = requireRole(prisma, [FamilyRole.OWNER, FamilyRole.ADMIN]);
   const owner = requireRole(prisma, [FamilyRole.OWNER]);
   router.post("/", requireAuthentication, (req, res, next) => { void controller.create(req as AuthenticatedRequest, res).catch(next); });
@@ -52,6 +57,10 @@ export const createFamilyRouter = (prisma: PrismaClient): Router => {
   router.post("/invite", requireAuthentication, managers, (req, res, next) => { void controller.invite(req as AuthenticatedRequest, res).catch(next); });
   router.get("/invitations/verify", requireAuthentication, (req, res, next) => { void controller.verifyInvitation(req as AuthenticatedRequest, res).catch(next); });
   router.post("/join-code/regenerate", requireAuthentication, managers, (req, res, next) => { void controller.regenerateJoinCode(req as AuthenticatedRequest, res).catch(next); });
+  router.post("/qr", requireAuthentication, (req, res, next) => { void controller.createQr(req as AuthenticatedRequest, res).catch(next); });
+  router.post("/qr/revoke", requireAuthentication, (req, res, next) => { void controller.revokeQr(req as AuthenticatedRequest, res).catch(next); });
+  router.post("/qr/verify", requireAuthentication, qrLimit, (req, res, next) => { void controller.verifyQr(req as AuthenticatedRequest, res).catch(next); });
+  router.post("/qr/join", requireAuthentication, qrLimit, (req, res, next) => { void controller.joinQr(req as AuthenticatedRequest, res).catch(next); });
   router.post("/join", requireAuthentication, (req, res, next) => { void controller.join(req as AuthenticatedRequest, res).catch(next); });
   router.post("/transfer-ownership", requireAuthentication, owner, (req, res, next) => { void controller.transferOwnership(req as AuthenticatedRequest, res).catch(next); });
   router.get("/settings", requireAuthentication, (req, res, next) => { void controller.getSettings(req as AuthenticatedRequest, res).catch(next); });

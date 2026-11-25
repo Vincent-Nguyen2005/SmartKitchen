@@ -32,6 +32,7 @@ model FamilyGroup {
   members     FamilyMember[]
   invitations FamilyInvitation[]
   settings    FamilySettings?
+  qrToken     FamilyQrToken?
 
   @@index([ownerId])
 }
@@ -58,6 +59,18 @@ model FamilyMember {
 
   @@unique([familyId, userId])
   @@index([userId])
+}
+
+/// "QR gia đình": the owner's one-time join QR. At most one per family (a new one replaces the old); only a SHA-256
+/// hash of the token is stored; it lives while the owner's sheet is open (revoked on close) and 10 minutes at most.
+model FamilyQrToken {
+  familyId  String      @id @db.Uuid
+  tokenHash String      @unique @db.VarChar(64)
+  createdAt DateTime    @default(now())
+  expiresAt DateTime
+  family    FamilyGroup @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
 }
 
 model FamilyInvitation {

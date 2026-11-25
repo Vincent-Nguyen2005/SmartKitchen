@@ -1,7 +1,7 @@
 import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
 import { Platform } from "react-native";
-import { ApiError, ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi } from "./api";
+import { ApiError, ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi, type FamilyQr } from "./api";
 
 type SessionContextValue = {
   user: AuthUser | null;
@@ -30,6 +30,11 @@ type SessionContextValue = {
   regenerateJoinCode: () => Promise<void>;
   transferOwnership: (memberId: string) => Promise<void>;
   updateFamilySettings: (settings: Partial<Omit<ApiFamilySettings, "id" | "familyId" | "createdAt" | "updatedAt">>) => Promise<void>;
+  /** "QR gia đình": owner creates / revokes the one-time join QR; others verify a scanned QR and join with it. */
+  createFamilyQr: () => Promise<FamilyQr>;
+  revokeFamilyQr: (qrToken?: string) => Promise<void>;
+  verifyFamilyQr: (scanned: string) => Promise<{ family: { id: string; name: string }; membership: "none" | "this" | "other" }>;
+  joinFamilyByQr: (scanned: string) => Promise<void>;
   /** Hồ sơ: saves the display name and/or avatar URL and updates `user`. */
   updateProfile: (changes: { fullName?: string; avatarUrl?: string | null }) => Promise<void>;
 };
@@ -203,6 +208,15 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setFamilySettings(result.settings);
   }, [withToken]);
 
+  const createFamilyQr = useCallback(() => withToken((token) => familyApi.createQr(token)), [withToken]);
+  const revokeFamilyQr = useCallback(async (qrToken?: string) => { await withToken((token) => familyApi.revokeQr(token, qrToken)); }, [withToken]);
+  const verifyFamilyQr = useCallback((scanned: string) => withToken((token) => familyApi.verifyQr(token, scanned)), [withToken]);
+  /** Joins, then reloads the family like a normal join (Kho, menus and Gia đình follow the new family). */
+  const joinFamilyByQr = useCallback(async (scanned: string) => {
+    await withToken((token) => familyApi.joinQr(token, scanned));
+    await loadFamily();
+  }, [loadFamily, withToken]);
+
   const updateProfile = useCallback(async (changes: { fullName?: string; avatarUrl?: string | null }) => {
     const result = await withToken((token) => authApi.updateMe(token, changes));
     setUser(result.user);
@@ -268,11 +282,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const value = useMemo(() => ({
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
-    transferOwnership, updateFamilySettings, updateProfile,
+    transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   }), [
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
-    transferOwnership, updateFamilySettings, updateProfile,
+    transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   ]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
