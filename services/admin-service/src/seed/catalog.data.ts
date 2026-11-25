@@ -26,6 +26,14 @@ const doUong = item("Đồ uống", "BOTTLE");
 const doUongGoi = item("Đồ uống", "PACK");
 const dongLanh = item("Đồ đông lạnh", "PACK");
 
+/**
+ * Names taken out of the starter catalog on purpose: never created by the seed, even on a fresh database or if one
+ * is listed again by mistake. (Products an admin deleted or renamed are skipped through their audit rows.)
+ * - Nước suối: a drink, not a cooking ingredient.
+ * - Rau sống: a plate of mixed fresh greens; recipes list Xà lách, Rau thơm, Giá đỗ... instead.
+ */
+export const retiredStarterNames: readonly string[] = ["Nước suối", "Rau sống"];
+
 export const catalogSeed: CatalogSeed[] = [
   // Rau củ
   rau("Cà chua", "tomato", 7, 18), rau("Khoai tây", "potato", 30, 77), rau("Cà rốt", "carrot", 21, 41),
@@ -90,7 +98,6 @@ export const catalogSeed: CatalogSeed[] = [
   item("Rau củ", "KILOGRAM")("Su su", "chayote", 14, 19),
   item("Rau củ", "PACK")("Cần tây", "celery", 7, 16),
   item("Rau củ", "PACK")("Rau thơm", "fresh herbs", 3, 25),
-  item("Rau củ", "PACK")("Rau sống", "mixed raw vegetables", 2, 18),
   item("Đồ khô & gạo", "PACK")("Nấm mèo", "dried wood ear mushroom", 365, 300),
   item("Đồ khô & gạo", "PACK")("Yến mạch", "rolled oats", 365, 389),
   item("Đồ khô & gạo", "KILOGRAM")("Đậu nành", "dried soybeans", 365, 446),

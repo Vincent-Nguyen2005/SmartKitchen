@@ -149,8 +149,8 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 25, calories: 660, protein: 19, carbs: 89, fat: 25, allergens: ["trứng", "đậu nành", "gluten"],
   },
   {
-    name: "Bún chả", description: "Chả thịt heo nướng, bún và rau sống, chấm nước mắm chua ngọt.", mealTypes: ["lunch"],
-    ingredients: [g("Bún", 500), g("Thịt heo xay", 300), g("Thịt ba chỉ", 200), g("Rau sống", 200)],
+    name: "Bún chả", description: "Chả thịt heo nướng, bún, xà lách và rau thơm, chấm nước mắm chua ngọt.", mealTypes: ["lunch"],
+    ingredients: [g("Bún", 500), g("Thịt heo xay", 300), g("Thịt ba chỉ", 200), g("Xà lách", 130), g("Rau thơm", 70)],
     servings: 3, preparationMinutes: 50, calories: 740, protein: 26, carbs: 53, fat: 47, tags: ["phổ biến"], contraindications: ["Mỡ máu cao", "Cao huyết áp"],
   },
   {
@@ -342,8 +342,8 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 110, calories: 480, protein: 30, carbs: 70, fat: 9, allergens: ["hải sản"], contraindications: ["Gout"],
   },
   {
-    name: "Mì Quảng", description: "Mì Quảng với thịt heo, tôm, lạc rang và rau sống.", mealTypes: ["breakfast", "lunch"], role: "mot_mon",
-    ingredients: [g("Mì Quảng", 600), g("Thịt heo", 200), g("Tôm", 200), g("Lạc", 30), g("Hành tím", 20), g("Rau sống", 200)],
+    name: "Mì Quảng", description: "Mì Quảng với thịt heo, tôm, lạc rang, xà lách, giá đỗ và rau thơm.", mealTypes: ["breakfast", "lunch"], role: "mot_mon",
+    ingredients: [g("Mì Quảng", 600), g("Thịt heo", 200), g("Tôm", 200), g("Lạc", 30), g("Hành tím", 20), g("Xà lách", 80), g("Giá đỗ", 70), g("Rau thơm", 50)],
     servings: 3, preparationMinutes: 50, calories: 600, protein: 33, carbs: 67, fat: 22, allergens: ["hải sản", "đậu phộng"], contraindications: ["Gout"],
   },
   {

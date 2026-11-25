@@ -55,6 +55,19 @@ describe("starter catalog seed", () => {
     expect(catalogSeed.some((entry) => entry.name === "Nước suối")).toBe(false);
   });
 
+  it("never creates a retired starter name (Rau sống is a mixed plate, not one ingredient), even if listed again", async () => {
+    expect(catalogSeed.some((entry) => entry.name === "Rau sống")).toBe(false);
+    expect(catalogDetails["Rau sống"]).toBeUndefined();
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    const again = [{ name: "Rau SỐNG", en: "mixed raw vegetables", group: "Rau củ", unit: "PACK" as const, shelfLifeDays: 2, kcal: 18 }, { name: "Xà lách", en: "lettuce", group: "Rau củ", unit: "KILOGRAM" as const, shelfLifeDays: 5, kcal: 15 }];
+    expect(await seedMissingIngredients(client, again)).toBe(1);
+    expect(rows.map((row) => row.name)).toEqual(["Xà lách"]);
+  });
+
   it("uses real kcal per 100 g for the staples (no 50 kcal placeholder)", () => {
     const kcal = Object.fromEntries(catalogSeed.map((entry) => [entry.name, entry.kcal]));
     expect(kcal).toMatchObject({ "Gạo": 360, "Thịt bò": 250, "Thịt heo": 242, "Thịt gà": 215, "Trứng gà": 143, "Tôm": 99, "Cá basa": 90, "Đậu phụ": 76, "Lạc": 567, "Đậu xanh": 347, "Sữa tươi": 62, "Sữa chua": 61, "Chuối": 89, "Cam": 47, "Cà chua": 18, "Cà rốt": 41, "Bắp cải": 25, "Rau muống": 19 });

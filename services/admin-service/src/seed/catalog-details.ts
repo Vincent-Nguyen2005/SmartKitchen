@@ -113,7 +113,6 @@ export const catalogDetails: Record<string, CatalogDetail> = {
   "Rau muống": { price: 12000, unit: "PACK" },
   "Rau mùi": { price: 5000, unit: "PACK", packGrams: 50, macros: [2.1, 2.5, 0.5] },
   "Rau ngót": { price: 40000, unit: "KILOGRAM", macros: [5.3, 3.4, 0] },
-  "Rau sống": { price: 10000, macros: [1.5, 2.5, 0.2] },
   "Rau thơm": { price: 5000, macros: [2.5, 3, 0.4] },
   "Rong biển": { price: 35000, macros: [30, 14, 1.5] },
   "Su su": { price: 20000, macros: [0.8, 3.6, 0.1] },

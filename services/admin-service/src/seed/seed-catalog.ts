@@ -1,5 +1,5 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-admin";
-import { catalogMacros, catalogSeed, englishNameFor, type CatalogSeed } from "./catalog.data";
+import { catalogMacros, catalogSeed, englishNameFor, retiredStarterNames, type CatalogSeed } from "./catalog.data";
 import { catalogDetails } from "./catalog-details";
 
 /** Same normalisation as the ingredient routes (search key). */
@@ -34,6 +34,7 @@ const macrosFor = (name: string) => {
 export async function seedMissingIngredients(client: PrismaClient, seed: CatalogSeed[] = catalogSeed): Promise<number> {
   const existing = new Set((await client.masterIngredient.findMany({ select: { name: true } })).map((row) => normalize(row.name)));
   for (const name of await removedNames(client)) existing.add(name);
+  for (const name of retiredStarterNames) existing.add(normalize(name));
   const missing = seed.filter((entry) => !existing.has(normalize(entry.name)));
   if (missing.length === 0) return 0;
   const created = await client.masterIngredient.createMany({
