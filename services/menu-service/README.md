@@ -141,6 +141,16 @@ recipe-service marks each dish with a `cuisine`: vietnam (default), western or a
 - **AI dishes and recipes without a cuisine:** count as Vietnamese.
 - **No UI toggle.**
 
+## "Tuần này còn thiếu" (GET /week-missing)
+
+Missing ingredients for the caller's family, computed on read (`src/services/week-missing.ts`). Nothing is stored or pushed.
+- **Which dishes:** menu dishes from today through Sunday (Vietnam days), catalog recipes plus stored AI dishes.
+- **Amounts:** scaled with `portions.ts` to each menu's people, then summed per product: the catalog product by exact normalized name or English alias, else the name. Seasonings (`isSeasoning`) and free-text amounts are left out.
+- **Kho:** usable stock is subtracted (quantity > 0; not expired, consumed or discarded; expiry day not before today), matched by `productId`, else name.
+- **Units:** only the same measure counts (g with kg, ml with l, the same piece unit). Stock in another measure is not subtracted, and the item is marked `unitMismatch`.
+- **Response:** `{ from, to, count, items: [{ name, quantity, unit, productId, imageUrl, price, discountPercent, saleUnit, cartQuantity, unitMismatch }] }`. `cartQuantity` is the missing amount in the product's sale unit, rounded up to a whole number (one unit when the measures differ); it's null when the item isn't sold in Đi chợ.
+- **No family:** `count: 0`.
+
 ## Internal: recipe usage
 
 `GET /internal/recipes/:recipeId/usage` (x-api-key = `INTERNAL_API_KEY`; the gateway answers 404 for `/internal/*`) returns `{ menuItems, removedDishes }`: saved menu items (any family, past or future) and dislike-history rows with that recipe id. recipe-service calls it before deleting a dish. Saved AI dishes keep their own copy and have no recipe id, so they never count.

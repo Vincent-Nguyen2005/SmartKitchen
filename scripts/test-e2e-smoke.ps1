@@ -93,7 +93,8 @@ $device = Invoke-Api POST "$BaseUrl/api/notifications/device-tokens" $userHeader
 Expect-Status 'promotion device token registration' $device 201
 $promotionId = ''
 if ($partnerId) {
-    $promotionPayload = '[{"title":"e2e-promotion","description":"e2e promotion","productKeywords":["ca chua"],"startsAt":"2026-01-01T00:00:00Z","endsAt":"2099-01-01T00:00:00Z"}]'
+    $promotionEnds = (Get-Date).ToUniversalTime().AddDays(1).ToString("yyyy-MM-ddTHH:mm:ssZ")
+    $promotionPayload = '[{"title":"e2e-promotion","description":"e2e promotion","productKeywords":["ca chua"],"startsAt":"2026-01-01T00:00:00Z","endsAt":"' + $promotionEnds + '"}]'
     $promotion = Invoke-Api POST "$NotificationUrl/partners/$partnerId/promotions" $partnerHeaders $promotionPayload
     Expect-Status 'promotion ingestion' $promotion 201
     $promotionObject = Read-Json 'promotion ingestion response JSON' $promotion
@@ -113,6 +114,8 @@ Expect-Status 'IDOR: another user cannot list this inbox (403)' (Invoke-Api GET 
 Expect-Status 'IDOR: another user cannot read these preferences (403)' (Invoke-Api GET "$BaseUrl/api/notifications/preferences/e2e-user-001" $otherUserHeaders) 403
 Expect-Status 'IDOR: another user cannot delete this device token (404)' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $otherUserHeaders) 404
 Expect-Status 'device token cleanup by its owner' (Invoke-Api DELETE "$BaseUrl/api/notifications/device-tokens/e2e-device-token" $userHeaders) 204
+# Teardown: the test promotion must not stay in Thông báo (scripts/data-fixes/2026-12-delete-e2e-promotions.js removes older leftovers).
+if ($promotionId) { Expect-Status 'e2e promotion cleanup' (Invoke-Api DELETE "$BaseUrl/api/notifications/promotions/$promotionId" $adminBearer) 200 }
 
 $adminHeaders = @{ 'x-user-id' = 'e2e-admin-001'; 'x-user-role' = 'ADMIN' }
 $forbidden = Invoke-Api GET "$AdminUrl/weights"

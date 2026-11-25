@@ -59,3 +59,7 @@ pnpm --filter shopping-list-service prisma:generate
 ## Internal: product usage
 
 `GET /internal/products/:productId/usage` (x-api-key = `INTERNAL_API_KEY`, at least 32 characters; the gateway answers 404 for `/internal/*`) returns `{ items }`, the number of shopping-list items added from that admin catalog product. admin-service calls it before deleting a catalog ingredient.
+
+## "Thêm vào Giỏ hàng" from "Cần mua tuần này"
+
+`POST /items/ensure` (`{ familyId, items: [{ name, quantity, unit, productId?, unitPrice?, discountPercent?, imageUrl? }] }`) puts each item in the family's cart with **at least** that quantity. The same product and unit already in the cart is raised to that amount, never added twice, so the request is idempotent. Other items are added. The normal `POST /items` (Đi chợ) still adds quantities.

@@ -1,4 +1,5 @@
 import { MealType, PeriodType } from "../../node_modules/.prisma/client-menu";
+import { weekMissing } from "../services/week-missing";
 import axios from "axios";
 import { Request, Response } from "express";
 import { z } from "zod";
@@ -151,6 +152,17 @@ const dayParam = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).transform((value) => ne
 export const listRangeSchema = z.object({ from: dayParam.optional(), to: dayParam.optional() })
   .refine((query) => (query.from === undefined) === (query.to === undefined), "from and to go together")
   .refine((query) => !query.from || !query.to || (query.from <= query.to && query.to.getTime() - query.from.getTime() <= 62 * 86_400_000), "to must be on or after from, at most 62 days later");
+
+/** GET /week-missing: "Tuần này còn thiếu" for the caller's family (today through Sunday, computed on read). */
+export async function weekMissingController(request: Request, response: Response): Promise<void> {
+  try {
+    const owner = await requestOwner(request, response);
+    if (!owner) return;
+    response.json(await weekMissing(owner, settingsClient, { authorization: request.header("authorization") ?? undefined }));
+  } catch (error) {
+    handleError(error, response);
+  }
+}
 
 export async function listMenusController(request: Request, response: Response): Promise<void> {
   try {

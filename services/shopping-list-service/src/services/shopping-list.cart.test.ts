@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   prisma: {
     shoppingList: { findFirst: vi.fn(), update: vi.fn() },
-    shoppingItem: { findMany: vi.fn(), findFirst: vi.fn() },
+    shoppingItem: { findMany: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
     $transaction: vi.fn(),
   },
   axios: { get: vi.fn(), post: vi.fn() },
@@ -13,6 +13,7 @@ vi.mock("../lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("axios", () => ({ default: mocks.axios }));
 
 import { ShoppingListService, vnDayFromToday } from "./shopping-list.service";
+import { addItemBodySchema, ensureItemsBodySchema } from "../validators/shopping-list.validator";
 
 const familyId = "11111111-1111-4111-8111-111111111111";
 const userId = "33333333-3333-4333-8333-333333333333";
@@ -62,6 +63,24 @@ describe("Giỏ hàng: add with a price snapshot", () => {
     tx.shoppingItem.findMany.mockResolvedValue([item({ id: "old", name: "Sữa  tươi", unit: "BOX", quantity: 1 })]);
     await ShoppingListService.addItem({ familyId, name: "sữa tươi", quantity: 1, unit: "BOX" });
     expect(tx.shoppingItem.update).toHaveBeenCalledWith({ where: { id: "old" }, data: { quantity: 2 } });
+  });
+});
+
+describe("Cần mua tuần này: Thêm vào Giỏ hàng (at least, idempotent)", () => {
+  it("raises an existing line to at least the missing amount, never doubles it; a bigger cart line stays as it is; new products are added", async () => {
+    // A tiny in-memory cart so running the same request twice can be checked.
+    const cart = [item({ id: "egg", name: "Trứng gà", unit: "PIECE", quantity: 2, productId: "p-egg" }), item({ id: "pork", name: "Thịt heo", unit: "KILOGRAM", quantity: 3, productId: "p-pork" })];
+    tx.shoppingItem.findMany.mockImplementation(async ({ where }: { where: { unit: string } }) => cart.filter((line) => line.unit === where.unit));
+    tx.shoppingItem.update.mockImplementation(async ({ where, data }: { where: { id: string }; data: { quantity: number } }) => { const line = cart.find((entry) => entry.id === where.id)!; Object.assign(line, data); return line; });
+    tx.shoppingItem.create.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => { const line = item({ id: `new-${cart.length}`, ...data }); cart.push(line); return line; });
+    const wanted = [
+      { name: "Trứng gà", quantity: 5, unit: "PIECE", productId: "p-egg" },
+      { name: "Thịt heo", quantity: 1, unit: "KILOGRAM", productId: "p-pork" },
+      { name: "Cà rốt", quantity: 1, unit: "KILOGRAM", productId: "p-carrot", unitPrice: 25000 },
+    ];
+    await ShoppingListService.ensureItems(familyId, wanted);
+    await ShoppingListService.ensureItems(familyId, wanted);
+    expect(cart.map((line) => [line.name, line.quantity])).toEqual([["Trứng gà", 5], ["Thịt heo", 3], ["Cà rốt", 1]]);
   });
 });
 
@@ -122,6 +141,52 @@ describe("Giỏ hàng: checkout into Kho", () => {
     mocks.prisma.shoppingList.findFirst.mockResolvedValue(null);
     await expect(ShoppingListService.checkout(familyId, userId)).resolves.toEqual({ purchased: [], failed: [], listCompleted: false });
     expect(mocks.axios.post).not.toHaveBeenCalled();
+  });
+});
+
+describe("kg in 0.1 steps, catalog packs in whole units", () => {
+  const body = (quantity: number, unit: string, productId: string | null = "p-1") => ({ familyId, name: "Thịt ba chỉ", quantity, unit, productId });
+
+  it("accepts 0.1 .. 20 kg in 0.1 steps and rejects other kg amounts", () => {
+    for (const quantity of [0.1, 0.3, 1.5, 2.7, 20]) expect(addItemBodySchema.safeParse(body(quantity, "KILOGRAM")).success, String(quantity)).toBe(true);
+    for (const quantity of [0.05, 0.25, 1.55, 20.1, 25]) expect(addItemBodySchema.safeParse(body(quantity, "KILOGRAM")).success, String(quantity)).toBe(false);
+  });
+
+  it("keeps catalog count units whole; free-text lines and g / ml keep any positive amount", () => {
+    expect(addItemBodySchema.safeParse(body(2, "PACK")).success).toBe(true);
+    expect(addItemBodySchema.safeParse(body(1.5, "PACK")).success).toBe(false);
+    expect(addItemBodySchema.safeParse(body(0.5, "PIECE", null)).success).toBe(true);
+    expect(addItemBodySchema.safeParse(body(250, "GRAM")).success).toBe(true);
+    expect(ensureItemsBodySchema.safeParse({ familyId, items: [{ name: "Hành lá", quantity: 1.5, unit: "PACK", productId: "p-2" }] }).success).toBe(false);
+    expect(ensureItemsBodySchema.safeParse({ familyId, items: [{ name: "Thịt heo", quantity: 1.3, unit: "KILOGRAM", productId: "p-3" }] }).success).toBe(true);
+  });
+
+  it("stores a decimal kg line, adds to it on the 0.1 grid and caps a merged line at 20 kg", async () => {
+    await ShoppingListService.addItem({ familyId, name: "Thịt ba chỉ", quantity: 1.5, unit: "KILOGRAM", unitPrice: 170000, productId: "p-1" });
+    expect(tx.shoppingItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ quantity: 1.5, unit: "KILOGRAM", unitPrice: 170000 }) });
+    tx.shoppingItem.findMany.mockResolvedValue([item({ id: "line-1", name: "Thịt ba chỉ", unit: "KILOGRAM", quantity: 0.2, productId: "p-1" })]);
+    await ShoppingListService.addItem({ familyId, name: "Thịt ba chỉ", quantity: 0.1, unit: "KILOGRAM", productId: "p-1" });
+    expect(tx.shoppingItem.update).toHaveBeenLastCalledWith({ where: { id: "line-1" }, data: { quantity: 0.3, productId: "p-1" } });
+    tx.shoppingItem.findMany.mockResolvedValue([item({ id: "line-1", name: "Thịt ba chỉ", unit: "KILOGRAM", quantity: 19.5, productId: "p-1" })]);
+    await ShoppingListService.addItem({ familyId, name: "Thịt ba chỉ", quantity: 2, unit: "KILOGRAM", productId: "p-1" });
+    expect(tx.shoppingItem.update).toHaveBeenLastCalledWith({ where: { id: "line-1" }, data: { quantity: 20, productId: "p-1" } });
+  });
+
+  it("checks a quantity change against the line's own unit", async () => {
+    mocks.prisma.shoppingItem.findFirst.mockResolvedValue(item({ id: "line-1", unit: "KILOGRAM", productId: "p-1" }));
+    mocks.prisma.shoppingItem.update.mockResolvedValue({});
+    await expect(ShoppingListService.updateItem("line-1", familyId, { quantity: 0.35 })).rejects.toMatchObject({ code: "INVALID_QUANTITY" });
+    await ShoppingListService.updateItem("line-1", familyId, { quantity: 0.4 });
+    mocks.prisma.shoppingItem.findFirst.mockResolvedValue(item({ id: "line-2", unit: "PACK", productId: "p-2" }));
+    await expect(ShoppingListService.updateItem("line-2", familyId, { quantity: 1.5 })).rejects.toMatchObject({ code: "INVALID_QUANTITY" });
+  });
+
+  it("buys a decimal kg line: Kho receives 1.5 KILOGRAM", async () => {
+    mocks.prisma.shoppingItem.findFirst.mockResolvedValue(item({ id: fishId, name: "Thịt ba chỉ", unit: "KILOGRAM", quantity: 1.5, productId: "p-1" }));
+    tx.shoppingItem.findFirst.mockImplementation(async ({ where }: { where: { id: string } }) => item({ id: where.id }));
+    mocks.axios.post.mockResolvedValue({ data: { success: true, data: { item: { id: "66666666-6666-4666-8666-666666666666" } } } });
+    await ShoppingListService.confirmPurchase(fishId, familyId, userId);
+    expect(mocks.axios.post.mock.calls[0][1]).toMatchObject({ name: "Thịt ba chỉ", quantity: 1.5, unit: "KILOGRAM" });
   });
 });
 

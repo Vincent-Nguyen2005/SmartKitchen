@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { quantityProblem } from "../lib/quantity-rule";
 
 export const familyQuerySchema = z.object({
   familyId: z.string().uuid(),
@@ -20,7 +21,7 @@ export const updateItemBodySchema = z
 
 export type UpdateItemBody = z.infer<typeof updateItemBodySchema>;
 
-export const addItemBodySchema = z.object({
+const addItemFields = z.object({
   familyId: z.string().uuid(),
   shoppingListId: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(100),
@@ -32,6 +33,20 @@ export const addItemBodySchema = z.object({
   discountPercent: z.number().int().min(1).max(100).nullable().optional(),
   productId: z.string().trim().min(1).max(64).nullable().optional(),
   imageUrl: z.string().trim().url().max(2048).nullable().optional(),
+});
+
+/** kg in 0.1 steps (max 20), catalog count units in whole numbers (lib/quantity-rule). */
+const checkQuantity = (item: { quantity: number; unit: string; productId?: string | null }, context: z.RefinementCtx) => {
+  const problem = quantityProblem(item.quantity, item.unit, Boolean(item.productId));
+  if (problem) context.addIssue({ code: z.ZodIssueCode.custom, path: ["quantity"], message: problem });
+};
+
+export const addItemBodySchema = addItemFields.superRefine(checkQuantity);
+
+/** POST /items/ensure: "Thêm vào Giỏ hàng" from "Cần mua tuần này" (at least these quantities, idempotent). */
+export const ensureItemsBodySchema = z.object({
+  familyId: z.string().uuid(),
+  items: z.array(addItemFields.omit({ familyId: true, shoppingListId: true, note: true }).superRefine(checkQuantity)).min(1).max(100),
 });
 
 /** "Mua" in Giỏ hàng. `items` only adds catalog details per cart line (group, shelf-life days for the expiry). */

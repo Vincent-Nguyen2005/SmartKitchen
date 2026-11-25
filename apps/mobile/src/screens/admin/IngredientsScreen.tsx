@@ -31,8 +31,12 @@ type Ingredient = {
   discountPercent: number | null;
   /** ISO date (the API returns YYYY-MM-DDT00:00:00.000Z). */
   promoEndDate: string | null;
+  /** First day of the discount (ISO date); null on rows saved before start dates existed. */
+  promoStartDate?: string | null;
   /** Optional price in whole VND, shown in the user market (Đi chợ). */
   price: number | null;
+  /** Grams in one pack / bunch / piece (PACK / PIECE products), for recipe grams <-> packs; null = unknown. */
+  packGrams?: number | null;
 };
 type SavedIngredient = Ingredient & { promotionSync?: "synced" | "failed" | "none" };
 
@@ -57,13 +61,17 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 const SHOW_ALLERGENS = false;
 
 /** credit: the stored image's credit (shown while the link is unchanged). */
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoEndDate: string; price: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
-const emptyDraft: Draft = { name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoEndDate: "", price: "", englishName: "" };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoStartDate: string; promoEndDate: string; price: string; packGrams: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
+/** Promotion dates start filled: from today, for DEFAULT_PROMO_DAYS (sent only when there is a % giảm giá). */
+/** Units whose weight per unit is worth storing (recipes in grams -> packs in "Cần mua tuần này"). */
+const hasPackWeight = (unit: string): boolean => unit === "PACK" || unit === "PIECE";
+const newDraft = (): Draft => ({ name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoStartDate: dayFromToday(0), promoEndDate: dayFromToday(DEFAULT_PROMO_DAYS), price: "", packGrams: "", englishName: "" });
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
   shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
-  imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "", promoEndDate: item.promoEndDate?.slice(0, 10) ?? "",
-  price: item.price?.toString() ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
+  imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "",
+  promoStartDate: item.promoStartDate?.slice(0, 10) ?? dayFromToday(0), promoEndDate: item.promoEndDate?.slice(0, 10) ?? dayFromToday(DEFAULT_PROMO_DAYS),
+  price: item.price?.toString() ?? "", packGrams: item.packGrams?.toString() ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
   credit: item.imageUrl && item.imageAuthor && item.imageLicense ? { url: item.imageUrl, source: item.imageSource ?? null, author: item.imageAuthor, license: item.imageLicense } : null,
 });
 const DEFAULT_PROMO_DAYS = 7;
@@ -79,6 +87,15 @@ const percentError = (text: string): string | null => {
   if (!text.trim()) return null;
   const value = Number(text.trim());
   return Number.isInteger(value) && value >= 1 && value <= 100 ? null : "Nhập số nguyên từ 1 đến 100.";
+};
+/** Where a promotion stands today (device day; the server decides in Vietnam time): list label and colours. */
+const promotionState = (start: string | null | undefined, end: string | null | undefined): { label: string; color: string; background: string } => {
+  const today = dayFromToday(0);
+  const startDay = start?.slice(0, 10) ?? null;
+  const endDay = end?.slice(0, 10) ?? null;
+  if (startDay && today < startDay) return { label: "Sắp diễn ra", color: colors.warning, background: colors.warningSoft };
+  if (endDay && today > endDay) return { label: "Hết hạn", color: colors.muted, background: colors.background };
+  return { label: "Đang chạy", color: colors.success, background: colors.successSoft };
 };
 const dateError = (text: string): string | null => {
   if (!text.trim()) return null;
@@ -155,12 +172,20 @@ export default function IngredientsScreen(): React.JSX.Element {
     if (shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 1 || shelfLife > 3650)) return setFormError("Hạn dùng là số ngày nguyên từ 1 đến 3650.");
     const price = draft.price.trim() === "" ? null : Number(draft.price.trim());
     if (price !== null && (!Number.isInteger(price) || price < 0 || price > 1_000_000_000)) return setFormError("Giá là số đồng nguyên, không âm.");
-    const promoProblem = imageUrlError(draft.imageUrl) ?? percentError(draft.discountPercent) ?? dateError(draft.promoEndDate);
+    // Pack weight only means something for products sold by the pack / piece; other units clear it.
+    const packGrams = hasPackWeight(draft.defaultUnit) && draft.packGrams.trim() !== "" ? Number(draft.packGrams.trim()) : null;
+    if (packGrams !== null && (!Number.isInteger(packGrams) || packGrams < 1 || packGrams > 100_000)) return setFormError("Khối lượng 1 đơn vị là số gam nguyên, lớn hơn 0.");
+    const hasDiscount = draft.discountPercent.trim() !== "";
+    // Both dates are required with a discount, and the end may not be before the start (the server checks too).
+    const windowProblem = !hasDiscount ? null
+      : !draft.promoStartDate.trim() || !draft.promoEndDate.trim() ? "Chọn ngày bắt đầu và ngày kết thúc khuyến mãi."
+      : draft.promoEndDate.trim() < draft.promoStartDate.trim() ? "Ngày kết thúc phải từ ngày bắt đầu trở đi." : null;
+    const promoProblem = imageUrlError(draft.imageUrl) ?? percentError(draft.discountPercent) ?? windowProblem ?? (hasDiscount ? dateError(draft.promoEndDate) : null);
     if (promoProblem) return setFormError(promoProblem);
     const discount = draft.discountPercent.trim() ? Number(draft.discountPercent.trim()) : null;
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
-      caloriesPer100g: calories, shelfLifeDays: shelfLife, price,
+      caloriesPer100g: calories, shelfLifeDays: shelfLife, price, packGrams,
       // "" clears the alias (the server stores null).
       englishName: draft.englishName.trim() || null,
       // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
@@ -169,6 +194,7 @@ export default function IngredientsScreen(): React.JSX.Element {
       // null clears the value; an empty end date with a discount means "today + 7 days" on the server.
       imageUrl: draft.imageUrl.trim() || null,
       discountPercent: discount,
+      promoStartDate: discount !== null && draft.promoStartDate.trim() ? draft.promoStartDate.trim() : null,
       promoEndDate: discount !== null && draft.promoEndDate.trim() ? draft.promoEndDate.trim() : null,
     };
     setSaving(true); setFormError(null);
@@ -243,7 +269,7 @@ export default function IngredientsScreen(): React.JSX.Element {
     <View>
       <View style={[styles.wrapRow, local.toolbar]}>
         <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Nhập tên nguyên liệu..." value={search} onChangeText={setSearch} autoCorrect={false} /></View>
-        <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(emptyDraft); }} style={local.addButton} />
+        <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(newDraft()); }} style={local.addButton} />
       </View>
       {catalogEmpty ? null : (
         <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
@@ -298,9 +324,10 @@ export default function IngredientsScreen(): React.JSX.Element {
               <View style={[local.flex, local.rowText]}>
                 <Text style={styles.title}>{item.name}</Text>
                 <Text style={styles.muted}>{item.category} · {unitLabel(item.defaultUnit)}{item.caloriesPer100g !== null ? ` · ${item.caloriesPer100g} kcal/100g` : ""}{item.price !== null && item.price !== undefined ? ` · ${formatVnd(item.price)}` : ""}</Text>
-                {item.discountPercent !== null ? (
-                  <Badge label={`Đang khuyến mãi ${item.discountPercent}%`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />
-                ) : null}
+                {item.discountPercent !== null ? (() => {
+                  const state = promotionState(item.promoStartDate, item.promoEndDate);
+                  return <Badge label={`Khuyến mãi ${item.discountPercent}% · ${state.label}`} icon={BadgePercent} color={state.color} background={state.background} />;
+                })() : null}
               </View>
               <AppIcon icon={Pencil} size="sm" color={colors.muted} />
             </Pressable>
@@ -330,7 +357,10 @@ export default function IngredientsScreen(): React.JSX.Element {
                     <Dropdown<string> label="Đơn vị" value={draft.defaultUnit} options={unitOptionsFor(draft.defaultUnit)} onChange={(defaultUnit) => setDraft({ ...draft, defaultUnit })} />
                   </View>
                 </View>
-                <Field label="Giá (đ)" keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
+                <Field label={`Giá (đ / ${unitLabel(draft.defaultUnit)})`} keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
+                {hasPackWeight(draft.defaultUnit) ? (
+                  <Field label="Khối lượng 1 đơn vị (g)" keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
+                ) : null}
                 <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
                 <Field label="Hạn dùng (số ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
                 <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}
@@ -377,13 +407,26 @@ export default function IngredientsScreen(): React.JSX.Element {
                 {percentError(draft.discountPercent) ? <AppText variant="caption" color={colors.danger}>{percentError(draft.discountPercent)}</AppText> : null}
 
                 <DateField
-                  label="Giảm đến ngày"
+                  label="Giảm từ ngày *"
+                  value={draft.promoStartDate}
+                  onChange={(promoStartDate) => setDraft({ ...draft, promoStartDate })}
+                  // A running promotion keeps its (past) first day; new ones start today or later.
+                  minDate={draft.promoStartDate && draft.promoStartDate < dayFromToday(0) ? draft.promoStartDate : dayFromToday(0)}
+                  suggestedDate={dayFromToday(0)}
+                  clearable={false}
+                  emptyHint="Chỉ dùng khi có % giảm giá."
+                />
+                <DateField
+                  label="Giảm đến ngày *"
                   value={draft.promoEndDate}
                   onChange={(promoEndDate) => setDraft({ ...draft, promoEndDate })}
-                  minDate={dayFromToday(0)}
+                  minDate={draft.promoStartDate && draft.promoStartDate > dayFromToday(0) ? draft.promoStartDate : dayFromToday(0)}
                   suggestedDate={dayFromToday(DEFAULT_PROMO_DAYS)}
+                  clearable={false}
                   emptyHint={`Mặc định: hôm nay + ${DEFAULT_PROMO_DAYS} ngày (${toDisplayDate(dayFromToday(DEFAULT_PROMO_DAYS))}). Chỉ dùng khi có % giảm giá.`}
                 />
+                {draft.discountPercent.trim() && draft.promoStartDate && draft.promoEndDate && draft.promoEndDate < draft.promoStartDate
+                  ? <AppText variant="caption" color={colors.danger}>Ngày kết thúc phải từ ngày bắt đầu trở đi.</AppText> : null}
                 {dateError(draft.promoEndDate) ? <AppText variant="caption" color={colors.danger}>{dateError(draft.promoEndDate)}</AppText> : null}
               </>
             ) : null}

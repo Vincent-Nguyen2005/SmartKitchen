@@ -20,6 +20,7 @@ import { normalizeVi, unitLabel } from "../inventory/catalogSuggest";
 import type { CatalogIngredient } from "../inventory/inventoryApi";
 import MarketProducts, { ProductImage } from "./MarketProducts";
 import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
+import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi, shoppingUnitLabels } from "./shoppingApi";
 
 /**
@@ -28,17 +29,19 @@ import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi,
  * "Tạo danh sách từ thực đơn", per-item "Đã mua"/"Sửa" and "Hoàn tất" list actions.
  */
 type ScreenView = "market" | "cart";
-type Props = { onOpenFamily?: () => void };
+/** openCartKey: bump it to show Giỏ hàng (e.g. after "Thêm vào Giỏ hàng" in Thông báo). */
+type Props = { onOpenFamily?: () => void; openCartKey?: number };
 const AUTO_REFRESH_MS = 30_000;
 
-export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.Element {
+export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const isWide = width >= 720;
   // Same horizontal padding as Kho, so the shared search box lines up identically.
   const horizontalPadding = isCompact ? spacing.lg : spacing.xl;
-  const [view, setView] = useState<ScreenView>("market");
+  const [view, setView] = useState<ScreenView>(openCartKey > 0 ? "cart" : "market");
+  useEffect(() => { if (openCartKey > 0) setView("cart"); }, [openCartKey]);
   // Bumped to make the product grid reload in place (same search text and page).
   const [productsRefresh, setProductsRefresh] = useState(0);
   const productsLoading = useRef(false);
@@ -212,7 +215,10 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
     const busy = busyItemId === item.id || checkingOut;
     // Older rows already marked bought (never synced) can only go through "Mua".
     const locked = item.isPurchased;
-    const step = 1;
+    // kg lines: 0.1 kg steps up to 20 kg; other units: ± 1 down to 1, no upper limit for recipe amounts (quantityRule.ts).
+    const rule = quantityRuleFor(item.unit);
+    const atMin = item.quantity <= rule.min + 1e-9;
+    const atMax = rule.decimals && item.quantity >= rule.max - 1e-9;
     return (
       <View key={item.id} style={styles.line}>
         <ProductImage uri={image} style={styles.lineImage} />
@@ -225,19 +231,19 @@ export default function ShoppingCartScreen({ onOpenFamily }: Props): React.JSX.E
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Giảm số lượng ${item.name}`}
-              disabled={busy || locked || item.quantity <= step}
-              onPress={() => void changeQuantity(item, Math.round((item.quantity - step) * 1000) / 1000)}
-              style={[styles.stepButton, (busy || locked || item.quantity <= step) && styles.disabled]}
+              disabled={busy || locked || atMin}
+              onPress={() => void changeQuantity(item, stepQuantity(item.quantity, -1, rule))}
+              style={[styles.stepButton, (busy || locked || atMin) && styles.disabled]}
             >
               <AppIcon icon={Minus} size="sm" color={colors.primary} />
             </Pressable>
-            <Text style={styles.quantity}>{item.quantity}</Text>
+            <Text style={styles.quantity}>{formatQuantity(item.quantity)}</Text>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Tăng số lượng ${item.name}`}
-              disabled={busy || locked}
-              onPress={() => void changeQuantity(item, Math.round((item.quantity + step) * 1000) / 1000)}
-              style={[styles.stepButton, (busy || locked) && styles.disabled]}
+              disabled={busy || locked || atMax}
+              onPress={() => void changeQuantity(item, stepQuantity(item.quantity, 1, rule))}
+              style={[styles.stepButton, (busy || locked || atMax) && styles.disabled]}
             >
               <AppIcon icon={Plus} size="sm" color={colors.primary} />
             </Pressable>

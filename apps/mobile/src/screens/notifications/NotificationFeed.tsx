@@ -59,6 +59,7 @@ const promotionTitle = (promotion: Promotion): string => {
 };
 
 type FeedEntry =
+  | { kind: "week"; key: string; count: number }
   | { kind: "expiry"; key: string; item: ExpiringInventoryItem }
   | { kind: "notification"; key: string; item: AppNotification }
   | { kind: "promotion"; key: string; item: Promotion };
@@ -68,6 +69,8 @@ type Props = {
   onOpenInventoryItem?: (itemId: string) => void;
   /** Something that affects the tab badge changed (loaded, refreshed, marked read). */
   onChanged?: () => void;
+  /** "Tuần này còn thiếu N nguyên liệu" tapped: open "Cần mua tuần này". */
+  onOpenWeekShopping?: () => void;
 };
 
 /**
@@ -75,7 +78,7 @@ type Props = {
  * them) and active promotions, in the same card style. Most urgent first: expiry alerts (soonest first), then
  * unread notifications, then the rest newest first. A promotion that already has a notification is shown once.
  */
-export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Props): React.JSX.Element {
+export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpenWeekShopping }: Props): React.JSX.Element {
   const { api, userId } = useGatewayApi();
   const { accessToken, family } = useSession();
   const { gutter, isWide } = useLayout();
@@ -84,6 +87,8 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
   const [page, setPage] = useState(1);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [expiring, setExpiring] = useState<ExpiringInventoryItem[]>([]);
+  // Missing ingredients for this week's menus (computed on read by menu-service; nothing is stored or pushed).
+  const [weekMissing, setWeekMissing] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -98,10 +103,11 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
     if (!userId) return;
     const id = ++requestId.current;
     if (refresh) setRefreshing(true); else setLoading(true);
-    const [notificationResult, promotionResult, expiringResult] = await Promise.allSettled([
+    const [notificationResult, promotionResult, expiringResult, weekResult] = await Promise.allSettled([
       api.get<Page<AppNotification>>(`/api/notifications/notifications${query({ page: 1, limit: PAGE_SIZE })}`),
       api.get<Page<Promotion>>(`/api/notifications/promotions${query({ active: true, page: 1, limit: PROMOTION_LIMIT })}`),
       accessToken && family?.id ? inventoryApi.expiring(accessToken, family.id, EXPIRY_ALERT_DAYS) : Promise.resolve(null),
+      family?.id ? api.get<{ count: number }>("/api/menus/week-missing") : Promise.resolve({ count: 0 }),
     ]);
     if (id !== requestId.current) return; // a newer request replaced this one
     if (notificationResult.status === "fulfilled") {
@@ -111,6 +117,8 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
     }
     if (promotionResult.status === "fulfilled") setPromotions(promotionResult.value.items);
     if (expiringResult.status === "fulfilled") setExpiring(expiringResult.value?.items ?? []);
+    // A failed check just hides the item (no error banner for it).
+    setWeekMissing(weekResult.status === "fulfilled" ? weekResult.value.count : 0);
     const failure = [notificationResult, promotionResult, expiringResult].find((result) => result.status === "rejected");
     setError(failure && failure.status === "rejected" ? errorMessage(failure.reason) : null);
     setLoading(false);
@@ -157,8 +165,10 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
       ...notifications.filter((item) => item.status === "READ").map((item) => ({ entry: { kind: "notification", key: item.id, item } as FeedEntry, at: item.createdAt })),
       ...promotions.filter((item) => !notifiedPromotions.has(item.id)).map((item) => ({ entry: { kind: "promotion", key: `promotion-${item.id}`, item } as FeedEntry, at: item.startsAt })),
     ].sort((first, second) => second.at.localeCompare(first.at)).map(({ entry }) => entry);
-    return [...alerts, ...unread, ...rest];
-  }, [notifications, promotions, expiring]);
+    // One "Tuần này còn thiếu" item at the top when something is missing; none when N = 0.
+    const week: FeedEntry[] = weekMissing > 0 ? [{ kind: "week", key: "week-missing", count: weekMissing }] : [];
+    return [...week, ...alerts, ...unread, ...rest];
+  }, [notifications, promotions, expiring, weekMissing]);
 
   const openNotification = (item: AppNotification) => {
     void markRead(item);
@@ -167,6 +177,18 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
   };
 
   const renderEntry = ({ item: entry }: { item: FeedEntry }) => {
+    if (entry.kind === "week") {
+      const text = `Tuần này còn thiếu ${entry.count} nguyên liệu`;
+      return (
+        <FeedCard
+          icon={<AppIcon icon={ShoppingCart} color={colors.primary} />}
+          meta="Thực đơn tuần · Cần mua"
+          title={text}
+          accessibilityLabel={`${text}. Chạm để xem danh sách cần mua`}
+          onPress={() => onOpenWeekShopping?.()}
+        />
+      );
+    }
     if (entry.kind === "expiry") {
       const text = expiryText(entry.item);
       return (
@@ -183,7 +205,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged }: Pro
       const title = promotionTitle(entry.item);
       return (
         <FeedCard
-          icon={<RemoteImage uri={entry.item.imageUrl} size={40} />}
+          icon={<RemoteImage uri={entry.item.imageUrl} size={40} placeholderIcon={Tag} />}
           meta={`Khuyến mãi · đến ${fullDay(entry.item.endsAt)}`}
           title={title}
           accessibilityLabel={`Khuyến mãi: ${title}, đến ${fullDay(entry.item.endsAt)}. Chạm để xem chi tiết`}

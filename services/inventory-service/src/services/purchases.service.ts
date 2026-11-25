@@ -1,6 +1,20 @@
 import { prisma } from "../lib/prisma";
-import { Prisma } from "../../node_modules/.prisma/client-inventory";
+import { Prisma, type Unit } from "../../node_modules/.prisma/client-inventory";
 import { ApplyPurchaseInput } from "../validators/purchase.validator";
+
+/** Units of the same kind and their size in the smaller one: a purchase in kg joins a Kho row in g (and l / ml). */
+const SAME_KIND: Record<string, Record<string, number>> = {
+  GRAM: { GRAM: 1, KILOGRAM: 1000 },
+  KILOGRAM: { KILOGRAM: 1, GRAM: 0.001 },
+  MILLILITER: { MILLILITER: 1, LITER: 1000 },
+  LITER: { LITER: 1, MILLILITER: 0.001 },
+};
+/** `quantity` of `from` expressed in `to` (3 decimals), or null when the units are not of the same kind. */
+export const convertQuantity = (quantity: number, from: string, to: string): number | null => {
+  if (from === to) return quantity;
+  const factor = SAME_KIND[to]?.[from];
+  return factor === undefined ? null : Math.round(quantity * factor * 1000) / 1000;
+};
 
 const isUniqueConflict = (error: unknown): boolean =>
   typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2002";
@@ -32,21 +46,26 @@ export class PurchasesService {
           ? (await transaction.category.upsert({ where: { name: input.categoryName }, create: { name: input.categoryName }, update: {}, select: { id: true } })).id
           : undefined;
         const expiryDate = input.expiryDate ? new Date(`${input.expiryDate}T00:00:00.000Z`) : undefined;
-        const previous = await transaction.foodItem.findFirst({
+        // The same product already in Kho: same unit first, else a unit of the same kind (1.5 kg bought joins
+        // "500 g" as 2000 g). Packs, pieces and other kinds never convert (a new row is created).
+        const sameKind = Object.keys(SAME_KIND[input.unit] ?? { [input.unit]: 1 }) as Unit[];
+        const candidates = await transaction.foodItem.findMany({
           where: {
             familyId: input.familyId,
             name: { equals: input.name, mode: "insensitive" },
-            unit: input.unit,
+            unit: { in: sameKind },
             deletedAt: null,
           },
           orderBy: { createdAt: "asc" },
         });
+        const previous = candidates.find((row) => row.unit === input.unit) ?? candidates[0] ?? null;
+        const added = previous ? convertQuantity(input.quantity, input.unit, previous.unit) ?? input.quantity : input.quantity;
         const oldValue = previous ? { quantity: previous.quantity, status: previous.status } : null;
         const updated = previous
           ? await transaction.foodItem.update({
               where: { id: previous.id },
               data: {
-                quantity: { increment: input.quantity },
+                quantity: { increment: added },
                 status: "FRESH",
                 // A restock fills a missing expiry/group but never overwrites what the family already set.
                 ...(expiryDate && !previous.expiryDate ? { expiryDate } : {}),

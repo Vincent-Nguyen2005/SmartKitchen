@@ -7,6 +7,7 @@ router.post("/generate", ShoppingListController.generate);
 router.get("/", ShoppingListController.list);
 router.get("/suggestions", ShoppingListController.suggestions);
 router.post("/items", ShoppingListController.addItem);
+router.post("/items/ensure", ShoppingListController.ensureItems);
 router.post("/checkout", ShoppingListController.checkout);
 router.post("/items/:id/purchase", ShoppingListController.confirmPurchase);
 router.patch("/items/:id", ShoppingListController.updateItem);

@@ -1,5 +1,6 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-admin";
-import { catalogMacros, catalogSeed, englishNameFor, type CatalogSeed } from "./catalog.data";
+import { catalogMacros, catalogSeed, englishNameFor, retiredStarterNames, type CatalogSeed } from "./catalog.data";
+import { catalogDetails } from "./catalog-details";
 
 /** Same normalisation as the ingredient routes (search key). */
 const normalize = (value: string): string => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -19,6 +20,12 @@ const removedNames = async (client: PrismaClient): Promise<string[]> => {
   });
 };
 
+/** Protein / carbs / fat per 100 g: the staples' catalogMacros, else catalog-details.ts. */
+const macrosFor = (name: string) => {
+  const macros = catalogMacros[name] ?? catalogDetails[name]?.macros;
+  return macros ? { proteinPer100g: macros[0], carbsPer100g: macros[1], fatPer100g: macros[2] } : {};
+};
+
 /**
  * Startup data step: adds the starter catalog ingredients whose name is missing. Existing rows are never updated or
  * deleted (admin edits stay), and a starter ingredient an admin deleted or renamed is not created again, so running
@@ -27,6 +34,7 @@ const removedNames = async (client: PrismaClient): Promise<string[]> => {
 export async function seedMissingIngredients(client: PrismaClient, seed: CatalogSeed[] = catalogSeed): Promise<number> {
   const existing = new Set((await client.masterIngredient.findMany({ select: { name: true } })).map((row) => normalize(row.name)));
   for (const name of await removedNames(client)) existing.add(name);
+  for (const name of retiredStarterNames) existing.add(normalize(name));
   const missing = seed.filter((entry) => !existing.has(normalize(entry.name)));
   if (missing.length === 0) return 0;
   const created = await client.masterIngredient.createMany({
@@ -34,12 +42,16 @@ export async function seedMissingIngredients(client: PrismaClient, seed: Catalog
       name: entry.name,
       nameNormalized: normalize(entry.name),
       category: entry.group,
-      defaultUnit: entry.unit,
+      // Sale unit: catalog-details overrides it where admins settled on another one (nothing is sold by the gram).
+      defaultUnit: catalogDetails[entry.name]?.unit ?? entry.unit,
+      packGrams: catalogDetails[entry.name]?.packGrams ?? null,
       shelfLifeDays: entry.shelfLifeDays,
       caloriesPer100g: entry.kcal,
       englishName: englishNameFor(entry),
-      ...(catalogMacros[entry.name] ? { proteinPer100g: catalogMacros[entry.name][0], carbsPer100g: catalogMacros[entry.name][1], fatPer100g: catalogMacros[entry.name][2] } : {}),
-      allergenTags: [],
+      ...macrosFor(entry.name),
+      // Market price for the sale unit and obvious allergens (catalog-details.ts).
+      ...(catalogDetails[entry.name] ? { price: catalogDetails[entry.name].price } : {}),
+      allergenTags: catalogDetails[entry.name]?.allergens ?? [],
     })),
     skipDuplicates: true,
   });

@@ -104,4 +104,11 @@ router.post("/promotions/:id/dispatch", requireAdmin, async (request, response) 
   return response.json({ dispatched: await dispatchPromotion(request.params.id, users) });
 });
 
+// Admin cleanup (data fixes, e2e teardown): deletes one promotion for good. Unknown ids are 404.
+router.delete("/promotions/:id", requireAdmin, async (request, response) => {
+  const deleted = await prisma.promotion.deleteMany({ where: { id: request.params.id } });
+  if (deleted.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Promotion not found" });
+  return response.json({ deleted: deleted.count });
+});
+
 export default router;

@@ -160,7 +160,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Ướp thịt heo xay và thịt ba chỉ thái lát", 1800, ["Thịt heo xay", "Thịt ba chỉ"]],
     ["Viên chả, nướng thịt đến khi vàng thơm", 900, []],
     ["Pha nước mắm chua ngọt, thả chả vào", null, []],
-    ["Bày bún và rau sống ra đĩa", null, ["Bún", "Rau sống"]],
+    ["Rửa sạch xà lách và rau thơm, để ráo; bày bún và rau ra đĩa", null, ["Bún", "Xà lách", "Rau thơm"]],
   ],
   "Gỏi cuốn tôm thịt": [
     ["Luộc thịt ba chỉ đến khi chín", 1200, ["Thịt ba chỉ"]],
@@ -233,9 +233,9 @@ const STEPS: Record<string, StepRow[]> = {
   ],
   "Đậu cô ve xào thịt bò": [
     ["Thái mỏng thịt bò, ướp gia vị", 600, ["Thịt bò"]],
-    ["Chần đậu cô ve", 120, ["Đậu cô ve"]],
+    ["Chần đậu que (đậu cô ve)", 120, ["Đậu que"]],
     ["Phi thơm tỏi, xào thịt bò lửa lớn", 120, ["Tỏi"]],
-    ["Cho đậu cô ve vào đảo đều, nêm vừa ăn", 180, []],
+    ["Cho đậu que vào đảo đều, nêm vừa ăn", 180, []],
   ],
   "Cải thìa xào nấm": [
     ["Rửa sạch cải thìa và nấm hương", null, ["Cải thìa", "Nấm hương"]],
@@ -371,7 +371,7 @@ const STEPS: Record<string, StepRow[]> = {
     ["Phi dầu điều, xào thịt heo săn lại", 300, []],
     ["Cho tôm vào, thêm ít nước, nấu lửa nhỏ đến khi thịt chín mềm, nêm vừa ăn", 600, ["Tôm"]],
     ["Rang lạc vàng, giã dập", 300, ["Lạc"]],
-    ["Trụng mì Quảng, cho ra tô cùng rau sống", 30, ["Mì Quảng", "Rau sống"]],
+    ["Trụng mì Quảng và giá đỗ, cho ra tô cùng xà lách và rau thơm", 30, ["Mì Quảng", "Giá đỗ", "Xà lách", "Rau thơm"]],
     ["Chan ít nước nhân, rắc lạc rang", null, []],
   ],
   "Bánh cuốn": [

@@ -2,6 +2,7 @@ import axios from "axios";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/app-error";
+import { mergedQuantity, quantityProblem } from "../lib/quantity-rule";
 import { LIST_STATUS } from "../lib/constants";
 import { UpdateItemBody } from "../validators/shopping-list.validator";
 
@@ -295,7 +296,11 @@ export class ShoppingListService {
    * still in the cart only gets its quantity raised, so the cart never holds duplicates. A price snapshot from the
    * market is stored (or refreshed) on the row.
    */
-  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null } & PriceSnapshot) {
+  /**
+   * mode "add" (Đi chợ): the same product and unit already in the cart gets the quantity added.
+   * mode "atLeast" ("Cần mua tuần này"): it is raised to at least `quantity`, never added twice (idempotent).
+   */
+  static async addItem(data: { familyId: string; shoppingListId?: string; name: string; quantity: number; unit: string; note?: string | null } & PriceSnapshot, mode: "add" | "atLeast" = "add") {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         return await prisma.$transaction(async (transaction) => {
@@ -316,9 +321,11 @@ export class ShoppingListService {
           const existing = inCart.find((item) =>
             (data.productId && item.productId ? item.productId === data.productId : normalizedName(item.name) === key));
           if (existing) {
+            const quantity = mode === "atLeast" ? Math.max(existing.quantity, data.quantity) : existing.quantity + data.quantity;
             return transaction.shoppingItem.update({
               where: { id: existing.id },
-              data: { quantity: roundQuantity(existing.quantity + data.quantity), ...snapshotData(data) },
+              // kg lines stay on the 0.1 kg grid and at most 20 kg (lib/quantity-rule).
+              data: { quantity: roundQuantity(mergedQuantity(quantity, data.unit)), ...snapshotData(data) },
             });
           }
           return transaction.shoppingItem.create({
@@ -338,6 +345,16 @@ export class ShoppingListService {
       }
     }
     throw new AppError(503, "SHOPPING_LIST_CONFLICT", "The active list changed while adding the item. Retry the request.");
+  }
+
+  /**
+   * "Thêm vào Giỏ hàng" from "Cần mua tuần này": puts every item in the family's cart with at least the given
+   * quantity (same product and unit: raised, not doubled; otherwise added). Running it again changes nothing.
+   */
+  static async ensureItems(familyId: string, items: Array<{ name: string; quantity: number; unit: string } & PriceSnapshot>) {
+    const results = [];
+    for (const item of items) results.push(await this.addItem({ familyId, ...item }, "atLeast"));
+    return results;
   }
 
   static async getSuggestions(familyId: string, authorization: string) {
@@ -448,11 +465,14 @@ export class ShoppingListService {
   static async updateItem(id: string, familyId: string, data: UpdateItemBody) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
-      select: { isPurchased: true, shoppingList: { select: { status: true } } },
+      select: { isPurchased: true, unit: true, productId: true, shoppingList: { select: { status: true } } },
     });
     if (!item) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     if (item.isPurchased) throw new AppError(409, "ITEM_ALREADY_PURCHASED", "Purchased items cannot be changed");
+    // Same quantity rule as adding (kg in 0.1 steps up to 20; catalog count units whole), checked on the line's unit.
+    const problem = data.quantity === undefined ? null : quantityProblem(data.quantity, item.unit, Boolean(item.productId));
+    if (problem) throw new AppError(400, "INVALID_QUANTITY", problem);
     return prisma.shoppingItem.update({ where: { id }, data });
   }
 

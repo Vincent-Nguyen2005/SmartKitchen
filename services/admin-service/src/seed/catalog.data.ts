@@ -26,6 +26,14 @@ const doUong = item("Đồ uống", "BOTTLE");
 const doUongGoi = item("Đồ uống", "PACK");
 const dongLanh = item("Đồ đông lạnh", "PACK");
 
+/**
+ * Names taken out of the starter catalog on purpose: never created by the seed, even on a fresh database or if one
+ * is listed again by mistake. (Products an admin deleted or renamed are skipped through their audit rows.)
+ * - Nước suối: a drink, not a cooking ingredient.
+ * - Rau sống: a plate of mixed fresh greens; recipes list Xà lách, Rau thơm, Giá đỗ... instead.
+ */
+export const retiredStarterNames: readonly string[] = ["Nước suối", "Rau sống"];
+
 export const catalogSeed: CatalogSeed[] = [
   // Rau củ
   rau("Cà chua", "tomato", 7, 18), rau("Khoai tây", "potato", 30, 77), rau("Cà rốt", "carrot", 21, 41),
@@ -45,9 +53,9 @@ export const catalogSeed: CatalogSeed[] = [
   traiCay("Đu đủ", "papaya", 5, 43), traiCay("Bưởi", "pomelo", 21, 38), traiCay("Dứa", "pineapple", 5, 50),
   traiCay("Ổi", "guava", 5, 68), traiCay("Chanh", "lime fruit", 14, 30), traiCayKg("Nho", "grapes", 7, 69),
   // Thịt
-  thit("Thịt heo", "pork meat", 3, 242), thit("Thịt ba chỉ", "pork belly", 3, 518), thit("Sườn heo", "pork ribs", 3, 277),
+  thit("Thịt heo", "pork meat", 3, 242), thit("Thịt ba chỉ", "pork belly", 3, 350), thit("Sườn heo", "pork ribs", 3, 277),
   thit("Thịt bò", "beef meat", 3, 250), thit("Thịt gà", "chicken meat", 2, 215), thit("Đùi gà", "chicken drumstick", 2, 214),
-  thit("Thịt vịt", "duck meat", 2, 337), thit("Thịt heo xay", "ground pork", 2, 263),
+  thit("Thịt vịt", "duck meat", 2, 400), thit("Thịt heo xay", "ground pork", 2, 263),
   // Hải sản
   haiSan("Cá basa", "pangasius fillet", 2, 90), haiSan("Cá thu", "mackerel fish", 2, 205), haiSan("Cá hồi", "salmon fillet", 2, 208),
   haiSan("Tôm", "shrimp", 2, 99), haiSan("Mực", "squid", 2, 92), haiSan("Cua đồng", "freshwater crab", 1, 87),
@@ -76,6 +84,40 @@ export const catalogSeed: CatalogSeed[] = [
   giaVi("Sốt cà chua", "tomato pasta sauce", 180, 50), giaViGoi("Bột cà ri", "curry powder", 365, 325), item("Gia vị", "BOX")("Tương ớt Hàn", "gochujang", 365, 230),
   sua("Kem tươi", "whipping cream", 14, 340), traiCay("Quả bơ", "avocado fruit", 5, 160), rauCai("Ớt chuông", "bell pepper", 7, 31),
   rau("Nấm mỡ", "button mushroom", 5, 22), item("Thịt", "PACK")("Thịt xông khói", "bacon", 14, 417), item("Rau củ", "PACK")("Kim chi", "kimchi", 30, 15),
+  // Ingredients the starter recipes use that were missing ("Cần mua tuần này" then finds them in Đi chợ).
+  item("Thịt", "KILOGRAM")("Xương heo", "pork bones", 2, 150),
+  item("Thịt", "KILOGRAM")("Xương bò", "beef bones", 2, 160),
+  item("Thịt", "KILOGRAM")("Giò heo", "pork hock", 2, 250),
+  item("Thịt", "KILOGRAM")("Giò sống", "raw pork paste", 2, 200),
+  item("Thịt", "KILOGRAM")("Chả lụa", "vietnamese pork roll", 7, 136),
+  item("Thịt", "PACK")("Lạp xưởng", "chinese sausage", 90, 450),
+  item("Khác", "CAN")("Pa tê", "liver pate", 365, 320),
+  item("Hải sản", "PACK")("Thịt cua", "crab meat", 3, 85),
+  item("Rau củ", "PACK")("Cải ngọt", "choy sum", 4, 15),
+  item("Rau củ", "PACK")("Rau lang", "sweet potato leaves", 3, 22),
+  item("Rau củ", "KILOGRAM")("Su su", "chayote", 14, 19),
+  item("Rau củ", "PACK")("Cần tây", "celery", 7, 16),
+  item("Rau củ", "PACK")("Rau thơm", "fresh herbs", 3, 25),
+  item("Đồ khô & gạo", "PACK")("Nấm mèo", "dried wood ear mushroom", 365, 300),
+  item("Đồ khô & gạo", "PACK")("Yến mạch", "rolled oats", 365, 389),
+  item("Đồ khô & gạo", "KILOGRAM")("Đậu nành", "dried soybeans", 365, 446),
+  item("Đồ khô & gạo", "PACK")("Bột chiên giòn", "crispy frying batter mix", 365, 350),
+  item("Đồ khô & gạo", "CAN")("Nước cốt dừa", "coconut milk", 365, 230),
+  item("Đồ khô & gạo", "PACK")("Bánh tráng", "rice paper", 365, 330),
+  item("Đồ khô & gạo", "PACK")("Hủ tiếu", "rice noodles", 3, 140),
+  item("Đồ khô & gạo", "PACK")("Bánh canh", "thick tapioca noodles", 3, 140),
+  item("Đồ khô & gạo", "PACK")("Bánh cuốn", "steamed rice rolls", 2, 120),
+  item("Đồ khô & gạo", "PACK")("Mì Quảng", "quang noodles", 3, 140),
+  item("Trứng & sữa", "CAN")("Sữa đặc", "sweetened condensed milk", 365, 321),
+  item("Gia vị", "BOTTLE")("Dầu điều", "annatto oil", 365, 884),
+  item("Gia vị", "BOTTLE")("Dầu mè", "sesame oil", 365, 884),
+  item("Gia vị", "BOTTLE")("Dầu ô liu", "olive oil", 730, 884),
+  item("Gia vị", "PACK")("Ngũ vị hương", "five spice powder", 730, 347),
+  item("Gia vị", "PACK")("Hoa hồi", "star anise", 730, 337),
+  item("Gia vị", "PACK")("Quế", "cinnamon sticks", 730, 247),
+  item("Gia vị", "BOX")("Mắm ruốc", "fermented shrimp paste", 365, 73),
+  item("Gia vị", "PACK")("Me chua", "tamarind", 365, 239),
+  item("Gia vị", "BOTTLE")("Tương cà", "tomato ketchup", 365, 101),
 ];
 
 /**

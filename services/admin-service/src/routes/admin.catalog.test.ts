@@ -3,7 +3,7 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const prismaMock = vi.hoisted(() => ({
-  masterIngredient: { findMany: vi.fn(), count: vi.fn(), create: vi.fn() },
+  masterIngredient: { findMany: vi.fn(), count: vi.fn(), create: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
   auditLog: { create: vi.fn() },
   $transaction: vi.fn(),
 }));
@@ -45,6 +45,23 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
     });
   });
 
+  it("returns the pack weight of pack products (grams per bó / gói) for unit conversion", async () => {
+    rows = [row({ name: "Hành lá", defaultUnit: "PACK", price: 5000, packGrams: 100 })];
+    const response = await asUser(request(app).get("/catalog/ingredients"));
+    expect(response.body.items[0]).toMatchObject({ name: "Hành lá", unit: "PACK", price: 5000, packGrams: 100 });
+    expect(catalogCall().select).toMatchObject({ packGrams: true });
+  });
+
+  it("validates the pack weight on admin writes (positive whole grams; empty clears it)", async () => {
+    prismaMock.masterIngredient.findUnique.mockResolvedValue(row());
+    prismaMock.masterIngredient.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...row(), ...data }));
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ packGrams: 0 }))).status).toBe(400);
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ packGrams: 1.5 }))).status).toBe(400);
+    const saved = await asAdmin(request(app).put("/ingredients/i1").send({ packGrams: "" }));
+    expect(saved.status).toBe(200);
+    expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ packGrams: null }) }));
+  });
+
   it("requires sign-in and keeps the admin list admin-only", async () => {
     expect((await request(app).get("/catalog/ingredients")).status).toBe(401);
     expect((await asUser(request(app).get("/ingredients"))).status).toBe(403);
@@ -76,7 +93,10 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
       nameNormalized: { contains: "ca  chua" },
       category: { equals: "rau củ", mode: "insensitive" },
       discountPercent: { not: null },
-      OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }],
+      AND: [
+        { OR: [{ promoStartDate: null }, { promoStartDate: { lte: day(0) } }] },
+        { OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }] },
+      ],
     });
   });
 

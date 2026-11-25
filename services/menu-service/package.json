@@ -12,7 +12,7 @@
     "prelint": "prisma generate",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run build && node --test dist/__tests__/menu.service.test.js dist/__tests__/kho-suggest.test.js dist/__tests__/ai-suggestions.test.js dist/__tests__/menu.meals.test.js dist/__tests__/menu.variety.test.js dist/__tests__/menu.seasonings.test.js dist/__tests__/menu.family.test.js dist/__tests__/menu.health.test.js dist/__tests__/menu.portions.test.js dist/__tests__/ai.family.test.js dist/__tests__/internal.usage.test.js dist/__tests__/menu.foreign.test.js"
+    "test": "pnpm run build && node --test dist/__tests__/menu.service.test.js dist/__tests__/kho-suggest.test.js dist/__tests__/ai-suggestions.test.js dist/__tests__/menu.meals.test.js dist/__tests__/menu.variety.test.js dist/__tests__/menu.seasonings.test.js dist/__tests__/menu.family.test.js dist/__tests__/menu.health.test.js dist/__tests__/menu.portions.test.js dist/__tests__/ai.family.test.js dist/__tests__/internal.usage.test.js dist/__tests__/menu.foreign.test.js dist/__tests__/week-missing.test.js"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
