@@ -155,6 +155,14 @@ function AppContent(): React.JSX.Element {
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  // The session ended by itself (refresh token expired / revoked): back to Đăng nhập with "Phiên đăng nhập đã hết hạn".
+  const { sessionNotice, clearSessionNotice } = session;
+  useEffect(() => {
+    if (!sessionNotice) return;
+    setAuthView("login");
+    setNotice(sessionNotice);
+    clearSessionNotice();
+  }, [sessionNotice, clearSessionNotice]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).

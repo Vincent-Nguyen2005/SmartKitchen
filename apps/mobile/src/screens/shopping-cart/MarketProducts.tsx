@@ -7,7 +7,9 @@ import { useGatewayApi } from "../notifications/useGatewayApi";
 import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
 import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
-import { inventoryApi, type CatalogIngredient } from "../inventory/inventoryApi";
+import { type CatalogIngredient } from "../inventory/inventoryApi";
+import { marketCatalog } from "../inventory/marketCatalog";
+import { filterByName } from "../../services/localSearch";
 import { addToCart, shoppingUnitFor } from "./cart";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
@@ -23,17 +25,18 @@ type Props = {
   /** Same horizontal padding as Kho, so the search box and grid line up the same way. */
   horizontalPadding: number;
   onOpenFamily?: () => void;
-  /** Changing this reloads the loaded products in place (auto refresh / pull-to-refresh), keeping search and scroll. */
-  refreshSignal?: number;
+  /**
+   * Changing `n` reloads the catalog in place, keeping search and scroll: `force` (pull-to-refresh, after adding)
+   * always asks the server; otherwise (auto refresh) a copy younger than MARKET_CATALOG_MAX_AGE_MS is kept.
+   */
+  refreshSignal?: { n: number; force: boolean };
   /** Reports whether a catalog request is running, so the parent never starts an overlapping refresh. */
   onLoadingChange?: (loading: boolean) => void;
+  /** Called on every keystroke in the search box (the parent pauses its auto refresh while the user types). */
+  onTyping?: () => void;
 };
 
-/** Products loaded so far (pages 1..page of the current search). */
-type Loaded = { items: CatalogIngredient[]; page: number; totalPages: number };
-/** This week's missing products: their ids in the weekly order and the products themselves. */
-type Needed = { ids: string[]; products: CatalogIngredient[] };
-const NO_NEEDED: Needed = { ids: [], products: [] };
+const NO_SIGNAL = { n: 0, force: false };
 /** Room below the last row for the floating cart button (56 px + its margin). */
 const LIST_BOTTOM_SPACE = 96;
 const NEEDED_REFRESH_MS = 120_000;
@@ -67,33 +70,22 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
   return <Text style={local.price}>{formatVnd(product.price)}</Text>;
 }
 
-/** Every page of this week's missing products (catalog `ids` filter, 50 per page, at most 100 ids). */
-async function loadNeededProducts(accessToken: string, ids: string[]): Promise<CatalogIngredient[]> {
-  const products: CatalogIngredient[] = [];
-  for (let page = 1; page <= 2; page += 1) {
-    const result = await inventoryApi.ingredientCatalog(accessToken, { ids: ids.slice(0, 100), page, limit: 50 });
-    products.push(...result.items);
-    if (page >= result.totalPages) break;
-  }
-  return products;
-}
-
 /**
  * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid that loads the next page while
  * scrolling (no pager). Products this week's menus still need (Cần mua tuần này) come first, in that list's order,
  * then the rest in the usual order, once (the amounts are shown in Thông báo › Cần mua tuần này). The search box stays on top (like Kho); a new search starts at the top.
+ * The whole catalog (~139 products) is loaded once and searched on the device: typing sends no request.
  */
-export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = 0, onLoadingChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
-  const { layout, columns, pageSize, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
+export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = NO_SIGNAL, onLoadingChange, onTyping, refreshControl, horizontalPadding }: Props): React.JSX.Element {
+  const { layout, columns, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
   const { api } = useGatewayApi();
   const [search, setSearch] = useState("");
-  const [term, setTerm] = useState("");
-  const [loaded, setLoaded] = useState<Loaded | null>(null);
+  const [catalog, setCatalog] = useState<CatalogIngredient[] | null>(() => (accessToken ? marketCatalog(accessToken).peek() : null));
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const [needed, setNeeded] = useState<Needed>(NO_NEEDED);
+  // This week's missing products: catalog ids in the weekly order (the products come from the loaded catalog).
+  const [neededIds, setNeededIds] = useState<string[]>([]);
   const [selected, setSelected] = useState<CatalogIngredient | null>(null);
   // Typed text (kg may hold "1," while typing); the quantity follows the product's rule (kg: 0.1 .. 20, else 1 .. 999).
   const [quantityText, setQuantityText] = useState("1");
@@ -101,45 +93,26 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const [addError, setAddError] = useState<string | null>(null);
   const listRef = useRef<FlatList<CatalogIngredient>>(null);
 
-  // Debounce typing.
-  useEffect(() => {
-    const timer = setTimeout(() => setTerm(search.trim()), 300);
-    return () => clearTimeout(timer);
-  }, [search]);
-
-  const lastSignal = useRef(refreshSignal);
+  const lastSignal = useRef(refreshSignal.n);
   const loadingChange = useRef(onLoadingChange);
   loadingChange.current = onLoadingChange;
-  // Bumped by every list (re)load: an older answer, or a "next page" from before a new search, is dropped.
+  // Bumped by every catalog (re)load: an older answer is dropped.
   const generation = useRef(0);
 
-  // First page of a new search / column count / retry (back to the top), or a quiet reload of every loaded page.
+  // The catalog: once per session (shared with Kho and the cart), again on refresh ticks / pull-to-refresh / retry.
   useEffect(() => {
     if (!accessToken) { setLoading(false); setError("Đăng nhập để xem sản phẩm."); return; }
-    const background = lastSignal.current !== refreshSignal && loaded !== null;
-    lastSignal.current = refreshSignal;
+    const tick = lastSignal.current !== refreshSignal.n;
+    lastSignal.current = refreshSignal.n;
+    const store = marketCatalog(accessToken);
+    const background = tick && store.peek() !== null;
     const current = ++generation.current;
-    const pages = background && loaded ? loaded.page : 1;
-    if (!background) {
-      setLoading(true);
-      setError(null);
-      listRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
+    if (!background) { setLoading(true); setError(null); }
     loadingChange.current?.(true);
-    (async (): Promise<Loaded> => {
-      const items: CatalogIngredient[] = [];
-      let last = { page: 1, totalPages: 1 };
-      for (let page = 1; page <= pages; page += 1) {
-        const result = await inventoryApi.ingredientCatalog(accessToken, { search: term, page, limit: pageSize });
-        items.push(...result.items);
-        last = { page: result.page, totalPages: result.totalPages };
-        if (page >= result.totalPages) break;
-      }
-      return { items, ...last };
-    })()
-      .then((result) => {
+    store.get(tick ? { force: refreshSignal.force } : {})
+      .then((items) => {
         if (current !== generation.current) return;
-        setLoaded(result);
+        setCatalog(items);
         setError(null);
       })
       .catch((requestError: unknown) => {
@@ -149,56 +122,36 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
         loadingChange.current?.(false);
         if (current === generation.current) setLoading(false);
       });
-    // `loaded` only decides quiet vs. visible loading (and how many pages to reload); it must not trigger a reload.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken, term, pageSize, reloadKey, refreshSignal]);
+  }, [accessToken, reloadKey, refreshSignal.n]);
 
-  /** Next page when the list nears its end; nothing once every page is loaded. */
-  const loadMore = () => {
-    if (!accessToken || !loaded || loading || loadingMore || error || loaded.page >= loaded.totalPages) return;
-    const current = generation.current;
-    setLoadingMore(true);
-    loadingChange.current?.(true);
-    inventoryApi.ingredientCatalog(accessToken, { search: term, page: loaded.page + 1, limit: pageSize })
-      .then((result) => {
-        if (current !== generation.current) return;
-        setLoaded((previous) => (previous ? { items: [...previous.items, ...result.items], page: result.page, totalPages: result.totalPages } : previous));
-      })
-      // A failed page is asked again the next time the end is reached.
-      .catch(() => undefined)
-      .finally(() => {
-        loadingChange.current?.(false);
-        setLoadingMore(false);
-      });
-  };
+  // A new search shows its results from the top.
+  useEffect(() => { listRef.current?.scrollToOffset({ offset: 0, animated: false }); }, [search]);
 
   // This week's missing products (the family's menus vs. Kho). No family or a failed call: the normal list, silently.
   // Refresh ticks ask again at most every NEEDED_REFRESH_MS (the list depends on menus and Kho, not on the cart).
+  // It never depends on the search text, so typing does not ask /week-missing again.
   const neededAt = useRef<{ key: string; at: number } | null>(null);
   useEffect(() => {
-    if (!familyId || !accessToken) { setNeeded(NO_NEEDED); neededAt.current = null; return; }
+    if (!familyId || !accessToken) { setNeededIds([]); neededAt.current = null; return; }
     const key = `${familyId}|${accessToken}`;
     if (neededAt.current?.key === key && Date.now() - neededAt.current.at < NEEDED_REFRESH_MS) return;
     neededAt.current = { key, at: Date.now() };
     let active = true;
     let done = false;
-    (async (): Promise<Needed> => {
-      const week = await api.get<{ items?: NeededItem[] }>("/api/menus/week-missing");
-      const ids = neededProductIds(Array.isArray(week?.items) ? week.items : []);
-      if (ids.length === 0) return { ids, products: [] };
-      return { ids, products: await loadNeededProducts(accessToken, ids) };
-    })()
-      .then((result) => { if (active) setNeeded(result); })
+    api.get<{ items?: NeededItem[] }>("/api/menus/week-missing")
+      .then((week) => { if (active) setNeededIds(neededProductIds(Array.isArray(week?.items) ? week.items : [])); })
       .catch(() => undefined)
       .finally(() => { done = true; });
     // Cancelled before it finished (e.g. a new token): the next run asks again instead of waiting for the throttle.
     return () => { active = false; if (!done) neededAt.current = null; };
-  }, [api, familyId, accessToken, refreshSignal]);
+  }, [api, familyId, accessToken, refreshSignal.n]);
 
-  const shown = useMemo(
-    () => orderNeededFirst(needed.products, needed.ids, loaded?.items ?? [], term),
-    [needed, loaded, term],
-  );
+  const shown = useMemo(() => {
+    const all = catalog ?? [];
+    const neededProducts = neededIds.length > 0 ? all.filter((product) => neededIds.includes(product.id)) : [];
+    return orderNeededFirst(neededProducts, neededIds, filterByName(all, search), search);
+  }, [catalog, neededIds, search]);
 
   const openProduct = (product: CatalogIngredient) => {
     setSelected(product);
@@ -248,7 +201,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   return (
     <View style={local.container}>
       <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
-        <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={setSearch} />
+        <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
       </View>
       <View style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
         <FlatList
@@ -262,14 +215,11 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
           onLayout={onGridLayout}
           columnWrapperStyle={columns > 1 ? { gap } : undefined}
           contentContainerStyle={[local.content, { gap }, (error || shown.length === 0) && local.fill]}
-          style={loading && loaded ? local.dimmed : undefined}
-          onEndReached={loadMore}
-          onEndReachedThreshold={0.5}
-          ListFooterComponent={loadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm sản phẩm" color={colors.primary} style={local.footer} /> : undefined}
+          style={loading && catalog ? local.dimmed : undefined}
           ListEmptyComponent={
-            loading && !loaded ? <ScreenState loading />
+            loading && !catalog ? <ScreenState loading />
               : error ? <ScreenState error={error} onRetry={() => setReloadKey((key) => key + 1)} />
-                : <ScreenState empty emptyText={term ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
+                : <ScreenState empty emptyText={search.trim() ? "Không có sản phẩm phù hợp." : "Chưa có sản phẩm nào."} />
           }
           refreshControl={refreshControl}
           keyboardShouldPersistTaps="handled"
@@ -349,7 +299,6 @@ const local = StyleSheet.create({
   // SEARCH_CONTENT_GAP above the grid like Kho's list; bottom room for the floating cart button.
   content: { paddingBottom: LIST_BOTTOM_SPACE, paddingTop: SEARCH_CONTENT_GAP },
   fill: { flexGrow: 1 },
-  footer: { paddingVertical: spacing.md },
   buttonContent: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   dimmed: { opacity: 0.6 },
   image: { backgroundColor: colors.background },

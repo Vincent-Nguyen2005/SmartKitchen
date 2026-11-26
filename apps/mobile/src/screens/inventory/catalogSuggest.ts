@@ -55,3 +55,19 @@ export const dayFromToday = (days = 0): string => {
   date.setDate(date.getDate() + days);
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 };
+
+/** The catalog product with exactly this name (accent- and case-insensitive), or null. */
+export const catalogProductNamed = (catalog: readonly CatalogIngredient[], name: string): CatalogIngredient | null => {
+  const key = normalizeVi(name);
+  return key ? catalog.find((product) => normalizeVi(product.name) === key) ?? null : null;
+};
+
+/**
+ * Kho add form: the sale unit of the catalog product named exactly `name` (kg, gói, quả...), so a typed or suggested
+ * name defaults to the unit the existing Kho row most likely has and the "Đã có trong kho" check can find it.
+ * null when the name is not a catalog product or its unit is unknown.
+ */
+export const catalogUnitForName = (catalog: readonly CatalogIngredient[], name: string): InventoryUnit | null => {
+  const product = catalogProductNamed(catalog, name);
+  return product ? unitFromCatalog(product.unit) : null;
+};

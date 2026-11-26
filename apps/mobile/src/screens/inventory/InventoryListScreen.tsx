@@ -28,6 +28,7 @@ import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
 import { UNIT_LABELS } from "./catalogSuggest";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { photoUploadErrorMessage } from "./photoUpload";
+import { filterByName } from "../../services/localSearch";
 import { catalogImageFor, useCatalogImages } from "./catalogImages";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
@@ -157,8 +158,8 @@ export default function InventoryListScreen({
   }, [focusItemId, loading, items]);
 
   const filteredItems = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return items.filter((item) => !normalizedSearch || item.name.toLowerCase().includes(normalizedSearch));
+    // Case- and accent-insensitive on the loaded items ("ca rot" finds "Cà rốt"); typing sends no request.
+    return filterByName(items, search);
   }, [items, search]);
 
   // A new search shows its results from the top.

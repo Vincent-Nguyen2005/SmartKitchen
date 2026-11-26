@@ -20,9 +20,11 @@ import { Camera, Check, FileImage, Mic, RotateCcw, ScanBarcode, Search, Settings
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { DateField } from "../admin/DateField";
-import { inventoryApi, type CatalogIngredient, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
+import { inventoryApi, type CatalogIngredient, type ItemMatch, InventoryUnit, ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
+import { marketCatalog } from "./marketCatalog";
+import { createServerSearch, type ServerSearch } from "../../services/localSearch";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
-import { dayFromToday, matchCatalog, UNIT_LABELS, unitFromCatalog } from "./catalogSuggest";
+import { catalogProductNamed, catalogUnitForName, dayFromToday, matchCatalog, UNIT_LABELS, unitFromCatalog } from "./catalogSuggest";
 import { useConfirm } from "../../components/ConfirmDialog";
 
 const isWeb = Platform.OS === "web";
@@ -86,7 +88,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [cameraDenied, setCameraDenied] = useState(false);
   const [expiryDay, setExpiryDay] = useState("");
   const [group, setGroup] = useState("");
-  const [catalog, setCatalog] = useState<CatalogIngredient[] | null>(null);
+  // The shared market catalog (loaded once per session): name suggestions and the unit default are matched here.
+  const [catalog, setCatalog] = useState<CatalogIngredient[] | null>(() => (accessToken ? marketCatalog(accessToken).peek() : null));
+  // The user picked a unit by hand: a catalog match no longer changes it.
+  const unitTouched = useRef(false);
   const [nameFocused, setNameFocused] = useState(false);
   const [suggestionApplied, setSuggestionApplied] = useState(false);
   const [pendingUpload, setPendingUpload] = useState<{ itemId: string; itemName: string; photo: UploadPhoto } | null>(null);
@@ -124,36 +129,58 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setCameraDenied(false);
     setSuggestionApplied(false);
     setName("");
+    unitTouched.current = false;
     setBarcodeResult(null);
     setPhotoGuess({ state: "idle", options: [] });
   };
 
-  // Admin catalog suggestions: the server searches accent-insensitively (paged, max 50), so ask per typed name,
-  // debounced. Suggestions are simply hidden if the request fails.
+  // Catalog name suggestions and the unit default come from the shared catalog, matched on the device
+  // (accent-insensitive): typing sends no catalog request. Suggestions are simply hidden if it cannot load.
   useEffect(() => {
-    const typed = name.trim();
-    if (mode !== "photo" || !accessToken || !nameFocused || suggestionApplied || !typed) { setCatalog(null); return; }
+    if (mode !== "photo" || !accessToken || catalog) return;
     let active = true;
-    const timer = setTimeout(() => {
-      inventoryApi.ingredientCatalog(accessToken, { search: typed, limit: 20 })
-        .then((result) => { if (active) setCatalog(Array.isArray(result.items) ? result.items : []); })
-        .catch(() => { if (active) setCatalog([]); });
-    }, 250);
-    return () => { active = false; clearTimeout(timer); };
-  }, [mode, accessToken, name, nameFocused, suggestionApplied]);
+    marketCatalog(accessToken).get().then((items) => { if (active) setCatalog(items); }).catch(() => undefined);
+    return () => { active = false; };
+  }, [mode, accessToken, catalog]);
 
-  const suggestions = mode === "photo" && nameFocused && !suggestionApplied && catalog ? matchCatalog(catalog, name) : [];
+  const suggestions = mode === "photo" && nameFocused && !suggestionApplied && catalog && name.trim() ? matchCatalog(catalog, name) : [];
 
+  // A name that is exactly a catalog product takes that product's sale unit (kg, gói, quả...) unless the user chose
+  // a unit, so "Đã có trong kho" finds the existing row instead of a second row in another unit being created.
   useEffect(() => {
-    const typed = name.trim();
-    if (mode !== "photo" || !accessToken || !familyId || !typed) { setCatalogMatch(null); return; }
-    let active = true;
-    const timer = setTimeout(() => {
-      inventoryApi.match(accessToken, familyId, typed, unit)
-        .then((result) => { if (active) setCatalogMatch(result.product ? { productId: result.product.id, name: result.product.name, imageUrl: result.product.imageUrl } : null); })
-        .catch(() => { if (active) setCatalogMatch(null); });
-    }, 300);
-    return () => { active = false; clearTimeout(timer); };
+    if (mode !== "photo" || unitTouched.current || !catalog) return;
+    const catalogUnit = catalogUnitForName(catalog, name);
+    if (catalogUnit) setUnit(catalogUnit);
+  }, [mode, catalog, name]);
+
+  // Catalog image for the typed name (server rule): debounced 400 ms, at least 2 characters, a repeat of the same
+  // name + unit is skipped, and an older request is aborted (its late answer is ignored).
+  const matchSearch = useRef<ServerSearch | null>(null);
+  const matchContext = useRef({ accessToken, familyId });
+  matchContext.current = { accessToken, familyId };
+  if (!matchSearch.current) {
+    matchSearch.current = createServerSearch<ItemMatch | null>({
+      run: (query, signal) => {
+        const { accessToken: token, familyId: family } = matchContext.current;
+        const [typed, typedUnit] = query.split("\u0000");
+        if (!token || !family) return Promise.resolve(null);
+        return inventoryApi.match(token, family, typed, typedUnit as InventoryUnit, signal);
+      },
+      onResult: (result) => setCatalogMatch(result?.product ? { productId: result.product.id, name: result.product.name, imageUrl: result.product.imageUrl } : null),
+      onError: () => setCatalogMatch(null),
+      // The unit is part of the key; the minimum length applies to the name.
+      normalize: (text) => {
+        const [typed, typedUnit = ""] = text.split("\u0000");
+        const clean = typed.trim().replace(/\s+/g, " ");
+        return clean.length < 2 ? clean : `${clean}\u0000${typedUnit}`;
+      },
+      minLength: 2,
+    });
+  }
+  useEffect(() => () => matchSearch.current?.cancel(), []);
+  useEffect(() => {
+    if (mode !== "photo" || !accessToken || !familyId) { matchSearch.current?.cancel(); setCatalogMatch(null); return; }
+    matchSearch.current?.input(`${name}\u0000${unit}`);
   }, [mode, accessToken, familyId, name, unit]);
 
   const applySuggestion = (entry: CatalogIngredient) => {
@@ -172,8 +199,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     // Instant preview with the product's catalog image (the name check confirms it).
     setCatalogMatch({ productId: option.catalogId, name: option.name, imageUrl: option.imageUrl ?? null });
     if (!accessToken) return;
-    const page = await inventoryApi.ingredientCatalog(accessToken, { search: option.name, limit: 20 }).catch(() => null);
-    const entry = page?.items.find((row) => row.id === option.catalogId) ?? page?.items.find((row) => row.name === option.name);
+    const items = catalog ?? await marketCatalog(accessToken).get().catch(() => null);
+    const entry = items?.find((row) => row.id === option.catalogId) ?? (items ? catalogProductNamed(items, option.name) : null);
     if (entry) applySuggestion(entry);
   };
 
@@ -221,6 +248,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     const value = rawBarcode.trim();
     setBarcode(value);
     setName("");
+    unitTouched.current = false;
     setReceiptDrafts([]);
     setReceiptText("");
     setNote(null);
@@ -238,6 +266,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         setBarcodeResult(`Đã tìm thấy trên ${result.source}${result.product.brand ? ` • ${result.product.brand}` : ""}. Kiểm tra tên sản phẩm trước khi lưu.`);
       } else {
         setName("");
+        unitTouched.current = false;
         setBarcodeResult("Chưa tìm được tên sản phẩm cho mã này. Hãy chụp sản phẩm hoặc thử mã khác.");
       }
     } catch (error) {
@@ -367,6 +396,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     const created = await saveItem(name, quantity, unit, { barcode: itemBarcode, expiryDay, group });
     if (!created) return;
     setName("");
+    unitTouched.current = false;
     setQuantity("1");
     setBarcode("");
     setBarcodeResult(null);
@@ -388,6 +418,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const processImage = async (asset: CaptureAsset) => {
     setNote(null);
     setName("");
+    unitTouched.current = false;
     setBarcodeResult(null);
     setCameraActive(false);
     try {
@@ -684,7 +715,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   <Text style={styles.label}>Khối lượng *</Text>
                   <View style={styles.barcodeRow}>
                     <TextInput accessibilityLabel="Khối lượng, bắt buộc" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                    <View style={styles.unitPicker}><UnitButtons value={unit} onChange={setUnit} /></View>
+                    <View style={styles.unitPicker}><UnitButtons value={unit} onChange={(next) => { unitTouched.current = true; setUnit(next); }} /></View>
                   </View>
                 </>
               ) : (

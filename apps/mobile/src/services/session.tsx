@@ -1,7 +1,8 @@
 import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as SecureStore from "expo-secure-store";
-import { Platform } from "react-native";
-import { ApiError, ApiFamily, ApiFamilySettings, AuthUser, authApi, familyApi, type FamilyQr } from "./api";
+import { AppState, Platform } from "react-native";
+import { ApiError, ApiFamily, ApiFamilySettings, AuthUser, authApi, authCoordinator, familyApi, type FamilyQr } from "./api";
+import { jwtExpiresAt, REFRESH_LEAD_MS, RefreshRejectedError, refreshDelayMs, SESSION_EXPIRED_MESSAGE } from "./authSession";
 
 type SessionContextValue = {
   user: AuthUser | null;
@@ -17,6 +18,9 @@ type SessionContextValue = {
   verifyOtp: (otpCode: string) => Promise<void>;
   resendOtp: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Set when the session ended by itself (refresh token expired / revoked): shown on the sign-in screen. */
+  sessionNotice: string | null;
+  clearSessionNotice: () => void;
   /** True right after signIn / verifyOtp (not after restoring a saved session) until completeOnboarding or signOut. */
   freshSignIn: boolean;
   /** Ends the "Thông tin cơ bản" step for this session (saved, skipped with "Để sau", or a profile already exists). */
@@ -67,7 +71,8 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   const [restoreAttempt, setRestoreAttempt] = useState(0);
   const [freshSignIn, setFreshSignIn] = useState(false);
   const completeOnboarding = useCallback(() => setFreshSignIn(false), []);
-  const refreshInFlight = useRef<Promise<string> | null>(null);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const clearSessionNotice = useCallback(() => setSessionNotice(null), []);
 
   const retryRestore = useCallback(() => {
     setReady(false);
@@ -79,8 +84,10 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     if (!refresh) throw new Error("Authentication response did not include a refresh token");
     await tokenStorage.set(REFRESH_KEY, refresh);
     await tokenStorage.set(ACCESS_KEY, access);
+    authCoordinator.setToken(access);
     setAccessToken(access);
     setUser(authUser);
+    setSessionNotice(null);
   }, []);
 
   const signIn = useCallback(async (email: string, password: string) => {
@@ -119,34 +126,83 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     await authApi.resendOtp(pendingVerificationEmail);
   }, [pendingVerificationEmail]);
 
-  const refreshSession = useCallback((refresh: string): Promise<string> => {
-    if (refreshInFlight.current) return refreshInFlight.current;
-    const pending = (async () => {
-      try {
-        const result = await authApi.refresh(refresh);
-        await saveTokens(result.accessToken, result.refreshToken, result.user);
-        return result.accessToken;
-      } finally {
-        refreshInFlight.current = null;
-      }
-    })();
-    refreshInFlight.current = pending;
-    return pending;
-  }, [saveTokens]);
+  /** The session ended by itself: forget the tokens (local only) and tell the user on the sign-in screen. */
+  const expireSession = useCallback(() => {
+    authCoordinator.setToken(null);
+    void Promise.allSettled([tokenStorage.remove(ACCESS_KEY), tokenStorage.remove(REFRESH_KEY)]);
+    setAccessToken(null);
+    setUser(null);
+    setFamily(null);
+    setFamilySettings(null);
+    setFreshSignIn(false);
+    setSessionNotice(SESSION_EXPIRED_MESSAGE);
+  }, []);
+
+  // Every API call refreshes through this (services/api.ts authCoordinator): one refresh at a time, rotated tokens
+  // saved. A rejected refresh token ends the session; if another tab (web) rotated it meanwhile, its tokens are used.
+  useEffect(() => {
+    authCoordinator.configure({
+      refresh: async () => {
+        const refresh = await tokenStorage.get(REFRESH_KEY);
+        if (!refresh) throw new RefreshRejectedError();
+        try {
+          const result = await authApi.refresh(refresh);
+          await saveTokens(result.accessToken, result.refreshToken, result.user);
+          return result.accessToken;
+        } catch (error) {
+          if (!(error instanceof ApiError) || (error.status !== 401 && error.status !== 403)) throw error;
+          const stored = await tokenStorage.get(REFRESH_KEY);
+          const storedAccess = await tokenStorage.get(ACCESS_KEY);
+          if (stored && stored !== refresh && storedAccess) {
+            authCoordinator.setToken(storedAccess);
+            setAccessToken(storedAccess);
+            return storedAccess;
+          }
+          throw new RefreshRejectedError();
+        }
+      },
+      onExpired: expireSession,
+    });
+    return () => authCoordinator.configure(null);
+  }, [expireSession, saveTokens]);
+
+  const refreshSession = useCallback((): Promise<string> => authCoordinator.refresh(), []);
 
   const withToken = useCallback(async <T,>(operation: (token: string) => Promise<T>): Promise<T> => {
-    let token = accessToken ?? await tokenStorage.get(ACCESS_KEY);
+    const token = authCoordinator.current() ?? accessToken ?? await tokenStorage.get(ACCESS_KEY);
     if (!token) throw new Error("Authentication required");
     try {
       return await operation(token);
     } catch (error) {
       if (!(error instanceof Error) || !("status" in error) || error.status !== 401) throw error;
-      const refresh = await tokenStorage.get(REFRESH_KEY);
-      if (!refresh) throw error;
-      token = await refreshSession(refresh);
-      return operation(token);
+      let fresh: string;
+      try {
+        fresh = await authCoordinator.refresh(token);
+      } catch (refreshError) {
+        if (refreshError instanceof RefreshRejectedError) throw new ApiError(SESSION_EXPIRED_MESSAGE, 401, undefined, "SESSION_EXPIRED");
+        throw refreshError;
+      }
+      return operation(fresh);
     }
-  }, [accessToken, refreshSession]);
+  }, [accessToken]);
+
+  // Proactive refresh shortly before the access token expires, and when the app comes back to the foreground with
+  // a token that is expired or about to expire (timers do not run in the background).
+  useEffect(() => {
+    if (!accessToken) return;
+    const refreshSoon = () => { authCoordinator.refresh(accessToken).catch(() => undefined); };
+    const delay = refreshDelayMs(accessToken, Date.now());
+    const timer = delay === null ? null : setTimeout(refreshSoon, delay);
+    let appState = AppState.currentState;
+    const subscription = AppState.addEventListener("change", (next) => {
+      const resumed = appState !== "active" && next === "active";
+      appState = next;
+      if (!resumed) return;
+      const expiresAt = jwtExpiresAt(accessToken);
+      if (expiresAt !== null && expiresAt - Date.now() < 2 * REFRESH_LEAD_MS) refreshSoon();
+    });
+    return () => { if (timer) clearTimeout(timer); subscription.remove(); };
+  }, [accessToken]);
 
   const loadFamily = useCallback(async () => {
     try {
@@ -228,12 +284,14 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     if (access && refresh) await authApi.logout(access, refresh).catch(() => undefined);
     await tokenStorage.remove(ACCESS_KEY);
     await tokenStorage.remove(REFRESH_KEY);
+    authCoordinator.setToken(null);
     setAccessToken(null);
     setUser(null);
     setFamily(null);
     setFamilySettings(null);
     setRestoreError(false);
     setFreshSignIn(false);
+    setSessionNotice(null);
   }, [accessToken]);
 
   useEffect(() => {
@@ -243,13 +301,14 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
         const token = await tokenStorage.get(ACCESS_KEY);
         const refresh = await tokenStorage.get(REFRESH_KEY);
         if (!token && refresh) {
-          await refreshSession((await tokenStorage.get(REFRESH_KEY)) ?? refresh);
+          await refreshSession();
           return;
         }
         if (token) {
+          authCoordinator.setToken(token);
           const result = await authApi.me(token).catch(async (error: unknown) => {
             if (!(error instanceof Error) || !("status" in error) || error.status !== 401 || !refresh) throw error;
-            await refreshSession((await tokenStorage.get(REFRESH_KEY)) ?? refresh);
+            await refreshSession();
             return null;
           });
           if (active && result) {
@@ -258,8 +317,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
           }
         }
       } catch (error) {
+        // A rejected refresh token already ended the session (expireSession shows the notice).
+        if (error instanceof RefreshRejectedError) return;
         // A network/server error must not turn a temporary outage into a permanent logout.
         if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+          authCoordinator.setToken(null);
           await Promise.allSettled([
             tokenStorage.remove(ACCESS_KEY),
             tokenStorage.remove(REFRESH_KEY),
@@ -280,11 +342,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
   }, [accessToken, loadFamily, ready]);
 
   const value = useMemo(() => ({
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, sessionNotice, clearSessionNotice, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   }), [
-    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, loadFamily, freshSignIn, completeOnboarding,
+    user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, sessionNotice, clearSessionNotice, loadFamily, freshSignIn, completeOnboarding,
     createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   ]);

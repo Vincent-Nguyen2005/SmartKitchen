@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Image, Platform, type ImageResizeMode, type ImageStyle, type StyleProp } from "react-native";
 import { Directory, File, Paths } from "expo-file-system";
-import { GATEWAY_BASE_URL, gatewayHeaders } from "../services/api";
+import { GATEWAY_BASE_URL, gatewayFetch, gatewayHeaders } from "../services/api";
 import { imageTarget, type ImageTarget } from "../services/authImage";
 
 /**
@@ -16,8 +16,10 @@ const CACHE_FOLDER = "auth-images";
 const memoryCache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string>>();
 
+/** Through the shared gatewayFetch: the newest token, and a 401 refreshes the session once and retries once. */
 const download = async (target: Extract<ImageTarget, { kind: "gateway" }>): Promise<Uint8Array> => {
-  const response = await fetch(target.uri, { headers: target.headers, credentials: "omit" });
+  const { Authorization: token, ...headers } = target.headers;
+  const response = await gatewayFetch(target.path, { headers, accessToken: token?.replace(/^Bearer /, ""), timeoutMs: 30_000 });
   if (!response.ok) throw new Error(`Image request failed (${response.status})`);
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (bytes.byteLength === 0) throw new Error("Empty image");

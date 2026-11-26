@@ -30,7 +30,7 @@ export type ProductCatalogResult = {
 
 type ApiEnvelope<T> = { success?: boolean; data?: T; error?: string; message?: string };
 
-async function request<T>(accessToken: string, path: string, options: Omit<RequestInit, "headers" | "signal"> = {}, timeoutMs = 15_000): Promise<T> {
+async function request<T>(accessToken: string, path: string, options: Omit<RequestInit, "headers" | "signal"> & { signal?: AbortSignal } = {}, timeoutMs = 15_000): Promise<T> {
   // Shared gateway transport (services/api.ts); FormData keeps its own multipart content type.
   const response = await gatewayFetch(path, { ...options, accessToken, timeoutMs });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T> & { code?: string };
@@ -117,8 +117,8 @@ export const inventoryApi = {
   create: (accessToken: string, input: NewFoodItem) =>
     request<import("./types").FoodItem>(accessToken, "/api/inventory/items", { method: "POST", body: JSON.stringify(input) }),
   /** Before adding: catalog product for the name (server rule: exact normalized name) and an existing same-unit row. */
-  match: (accessToken: string, familyId: string, name: string, unit: InventoryUnit) =>
-    request<ItemMatch>(accessToken, `/api/inventory/items/match${query({ familyId, name, unit })}`),
+  match: (accessToken: string, familyId: string, name: string, unit: InventoryUnit, signal?: AbortSignal) =>
+    request<ItemMatch>(accessToken, `/api/inventory/items/match${query({ familyId, name, unit })}`, { signal }),
   /** "Cộng thêm": adds quantity to an existing row on the server (atomic; same unit only). */
   addQuantity: (accessToken: string, familyId: string, id: string, input: { quantity: number; unit: InventoryUnit; expiryDate?: string }) =>
     request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}/add${query({ familyId })}`, { method: "POST", body: JSON.stringify(input) }),

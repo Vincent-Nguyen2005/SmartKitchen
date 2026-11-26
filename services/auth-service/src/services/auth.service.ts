@@ -6,8 +6,25 @@ import { Prisma, PrismaClient, Role, User } from ".prisma/client-auth";
 import { MailService, MailServiceError } from "./mail.service";
 import { hashPassword } from "./password";
 
-const ACCESS_TOKEN_TTL = "15m";
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Token lifetimes. The access token stays short-lived; the refresh token is long-lived and sliding: every refresh
+ * rotates it (the old one is deleted) and the new one gets the full lifetime again. Both can be set by env.
+ */
+const DEFAULT_ACCESS_TOKEN_TTL = "15m";
+const DEFAULT_REFRESH_TOKEN_TTL_DAYS = 30;
+/** ACCESS_TOKEN_TTL: a jsonwebtoken duration such as "15m", "900s" or "1h" (1 minute .. 24 hours); else 15m. */
+export const accessTokenTtl = (value = process.env.ACCESS_TOKEN_TTL): string => {
+  const match = /^(\d+)\s*(s|m|h)$/.exec(value?.trim() ?? "");
+  if (!match) return DEFAULT_ACCESS_TOKEN_TTL;
+  const seconds = Number(match[1]) * ({ s: 1, m: 60, h: 3600 } as const)[match[2] as "s" | "m" | "h"];
+  return seconds >= 60 && seconds <= 24 * 3600 ? `${match[1]}${match[2]}` : DEFAULT_ACCESS_TOKEN_TTL;
+};
+/** REFRESH_TOKEN_TTL_DAYS: whole days, 1 .. 365; else 30. */
+export const refreshTokenTtlMs = (value = process.env.REFRESH_TOKEN_TTL_DAYS): number => {
+  const days = Number(value);
+  const valid = Number.isInteger(days) && days >= 1 && days <= 365;
+  return (valid ? days : DEFAULT_REFRESH_TOKEN_TTL_DAYS) * 24 * 60 * 60 * 1000;
+};
 const OTP_TTL_MS = 5 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const PASSWORD_RESET_TTL_MS = 10 * 60 * 1000;
@@ -289,12 +306,12 @@ export class AuthService {
   ): Promise<AuthResult> {
     const accessToken = jwt.sign({ email: user.email, role: user.role }, this.jwtSecret, {
       subject: user.id,
-      expiresIn: ACCESS_TOKEN_TTL,
+      expiresIn: accessTokenTtl() as jwt.SignOptions["expiresIn"],
     });
     const refreshToken = randomBytes(48).toString("hex");
 
     const tokenWrite = transaction.refreshToken.create({
-        data: { token: this.hashRefreshToken(refreshToken), userId: user.id, expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS) },
+        data: { token: this.hashRefreshToken(refreshToken), userId: user.id, expiresAt: new Date(Date.now() + refreshTokenTtlMs()) },
       });
     const sessionWrite = transaction.session.create({
         data: { token: accessToken, userId: user.id, ipAddress: requestContext?.ipAddress, userAgent: requestContext?.userAgent },

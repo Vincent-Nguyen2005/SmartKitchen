@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { normalizeVi } from "../../services/localSearch";
 import { Search } from "lucide-react-native";
 import { AppText, colors, spacing } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
@@ -12,8 +13,9 @@ export interface AdminUsersScreenProps {
   onBack: () => void;
 }
 
+/** Name or email contains the typed text, case- and accent-insensitive ("nguyen" finds "Nguyễn"). */
 const matches = (user: AdminUser, needle: string): boolean =>
-  (user.name ?? "").toLowerCase().includes(needle) || user.email.toLowerCase().includes(needle);
+  normalizeVi(user.name ?? "").includes(needle) || normalizeVi(user.email).includes(needle);
 
 /** All users (newest first), filtered client-side by name or email (SCRUM-283). */
 export default function AdminUsersScreen({ onBack }: AdminUsersScreenProps): React.JSX.Element {
@@ -51,7 +53,7 @@ export default function AdminUsersScreen({ onBack }: AdminUsersScreenProps): Rea
     setRefreshing(false);
   };
 
-  const needle = search.trim().toLowerCase();
+  const needle = normalizeVi(search);
   const visible = useMemo(() => (needle ? users.filter((user) => matches(user, needle)) : users), [needle, users]);
 
   return (

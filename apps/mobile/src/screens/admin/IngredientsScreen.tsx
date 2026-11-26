@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { BadgePercent, Carrot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, TriangleExclamationPoint, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { useGatewayApi } from "../notifications/useGatewayApi";
 import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { DateField, toDisplayDate } from "./DateField";
 import { formatVnd } from "../../services/format";
+import { filterByName, loadAllPages } from "../../services/localSearch";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
@@ -120,6 +121,8 @@ const withTag = (tags: string[], tag: string): string[] => {
 const imageUrlError = (text: string): string | null =>
   !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https:// và là địa chỉ công khai.";
 const PAGE_SIZE = 10;
+/** Rows per request when loading the whole catalog (admin-service caps limit at 100). */
+const LOAD_PAGE_SIZE = 100;
 const optionalNumber = (value: string): number | null => (value.trim() === "" ? null : Number(value.replace(",", ".")));
 
 export default function IngredientsScreen(): React.JSX.Element {
@@ -127,12 +130,12 @@ export default function IngredientsScreen(): React.JSX.Element {
   const { columns, gutter, isWide } = useLayout();
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
-  const [term, setTerm] = useState("");
+  const term = search.trim();
   // "Đang dùng" (isActive=true) or "Tất cả"; hidden ingredients appear under "Tất cả" (dimmed).
   const [active, setActive] = useState<"true" | "all">("all");
-  const [items, setItems] = useState<Ingredient[]>([]);
+  // The whole admin catalog (~139 rows, hidden ones too), loaded once and searched / filtered / paged on the device.
+  const [all, setAll] = useState<Ingredient[]>([]);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,32 +149,36 @@ export default function IngredientsScreen(): React.JSX.Element {
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Ingredient>>(null);
 
-  useEffect(() => { const timer = setTimeout(() => setTerm(search.trim()), 400); return () => clearTimeout(timer); }, [search]);
-
-  // One page of PAGE_SIZE at a time (server-side search + filter). The list shows a spinner while a page loads.
-  const load = useCallback(async (nextPage: number, refresh = false) => {
+  // Every row once (pages of 100, the endpoint maximum): again only on pull-to-refresh, retry and after an edit.
+  // Typing in the search box or switching the filter sends no request.
+  const load = useCallback(async (refresh = false) => {
     const id = ++requestId.current;
     if (refresh) setRefreshing(true); else setLoading(true);
     try {
-      const fetchPage = (pageNumber: number) => api.get<Page<Ingredient>>(`/api/admin/ingredients${query({ search: term, isActive: active === "all" ? undefined : active, page: pageNumber, limit: PAGE_SIZE })}`);
-      let result = await fetchPage(nextPage);
-      let shown = nextPage;
-      // The page no longer exists (e.g. items were hidden under "Đang dùng"): show the last page instead.
-      if (result.items.length === 0 && result.total > 0 && nextPage > 1) {
-        shown = Math.ceil(result.total / PAGE_SIZE);
-        result = await fetchPage(shown);
-      }
+      const rows = await loadAllPages((pageNumber) => api.get<Page<Ingredient>>(`/api/admin/ingredients${query({ page: pageNumber, limit: LOAD_PAGE_SIZE })}`));
       if (id !== requestId.current) return;
-      setItems(result.items);
-      setPage(shown); setTotal(result.total); setError(null);
+      setAll(rows);
+      setError(null);
     } catch (caught) {
       if (id === requestId.current) setError(errorMessage(caught));
     } finally {
       if (id === requestId.current) { setLoading(false); setRefreshing(false); }
     }
-  }, [active, api, term]);
+  }, [api]);
 
-  useEffect(() => { void load(1); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+
+  // Accent-insensitive name search ("ca rot" finds "Cà rốt") and the "Đang dùng" filter, then pages of PAGE_SIZE.
+  const filtered = useMemo(
+    () => filterByName(all, term).filter((item) => active === "all" || item.isActive !== false),
+    [all, term, active],
+  );
+  const total = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const shownPage = Math.min(page, totalPages);
+  const items = filtered.slice((shownPage - 1) * PAGE_SIZE, shownPage * PAGE_SIZE);
+  // A new search or filter starts on the first page.
+  useEffect(() => { setPage(1); }, [term, active]);
 
   const save = async () => {
     if (!draft) return;
@@ -217,7 +224,7 @@ export default function IngredientsScreen(): React.JSX.Element {
       // The ingredient is saved even when the promotion could not be created; tell the admin to retry.
       setNotice(saved.promotionSync === "failed" ? PROMOTION_SYNC_FAILED : null);
       setDraft(null);
-      void load(page);
+      void load(true);
     } catch (caught) {
       setFormError(caught instanceof GatewayApiError && caught.status === 409 ? "Tên nguyên liệu đã tồn tại." : errorMessage(caught));
     } finally {
@@ -226,12 +233,12 @@ export default function IngredientsScreen(): React.JSX.Element {
   };
 
   const setActiveFlag = async (item: Ingredient, isActive: boolean) => {
-    setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isActive } : entry)));
+    setAll((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isActive } : entry)));
     try {
       const saved = await api.patch<SavedIngredient>(`/api/admin/ingredients/${encodeURIComponent(item.id)}/active`, { isActive });
       setNotice(saved.promotionSync === "failed" ? PROMOTION_SYNC_FAILED : null);
     } catch (caught) {
-      setItems((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
+      setAll((current) => current.map((entry) => (entry.id === item.id ? item : entry)));
       setError(errorMessage(caught));
     }
   };
@@ -244,7 +251,7 @@ export default function IngredientsScreen(): React.JSX.Element {
   const runFormAction = async (action: () => Promise<boolean>) => {
     setRemoving(true); setFormError(null);
     try {
-      if (await action()) { setDraft(null); void load(page); }
+      if (await action()) { setDraft(null); void load(true); }
     } catch (caught) {
       setFormError(errorMessage(caught));
     } finally {
@@ -269,13 +276,12 @@ export default function IngredientsScreen(): React.JSX.Element {
   // Search, add and filter are the list header, so on short screens (phones in landscape) they scroll
   // away with the list. While loading or after an error the list shows the state instead (same requests).
   const showState = loading || Boolean(error && items.length === 0);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   // Hide the filter chips only when the whole catalog is empty ("Tất cả", no search, 0 items). A search or
   // "Đang dùng" with no results keeps them, otherwise there would be no way back to "Tất cả".
-  const catalogEmpty = total === 0 && !term && active === "all";
+  const catalogEmpty = all.length === 0 && !term && active === "all";
   const goToPage = (nextPage: number) => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
-    void load(nextPage);
+    setPage(nextPage);
   };
   const toolbar = (
     <View>
@@ -309,15 +315,15 @@ export default function IngredientsScreen(): React.JSX.Element {
         keyExtractor={(item) => item.id}
         contentContainerStyle={local.listContent}
         ref={listRef}
-        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(page, true)} tintColor={colors.primary} />}
+        refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
         ListFooterComponent={showState || total === 0 ? undefined : (
           <View style={local.footer}>
-            <AppText variant="caption" style={local.pageInfo}>Trang {page} / {totalPages} · {total} nguyên liệu</AppText>
-            <Pagination page={page} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+            <AppText variant="caption" style={local.pageInfo}>Trang {shownPage} / {totalPages} · {total} nguyên liệu</AppText>
+            <Pagination page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
           </View>
         )}
         ListEmptyComponent={showState
-          ? <ScreenState loading={loading} error={error} onRetry={() => void load(page)} />
+          ? <ScreenState loading={loading} error={error} onRetry={() => void load()} />
           : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "all"
             ? "Không tìm thấy nguyên liệu."
             // This is admin-service's master catalog (master_ingredients), not the items users add to their
