@@ -15,7 +15,7 @@ type Props = {
 
 /**
  * The "Thông báo" tab: one list (notifications, expiry alerts, active promotions). No page title, no segments and
- * no read filter; notification settings live in Hồ sơ > "Cài đặt thông báo".
+ * no read filter and no notification settings: every notification type is shown.
  */
 export default function NotificationsHome({ onOpenInventoryItem, onChanged, onOpenCart }: Props): React.JSX.Element {
   const [weekOpen, setWeekOpen] = useState(false);

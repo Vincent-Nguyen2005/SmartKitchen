@@ -46,22 +46,17 @@ describe("dispatchPromotion", () => {
     expect(updates().map((update) => [update.where.id, update.data.status])).toEqual([["n-u1", "SENT"], ["n-u2", "FAILED"]]);
   });
 
-  it("skips users who disabled push or promotions", async () => {
+  it("ignores stored notification settings: push / promotions off and quiet hours no longer skip anyone", async () => {
     prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2"), token("u3")]);
+    // Old rows from the removed "Cài đặt thông báo" screen; the dispatcher no longer reads them.
     prismaMock.notificationPreference.findMany.mockResolvedValue([
       { userId: "u1", pushEnabled: false, promotionEnabled: true },
-      { userId: "u2", pushEnabled: true, promotionEnabled: false },
+      { userId: "u2", pushEnabled: true, promotionEnabled: false, quietHoursStart: "00:00", quietHoursEnd: "23:59" },
     ]);
-    const provider = providerDelivering(["ExponentPushToken[u3]"]);
-    expect(await dispatchPromotion("p1", ["u1", "u2", "u3"], provider)).toBe(1);
-    expect(vi.mocked(provider.send).mock.calls[0][0].map((message) => message.token)).toEqual(["ExponentPushToken[u3]"]);
-  });
-
-  it("skips users inside their quiet hours (evaluated in DEFAULT_TIMEZONE)", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
-    prismaMock.notificationPreference.findMany.mockResolvedValue([{ userId: "u1", pushEnabled: true, promotionEnabled: true, quietHoursStart: "09:00", quietHoursEnd: "11:00" }]);
-    expect(await dispatchPromotion("p1", ["u1", "u2"], providerDelivering(["ExponentPushToken[u2]"]))).toBe(1);
-    expect(prismaMock.notification.create.mock.calls.map((call) => call[0].data.userId)).toEqual(["u2"]);
+    const provider = providerDelivering(["ExponentPushToken[u1]", "ExponentPushToken[u2]", "ExponentPushToken[u3]"]);
+    expect(await dispatchPromotion("p1", ["u1", "u2", "u3"], provider)).toBe(3);
+    expect(vi.mocked(provider.send).mock.calls[0][0].map((message) => message.token)).toEqual(["ExponentPushToken[u1]", "ExponentPushToken[u2]", "ExponentPushToken[u3]"]);
+    expect(prismaMock.notificationPreference.findMany).not.toHaveBeenCalled();
   });
 
   it("does not notify a user twice for the same promotion", async () => {

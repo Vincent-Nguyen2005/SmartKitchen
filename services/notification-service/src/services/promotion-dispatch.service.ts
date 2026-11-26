@@ -1,22 +1,20 @@
 import { prisma } from "../lib/prisma";
-import { isWithinQuietHours } from "../lib/promotion";
 import { createPushProvider, type PushProvider } from "./push-provider";
 
 let running = false;
 
+/**
+ * Sends a promotion to every given user with an active device token, once per user and promotion.
+ * There are no notification settings any more (the app's "Cài đặt thông báo" was removed): stored
+ * notification_preferences rows (push / promotion off, quiet hours) are kept but ignored, so everything is on.
+ */
 export const dispatchPromotion = async (promotionId: string, userIds: string[], provider: PushProvider = createPushProvider()): Promise<number> => {
   const promotion = await prisma.promotion.findUnique({ where: { id: promotionId } });
   if (!promotion) return 0;
-  const preferences = await prisma.notificationPreference.findMany({ where: { userId: { in: userIds } } });
-  const preferenceByUser = new Map(preferences.map((preference) => [preference.userId, preference]));
   const tokens = await prisma.deviceToken.findMany({ where: { userId: { in: userIds }, isActive: true } });
   const existing = await prisma.notification.findMany({ where: { userId: { in: userIds }, type: "PROMOTION", data: { path: ["promotionId"], equals: promotionId } } });
   const sentUsers = new Set(existing.map((notification) => notification.userId));
-  const timezone = process.env.DEFAULT_TIMEZONE || "Asia/Ho_Chi_Minh";
-  const targets = tokens.filter((token) => {
-    const preference = preferenceByUser.get(token.userId);
-    return !sentUsers.has(token.userId) && preference?.pushEnabled !== false && preference?.promotionEnabled !== false && !isWithinQuietHours(new Date(), preference?.quietHoursStart || null, preference?.quietHoursEnd || null, timezone);
-  });
+  const targets = tokens.filter((token) => !sentUsers.has(token.userId));
   if (targets.length === 0) return 0;
   const notifications = await prisma.$transaction(targets.map((target) => prisma.notification.create({ data: {
     userId: target.userId,

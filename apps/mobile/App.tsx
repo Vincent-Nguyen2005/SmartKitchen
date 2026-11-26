@@ -61,7 +61,6 @@ import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
-import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen, { type NutritionProfileHandle } from "./src/screens/nutrition/NutritionProfileScreen";
 import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
@@ -168,8 +167,6 @@ function AppContent(): React.JSX.Element {
   }, [sessionNotice, clearSessionNotice]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).
-  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
   const [mealSizeOpen, setMealSizeOpen] = useState(false);
   // Hồ sơ > "Thông tin sức khỏe" (the nutrition profile form, moved out of Dinh dưỡng); closing it reloads targets.
@@ -235,7 +232,7 @@ function AppContent(): React.JSX.Element {
   // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
   // Đi chợ selection mode: its one-line bar takes the capture bar's place (same height) until selection ends.
   const marketSelection = useMarketSelectionBar();
-  const overlayOpen = profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen;
+  const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen;
   const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
 
@@ -525,12 +522,6 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.profileValue}>{session.user.email}</Text>
               <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
               <Text style={styles.profileValue}>{session.family?.currentUserRole ? familyRoleLabel(session.family.currentUserRole) : "Chưa tham gia gia đình"}</Text>
-              <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
-                onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
-                <AppIcon icon={Bell} size="md" color={colors.primary} />
-                <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
-                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-              </TouchableOpacity>
               <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
                 onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
                 <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
@@ -551,18 +542,6 @@ function AppContent(): React.JSX.Element {
             </ScrollView>
           </View>
         </View>
-      </Modal>
-
-      <Modal animationType="slide" visible={notificationSettingsOpen && !isAdmin} onRequestClose={() => setNotificationSettingsOpen(false)}>
-        <SafeAreaView style={styles.settingsScreen}>
-          <View style={styles.settingsHeader}>
-            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setNotificationSettingsOpen(false)} />
-            <Text style={styles.settingsTitle}>Cài đặt thông báo</Text>
-          </View>
-          <View style={styles.settingsBody}>
-            <NotificationPreferencesScreen />
-          </View>
-        </SafeAreaView>
       </Modal>
 
       <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={() => void leaveHealthProfile()}>

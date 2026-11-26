@@ -29,6 +29,8 @@ router.delete("/device-tokens/:token", requireUser, async (request, response) =>
   if (result.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Device token not found" });
   return response.status(204).send();
 });
+// Notification preferences: kept for older clients and the e2e / gateway checks, but nothing reads them any more
+// (the app's "Cài đặt thông báo" was removed and promotion dispatch ignores them: everything is on). Not deleted.
 const preferencesSchema = z.object({ pushEnabled: z.boolean().optional(), promotionEnabled: z.boolean().optional(), quietHoursStart: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), quietHoursEnd: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional() });
 const readPreferences = async (request: Request, response: Response) => {
   if (namesOtherUser(request, request.params.userId)) return forbidOtherUser(response);

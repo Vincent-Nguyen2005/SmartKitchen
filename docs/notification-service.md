@@ -15,7 +15,7 @@ Paths are as seen by the service; through the gateway prefix them with `/api/not
 | `GET /health` | — | Liveness (`status: "OK"`) |
 | `GET /notifications?status=&page=&limit=` | user | The caller's inbox, newest first; `status` is `PENDING`, `SENT`, `FAILED` or `READ` |
 | `PATCH /notifications/:id/read` | user (owner) | Mark one of the caller's notifications as read; `404` if it is not theirs |
-| `GET /preferences` | user | The caller's preferences (created with defaults on first read) |
+| `GET /preferences` | user | The caller's preferences (created with defaults on first read). **Unused:** the app no longer has "Cài đặt thông báo" and dispatch ignores these values |
 | `PUT /preferences` | user | `pushEnabled`, `promotionEnabled`, `quietHoursStart` / `quietHoursEnd` (`HH:mm` or `null`) |
 | `GET` / `PUT /preferences/:userId` | user | Kept for older clients; `:userId` must be the caller (`403` otherwise) |
 | `POST /device-tokens` | user | `{ token, platform: IOS \| ANDROID }`, upsert for the caller. A token identifies a device, so it moves to the account now signed in on that device |
@@ -51,7 +51,7 @@ x-api-key: <INTERNAL_API_KEY>
 
 ## Jobs
 
-With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Quiet hours (in `DEFAULT_TIMEZONE`, overnight ranges allowed) and `promotionEnabled=false` suppress sends. Enable jobs on **one** instance only.
+With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Stored preferences (push / promotion off, quiet hours) are ignored since the app's "Cài đặt thông báo" was removed: every user with an active token gets each promotion once. The rows stay in `notification_preferences`. Enable jobs on **one** instance only.
 
 ## Errors
 
@@ -78,7 +78,7 @@ With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) mat
 | `EXPO_ACCESS_TOKEN` | — | Optional, for Expo push |
 | `ENABLE_JOBS` | false | Promotion cron |
 | `PROMOTION_CRON` | `*/15 * * * *` | Cron expression |
-| `DEFAULT_TIMEZONE` | `Asia/Ho_Chi_Minh` | Quiet-hours timezone |
+| `DEFAULT_TIMEZONE` | `Asia/Ho_Chi_Minh` | No longer read (was the quiet-hours timezone) |
 
 ## Database
 
