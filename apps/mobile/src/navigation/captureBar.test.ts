@@ -19,3 +19,9 @@ test("hidden with Hồ sơ (or one of its screens) open, a payment page, or an a
   assert.equal(captureBarVisible({ ...base, tab: "inventory", paymentOpen: true }), false);
   assert.equal(captureBarVisible({ ...base, tab: "inventory", isAdmin: true }), false);
 });
+
+test("hidden while Đi chợ selection mode shows its own bar; back when selection ends", () => {
+  assert.equal(captureBarVisible({ ...base, tab: "shopping", selecting: true }), false);
+  assert.equal(captureBarVisible({ ...base, tab: "shopping", selecting: false }), true);
+  assert.equal(captureBarVisible({ ...base, tab: "inventory" }), true);
+});

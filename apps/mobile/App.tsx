@@ -69,6 +69,8 @@ import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import { captureBarVisible } from "./src/navigation/captureBar";
+import { SelectionBar } from "./src/components/SelectionBar";
+import { marketSelectionBar, useMarketSelectionBar } from "./src/screens/shopping-cart/selectionBar";
 
 type Tab =
   | "inventory"
@@ -230,7 +232,11 @@ function AppContent(): React.JSX.Element {
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
   const selectedMenuTab = menuTabs.find(({ key }) => key === activeTab) ?? menuTabs[0];
   // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
-  const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen, paymentOpen: !!paymentUrl });
+  // Đi chợ selection mode: its one-line bar takes the capture bar's place (same height) until selection ends.
+  const marketSelection = useMarketSelectionBar();
+  const overlayOpen = profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen;
+  const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
+  const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
 
   /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */
   const refreshNotificationBadge = useCallback(async (): Promise<void> => {
@@ -676,6 +682,7 @@ function AppContent(): React.JSX.Element {
           ))}
         </View>
       )}
+      {showSelectionBar && <SelectionBar state={marketSelection} onExit={marketSelectionBar.exit} onAdd={marketSelectionBar.add} />}
       {voice.overlay}
       <CaptureDialog text={captureDialog?.text ?? null} settings={captureDialog?.settings} onClose={() => setCaptureDialog(null)} />
     </SafeAreaView>

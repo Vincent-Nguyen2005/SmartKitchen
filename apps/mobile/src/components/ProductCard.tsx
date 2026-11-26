@@ -67,7 +67,9 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
       accessibilityState={selectable ? { checked: selected } : undefined}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={350}
+      // Instant press feedback (no press-in delay); 300 ms only to start Đi chợ selection mode.
+      unstable_pressDelay={0}
+      delayLongPress={300}
       disabled={!onPress && !onLongPress}
       style={({ pressed }) => [local.card, { width }, selected && local.cardSelected, pressed && ui.pressed]}
     >

@@ -5,7 +5,8 @@
  */
 export const CAPTURE_BAR_TABS = ["inventory", "shopping", "menu", "recipes", "nutrition", "family"] as const;
 
-export function captureBarVisible(state: { tab: string; isAdmin: boolean; profileOpen: boolean; paymentOpen: boolean }): boolean {
-  if (state.isAdmin || state.profileOpen || state.paymentOpen) return false;
+/** `selecting`: Đi chợ selection mode, whose one-line selection bar replaces the capture bar until it ends. */
+export function captureBarVisible(state: { tab: string; isAdmin: boolean; profileOpen: boolean; paymentOpen: boolean; selecting?: boolean }): boolean {
+  if (state.isAdmin || state.profileOpen || state.paymentOpen || state.selecting) return false;
   return (CAPTURE_BAR_TABS as readonly string[]).includes(state.tab);
 }
