@@ -2,8 +2,11 @@ import React, { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors, radius, spacing, textStyles, touchTarget } from "../theme";
 
-/** cancelLabel defaults to "Hủy"; destructive shows the confirm button in the danger colour (permanent delete). */
-type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string; destructive?: boolean };
+/**
+ * cancelLabel defaults to "Hủy"; null shows only the confirm button (a notice: "Đã hiểu"). destructive shows the
+ * confirm button in the danger colour (permanent delete).
+ */
+type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string | null; destructive?: boolean };
 
 /**
  * In-app yes/no dialog (same look as the Giỏ hàng checkout confirmation). Not Alert.alert or window.confirm:
@@ -40,7 +43,7 @@ export function useConfirm() {
         <Text style={local.title} accessibilityRole="header">{request.title}</Text>
         <Text style={local.message}>{request.message}</Text>
         <View style={local.actions}>
-          <Pressable accessibilityRole="button" onPress={() => answer("cancel")} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>
+          {request.cancelLabel === null ? null : <Pressable accessibilityRole="button" onPress={() => answer("cancel")} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>}
           <Pressable accessibilityRole="button" onPress={() => answer("confirm")} style={[local.primary, request.destructive && local.destructive]}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>
         </View>
       </View>

@@ -169,7 +169,6 @@ export const familyApi = {
   verifyQr: (token: string, scanned: string) => request<{ family: { id: string; name: string }; membership: "none" | "this" | "other" }>(FAMILY_BASE_URL, "/qr/verify", { method: "POST", body: JSON.stringify({ token: scanned }) }, token),
   joinQr: (token: string, scanned: string) => request<{ membership: ApiFamilyMember; family: { id: string; name: string } }>(FAMILY_BASE_URL, "/qr/join", { method: "POST", body: JSON.stringify({ token: scanned }) }, token),
   leave: (token: string) => request<void>(FAMILY_BASE_URL, "/me", { method: "DELETE" }, token),
-  updateRole: (token: string, memberId: string, role: Exclude<ApiFamilyRole, "OWNER">) => request<{ member: ApiFamilyMember }>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}/role`, { method: "PATCH", body: JSON.stringify({ role }) }, token),
   removeMember: (token: string, memberId: string) => request<void>(FAMILY_BASE_URL, `/members/${encodeURIComponent(memberId)}`, { method: "DELETE" }, token),
   regenerateJoinCode: (token: string) => request<{ joinCode: { id: string; code: string; codeExpiresAt: string } }>(FAMILY_BASE_URL, "/join-code/regenerate", { method: "POST" }, token),
   getSettings: (token: string) => request<{ settings: ApiFamilySettings }>(FAMILY_BASE_URL, "/settings", {}, token),

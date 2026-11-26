@@ -145,10 +145,11 @@ recipe-service marks each dish with a `cuisine`: vietnam (default), western or a
 
 Missing ingredients for the caller's family, computed on read (`src/services/week-missing.ts`). Nothing is stored or pushed.
 - **Which dishes:** menu dishes from today through Sunday (Vietnam days), catalog recipes plus stored AI dishes.
-- **Amounts:** scaled with `portions.ts` to each menu's people, then summed per product: the catalog product by exact normalized name or English alias, else the name. Seasonings (`isSeasoning`) and free-text amounts are left out.
+- **Amounts:** scaled once with `portions.ts` to each menu's people (quantity × people / recipe servings), then summed per product: the catalog product by exact normalized name or English alias, else the name. Seasonings (`isSeasoning`) and free-text amounts are left out.
 - **Kho:** usable stock is subtracted (quantity > 0; not expired, consumed or discarded; expiry day not before today), matched by `productId`, else name.
-- **Units:** only the same measure counts (g with kg, ml with l, the same piece unit). Stock in another measure is not subtracted, and the item is marked `unitMismatch`.
-- **Response:** `{ from, to, count, items: [{ name, quantity, unit, productId, imageUrl, price, discountPercent, saleUnit, cartQuantity, unitMismatch }] }`. `cartQuantity` is the missing amount in the product's sale unit, rounded up to a whole number (one unit when the measures differ); it's null when the item isn't sold in Đi chợ.
+- **Units:** recipe lines and Kho rows of a sold product are converted to its sale unit: g / kg / ml / l directly (ml ≈ g for liquids sold by weight), the sale unit through catalog `packGrams` (Bún 1 gói ≈ 500 g), pieces of a kg / pack product through catalog `pieceGrams` (Cà chua 1 quả ≈ 100 g). The missing amount is rounded up to the sale step (kg: 0.1 kg, at least 0.1 and at most 20; other units: whole units).
+- **No guessing:** a line with no known conversion (pieces without `pieceGrams`, grams of a pack without `packGrams`) stays in its recipe unit with `unconverted: true` and no `cartQuantity`, and is listed in `unconverted`. Kho stock that cannot be converted is not subtracted (`unitMismatch`).
+- **Response:** `{ from, to, count, items: [{ name, quantity, unit, productId, imageUrl, price, discountPercent, saleUnit, saleUnitLabel, cartQuantity, unconverted, unitMismatch }], unconverted: [{ name, productId, recipeUnit, saleUnit }] }`. For sold, converted items `quantity` / `unit` are the sale amount and equal `cartQuantity` / `saleUnit` (what "Thêm vào Giỏ hàng" adds); `cartQuantity` is null when the item isn't sold in Đi chợ or is unconverted.
 - **No family:** `count: 0`.
 
 ## Internal: recipe usage

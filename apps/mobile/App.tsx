@@ -48,6 +48,7 @@ import InventoryCapturePanel, { type InventoryCaptureMode } from "./src/screens/
 import FamilyQrSheet from "./src/screens/family/FamilyQrSheet";
 import FamilyQrScanner from "./src/screens/family/FamilyQrScanner";
 import { familyQrAction, type FamilyQrAction } from "./src/screens/family/familyQr";
+import { familyRoleLabel } from "./src/screens/family/familyActions";
 import { CaptureDialog, MIC_PERMISSION_TEXT, useInstantVoice } from "./src/screens/inventory/InstantCapture";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto } from "./src/screens/inventory/inventoryPhoto";
 import type { UploadPhoto } from "./src/screens/inventory/inventoryApi";
@@ -523,7 +524,7 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.profileLabel}>Email</Text>
               <Text style={styles.profileValue}>{session.user.email}</Text>
               <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
-              <Text style={styles.profileValue}>{session.family?.currentUserRole === "OWNER" ? "Chủ gia đình" : session.family?.currentUserRole === "ADMIN" ? "Quản trị viên" : session.family?.currentUserRole === "MEMBER" ? "Thành viên" : "Chưa tham gia gia đình"}</Text>
+              <Text style={styles.profileValue}>{session.family?.currentUserRole ? familyRoleLabel(session.family.currentUserRole) : "Chưa tham gia gia đình"}</Text>
               <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
                 onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
                 <AppIcon icon={Bell} size="md" color={colors.primary} />

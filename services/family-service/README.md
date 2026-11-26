@@ -5,8 +5,10 @@ Owner: Kazan. Responsibility: household membership and family relationship APIs.
 ## Family settings and ownership
 
 - `GET /api/family/settings` returns the authenticated member's family preferences.
-- `PATCH /api/family/settings` updates dietary restrictions, currency, monthly budget, and household rules. Only owners and admins can update settings.
-- `POST /api/family/transfer-ownership` accepts `{ "memberId": "<family-member-id>" }`. Only the owner can transfer ownership; the former owner becomes an admin.
+- **Roles:** a family has one owner (`OWNER`, chủ gia đình) and members (`MEMBER`, thành viên). There are no family admins: setting or inviting with `ADMIN` answers 400, and a leftover `ADMIN` row is treated as `MEMBER` everywhere (permissions, `/me`, internal memberships). `scripts/data-fixes/2026-12-family-admin-to-member.js` cleans stored rows. (The platform admin role in auth-service is unrelated.)
+- Owner only: invite, regenerate the join code, family QR, `PATCH /api/family/settings`, `PATCH /members/:id/role` (only `MEMBER`), remove a member, transfer ownership. Members get 403.
+- `PATCH /api/family/settings` updates dietary restrictions, currency, monthly budget, and household rules.
+- `POST /api/family/transfer-ownership` accepts `{ "memberId": "<family-member-id>" }`. Only the owner can transfer ownership; the former owner becomes a member.
 - Owners must transfer ownership before leaving or being removed.
 - Family API responses use `{ "success": boolean, "data"?: object, "error"?: string }`.
 

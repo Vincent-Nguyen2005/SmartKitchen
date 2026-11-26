@@ -58,7 +58,6 @@ export default function FamilyScreenFlow(): React.JSX.Element {
       currentUserRole={family.currentUserRole}
       currentUserId={session.user.id}
       onBack={() => setView("overview")}
-      onChangeRole={session.updateMemberRole}
       onRemove={session.removeMember}
       onTransferOwnership={session.transferOwnership}
     />;

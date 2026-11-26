@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireInternalKey } from "./internal-key";
 import { isDatabaseUnavailable } from "../database-error";
 import { lookupProfiles, ProfileLookupError } from "../services/user-profiles";
+import { effectiveRole } from "../services/roles";
 
 const params = z.object({ id: z.string().uuid() });
 const membershipsBody = z.object({ userIds: z.array(z.string().uuid()).min(1).max(500) });
@@ -32,7 +33,7 @@ export const createInternalFamiliesRouter = (prisma: PrismaClient): Router => {
         select: { userId: true, familyId: true, role: true, family: { select: { _count: { select: { members: true } } } } },
       });
       res.json({
-        items: memberships.map(({ userId, familyId, role, family }) => ({ userId, familyId, role, memberCount: family._count.members })),
+        items: memberships.map(({ userId, familyId, role, family }) => ({ userId, familyId, role: effectiveRole(role), memberCount: family._count.members })),
       });
     } catch (error) {
       console.error("[family-service] internal membership lookup failed", error);

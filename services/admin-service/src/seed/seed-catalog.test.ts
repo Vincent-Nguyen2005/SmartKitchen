@@ -135,6 +135,23 @@ describe("starter catalog seed", () => {
     expect(rows.find((row) => row.name === "Nước mắm")).toMatchObject({ defaultUnit: "BOTTLE", unitLabel: null, packGrams: 500 });
   });
 
+  it("recipe ingredients convert to the sale unit: packs used by recipes have a pack weight, counted pieces a piece weight", async () => {
+    const rows: Array<Record<string, unknown>> = [];
+    const client = {
+      masterIngredient: { findMany: async () => [], createMany: async ({ data }: { data: Array<Record<string, unknown>> }) => { rows.push(...data); return { count: data.length }; } },
+      auditLog: { findMany: async () => [] },
+    } as unknown as PrismaClient;
+    await seedMissingIngredients(client);
+    const byName = (name: string) => rows.find((row) => row.name === name);
+    expect(byName("Bún")).toMatchObject({ defaultUnit: "PACK", packGrams: 500, pieceGrams: null });
+    expect(byName("Cà chua")).toMatchObject({ defaultUnit: "KILOGRAM", packGrams: null, pieceGrams: 100 });
+    expect(byName("Cà rốt")).toMatchObject({ defaultUnit: "KILOGRAM", pieceGrams: 150 });
+    expect(byName("Cam")).toMatchObject({ defaultUnit: "KILOGRAM", pieceGrams: 200 });
+    expect(byName("Chuối")).toMatchObject({ defaultUnit: "PACK", packGrams: 1000, pieceGrams: 120 });
+    // A piece weight only where the sale unit is not the piece itself (PIECE products use packGrams).
+    for (const row of rows.filter((entry) => entry.pieceGrams !== null)) expect(["KILOGRAM", "PACK"], String(row.name)).toContain(row.defaultUnit);
+  });
+
   it("every starter product has a market price (whole VND, 500 VND steps) and macros that fit its kcal", () => {
     for (const entry of catalogSeed) {
       const detail = catalogDetails[entry.name];

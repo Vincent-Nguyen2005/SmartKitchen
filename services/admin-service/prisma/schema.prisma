@@ -62,6 +62,10 @@ model MasterIngredient {
   /// Weight in grams of one sale unit for PACK / PIECE products (Hành lá 1 bó ≈ 100 g), so recipe grams convert to
   /// packs ("Cần mua tuần này") and back; null = unknown.
   packGrams       Int?
+  /// Typical weight in grams of ONE piece (quả / củ / cây / lát) for KILOGRAM / PACK products that recipes count in
+  /// pieces (Cà chua 1 quả ≈ 100 g, Bánh tráng 1 lá ≈ 10 g), so "3 quả cà chua" converts to kg / packs ("Cần mua tuần
+  /// này"); null = unknown. PIECE products use packGrams (their sale unit is one piece).
+  pieceGrams      Int?
   /// Specific word for one PIECE / BOTTLE / CAN / BOX sale unit ("quả", "bìa"...), one of the fixed words in
   /// admin.route.ts (UNIT_WORDS); null = the unit's own word ("cái", "chai", "lon", "hộp").
   unitLabel       String?

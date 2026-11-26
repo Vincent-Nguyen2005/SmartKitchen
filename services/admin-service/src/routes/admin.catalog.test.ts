@@ -62,6 +62,21 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
     expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ packGrams: null }) }));
   });
 
+  it("returns and validates the weight of one piece (kg / pack products recipes count in pieces)", async () => {
+    rows = [row({ name: "Cà chua", defaultUnit: "KILOGRAM", price: 30000, pieceGrams: 100 })];
+    const response = await asUser(request(app).get("/catalog/ingredients"));
+    expect(catalogCall().select).toMatchObject({ pieceGrams: true });
+    expect(response.body.items[0]).toMatchObject({ name: "Cà chua", unit: "KILOGRAM", pieceGrams: 100 });
+    prismaMock.masterIngredient.findUnique.mockResolvedValue(row());
+    prismaMock.masterIngredient.update.mockImplementation(async ({ data }: { data: Record<string, unknown> }) => ({ ...row(), ...data }));
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ pieceGrams: 0 }))).status).toBe(400);
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ pieceGrams: 2.5 }))).status).toBe(400);
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ pieceGrams: 150 }))).status).toBe(200);
+    expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ pieceGrams: 150 }) }));
+    expect((await asAdmin(request(app).put("/ingredients/i1").send({ pieceGrams: "" }))).status).toBe(200);
+    expect(prismaMock.masterIngredient.update).toHaveBeenLastCalledWith(expect.objectContaining({ data: expect.objectContaining({ pieceGrams: null }) }));
+  });
+
   it("filters by product ids (this week's missing products) and returns the piece unit word", async () => {
     rows = [row({ id: "p-1", name: "Bưởi", defaultUnit: "PIECE", price: 60000, packGrams: 1200, unitLabel: "quả" })];
     const response = await asUser(request(app).get("/catalog/ingredients?ids=p-1,%20p-2,,"));

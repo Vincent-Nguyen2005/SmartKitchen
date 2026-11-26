@@ -39,7 +39,7 @@ const creditColumns = (input: Partial<IngredientInput>, before: { imageUrl: stri
 export const UNIT_WORDS = ["cái", "quả", "trái", "chai", "lon", "hộp", "nải", "bìa"] as const;
 const unitLabelSchema = z.preprocess(emptyToNull, z.enum(UNIT_WORDS).nullable().optional());
 
-const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoStartDate: promoStartDateSchema, promoEndDate: promoEndDateSchema, price: priceSchema, packGrams: z.preprocess(emptyToNull, z.number().int("Khối lượng phải là số nguyên (g)").positive("Khối lượng phải lớn hơn 0").max(100_000).nullable().optional()), unitLabel: unitLabelSchema });
+const ingredientSchema = z.object({ name: z.string().min(1), category: z.string().min(1), defaultUnit: z.string().min(1), shelfLifeDays: z.number().int().nonnegative().max(3650).nullable().optional(), caloriesPer100g: z.number().nonnegative().nullable().optional(), proteinPer100g: z.number().nonnegative().nullable().optional(), carbsPer100g: z.number().nonnegative().nullable().optional(), fatPer100g: z.number().nonnegative().nullable().optional(), allergenTags: z.array(z.string()).default([]), isActive: z.boolean().optional(), imageUrl: imageUrlSchema, imageSource: creditSchema(2048), imageAuthor: creditSchema(300), imageLicense: creditSchema(100), englishName: creditSchema(120), discountPercent: discountPercentSchema, promoStartDate: promoStartDateSchema, promoEndDate: promoEndDateSchema, price: priceSchema, packGrams: z.preprocess(emptyToNull, z.number().int("Khối lượng phải là số nguyên (g)").positive("Khối lượng phải lớn hơn 0").max(100_000).nullable().optional()), pieceGrams: z.preprocess(emptyToNull, z.number().int("Khối lượng phải là số nguyên (g)").positive("Khối lượng phải lớn hơn 0").max(100_000).nullable().optional()), unitLabel: unitLabelSchema });
 type IngredientInput = z.infer<typeof ingredientSchema>;
 type PromoBefore = { imageUrl: string | null; discountPercent: number | null; promoEndDate: Date | null; promoStartDate?: Date | null } | null;
 
@@ -114,7 +114,7 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const [rows, total, groups] = await prisma.$transaction([
     prisma.masterIngredient.findMany({
       where,
-      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoStartDate: true, promoEndDate: true, price: true, packGrams: true, unitLabel: true },
+      select: { id: true, name: true, category: true, defaultUnit: true, shelfLifeDays: true, imageUrl: true, imageSource: true, imageAuthor: true, imageLicense: true, englishName: true, discountPercent: true, promoStartDate: true, promoEndDate: true, price: true, packGrams: true, pieceGrams: true, unitLabel: true },
       orderBy: { nameNormalized: "asc" },
       skip: (page - 1) * limit,
       take: limit,
@@ -144,6 +144,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
       price: row.price,
       // Grams in one pack / bunch (PACK / PIECE products); null when unknown.
       packGrams: row.packGrams,
+      // Grams in one piece for kg / pack products recipes count in pieces (Cà chua 1 quả ≈ 100 g); null when unknown.
+      pieceGrams: row.pieceGrams,
       // Word for one piece-type unit ("quả", "bìa"...); null = the unit's own word.
       unitLabel: row.unitLabel,
     };

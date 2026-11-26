@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { FamilyRole, InvitationStatus, Prisma, PrismaClient } from ".prisma/client-family";
+import { assignableRole, effectiveRole } from "./roles";
 import { lookupProfiles } from "./user-profiles";
 
 const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -55,11 +56,12 @@ export class FamilyService {
       ...membership.family,
       members: membership.family.members.map((member) => ({
         ...member,
+        role: effectiveRole(member.role),
         displayName: profiles.get(member.userId)?.name?.trim() || profiles.get(member.userId)?.email.split("@")[0] || null,
         email: profiles.get(member.userId)?.email ?? null,
         avatarUrl: profiles.get(member.userId)?.avatarUrl ?? null,
       })),
-      currentUserRole: membership.role,
+      currentUserRole: effectiveRole(membership.role),
     };
   }
 
@@ -75,7 +77,7 @@ export class FamilyService {
   }
 
   async updateFamilySettings(userId: string, updates: Prisma.FamilySettingsUpdateInput) {
-    const { family } = await this.requireManager(userId);
+    const { family } = await this.requireOwner(userId);
     await this.prisma.familySettings.upsert({
       where: { familyId: family.id },
       create: { familyId: family.id },
@@ -98,7 +100,7 @@ export class FamilyService {
   }
 
   async regenerateJoinCode(userId: string) {
-    const { family } = await this.requireManager(userId);
+    const { family } = await this.requireOwner(userId);
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         return await this.prisma.familyGroup.update({
@@ -146,10 +148,8 @@ export class FamilyService {
     if (requestedRole === FamilyRole.OWNER) {
       throw new FamilyServiceError("Owner role cannot be assigned through an invitation", 400);
     }
-    const { family, role: actorRole } = await this.requireManager(userId);
-    if (actorRole === FamilyRole.ADMIN && requestedRole !== FamilyRole.MEMBER) {
-      throw new FamilyServiceError("Admins can only invite members", 403);
-    }
+    if (!assignableRole(requestedRole)) throw new FamilyServiceError("Family roles are owner and member only", 400);
+    const { family } = await this.requireOwner(userId);
 
     const normalizedEmail = email.trim().toLowerCase();
     if (!normalizedEmail || !normalizedEmail.includes("@")) {
@@ -190,7 +190,8 @@ export class FamilyService {
         throw new FamilyServiceError("This invitation belongs to a different email address", 403);
       }
       familyId = invitation.familyId;
-      role = invitation.role;
+      // An old invitation made for ADMIN joins as a member (and never as owner).
+      role = invitation.role === FamilyRole.OWNER ? FamilyRole.MEMBER : effectiveRole(invitation.role);
     } else {
       const family = await this.prisma.familyGroup.findUnique({ where: { code: value.toUpperCase() }, select: { id: true, codeExpiresAt: true } });
       if (!family) throw new FamilyServiceError("Invite code or token is invalid", 404);
@@ -218,26 +219,20 @@ export class FamilyService {
 
   async updateMemberRole(actorId: string, memberId: string, role: FamilyRole) {
     if (role === FamilyRole.OWNER) throw new FamilyServiceError("Ownership cannot be reassigned through this endpoint", 400);
-    const { family, role: actorRole } = await this.requireManager(actorId);
+    // No family admins any more: the only role that can be set is MEMBER (it turns a leftover ADMIN into a member).
+    if (!assignableRole(role)) throw new FamilyServiceError("Family roles are owner and member only", 400);
+    const { family } = await this.requireOwner(actorId);
     const target = await this.prisma.familyMember.findFirst({ where: { id: memberId, familyId: family.id } });
     if (!target) throw new FamilyServiceError("Family member not found", 404);
     if (target.role === FamilyRole.OWNER || target.userId === family.ownerId) {
       throw new FamilyServiceError("The family owner role cannot be changed", 403);
     }
-    if (actorRole === FamilyRole.ADMIN && target.role !== FamilyRole.MEMBER) {
-      throw new FamilyServiceError("Admins can only manage members", 403);
-    }
-    if (actorRole === FamilyRole.ADMIN && role === FamilyRole.ADMIN) {
-      throw new FamilyServiceError("Only the owner can assign admin role", 403);
-    }
-    return this.prisma.familyMember.update({ where: { id: target.id }, data: { role } });
+    const updated = await this.prisma.familyMember.update({ where: { id: target.id }, data: { role } });
+    return { ...updated, role: effectiveRole(updated.role) };
   }
 
   async transferOwnership(actorId: string, memberId: string) {
-    const { family, role: actorRole } = await this.requireManager(actorId);
-    if (actorRole !== FamilyRole.OWNER) {
-      throw new FamilyServiceError("Only the owner can transfer ownership", 403);
-    }
+    const { family } = await this.requireOwner(actorId);
 
     return this.prisma.$transaction(async (transaction) => {
       const target = await transaction.familyMember.findFirst({
@@ -246,7 +241,7 @@ export class FamilyService {
       if (!target) throw new FamilyServiceError("Family member not found", 404);
       if (target.userId === actorId) throw new FamilyServiceError("You already own this family", 400);
       if (target.role === FamilyRole.OWNER) {
-        throw new FamilyServiceError("Ownership can only be transferred to an admin or member", 400);
+        throw new FamilyServiceError("Ownership can only be transferred to a member", 400);
       }
 
       const transfer = await transaction.familyGroup.updateMany({
@@ -261,35 +256,34 @@ export class FamilyService {
         where: { id: target.id },
         data: { role: FamilyRole.OWNER },
       });
+      // The previous owner becomes a member (there are no family admins).
       await transaction.familyMember.update({
         where: { familyId_userId: { familyId: family.id, userId: actorId } },
-        data: { role: FamilyRole.ADMIN },
+        data: { role: FamilyRole.MEMBER },
       });
       return newOwner;
     });
   }
 
   async removeMember(actorId: string, memberId: string): Promise<void> {
-    const { family, role: actorRole } = await this.requireManager(actorId);
+    const { family } = await this.requireOwner(actorId);
     const target = await this.prisma.familyMember.findFirst({ where: { id: memberId, familyId: family.id } });
     if (!target) throw new FamilyServiceError("Family member not found", 404);
     if (target.role === FamilyRole.OWNER || target.userId === family.ownerId) {
       throw new FamilyServiceError("The family owner cannot be removed", 403);
     }
-    if (actorRole === FamilyRole.ADMIN && target.role !== FamilyRole.MEMBER) {
-      throw new FamilyServiceError("Admins can only remove members", 403);
-    }
     await this.prisma.familyMember.delete({ where: { id: target.id } });
   }
 
-  private async requireManager(userId: string) {
+  /** Management actions (invite, join code, settings, roles, remove, transfer) are the owner's alone. */
+  private async requireOwner(userId: string) {
     const membership = await this.prisma.familyMember.findFirst({
       where: { userId },
       include: { family: true },
     });
     if (!membership) throw new FamilyServiceError("You do not belong to a family", 404);
-    if (membership.role !== FamilyRole.OWNER && membership.role !== FamilyRole.ADMIN) {
-      throw new FamilyServiceError("Owner or admin permission is required", 403);
+    if (effectiveRole(membership.role) !== FamilyRole.OWNER) {
+      throw new FamilyServiceError("Only the family owner can do this", 403);
     }
     return { family: membership.family, role: membership.role };
   }

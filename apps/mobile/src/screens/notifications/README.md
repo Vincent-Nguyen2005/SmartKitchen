@@ -52,7 +52,7 @@ Preparation: `docker compose -p smartkitchen up -d`, then in `apps/mobile` run `
 ## "Tuần này còn thiếu" and "Cần mua tuần này"
 
 - **The item:** Thông báo shows one entry at the top, "Tuần này còn thiếu N nguyên liệu", when menu-service's `GET /api/menus/week-missing` returns N > 0. There's no entry when N = 0 or the check fails. It's computed on every load, with no push and no duplicates.
-- **The screen:** tapping it opens `WeekShoppingScreen`, a ProductCard grid with image, name and "Thiếu <số lượng> <đơn vị>".
-  - Items not sold in Đi chợ say "Chưa có bán" and are not added. "Kho có nhưng khác đơn vị" marks stock in another measure.
-  - "Thêm vào Giỏ hàng" calls `POST /api/shopping-list/items/ensure` (amount rounded up to the sale unit; an existing cart line is raised to at least that, never doubled), then opens Đi chợ on Giỏ hàng.
+- **The screen:** tapping it opens `WeekShoppingScreen`, a ProductCard grid with image, name and ONE line: the missing amount in the product's sale unit ("Thiếu 6 kg", "Thiếu 2 gói", "Thiếu 20 quả"). There is no separate "Mua …" line (labels in `weekShopping.ts`).
+  - Items not sold in Đi chợ say "Chưa có bán"; sold items with no known conversion keep their recipe unit ("Thiếu 3 cái") and say "Chưa đổi được sang đơn vị bán" ("Kho có nhưng khác đơn vị" when Kho has it in another measure). Neither is added.
+  - "Thêm vào Giỏ hàng" calls `POST /api/shopping-list/items/ensure` with exactly the shown amounts (an existing cart line is raised to at least that, never doubled), then opens Đi chợ on Giỏ hàng.
 - **Promotions without an image:** shown with the neutral tag icon instead of the broken-image icon.
