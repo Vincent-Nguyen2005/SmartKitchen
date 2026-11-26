@@ -1,16 +1,20 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { memo, Profiler, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, FlatList, Image, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { Badge, ScreenState } from "../notifications/ui";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
-import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
+import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { type CatalogIngredient } from "../inventory/inventoryApi";
 import { marketCatalog } from "../inventory/marketCatalog";
 import { filterByName } from "../../services/localSearch";
 import { addToCart, shoppingUnitFor } from "./cart";
+import { lineTotal, unitPriceAfterDiscount, unitPriceText } from "./pricing";
+import { bulkAddQuantity, NO_SELECTION, selectionReducer, tapIntent } from "./selection";
+import { marketSelectionBar } from "./selectionBar";
+import { sameCardProps } from "./marketCard";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
 import { unitLine, unitWord } from "./unitDisplay";
@@ -34,6 +38,8 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
   /** Called on every keystroke in the search box (the parent pauses its auto refresh while the user types). */
   onTyping?: () => void;
+  /** Selection mode started / ended (the parent hides its floating cart button while the selection bar shows). */
+  onSelectionModeChange?: (active: boolean) => void;
 };
 
 const NO_SIGNAL = { n: 0, force: false };
@@ -56,19 +62,68 @@ export function ProductImage({ uri, style }: { uri: string | null | undefined; s
   return <Image source={{ uri }} onError={() => setFailed(true)} resizeMode="cover" style={[local.image, style]} accessibilityIgnoresInvertColors />;
 }
 
-/** Price line: discounted price with the original struck through, or the plain price. */
-function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Element | null {
-  if (product.price === null) return null;
-  if (product.discountPercent !== null) {
-    return (
+/**
+ * Sheet price: the line total for the chosen quantity (unit price after discount × quantity, live while typing), the
+ * total before the discount struck through, and the unit price smaller underneath ("300.000đ / kg").
+ */
+function SheetPrice({ product, quantity }: { product: CatalogIngredient; quantity: number }): React.JSX.Element | null {
+  const unitPrice = unitPriceAfterDiscount(product.price, product.discountPercent);
+  const total = lineTotal(unitPrice, quantity);
+  if (unitPrice === null || total === null) return <Text style={local.unit}>Chưa có giá</Text>;
+  const before = product.discountPercent !== null ? lineTotal(product.price, quantity) : null;
+  return (
+    <View>
       <View style={local.priceRow}>
-        <Text style={local.price}>{formatVnd(discountedPrice(product.price, product.discountPercent))}</Text>
-        <Text style={local.oldPrice}>{formatVnd(product.price)}</Text>
+        <Text accessibilityLiveRegion="polite" style={local.sheetTotal}>{formatVnd(total)}</Text>
+        {before !== null && before !== total && <Text style={local.oldPrice}>{formatVnd(before)}</Text>}
       </View>
-    );
-  }
-  return <Text style={local.price}>{formatVnd(product.price)}</Text>;
+      <Text style={local.unit}>{unitPriceText(unitPrice, saleWord(product))}</Text>
+    </View>
+  );
 }
+
+type MarketCardProps = {
+  product: CatalogIngredient;
+  width: React.ComponentProps<typeof ProductCard>["width"];
+  /** undefined = not in selection mode; true / false = selected or not. */
+  selected: boolean | undefined;
+  onPress: (product: CatalogIngredient) => void;
+  onLongPress: (product: CatalogIngredient) => void;
+};
+
+/**
+ * One product card. Memoized (sameCardProps): a selection toggle re-renders only the card whose `selected` changed;
+ * the others (and their images) are left alone. Callbacks take the product, so they are the same for every card.
+ */
+const MarketCard = memo(function MarketCard({ product, width, selected, onPress, onLongPress }: MarketCardProps): React.JSX.Element {
+  const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
+  return (
+    <ProductCard
+      width={width}
+      accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
+      onPress={() => onPress(product)}
+      onLongPress={() => onLongPress(product)}
+      selected={selected}
+      image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
+      pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
+      name={product.name}
+      subtitle={unitText(product)}
+      footer={<CardPrice
+        price={product.price !== null ? formatVnd(product.price) : null}
+        discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
+      />}
+    />
+  );
+}, sameCardProps);
+
+const keyOf = (product: CatalogIngredient): string => product.id;
+
+/** Dev only: logs how long the list takes to render after a selection tap (read it in Metro / logcat). */
+const logToggleRender = (startedAt: React.MutableRefObject<number>) => (_id: string, _phase: string, actualDuration: number) => {
+  if (!startedAt.current) return;
+  console.log(`[perf] Đi chợ toggle: list render ${actualDuration.toFixed(1)} ms, tap → commit ${Date.now() - startedAt.current} ms`);
+  startedAt.current = 0;
+};
 
 /**
  * Đi chợ: active products from Quản trị > Nguyên liệu in a 3/4-column card grid that loads the next page while
@@ -76,7 +131,7 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
  * then the rest in the usual order, once (the amounts are shown in Thông báo › Cần mua tuần này). The search box stays on top (like Kho); a new search starts at the top.
  * The whole catalog (~139 products) is loaded once and searched on the device: typing sends no request.
  */
-export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = NO_SIGNAL, onLoadingChange, onTyping, refreshControl, horizontalPadding }: Props): React.JSX.Element {
+export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = NO_SIGNAL, onLoadingChange, onTyping, onSelectionModeChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
   const { layout, columns, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
   const { api } = useGatewayApi();
   const [search, setSearch] = useState("");
@@ -92,6 +147,26 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const listRef = useRef<FlatList<CatalogIngredient>>(null);
+  // Multi-select (selection.ts): long press starts it; leaving the tab unmounts this screen and clears it.
+  const [selection, dispatchSelection] = useReducer(selectionReducer, NO_SELECTION);
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const exitSelection = useCallback(() => { setBulkError(null); dispatchSelection({ type: "exit" }); }, []);
+  // Lookups per card are O(1); the Set changes only when the selection does.
+  const selectedSet = useMemo(() => new Set(selection.ids), [selection.ids]);
+  const selectionRef = useRef(selection);
+  selectionRef.current = selection;
+  const toggleStartedAt = useRef(0);
+  const selectionChange = useRef(onSelectionModeChange);
+  selectionChange.current = onSelectionModeChange;
+  useEffect(() => { selectionChange.current?.(selection.active); }, [selection.active]);
+  useEffect(() => () => selectionChange.current?.(false), []);
+  // Android back leaves selection mode first.
+  useEffect(() => {
+    if (!selection.active) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { if (!bulkAdding) exitSelection(); return true; });
+    return () => subscription.remove();
+  }, [selection.active, bulkAdding, exitSelection]);
 
   const lastSignal = useRef(refreshSignal.n);
   const loadingChange = useRef(onLoadingChange);
@@ -153,12 +228,51 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     return orderNeededFirst(neededProducts, neededIds, filterByName(all, search), search);
   }, [catalog, neededIds, search]);
 
-  const openProduct = (product: CatalogIngredient) => {
+  const openProduct = useCallback((product: CatalogIngredient) => {
     setSelected(product);
     setQuantityText("1");
     setAddError(null);
-  };
+  }, []);
+  // The same two callbacks for every card (they read the selection from a ref), so cards never re-render for them.
+  const pressCard = useCallback((product: CatalogIngredient) => {
+    if (tapIntent(selectionRef.current) === "toggle") {
+      if (__DEV__) toggleStartedAt.current = Date.now();
+      dispatchSelection({ type: "tap", id: product.id });
+    } else openProduct(product);
+  }, [openProduct]);
+  const longPressCard = useCallback((product: CatalogIngredient) => {
+    if (__DEV__) toggleStartedAt.current = Date.now();
+    dispatchSelection({ type: "longPress", id: product.id });
+  }, []);
   const closeSheet = () => { if (!adding) setSelected(null); };
+
+  /**
+   * "Thêm vào Giỏ hàng" for every selected product with its default quantity (bulkAddQuantity: 0,5 kg or 1). The
+   * server raises the quantity of a line already in the cart (same product + unit), so nothing is duplicated.
+   */
+  const addSelectionToCart = async () => {
+    if (!accessToken || !familyId || bulkAdding || selection.ids.length === 0) return;
+    const byId = new Map((catalog ?? []).map((product) => [product.id, product]));
+    const products = selection.ids.map((id) => byId.get(id)).filter((product): product is CatalogIngredient => !!product);
+    setBulkAdding(true);
+    setBulkError(null);
+    const failedIds: string[] = [];
+    for (const product of products) {
+      try {
+        await addToCart(accessToken, familyId, { name: product.name, quantity: bulkAddQuantity(shoppingUnitFor(product)), product });
+      } catch {
+        failedIds.push(product.id);
+      }
+    }
+    setBulkAdding(false);
+    const added = products.length - failedIds.length;
+    if (added > 0) onAdded(`Đã thêm ${added} sản phẩm vào Giỏ hàng`);
+    if (failedIds.length === 0) { setBulkError(null); dispatchSelection({ type: "exit" }); return; }
+    // Failed products stay selected so "Thêm vào Giỏ hàng" can be tried again.
+    dispatchSelection({ type: "exit" });
+    failedIds.forEach((id, index) => dispatchSelection(index === 0 ? { type: "longPress", id } : { type: "tap", id }));
+    setBulkError(`Chưa thêm được ${failedIds.length} sản phẩm. Thử lại nhé.`);
+  };
   const rule = quantityRuleFor(selected ? shoppingUnitFor(selected) : "PIECE");
   const quantity = parseQuantity(quantityText, rule) ?? rule.min;
   const step = (direction: 1 | -1) => setQuantityText(formatQuantity(stepQuantity(quantity, direction, rule)));
@@ -179,42 +293,51 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     }
   };
 
-  const renderProduct = ({ item: product }: { item: CatalogIngredient }) => {
-    const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
-    return (
-      <ProductCard
-        width={cardWidth}
-        accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
-        onPress={() => openProduct(product)}
-        image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
-        pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
-        name={product.name}
-        subtitle={unitText(product)}
-        footer={<CardPrice
-          price={product.price !== null ? formatVnd(product.price) : null}
-          discountedPrice={product.price !== null && product.discountPercent !== null ? formatVnd(discountedPrice(product.price, product.discountPercent)) : null}
-        />}
-      />
+  const renderProduct = useCallback(
+    ({ item }: { item: CatalogIngredient }) => (
+      <MarketCard product={item} width={cardWidth} selected={selection.active ? selectedSet.has(item.id) : undefined} onPress={pressCard} onLongPress={longPressCard} />
+    ),
+    [cardWidth, selection.active, selectedSet, pressCard, longPressCard],
+  );
+
+  // App.tsx shows the one-line selection bar (in place of the capture bar) from this store.
+  const addRef = useRef<() => void>(() => undefined);
+  addRef.current = () => { void addSelectionToCart(); };
+  useEffect(() => {
+    if (!selection.active) { marketSelectionBar.clear(); return; }
+    marketSelectionBar.publish(
+      { active: true, count: selection.ids.length, busy: bulkAdding, canAdd: !!familyId && selection.ids.length > 0 && !bulkAdding },
+      { onExit: () => { if (!bulkAdding) exitSelection(); }, onAdd: () => addRef.current() },
     );
-  };
+  }, [selection.active, selection.ids.length, bulkAdding, familyId, exitSelection]);
+  useEffect(() => () => marketSelectionBar.clear(), []);
 
   return (
     <View style={local.container}>
-      <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
-        <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
-      </View>
-      <View style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
+      <SearchHeader horizontalPadding={horizontalPadding} wide={layout.isWide} accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
+      {/* A tap on empty space (not on a card) leaves selection mode. */}
+      <Pressable accessible={false} onPress={selection.active && !bulkAdding ? exitSelection : undefined} style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
+        {(bulkError || (selection.active && !familyId)) && (
+          <Text accessibilityRole="alert" style={[local.error, local.selectionNotice]}>{bulkError ?? "Tạo hoặc tham gia gia đình để thêm vào giỏ hàng."}</Text>
+        )}
+        <Profiler id="market-list" onRender={__DEV__ ? logToggleRender(toggleStartedAt) : () => undefined}>
         <FlatList
           ref={listRef}
           // numColumns cannot change on a mounted FlatList.
           key={`cols-${columns}`}
           data={error ? [] : shown}
           numColumns={columns}
-          keyExtractor={(product) => product.id}
+          keyExtractor={keyOf}
           renderItem={renderProduct}
+          // A few screens of rows, not the default 21: fewer mounted cards to keep in sync.
+          initialNumToRender={columns * 4}
+          maxToRenderPerBatch={columns * 4}
+          windowSize={7}
+          removeClippedSubviews={Platform.OS === "android"}
           onLayout={onGridLayout}
           columnWrapperStyle={columns > 1 ? { gap } : undefined}
-          contentContainerStyle={[local.content, { gap }, (error || shown.length === 0) && local.fill]}
+          // Room for the floating cart button; in selection mode it is hidden and the bar sits below the list.
+          contentContainerStyle={[local.content, { gap }, selection.active && local.contentSelecting, (error || shown.length === 0) && local.fill]}
           style={loading && catalog ? local.dimmed : undefined}
           ListEmptyComponent={
             loading && !catalog ? <ScreenState loading />
@@ -226,7 +349,9 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
         />
-      </View>
+        </Profiler>
+      </Pressable>
+
 
       <Modal animationType="slide" transparent visible={selected !== null} onRequestClose={closeSheet}>
         <View style={local.backdrop}>
@@ -241,7 +366,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                 <ProductImage uri={selected.imageUrl} style={local.sheetImage} />
                 <View style={local.sheetInfo}>
                   <Text style={local.unit}>{unitText(selected)}</Text>
-                  <PriceLine product={selected} />
+                  <SheetPrice product={selected} quantity={familyId ? quantity : 1} />
                   {selected.discountPercent !== null && (
                     <Badge label={`Giảm ${selected.discountPercent}%${selected.promoEndDate ? ` đến ${selected.promoEndDate.split("-").reverse().join("/")}` : ""}`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />
                   )}
@@ -293,9 +418,10 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 const local = StyleSheet.create({
   container: { flex: 1 },
   // Same placement as Kho's search box (top padding, centred max width on wide screens).
-  searchHeader: { paddingTop: spacing.xl, width: "100%" },
-  wide: { alignSelf: "center", maxWidth: 920, width: "100%" },
+  wide: { alignSelf: "center", maxWidth: SEARCH_MAX_WIDTH, width: "100%" },
   listArea: { flex: 1 },
+  contentSelecting: { paddingBottom: spacing.lg },
+  selectionNotice: { paddingTop: spacing.sm },
   // SEARCH_CONTENT_GAP above the grid like Kho's list; bottom room for the floating cart button.
   content: { paddingBottom: LIST_BOTTOM_SPACE, paddingTop: SEARCH_CONTENT_GAP },
   fill: { flexGrow: 1 },
@@ -305,6 +431,7 @@ const local = StyleSheet.create({
   unit: { ...textStyles.caption },
   priceRow: { alignItems: "baseline", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   price: { ...textStyles.labelSmall, color: colors.primary },
+  sheetTotal: { ...textStyles.subheading, color: colors.primary },
   oldPrice: { ...textStyles.caption, textDecorationLine: "line-through" },
   backdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, gap: spacing.md, padding: spacing.lg, width: "100%" },

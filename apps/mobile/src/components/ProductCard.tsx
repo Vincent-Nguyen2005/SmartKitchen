@@ -51,20 +51,36 @@ type Props = {
   marker?: string;
   /** Small round button in the image's top-right corner (Nấu ăn: "Đổi món khác"); `busy` shows a spinner. */
   cornerAction?: { icon: LucideIcon; label: string; onPress: () => void; busy?: boolean };
+  /** Long press (Đi chợ: starts selection mode). */
+  onLongPress?: () => void;
+  /** Selection mode: undefined = not selectable; true / false = selected or not (check overlay + highlighted border). */
+  selected?: boolean;
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, accessibilityLabel, cornerAction, marker }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, onLongPress, selected, accessibilityLabel, cornerAction, marker }: Props): React.JSX.Element {
+  const selectable = selected !== undefined;
   return (
     <Pressable
-      accessibilityRole={onPress ? "button" : undefined}
+      accessibilityRole={onPress ? (selectable ? "checkbox" : "button") : undefined}
       accessibilityLabel={accessibilityLabel}
+      accessibilityState={selectable ? { checked: selected } : undefined}
       onPress={onPress}
-      disabled={!onPress}
-      style={({ pressed }) => [local.card, { width }, pressed && ui.pressed]}
+      onLongPress={onLongPress}
+      // Instant press feedback (no press-in delay); 300 ms only to start Đi chợ selection mode.
+      unstable_pressDelay={0}
+      delayLongPress={300}
+      disabled={!onPress && !onLongPress}
+      style={({ pressed }) => [local.card, { width }, selected && local.cardSelected, pressed && ui.pressed]}
     >
       <View style={local.imageArea}>
         {image}
+        {selected && <View pointerEvents="none" style={local.selectedTint} />}
+        {selectable && (
+          <View pointerEvents="none" style={[local.check, selected && local.checkOn]}>
+            {selected && <AppIcon icon={Check} size="sm" color={colors.primaryText} />}
+          </View>
+        )}
         {pill && (
           <View style={[local.pill, pill.icon && local.pillWithIcon, { backgroundColor: pillColors[pill.tone] }]}>
             {pill.icon && <AppIcon icon={pill.icon} size="sm" color={colors.surface} />}
@@ -120,12 +136,19 @@ export function CardPrice({ price, discountedPrice }: { price: string | null; di
 }
 
 /** Muted caption line (e.g. "HSD 25/11"); `warning` colors it for expired / expiring items. */
-export function CardCaption({ text, warning = false }: { text: string; warning?: boolean }): React.JSX.Element {
-  return <Text style={[local.caption, warning && local.captionWarning]} numberOfLines={1}>{text}</Text>;
+/** Caption under the card (Kho expiry): `tone` "danger" = red (expired), "warning" = amber (expiring soon). */
+export function CardCaption({ text, warning = false, tone }: { text: string; warning?: boolean; tone?: "danger" | "warning" | null }): React.JSX.Element {
+  const shown = tone ?? (warning ? "warning" : null);
+  return <Text style={[local.caption, shown === "warning" && local.captionWarning, shown === "danger" && local.captionDanger]} numberOfLines={1}>{text}</Text>;
 }
 
 const local = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
+  // Selected: the theme's primary colour as a thicker border (the card keeps its size: 1 px border + 1 px outline).
+  cardSelected: { borderColor: colors.primary, borderWidth: 2, margin: -1 },
+  selectedTint: { backgroundColor: colors.primarySoft, bottom: 0, left: 0, opacity: 0.45, position: "absolute", right: 0, top: 0 },
+  check: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 2, height: 24, justifyContent: "center", position: "absolute", right: 8, top: 8, width: 24 },
+  checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },
   imageArea: { aspectRatio: 1, backgroundColor: colors.background, width: "100%" },
   placeholder: { alignItems: "center", backgroundColor: colors.background, height: "100%", justifyContent: "center", width: "100%" },
   pill: { borderRadius: radius.pill, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", top: spacing.xs },
@@ -142,4 +165,5 @@ const local = StyleSheet.create({
   oldPrice: { ...textStyles.caption, textDecorationLine: "line-through" },
   caption: { ...textStyles.caption },
   captionWarning: { color: colors.warning, fontWeight: "600" },
+  captionDanger: { color: colors.danger, fontWeight: "600" },
 });

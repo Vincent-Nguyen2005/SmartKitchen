@@ -1,4 +1,4 @@
-import { discountedPrice } from "../../services/format";
+import { unitPriceAfterDiscount } from "./pricing";
 import { type CatalogIngredient } from "../inventory/inventoryApi";
 import { catalogProductNamed, normalizeVi, unitFromCatalog } from "../inventory/catalogSuggest";
 import { marketCatalog } from "../inventory/marketCatalog";
@@ -32,9 +32,8 @@ export async function findCatalogProduct(accessToken: string, name: string): Pro
  * (older lines). null = no price ("Chưa có giá", counted as 0).
  */
 export const unitPriceOf = (item: ShoppingItem, catalog?: CatalogIngredient | null): number | null => {
-  if (typeof item.unitPrice === "number") return discountedPrice(item.unitPrice, item.discountPercent ?? 0);
-  if (catalog && catalog.price !== null) return discountedPrice(catalog.price, catalog.discountPercent ?? 0);
-  return null;
+  if (typeof item.unitPrice === "number") return unitPriceAfterDiscount(item.unitPrice, item.discountPercent);
+  return catalog ? unitPriceAfterDiscount(catalog.price, catalog.discountPercent) : null;
 };
 
 /** Adds to Giỏ hàng with the product's price snapshot; the server merges the same product + unit. */

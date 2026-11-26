@@ -20,6 +20,7 @@ import { normalizeVi } from "../inventory/catalogSuggest";
 import type { CatalogIngredient } from "../inventory/inventoryApi";
 import MarketProducts, { ProductImage } from "./MarketProducts";
 import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
+import { cartTotal, lineTotal, unitPriceText } from "./pricing";
 import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { unitWord } from "./unitDisplay";
 import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
@@ -49,6 +50,8 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   const [productsRefresh, setProductsRefresh] = useState({ n: 0, force: false });
   const bumpProducts = (force: boolean) => setProductsRefresh((value) => ({ n: value.n + 1, force }));
   const lastTypedAt = useRef(0);
+  // Đi chợ selection mode: its bottom bar replaces the floating cart button.
+  const [selecting, setSelecting] = useState(false);
   const productsLoading = useRef(false);
   const [pulling, setPulling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -154,7 +157,8 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   }, [cart, accessToken]);
 
   const catalogFor = (item: ShoppingItem) => catalog[normalizeVi(item.name)] ?? null;
-  const total = cart.reduce((sum, item) => sum + (unitPriceOf(item, catalogFor(item)) ?? 0) * item.quantity, 0);
+  // Sum of the rounded line totals shown on the lines (pricing.ts), so Tổng always equals what the lines add up to.
+  const total = cartTotal(cart.map((item) => ({ unitPrice: unitPriceOf(item, catalogFor(item)), quantity: item.quantity })));
 
   const setLocalQuantity = (itemId: string, quantity: number) =>
     setLists((current) => current.map((list) => ({ ...list, items: list.items.map((item) => (item.id === itemId ? { ...item, quantity } : item)) })));
@@ -233,7 +237,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
         <View style={styles.lineInfo}>
           <Text style={styles.lineName} numberOfLines={2}>{item.name}</Text>
           <Text style={price === null ? styles.noPrice : styles.unitPrice}>
-            {price === null ? "Chưa có giá" : `${formatVnd(price)} / ${unit}`}
+            {price === null ? "Chưa có giá" : unitPriceText(price, unit)}
           </Text>
           <View style={styles.stepper}>
             <Pressable
@@ -260,7 +264,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
           {locked && <Text style={styles.noPrice}>Đã mua, chưa vào Kho</Text>}
         </View>
         <View style={styles.lineEnd}>
-          <Text style={styles.lineTotal}>{price === null ? "0đ" : formatVnd(price * item.quantity)}</Text>
+          <Text style={styles.lineTotal} accessibilityLiveRegion="polite">{formatVnd(lineTotal(price, item.quantity) ?? 0)}</Text>
           {!locked && (
             <IconButton icon={Trash2} accessibilityLabel={`Xóa ${item.name} khỏi giỏ hàng`} color={colors.danger} disabled={busy} onPress={() => void removeLine(item)} />
           )}
@@ -282,23 +286,26 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
             onOpenFamily={onOpenFamily}
             refreshSignal={productsRefresh}
             onTyping={() => { lastTypedAt.current = Date.now(); }}
+            onSelectionModeChange={setSelecting}
             onLoadingChange={(value) => { productsLoading.current = value; }}
             refreshControl={refreshControl}
             horizontalPadding={horizontalPadding}
           />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={cart.length ? `Mở giỏ hàng, ${cart.length} món` : "Mở giỏ hàng"}
-            onPress={() => setView("cart")}
-            style={({ pressed }) => [styles.cartButton, pressed && styles.disabled]}
-          >
-            <AppIcon icon={ShoppingCart} size="lg" color={colors.primaryText} />
-            {cart.length > 0 && (
-              <View style={styles.cartBadge}>
-                <Text style={styles.cartBadgeText}>{cart.length > 99 ? "99+" : cart.length}</Text>
-              </View>
-            )}
-          </Pressable>
+          {!selecting && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={cart.length ? `Mở giỏ hàng, ${cart.length} món` : "Mở giỏ hàng"}
+              onPress={() => setView("cart")}
+              style={({ pressed }) => [styles.cartButton, pressed && styles.disabled]}
+            >
+              <AppIcon icon={ShoppingCart} size="lg" color={colors.primaryText} />
+              {cart.length > 0 && (
+                <View style={styles.cartBadge}>
+                  <Text style={styles.cartBadgeText}>{cart.length > 99 ? "99+" : cart.length}</Text>
+                </View>
+              )}
+            </Pressable>
+          )}
         </>
       ) : (
         <>

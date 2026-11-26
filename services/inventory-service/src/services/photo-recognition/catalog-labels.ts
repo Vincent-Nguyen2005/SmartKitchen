@@ -5,7 +5,8 @@
  */
 /** imageUrl: the catalog product image (stored URL), used for previews and image-to-image matching. */
 /** unit / packGrams: sale unit and weight of one pack or piece (grams; ml for bottles), for cooking deductions. */
-export type CatalogLabel = { id: string; name: string; englishName: string | null; imageUrl?: string | null; unit?: string | null; packGrams?: number | null };
+/** unitLabel: the product's word for one piece ("quả", "bìa"), copied to new Kho rows of that product. */
+export type CatalogLabel = { id: string; name: string; englishName: string | null; imageUrl?: string | null; unit?: string | null; packGrams?: number | null; unitLabel?: string | null };
 
 const CACHE_MS = 10 * 60 * 1000;
 const PAGE_SIZE = 50;
@@ -23,14 +24,15 @@ export async function loadCatalogLabels(userId: string, fetchImpl: typeof fetch 
       signal: AbortSignal.timeout(5000),
     });
     if (!response.ok) throw new Error(`Catalog answered ${response.status}`);
-    const body = await response.json() as { items?: Array<{ id?: unknown; name?: unknown; englishName?: unknown; imageUrl?: unknown; unit?: unknown; packGrams?: unknown }>; totalPages?: number };
+    const body = await response.json() as { items?: Array<{ id?: unknown; name?: unknown; englishName?: unknown; imageUrl?: unknown; unit?: unknown; packGrams?: unknown; unitLabel?: unknown }>; totalPages?: number };
     for (const item of body.items ?? []) {
       if (typeof item.id !== "string" || typeof item.name !== "string") continue;
       const englishName = typeof item.englishName === "string" && item.englishName.trim() ? item.englishName.trim() : null;
       const imageUrl = typeof item.imageUrl === "string" && item.imageUrl ? item.imageUrl : null;
       const unit = typeof item.unit === "string" && item.unit ? item.unit : null;
       const packGrams = typeof item.packGrams === "number" && item.packGrams > 0 ? item.packGrams : null;
-      labels.push({ id: item.id, name: item.name, englishName, imageUrl, unit, packGrams });
+      const unitLabel = typeof item.unitLabel === "string" && item.unitLabel ? item.unitLabel : null;
+      labels.push({ id: item.id, name: item.name, englishName, imageUrl, unit, packGrams, unitLabel });
     }
     if (page >= (body.totalPages ?? 1)) break;
   }

@@ -20,20 +20,19 @@ import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typograp
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { EmptyState } from "../notifications/ui";
-import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid, type CardPillTone } from "../../components/ProductCard";
-import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
+import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
+import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
-import { UNIT_LABELS } from "./catalogSuggest";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { photoUploadErrorMessage } from "./photoUpload";
 import { filterByName } from "../../services/localSearch";
-import { catalogImageFor, useCatalogImages } from "./catalogImages";
+import { catalogImageFor, catalogUnitLabelFor, useCatalogImages } from "./catalogImages";
+import { choiceFor, choiceLabel, kitchenAmount, UNIT_CHOICES } from "./unitChoices";
+import { expiryInfo } from "./expiry";
 
-const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
 const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
-const inventoryUnitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 const inventoryLocationLabels: Record<InventoryLocation, string> = {
   FRIDGE: "Tủ lạnh", FREEZER: "Ngăn đông", PANTRY: "Tủ đựng thực phẩm", COUNTER: "Kệ bếp",
 };
@@ -43,33 +42,12 @@ function formatDateDdMmYyyy(value: string): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
 }
 
-const EXPIRING_SOON_DAYS = 3;
-
 /** Bought in Đi chợ: only the storage place can change (no photo, no delete); cooking lowers the quantity. */
 const isLocked = (item: FoodItem): boolean => item.origin === "PURCHASE";
 /** One line for a bought item: "Mua ở Đi chợ ngày 28/11/2026 · Tự trừ khi nấu". */
 const lockedNote = (item: FoodItem): string =>
   `Mua ở Đi chợ${item.purchasedAt ? ` ngày ${formatDateDdMmYyyy(item.purchasedAt)}` : ""} · Tự trừ khi nấu`;
-const pad2 = (value: number) => String(value).padStart(2, "0");
 
-/** Card expiry line ("HSD 25/11") and corner pill for expired items or ones expiring within 3 days. */
-function expiryInfo(item: FoodItem): { text: string; warning: boolean; pill: { label: string; tone: CardPillTone } | null } {
-  const match = item.expiryDate ? /^(\d{4})-(\d{2})-(\d{2})/.exec(item.expiryDate) : null;
-  if (!match) {
-    return item.status === "EXPIRED"
-      ? { text: "Đã hết hạn", warning: true, pill: { label: "Hết hạn", tone: "danger" } }
-      : { text: "Chưa có HSD", warning: false, pill: null };
-  }
-  const today = new Date();
-  const days = Math.round((Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])) - Date.UTC(today.getFullYear(), today.getMonth(), today.getDate())) / 86_400_000);
-  const expired = days < 0 || item.status === "EXPIRED";
-  const soon = !expired && days <= EXPIRING_SOON_DAYS;
-  return {
-    text: `HSD ${match[3]}/${match[2]}`,
-    warning: expired || soon,
-    pill: expired ? { label: "Hết hạn", tone: "danger" } : soon ? { label: days === 0 ? "Hôm nay" : `Còn ${days} ngày`, tone: "warning" } : null,
-  };
-}
 
 type Props = {
   onItemPress?: (item: FoodItem) => void;
@@ -103,7 +81,8 @@ export default function InventoryListScreen({
   const [activeItem, setActiveItem] = useState<FoodItem | null>(null);
   const [editName, setEditName] = useState("");
   const [editQuantity, setEditQuantity] = useState("");
-  const [editUnit, setEditUnit] = useState<InventoryUnit>("PIECE");
+  // Picker value: a specific word (gói, quả, kg...) mapped to the stored unit + piece word on save (unitChoices.ts).
+  const [editUnit, setEditUnit] = useState<string>("cái");
   const [editLocation, setEditLocation] = useState<InventoryLocation>("FRIDGE");
   const [editExpiryDate, setEditExpiryDate] = useState("");
   const [savingItem, setSavingItem] = useState(false);
@@ -171,7 +150,7 @@ export default function InventoryListScreen({
     setPhotoError(null);
     setEditName(item.name);
     setEditQuantity(String(item.quantity));
-    setEditUnit(item.unit as InventoryUnit);
+    setEditUnit(choiceLabel(item.unit, catalogUnitLabelFor(item, catalogImages) ?? item.unitLabel));
     setEditLocation(item.storageLocation as InventoryLocation);
     setEditExpiryDate(item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "");
   };
@@ -216,7 +195,8 @@ export default function InventoryListScreen({
     setError(null);
     try {
       await inventoryApi.update(accessToken, family.id, activeItem.id, {
-        name: editName.trim(), quantity: parsedQuantity, unit: editUnit,
+        name: editName.trim(), quantity: parsedQuantity,
+        unit: (choiceFor(editUnit)?.unit ?? activeItem.unit) as InventoryUnit, unitLabel: choiceFor(editUnit)?.unitLabel ?? null,
         storageLocation: editLocation, expiryDate: expiryDate ?? null,
       });
       setActiveItem(null);
@@ -300,7 +280,8 @@ export default function InventoryListScreen({
 
   const renderItem = (item: FoodItem) => {
     const expiry = expiryInfo(item);
-    const quantityText = `${item.quantity} ${inventoryUnitLabels[item.unit as InventoryUnit] ?? item.unit}`;
+    // "1 gói", "2 quả", "1,5 kg": the linked product's word, else the word chosen in Kho (never "gói/bó").
+    const quantityText = kitchenAmount(item, catalogUnitLabelFor(item, catalogImages));
     return (
       <ProductCard
         width={cardGrid.cardWidth}
@@ -310,16 +291,16 @@ export default function InventoryListScreen({
         pill={expiry.pill}
         name={item.name}
         subtitle={quantityText}
-        footer={<CardCaption text={expiry.text} warning={expiry.warning} />}
+        footer={<CardCaption text={expiry.text} tone={expiry.tone} />}
       />
     );
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={[styles.header, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
-        <SearchBar accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} />
-      </View>
+    // Left / right edges only, like Đi chợ: the tab bar is already below the status bar, so the top inset would push
+    // Kho's search box lower than Đi chợ's.
+    <SafeAreaView edges={["left", "right"]} style={styles.safeArea}>
+      <SearchHeader horizontalPadding={horizontalPadding} wide={isWide} accessibilityLabel="Tìm trong kho thực phẩm" placeholder="Gạo, sữa, trứng..." value={search} onChangeText={setSearch} />
 
       <View style={[styles.resultsScroller, { paddingHorizontal: horizontalPadding }, isWide && styles.wideContent]}>
         {/* One virtualized grid of every Kho item (the API pages are loaded up front; search filters them here). */}
@@ -401,7 +382,7 @@ export default function InventoryListScreen({
                   <View style={styles.lockedBox}>
                     <Text style={styles.alertHint}>{lockedNote(activeItem)}</Text>
                     <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
-                    <Text style={styles.lockedValue}>{activeItem.quantity} {inventoryUnitLabels[activeItem.unit as InventoryUnit] ?? activeItem.unit}</Text>
+                    <Text style={styles.lockedValue}>{kitchenAmount(activeItem, catalogUnitLabelFor(activeItem, catalogImages))}</Text>
                     <Text style={styles.fieldLabel}>Hạn dùng</Text>
                     <Text style={styles.lockedValue}>{activeItem.expiryDate ? formatDateDdMmYyyy(activeItem.expiryDate) : "Chưa có"}</Text>
                   </View>
@@ -411,7 +392,7 @@ export default function InventoryListScreen({
                     <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
                     <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
                     <TextInput accessibilityLabel="Số lượng còn lại" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                    <RadioDropdown<InventoryUnit> label="Đơn vị" value={editUnit} options={inventoryUnits.map((choice) => ({ value: choice, label: inventoryUnitLabels[choice] }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
+                    <RadioDropdown<string> label="Đơn vị" value={editUnit} options={UNIT_CHOICES.map((choice) => ({ value: choice.label, label: choice.label }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
                   </>
                 )}
                 <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={editLocation} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={setEditLocation} />
@@ -439,8 +420,7 @@ export default function InventoryListScreen({
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: colors.background, flex: 1 },
-  header: { alignSelf: "center", maxWidth: 920, paddingTop: spacing.xl, width: "100%" },
-  wideContent: { alignSelf: "center", maxWidth: 920, width: "100%" },
+  wideContent: { alignSelf: "center", maxWidth: SEARCH_MAX_WIDTH, width: "100%" },
   // Extra bottom room so the last row clears the bottom action bar's shadow edge.
   listContent: { paddingBottom: spacing.xl * 2, paddingTop: SEARCH_CONTENT_GAP },
   resultsScroller: { flex: 1 },
