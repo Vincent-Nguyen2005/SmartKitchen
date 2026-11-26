@@ -29,7 +29,6 @@ type SessionContextValue = {
   createFamily: (name: string) => Promise<void>;
   joinFamily: (code: string) => Promise<void>;
   leaveFamily: () => Promise<void>;
-  updateMemberRole: (memberId: string, role: "ADMIN" | "MEMBER") => Promise<void>;
   removeMember: (memberId: string) => Promise<void>;
   regenerateJoinCode: () => Promise<void>;
   transferOwnership: (memberId: string) => Promise<void>;
@@ -239,11 +238,6 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
     setFamilySettings(null);
   }, [withToken]);
 
-  const updateMemberRole = useCallback(async (memberId: string, role: "ADMIN" | "MEMBER") => {
-    await withToken((token) => familyApi.updateRole(token, memberId, role));
-    await loadFamily();
-  }, [loadFamily, withToken]);
-
   const removeMember = useCallback(async (memberId: string) => {
     await withToken((token) => familyApi.removeMember(token, memberId));
     await loadFamily();
@@ -343,11 +337,11 @@ export function SessionProvider({ children }: PropsWithChildren): React.JSX.Elem
 
   const value = useMemo(() => ({
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, sessionNotice, clearSessionNotice, loadFamily, freshSignIn, completeOnboarding,
-    createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    createFamily, joinFamily, leaveFamily, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   }), [
     user, accessToken, family, familySettings, pendingVerificationEmail, ready, restoreError, retryRestore, signIn, register, verifyOtp, resendOtp, signOut, sessionNotice, clearSessionNotice, loadFamily, freshSignIn, completeOnboarding,
-    createFamily, joinFamily, leaveFamily, updateMemberRole, removeMember, regenerateJoinCode,
+    createFamily, joinFamily, leaveFamily, removeMember, regenerateJoinCode,
     transferOwnership, updateFamilySettings, createFamilyQr, revokeFamilyQr, verifyFamilyQr, joinFamilyByQr, updateProfile,
   ]);
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

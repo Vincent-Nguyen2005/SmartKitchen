@@ -4,56 +4,50 @@ import { ActivityIndicator, Modal, Pressable, SafeAreaView, ScrollView, StyleShe
 import { FamilyMemberSummary, FamilyRole } from "./FamilyOverviewScreen";
 import { AppIcon, colors, typography } from "../../theme";
 import MemberAvatar from "./MemberAvatar";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { canRemoveMember, familyRoleLabel, isFamilyOwner, removeConfirm, transferConfirm } from "./familyActions";
 
 type Props = {
   members: FamilyMemberSummary[];
   currentUserRole: FamilyRole;
   currentUserId: string;
-  onChangeRole?: (memberId: string, role: Exclude<FamilyRole, "OWNER">) => Promise<void>;
   onRemove?: (memberId: string) => Promise<void>;
   onTransferOwnership?: (memberId: string) => Promise<void>;
   onBack?: () => void;
 };
 
-export default function ManageMembersScreen({ members, currentUserRole, currentUserId, onChangeRole, onRemove, onTransferOwnership, onBack }: Props): React.JSX.Element {
+/**
+ * "Quản lý thành viên": family roles are only the owner and members. The owner can ask a member to leave ("Mời ra")
+ * and transfer ownership (pick a member, then confirm); both use the in-app ConfirmDialog. Members only see the list.
+ */
+export default function ManageMembersScreen({ members, currentUserRole, currentUserId, onRemove, onTransferOwnership, onBack }: Props): React.JSX.Element {
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [transferTargetId, setTransferTargetId] = useState<string | null>(null);
-  const [removeTarget, setRemoveTarget] = useState<FamilyMemberSummary | null>(null);
-  const isOwner = currentUserRole === "OWNER";
+  const { confirm, dialog } = useConfirm();
+  const isOwner = isFamilyOwner(currentUserRole);
   const transferTarget = members.find((member) => member.id === transferTargetId);
   const transferCandidates = members.filter((member) => member.userId !== currentUserId && member.role !== "OWNER");
 
-  const changeRole = async (member: FamilyMemberSummary): Promise<void> => {
-    if (!onChangeRole || member.role === "OWNER") return;
-    const nextRole: Exclude<FamilyRole, "OWNER"> = member.role === "ADMIN" ? "MEMBER" : "ADMIN";
-    if (!isOwner && nextRole === "ADMIN") return;
+  const remove = async (member: FamilyMemberSummary): Promise<void> => {
+    if (!onRemove || !canRemoveMember(member, currentUserRole, currentUserId)) return;
+    if (!(await confirm(removeConfirm(member.displayName)))) return;
     setBusyMemberId(member.id); setError("");
-    try { await onChangeRole(member.id, nextRole); }
-    catch { setError("Không thể đổi vai trò thành viên. Vui lòng thử lại."); }
+    try { await onRemove(member.id); }
+    catch { setError("Không thể mời thành viên ra khỏi gia đình. Vui lòng thử lại."); }
     finally { setBusyMemberId(null); }
   };
 
-  const remove = (member: FamilyMemberSummary): void => {
-    if (!onRemove || member.role === "OWNER" || (member.role === "ADMIN" && !isOwner) || member.userId === currentUserId) return;
-    setRemoveTarget(member);
-  };
-
-  const removeMember = async (member: FamilyMemberSummary): Promise<void> => {
-    if (!onRemove) return;
-    setBusyMemberId(member.id); setError("");
-    try { await onRemove(member.id); setRemoveTarget(null); }
-    catch { setRemoveTarget(null); setError("Không thể xóa thành viên. Vui lòng thử lại."); }
-    finally { setBusyMemberId(null); }
-  };
-
+  // The picker is a Modal and the ConfirmDialog an overlay of this screen: close the picker before asking.
   const transferOwnership = async (): Promise<void> => {
     if (!onTransferOwnership || !transferTarget) return;
-    setBusyMemberId(transferTarget.id); setError("");
+    const target = transferTarget;
+    setTransferModalOpen(false);
+    if (!(await confirm(transferConfirm(target.displayName)))) return;
+    setBusyMemberId(target.id); setError("");
     try {
-      await onTransferOwnership(transferTarget.id);
-      setTransferModalOpen(false);
+      await onTransferOwnership(target.id);
       setTransferTargetId(null);
     } catch {
       setError("Không thể chuyển quyền chủ gia đình. Vui lòng thử lại.");
@@ -72,7 +66,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
           {members.map((member, index) => {
             const isSelf = member.userId === currentUserId;
             const displayName = member.displayName?.trim() || (isSelf ? "Chưa cập nhật" : "Chưa có tên");
-            const canManageTarget = member.role !== "OWNER" && (isOwner || (currentUserRole === "ADMIN" && member.role === "MEMBER")) && !isSelf;
+            const canManageTarget = canRemoveMember(member, currentUserRole, currentUserId);
             const isBusy = busyMemberId === member.id;
             return (
               <View key={member.id} style={[styles.member, index > 0 && styles.divider]}>
@@ -80,13 +74,12 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
                   <MemberAvatar name={displayName} avatarUrl={member.avatarUrl} />
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{displayName}{isSelf ? " (Bạn)" : ""}</Text>
-                    <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{member.role === "OWNER" ? "Chủ gia đình" : member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text></View>
+                    <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{familyRoleLabel(member.role)}</Text></View>
                   </View>
                   {isBusy && <ActivityIndicator color="#2F6B5F" />}
                 </View>
-                {canManageTarget && <View style={styles.actions}>
-                  {isOwner && !!onChangeRole && <Pressable disabled={isBusy} onPress={() => { void changeRole(member); }} style={styles.secondaryButton}><Text style={styles.secondaryText}>{member.role === "ADMIN" ? "Bỏ quyền quản trị" : "Cấp quyền quản trị"}</Text></Pressable>}
-                  {!!onRemove && <Pressable disabled={isBusy} onPress={() => remove(member)} style={styles.removeButton}><Text style={styles.removeText}>Xóa</Text></Pressable>}
+                {canManageTarget && !!onRemove && <View style={styles.actions}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Mời ${displayName} ra khỏi gia đình`} disabled={isBusy} onPress={() => { void remove(member); }} style={styles.removeButton}><Text style={styles.removeText}>Mời ra</Text></Pressable>
                 </View>}
               </View>
             );
@@ -100,7 +93,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Chuyển quyền chủ gia đình</Text>
-            <Text style={styles.modalCopy}>Chọn người nhận quyền. Bạn sẽ trở thành quản trị viên.</Text>
+            <Text style={styles.modalCopy}>Chọn người nhận quyền. Bạn sẽ trở thành thành viên.</Text>
             <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} style={styles.modalList}>
               {transferCandidates.map((member) => {
                 const selected = transferTargetId === member.id;
@@ -108,7 +101,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
                   <View style={[styles.radio, selected && styles.radioSelected]} />
                   <View style={styles.targetInfo}>
                     <Text style={styles.targetName}>{member.displayName?.trim() || "Chưa có tên"}</Text>
-                    <Text style={styles.targetRole}>{member.role === "ADMIN" ? "Quản trị viên" : "Thành viên"}</Text>
+                    <Text style={styles.targetRole}>{familyRoleLabel(member.role)}</Text>
                   </View>
                 </Pressable>;
               })}
@@ -116,26 +109,13 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
             <View style={styles.modalActions}>
               <Pressable onPress={() => setTransferModalOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
               <Pressable disabled={!transferTarget || busyMemberId !== null} onPress={() => { void transferOwnership(); }} style={[styles.confirmButton, (!transferTarget || busyMemberId !== null) && styles.disabled]}>
-                {busyMemberId === transferTarget?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.confirmText}>Chuyển quyền</Text>}
+                <Text style={styles.confirmText}>Tiếp tục</Text>
               </Pressable>
             </View>
           </View>
         </View>
       </Modal>
-      <Modal animationType="fade" onRequestClose={() => setRemoveTarget(null)} transparent visible={!!removeTarget}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Xóa thành viên?</Text>
-            <Text style={styles.modalCopy}>Xóa {removeTarget?.displayName?.trim() || "thành viên này"} khỏi gia đình?</Text>
-            <View style={styles.modalActions}>
-              <Pressable disabled={busyMemberId !== null} onPress={() => setRemoveTarget(null)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
-              <Pressable disabled={!removeTarget || busyMemberId !== null} onPress={() => { if (removeTarget) void removeMember(removeTarget); }} style={[styles.deleteButton, busyMemberId !== null && styles.disabled]}>
-                {busyMemberId === removeTarget?.id ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.confirmText}>Xóa</Text>}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {dialog}
     </SafeAreaView>
   );
 }
@@ -158,8 +138,6 @@ const styles = StyleSheet.create({
   badgeText: { ...typography.caption, color: "#56635C", fontWeight: "700" },
   ownerText: { color: "#8A5A00" },
   actions: { flexDirection: "row", gap: 9, marginLeft: 52, marginTop: 13 },
-  secondaryButton: { borderColor: "#C8DAD0", borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
-  secondaryText: { color: "#2F6B5F", fontSize: typography.caption.fontSize, fontWeight: "700" },
   removeButton: { borderColor: "#F2C6C3", borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
   removeText: { color: "#B42318", fontSize: typography.caption.fontSize, fontWeight: "700" },
   transferButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 11, borderWidth: 1, marginTop: 18, minHeight: 48, justifyContent: "center" },
@@ -179,7 +157,6 @@ const styles = StyleSheet.create({
   cancelButton: { borderColor: "#D7E0D9", borderRadius: 9, borderWidth: 1, justifyContent: "center", paddingHorizontal: 16, minHeight: 42 },
   cancelText: { color: "#56635C", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   confirmButton: { alignItems: "center", backgroundColor: "#2F6B5F", borderRadius: 9, justifyContent: "center", minHeight: 42, minWidth: 88, paddingHorizontal: 16 },
-  deleteButton: { alignItems: "center", backgroundColor: "#B42318", borderRadius: 9, justifyContent: "center", minHeight: 42, minWidth: 88, paddingHorizontal: 16 },
   confirmText: { color: "#FFFFFF", fontSize: typography.bodySmall.fontSize, fontWeight: "700" },
   disabled: { opacity: 0.55 },
 });

@@ -4,27 +4,12 @@ import { ChevronLeft, CircleCheck, ShoppingCart } from "lucide-react-native";
 import { IconButton, spacing } from "../../theme";
 import { useSession } from "../../services/session";
 import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
-import { amountText } from "../shopping-cart/unitDisplay";
 import { errorMessage } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
-import { Button, colors, EmptyState, ScreenState, styles } from "./ui";
+import { Button, EmptyState, ScreenState, styles } from "./ui";
+import { cartLines, missingLine, skipNote, type WeekMissing } from "./weekShopping";
 
-/** GET /api/menus/week-missing (menu-service): missing ingredients from today through Sunday. */
-export type WeekMissingItem = {
-  name: string;
-  quantity: number;
-  unit: string;
-  productId: string | null;
-  imageUrl: string | null;
-  price: number | null;
-  discountPercent: number | null;
-  saleUnit: string | null;
-  /** Word for one piece-type sale unit ("quả", "bìa"); null = the unit's own word. */
-  saleUnitLabel?: string | null;
-  cartQuantity: number | null;
-  unitMismatch: boolean;
-};
-export type WeekMissing = { from: string; to: string; count: number; items: WeekMissingItem[] };
+export type { WeekMissing, WeekMissingItem } from "./weekShopping";
 
 type Props = {
   onBack: () => void;
@@ -32,16 +17,13 @@ type Props = {
   onOpenCart: () => void;
 };
 
-/** "500 g", "0,7 kg", "3 quả": the missing amount (in the sale unit's own word when it is that unit). */
-const missingText = (item: WeekMissingItem): string => amountText(item.quantity, item.unit, item.unit === item.saleUnit ? item.saleUnitLabel : null);
-/** What "Thêm vào Giỏ hàng" puts in the cart: "0,7 kg", "2 gói", "1 quả". */
-const buyText = (item: WeekMissingItem): string => amountText(item.cartQuantity ?? 0, item.saleUnit ?? item.unit, item.saleUnitLabel);
 const shortDay = (day: string): string => day.slice(5).split("-").reverse().join("/");
 
 /**
- * "Cần mua tuần này": what the family's menus need until Sunday and Kho does not cover. Items not sold in Đi chợ
- * show "Chưa có bán" and are not added. One button puts every purchasable item in Giỏ hàng (missing amount rounded
- * up to the product's sale unit; a line already in the cart is raised to at least that, never doubled).
+ * "Cần mua tuần này": what the family's menus need until Sunday and Kho does not cover. Each card has ONE line,
+ * the missing amount in the product's sale unit ("Thiếu 6 kg", "Thiếu 2 gói"), and that is exactly what "Thêm vào
+ * Giỏ hàng" adds (a line already in the cart is raised to at least that, never doubled). Items not sold in Đi chợ
+ * ("Chưa có bán") or not convertible to the sale unit keep their recipe unit, get a short note and are not added.
  */
 export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React.JSX.Element {
   const { api } = useGatewayApi();
@@ -65,7 +47,7 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
   }, [api]);
   useEffect(() => { void load(); }, [load]);
 
-  const purchasable = (data?.items ?? []).filter((item) => item.productId && item.saleUnit && item.cartQuantity);
+  const purchasable = cartLines(data?.items ?? []);
   const addAll = async () => {
     if (!family?.id || purchasable.length === 0) return;
     setAdding(true);
@@ -73,15 +55,7 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
     try {
       await api.post("/api/shopping-list/items/ensure", {
         familyId: family.id,
-        items: purchasable.map((item) => ({
-          name: item.name,
-          quantity: item.cartQuantity,
-          unit: item.saleUnit,
-          productId: item.productId,
-          unitPrice: item.price,
-          discountPercent: item.discountPercent,
-          imageUrl: item.imageUrl,
-        })),
+        items: purchasable,
       });
       onOpenCart();
     } catch (caught) {
@@ -114,17 +88,20 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
           contentContainerStyle={[local.list, { gap: cardGrid.gap }]}
           keyExtractor={(item) => `${item.productId ?? item.name}|${item.unit}`}
           ListEmptyComponent={<EmptyState fill icon={CircleCheck} text="Kho đã đủ nguyên liệu cho thực đơn tuần này." />}
-          renderItem={({ item }) => (
-            <ProductCard
-              width={cardGrid.cardWidth}
-              image={item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={cardImageStyle} resizeMode="cover" /> : <ImagePlaceholder />}
-              name={item.name}
-              subtitle={`Thiếu ${missingText(item)}`}
-              // What "Thêm vào Giỏ hàng" puts in the cart: kg in 0.1 steps, packs from their weight (150 g → 2 gói).
-              footer={!item.productId ? <CardCaption text="Chưa có bán" warning /> : item.unitMismatch ? <CardCaption text="Kho có nhưng khác đơn vị" /> : item.cartQuantity && item.saleUnit ? <CardCaption text={`Mua ${buyText(item)}`} /> : undefined}
-              accessibilityLabel={`${item.name}, thiếu ${missingText(item)}${!item.productId ? ", chưa có bán" : item.cartQuantity && item.saleUnit && !item.unitMismatch ? `, mua ${buyText(item)}` : ""}`}
-            />
-          )}
+          renderItem={({ item }) => {
+            // One line: the missing amount in the sale unit (= what goes into Giỏ hàng). A note only for skipped items.
+            const note = skipNote(item);
+            return (
+              <ProductCard
+                width={cardGrid.cardWidth}
+                image={item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={cardImageStyle} resizeMode="cover" /> : <ImagePlaceholder />}
+                name={item.name}
+                subtitle={missingLine(item)}
+                footer={note ? <CardCaption text={note.text} warning={note.warning} /> : undefined}
+                accessibilityLabel={`${item.name}, ${missingLine(item).toLocaleLowerCase("vi")}${note ? `, ${note.text.toLocaleLowerCase("vi")}` : ""}`}
+              />
+            );
+          }}
         />
       )}
       {data && data.items.length > 0 ? (

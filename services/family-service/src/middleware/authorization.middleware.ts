@@ -2,7 +2,9 @@ import { FamilyRole, PrismaClient } from ".prisma/client-family";
 import { NextFunction, Request, Response } from "express";
 import { AuthenticatedRequest } from "../controllers/family.controller";
 import { isDatabaseUnavailable } from "../database-error";
+import { effectiveRole } from "../services/roles";
 
+/** A leftover family ADMIN counts as MEMBER (family roles are owner and member only). */
 export const requireRole = (prisma: PrismaClient, allowedRoles: FamilyRole[]) =>
   (req: Request, res: Response, next: NextFunction): void => {
     const userId = (req as AuthenticatedRequest).authUser?.userId;
@@ -19,7 +21,7 @@ export const requireRole = (prisma: PrismaClient, allowedRoles: FamilyRole[]) =>
         res.status(404).json({ success: false, error: "You do not belong to a family" });
         return;
       }
-      if (!allowedRoles.includes(membership.role)) {
+      if (!allowedRoles.includes(effectiveRole(membership.role))) {
         res.status(403).json({ success: false, error: "You do not have permission to perform this action" });
         return;
       }

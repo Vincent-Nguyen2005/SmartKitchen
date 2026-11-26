@@ -3,7 +3,10 @@ import { RefreshCw } from "lucide-react-native";
 import { ActivityIndicator, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from "react-native";
 import MemberAvatar from "./MemberAvatar";
 import { colors, typography } from "../../theme";
+import { useConfirm } from "../../components/ConfirmDialog";
+import { familyRoleLabel, isFamilyOwner, leaveConfirm, ownerLeaveNotice } from "./familyActions";
 
+/** ADMIN only appears in older data and is shown and treated as a member (family roles are owner and member). */
 export type FamilyRole = "OWNER" | "ADMIN" | "MEMBER";
 export type FamilyMemberSummary = { id: string; userId: string; role: FamilyRole; joinedAt?: string; displayName?: string | null; email?: string | null; avatarUrl?: string | null };
 export type FamilySummary = { id: string; name: string; code: string; members: FamilyMemberSummary[]; currentUserRole?: FamilyRole };
@@ -19,16 +22,24 @@ type Props = {
   onRegenerateJoinCode?: () => Promise<void>;
 };
 
-const roleLabel: Record<FamilyRole, string> = { OWNER: "Chủ gia đình", ADMIN: "Quản trị viên", MEMBER: "Thành viên" };
-
 export default function FamilyOverviewScreen({ family, loading = false, error, onCreateOrJoin, onManageMembers, onManageSettings, onLeave, onRegenerateJoinCode }: Props): React.JSX.Element {
   const [leaving, setLeaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [actionError, setActionError] = useState("");
-  const canManage = family?.currentUserRole === "OWNER" || family?.currentUserRole === "ADMIN";
+  const { confirm, dialog } = useConfirm();
+  // Every management action is the owner's (invite code, members, settings).
+  const canManage = isFamilyOwner(family?.currentUserRole);
 
+  // Members confirm first ("Ở lại" / "Rời gia đình"). The owner cannot leave before transferring ownership
+  // (family-service answers 409): explain it and offer Quản lý thành viên when there is someone to transfer to.
   const leave = async (): Promise<void> => {
-    if (!onLeave || family?.currentUserRole === "OWNER") return;
+    if (!family) return;
+    if (isFamilyOwner(family.currentUserRole)) {
+      const others = family.members.filter((member) => member.role !== "OWNER").length;
+      if ((await confirm(ownerLeaveNotice(others))) && others > 0) onManageMembers?.();
+      return;
+    }
+    if (!onLeave || !(await confirm(leaveConfirm(family.name)))) return;
     setLeaving(true);
     try { await onLeave(); setActionError(""); }
     catch { setActionError("Không thể rời gia đình. Vui lòng thử lại."); }
@@ -100,18 +111,16 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
                   <View style={styles.memberInfo}>
                     <Text style={styles.memberName}>{member.displayName?.trim() || "Chưa có tên"}</Text>
                   </View>
-                  <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerBadgeText]}>{roleLabel[member.role]}</Text></View>
+                  <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerBadgeText]}>{familyRoleLabel(member.role)}</Text></View>
                 </View>
               ))}
             </View>
             {canManage && !!onManageSettings && <Pressable onPress={onManageSettings} style={styles.settingsButton}>
               <Text style={styles.actionLink}>Tùy chọn và cài đặt gia đình</Text>
             </Pressable>}
-            {family.currentUserRole !== "OWNER" && (
-              <Pressable disabled={!onLeave || leaving} onPress={leave} style={styles.leaveButton}>
-                {leaving ? <ActivityIndicator color="#B42318" /> : <Text style={styles.leaveText}>Rời gia đình</Text>}
-              </Pressable>
-            )}
+            <Pressable accessibilityRole="button" disabled={!onLeave || leaving} onPress={() => { void leave(); }} style={styles.leaveButton}>
+              {leaving ? <ActivityIndicator color="#B42318" /> : <Text style={styles.leaveText}>Rời gia đình</Text>}
+            </Pressable>
           </>
         ) : (
           <View style={styles.emptyCard}>
@@ -121,6 +130,7 @@ export default function FamilyOverviewScreen({ family, loading = false, error, o
           </View>
         )}
       </ScrollView>
+      {dialog}
     </SafeAreaView>
   );
 }
