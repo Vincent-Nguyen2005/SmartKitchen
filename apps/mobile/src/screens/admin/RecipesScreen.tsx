@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { ChevronDown, ChevronUp, CookingPot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
-import { errorMessage, query } from "../notifications/gatewayApi";
+import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
+import { filterByName } from "../../services/localSearch";
 import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
@@ -118,9 +119,10 @@ export default function RecipesScreen(): React.JSX.Element {
   const { columns, gutter, isWide } = useLayout();
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
-  const [term, setTerm] = useState("");
+  const term = search.trim();
   const [active, setActive] = useState<"true" | "all">("all");
-  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  // Every recipe (~77, hidden ones too), loaded once; search and the "Đang dùng" filter run on the device.
+  const [allRecipes, setAllRecipes] = useState<Recipe[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -134,25 +136,30 @@ export default function RecipesScreen(): React.JSX.Element {
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Recipe>>(null);
 
-  useEffect(() => { const timer = setTimeout(() => setTerm(search.trim()), 400); return () => clearTimeout(timer); }, [search]);
-
-  // recipe-service returns the whole (small) catalog for a search; pages of 10 are cut on the device.
+  // recipe-service returns the whole (small) catalog in one request: loaded once (and on pull-to-refresh, retry and
+  // after an edit). Typing in the search box or switching the filter sends no request; pages of 10 are cut here.
   const load = useCallback(async (refresh = false) => {
     const id = ++requestId.current;
     if (refresh) setRefreshing(true); else setLoading(true);
     try {
-      const result = await api.get<Recipe[]>(`/api/recipes${query({ search: term, active: active === "true" ? "true" : undefined })}`);
+      const result = await api.get<Recipe[]>("/api/recipes");
       if (id !== requestId.current) return;
-      setRecipes(Array.isArray(result) ? result : []);
+      setAllRecipes(Array.isArray(result) ? result : []);
       setError(null);
     } catch (caught) {
       if (id === requestId.current) setError(errorMessage(caught));
     } finally {
       if (id === requestId.current) { setLoading(false); setRefreshing(false); }
     }
-  }, [active, api, term]);
+  }, [api]);
 
-  useEffect(() => { setPage(1); void load(); }, [load]);
+  useEffect(() => { void load(); }, [load]);
+  // Accent-insensitive name search ("ca rot" finds "Cà rốt"); a new search or filter starts on the first page.
+  const recipes = useMemo(
+    () => filterByName(allRecipes, term).filter((recipe) => active !== "true" || recipe.isActive),
+    [allRecipes, term, active],
+  );
+  useEffect(() => { setPage(1); }, [term, active]);
 
   const totalPages = Math.max(1, Math.ceil(recipes.length / PAGE_SIZE));
   const shownPage = Math.min(page, totalPages);
@@ -224,11 +231,11 @@ export default function RecipesScreen(): React.JSX.Element {
 
   /** "Ẩn món": isActive=false (never deleted); users and menu suggestions no longer see it. */
   const setActiveFlag = async (recipe: Recipe, isActive: boolean) => {
-    setRecipes((current) => current.map((entry) => (entry.id === recipe.id ? { ...entry, isActive } : entry)));
+    setAllRecipes((current) => current.map((entry) => (entry.id === recipe.id ? { ...entry, isActive } : entry)));
     try {
       await api.put<Recipe>(`/api/recipes/${encodeURIComponent(recipe.id)}`, { isActive });
     } catch (caught) {
-      setRecipes((current) => current.map((entry) => (entry.id === recipe.id ? recipe : entry)));
+      setAllRecipes((current) => current.map((entry) => (entry.id === recipe.id ? recipe : entry)));
       setError(errorMessage(caught));
     }
   };

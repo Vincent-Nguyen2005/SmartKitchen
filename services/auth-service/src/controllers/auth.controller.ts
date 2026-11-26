@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { z } from "zod";
-import { AuthService, AuthServiceError } from "../services/auth.service";
+import { AuthService, AuthServiceError, refreshTokenTtlMs } from "../services/auth.service";
 import { isDatabaseUnavailable } from "../database-error";
 
 const credentialsSchema = z.object({
@@ -379,7 +379,7 @@ export class AuthController {
       secure,
       sameSite: "lax",
       path: "/api/auth",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: refreshTokenTtlMs(),
     });
   }
 

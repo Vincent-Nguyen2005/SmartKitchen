@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { createAuthCoordinator, sendWithRefresh } from "./authSession";
 
 // Expo web on port 8081 and the gateway run on the same host during local development.
 const webDevGateway = Platform.OS === "web" && typeof window !== "undefined" && window.location.port === "8081"
@@ -28,10 +29,18 @@ export type ApiRequestOptions = Omit<RequestInit, "headers"> & { headers?: Recor
 
 export type GatewayFetchInit = Omit<RequestInit, "headers" | "signal"> & {
   headers?: Record<string, string>;
-  /** Sent as `Authorization: Bearer …`; the gateway derives the user from it (client x-user-id is stripped). */
+  /**
+   * Sent as `Authorization: Bearer …`; the gateway derives the user from it (client x-user-id is stripped). The
+   * session's newest token is sent instead when it differs, and a 401 refreshes once and retries once.
+   */
   accessToken?: string | null;
   timeoutMs?: number;
+  /** Aborts the request (e.g. a newer search started); rejects with code ABORTED, not the network message. */
+  signal?: AbortSignal;
 };
+
+/** The one access-token coordinator (configured by SessionProvider): newest token, single-flight refresh. */
+export const authCoordinator = createAuthCoordinator();
 
 export const NETWORK_ERROR_MESSAGE = "Không kết nối được máy chủ. Kiểm tra mạng và địa chỉ gateway rồi thử lại.";
 
@@ -41,18 +50,33 @@ export const NETWORK_ERROR_MESSAGE = "Không kết nối được máy chủ. Ki
  * Callers keep their own response parsing, because each service shapes its JSON differently.
  */
 export const gatewayFetch = async (path: string, init: GatewayFetchInit = {}): Promise<Response> => {
-  const { accessToken, timeoutMs = 15_000, headers: extra, ...rest } = init;
-  const headers: Record<string, string> = { Accept: "application/json", ...gatewayHeaders(), ...extra };
-  if (typeof rest.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const { accessToken, timeoutMs = 15_000, headers: extra, signal, ...rest } = init;
+  const send = async (token: string | undefined): Promise<Response> => {
+    const headers: Record<string, string> = { Accept: "application/json", ...gatewayHeaders(), ...extra };
+    if (typeof rest.body === "string" && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener("abort", onAbort);
+    try {
+      if (signal?.aborted) throw new ApiError("Aborted", 0, undefined, "ABORTED");
+      return await fetch(`${gatewayBaseUrl}${path}`, { ...rest, headers, credentials: "omit", signal: controller.signal });
+    } catch (error) {
+      if (signal?.aborted) throw new ApiError("Aborted", 0, undefined, "ABORTED");
+      if (error instanceof ApiError) throw error;
+      throw new ApiError(NETWORK_ERROR_MESSAGE, 0, undefined, "NETWORK_ERROR");
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  };
   try {
-    return await fetch(`${gatewayBaseUrl}${path}`, { ...rest, headers, credentials: "omit", signal: controller.signal });
-  } catch {
+    return await sendWithRefresh(authCoordinator, send, accessToken);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    // The refresh itself could not reach the server.
     throw new ApiError(NETWORK_ERROR_MESSAGE, 0, undefined, "NETWORK_ERROR");
-  } finally {
-    clearTimeout(timer);
   }
 };
 

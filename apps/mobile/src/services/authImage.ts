@@ -10,8 +10,8 @@
 export type ImageTarget =
   /** A public image on another site (e.g. a catalog picture): shown directly, no headers. */
   | { kind: "external"; uri: string }
-  /** A gateway image: fetched with `headers`, cached on phones under `cacheName`. */
-  | { kind: "gateway"; uri: string; headers: Record<string, string>; cacheName: string };
+  /** A gateway image: `path` on the gateway (fetched with `headers`), cached on phones under `cacheName`. */
+  | { kind: "gateway"; uri: string; path: string; headers: Record<string, string>; cacheName: string };
 
 export type ImageTargetOptions = {
   /** Gateway origin, e.g. https://example.ngrok-free.dev (a trailing slash is ignored). */
@@ -61,6 +61,7 @@ const gatewayTarget = (path: string, options: ImageTargetOptions): ImageTarget |
   return {
     kind: "gateway",
     uri: `${options.baseUrl.replace(/\/+$/, "")}${path}`,
+    path,
     headers: { Accept: "image/*", ...options.extraHeaders, Authorization: `Bearer ${options.accessToken}` },
     cacheName: cacheNameFor(path),
   };

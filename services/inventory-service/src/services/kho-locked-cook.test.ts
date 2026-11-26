@@ -72,6 +72,24 @@ describe("Kho rows bought in Đi chợ are read-only", () => {
     expect(hiddenPurchaseFilter(new Date("2026-12-04T23:30:00Z")).NOT.expiryDate.lt).toEqual(day("2026-12-02"));
   });
 
+  it("'Cộng thêm' on a bought row adds the quantity; the row stays PURCHASE-locked and keeps the merge expiry rule", async () => {
+    const fresh = { ...bought, quantity: 1.5, expiryDate: day("2026-12-01") };
+    tx.foodItem.findFirst
+      .mockResolvedValueOnce(fresh)
+      .mockResolvedValueOnce({ ...fresh, quantity: 2.5, category: null });
+    const merged = await ItemsService.addQuantity("i1", familyId, { quantity: 1, unit: "KILOGRAM", expiryDate: day("2026-12-09") }, userId);
+    expect(merged).toMatchObject({ quantity: 2.5, origin: "PURCHASE" });
+    const update = tx.foodItem.updateMany.mock.calls[0][0];
+    // Only the quantity grows: no origin change, and a later expiry never replaces the earlier one.
+    expect(update.data).toEqual({ quantity: { increment: 1 } });
+    expect(update.where).toMatchObject({ id: "i1", familyId, unit: "KILOGRAM", status: "FRESH" });
+    expect(tx.inventoryLog.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: "MANUAL_MERGE" }) }));
+    // Still locked afterwards: a hand edit of the quantity is refused.
+    prismaMock.foodItem.findFirst.mockResolvedValue({ ...fresh, quantity: 2.5 });
+    tx.foodItem.findFirst.mockResolvedValue({ ...fresh, quantity: 2.5 });
+    await expect(ItemsService.update("i1", familyId, { quantity: 1 }, userId)).rejects.toMatchObject({ code: "PURCHASED_ITEM_LOCKED" });
+  });
+
   it("the old manual 'Đã dùng' cannot change a bought row's quantity", async () => {
     tx.foodItem.findFirst.mockResolvedValue(bought);
     await expect(ItemsService.consume("i1", familyId, 0.5, userId)).rejects.toMatchObject({ code: "PURCHASED_ITEM_LOCKED" });

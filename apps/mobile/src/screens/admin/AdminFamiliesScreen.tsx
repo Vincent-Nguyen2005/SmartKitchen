@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
+import { filterByName } from "../../services/localSearch";
 import { Search } from "lucide-react-native";
 import { AppText, colors, spacing } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
@@ -49,9 +50,10 @@ export default function AdminFamiliesScreen({ onBack, onOpenFamily }: AdminFamil
     setRefreshing(false);
   };
 
-  const needle = search.trim().toLowerCase();
+  // Accent- and case-insensitive on the loaded list; typing sends no request.
+  const needle = search.trim();
   const visible = useMemo(
-    () => (needle ? families.filter((family) => family.name.toLowerCase().includes(needle)) : families),
+    () => filterByName(families, needle),
     [families, needle],
   );
 

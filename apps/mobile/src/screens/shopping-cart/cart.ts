@@ -1,6 +1,7 @@
 import { discountedPrice } from "../../services/format";
-import { inventoryApi, type CatalogIngredient } from "../inventory/inventoryApi";
-import { normalizeVi, unitFromCatalog } from "../inventory/catalogSuggest";
+import { type CatalogIngredient } from "../inventory/inventoryApi";
+import { catalogProductNamed, normalizeVi, unitFromCatalog } from "../inventory/catalogSuggest";
+import { marketCatalog } from "../inventory/marketCatalog";
 import { shoppingApi, type CartSnapshot, type ShoppingItem, type ShoppingList, type ShoppingUnit } from "./shoppingApi";
 
 /**
@@ -20,12 +21,10 @@ export const snapshotOf = (product: CatalogIngredient): CartSnapshot => ({
   imageUrl: product.imageUrl,
 });
 
-/** The active catalog product with exactly this name (accent-insensitive), or null. */
+/** The active catalog product with exactly this name (accent-insensitive), or null; from the shared catalog copy. */
 export async function findCatalogProduct(accessToken: string, name: string): Promise<CatalogIngredient | null> {
-  const key = normalizeVi(name);
-  if (!key) return null;
-  const page = await inventoryApi.ingredientCatalog(accessToken, { search: name, limit: 10 });
-  return page.items.find((product) => normalizeVi(product.name) === key) ?? null;
+  if (!normalizeVi(name)) return null;
+  return catalogProductNamed(await marketCatalog(accessToken).get(), name);
 }
 
 /**

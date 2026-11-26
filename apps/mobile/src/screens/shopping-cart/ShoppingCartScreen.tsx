@@ -33,6 +33,8 @@ type ScreenView = "market" | "cart";
 /** openCartKey: bump it to show Giỏ hàng (e.g. after "Thêm vào Giỏ hàng" in Thông báo). */
 type Props = { onOpenFamily?: () => void; openCartKey?: number };
 const AUTO_REFRESH_MS = 30_000;
+/** No auto refresh while the user typed in the product search within this window. */
+export const TYPING_QUIET_MS = 5_000;
 
 export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
@@ -43,8 +45,10 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   const horizontalPadding = isCompact ? spacing.lg : spacing.xl;
   const [view, setView] = useState<ScreenView>(openCartKey > 0 ? "cart" : "market");
   useEffect(() => { if (openCartKey > 0) setView("cart"); }, [openCartKey]);
-  // Bumped to make the product grid reload in place (same search text and page).
-  const [productsRefresh, setProductsRefresh] = useState(0);
+  // Bumped to make the product grid reload in place (same search text); `force` asks the server even for a fresh copy.
+  const [productsRefresh, setProductsRefresh] = useState({ n: 0, force: false });
+  const bumpProducts = (force: boolean) => setProductsRefresh((value) => ({ n: value.n + 1, force }));
+  const lastTypedAt = useRef(0);
   const productsLoading = useRef(false);
   const [pulling, setPulling] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -92,13 +96,15 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   useEffect(() => { void fetchData(true); }, [family?.id, accessToken, ready]);
 
   // Auto refresh every 30 s while this tab is mounted (= focused) and the app is in the foreground.
-  // A tick is skipped while a cart or product request is still running, so requests never overlap.
+  // A tick is skipped while a cart or product request is still running (requests never overlap) and while the user
+  // is typing in the product search (TYPING_QUIET_MS after the last keystroke).
   useEffect(() => {
     let appState = AppState.currentState;
     const tick = () => {
       if (appState !== "active" || listRequest.current || productsLoading.current) return;
+      if (Date.now() - lastTypedAt.current < TYPING_QUIET_MS) return;
       void fetchRef.current(false);
-      setProductsRefresh((value) => value + 1);
+      setProductsRefresh((value) => ({ n: value.n + 1, force: false }));
     };
     const timer = setInterval(tick, AUTO_REFRESH_MS);
     const subscription = AppState.addEventListener("change", (next) => {
@@ -111,7 +117,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
 
   const pullToRefresh = async () => {
     setPulling(true);
-    setProductsRefresh((value) => value + 1);
+    bumpProducts(true);
     try { await fetchData(false); } finally { setPulling(false); }
   };
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
@@ -125,7 +131,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   const handleProductAdded = (message: string) => {
     showToast(message);
     void fetchData(false);
-    setProductsRefresh((value) => value + 1);
+    bumpProducts(false);
   };
 
   const cart = useMemo(() => cartLines(lists), [lists]);
@@ -275,6 +281,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
             onAdded={handleProductAdded}
             onOpenFamily={onOpenFamily}
             refreshSignal={productsRefresh}
+            onTyping={() => { lastTypedAt.current = Date.now(); }}
             onLoadingChange={(value) => { productsLoading.current = value; }}
             refreshControl={refreshControl}
             horizontalPadding={horizontalPadding}
