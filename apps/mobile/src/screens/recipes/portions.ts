@@ -10,7 +10,7 @@ import type { Recipe } from "./recipeTypes";
  * - perPerson ingredient (bánh mì, trứng ốp la, a glass of milk): each person's amount (quantity / servings) is
  *   rounded up first, then × people, so nobody gets half an egg.
  * - Seasonings scale the same way; free-text amounts ("vừa ăn") stay as text (quantity null).
- * - Rounding: pieces (cái/quả, gói/bó, chai, lon, hộp) up to whole numbers; g / ml to the nearest 5 (at least 5);
+ * - Rounding: pieces (cái, quả, gói, chai, lon, hộp) up to whole numbers; g / ml to the nearest 5 (at least 5);
  *   kg / lít and other units to 2 decimals.
  */
 export type PortionIngredient = {

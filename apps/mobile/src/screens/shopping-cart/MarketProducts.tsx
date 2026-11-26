@@ -1,16 +1,18 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { ActivityIndicator, BackHandler, FlatList, Image, Modal, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { Badge, ScreenState } from "../notifications/ui";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { CardPrice, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid } from "../../components/ProductCard";
-import { SEARCH_CONTENT_GAP, SearchBar } from "../../components/SearchBar";
+import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../components/SearchBar";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { type CatalogIngredient } from "../inventory/inventoryApi";
 import { marketCatalog } from "../inventory/marketCatalog";
 import { filterByName } from "../../services/localSearch";
 import { addToCart, shoppingUnitFor } from "./cart";
+import { lineTotal, unitPriceAfterDiscount, unitPriceText } from "./pricing";
+import { bulkAddQuantity, NO_SELECTION, selectionReducer, tapIntent } from "./selection";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
 import { unitLine, unitWord } from "./unitDisplay";
@@ -34,6 +36,8 @@ type Props = {
   onLoadingChange?: (loading: boolean) => void;
   /** Called on every keystroke in the search box (the parent pauses its auto refresh while the user types). */
   onTyping?: () => void;
+  /** Selection mode started / ended (the parent hides its floating cart button while the selection bar shows). */
+  onSelectionModeChange?: (active: boolean) => void;
 };
 
 const NO_SIGNAL = { n: 0, force: false };
@@ -56,18 +60,24 @@ export function ProductImage({ uri, style }: { uri: string | null | undefined; s
   return <Image source={{ uri }} onError={() => setFailed(true)} resizeMode="cover" style={[local.image, style]} accessibilityIgnoresInvertColors />;
 }
 
-/** Price line: discounted price with the original struck through, or the plain price. */
-function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Element | null {
-  if (product.price === null) return null;
-  if (product.discountPercent !== null) {
-    return (
+/**
+ * Sheet price: the line total for the chosen quantity (unit price after discount × quantity, live while typing), the
+ * total before the discount struck through, and the unit price smaller underneath ("300.000đ / kg").
+ */
+function SheetPrice({ product, quantity }: { product: CatalogIngredient; quantity: number }): React.JSX.Element | null {
+  const unitPrice = unitPriceAfterDiscount(product.price, product.discountPercent);
+  const total = lineTotal(unitPrice, quantity);
+  if (unitPrice === null || total === null) return <Text style={local.unit}>Chưa có giá</Text>;
+  const before = product.discountPercent !== null ? lineTotal(product.price, quantity) : null;
+  return (
+    <View>
       <View style={local.priceRow}>
-        <Text style={local.price}>{formatVnd(discountedPrice(product.price, product.discountPercent))}</Text>
-        <Text style={local.oldPrice}>{formatVnd(product.price)}</Text>
+        <Text accessibilityLiveRegion="polite" style={local.sheetTotal}>{formatVnd(total)}</Text>
+        {before !== null && before !== total && <Text style={local.oldPrice}>{formatVnd(before)}</Text>}
       </View>
-    );
-  }
-  return <Text style={local.price}>{formatVnd(product.price)}</Text>;
+      <Text style={local.unit}>{unitPriceText(unitPrice, saleWord(product))}</Text>
+    </View>
+  );
 }
 
 /**
@@ -76,7 +86,7 @@ function PriceLine({ product }: { product: CatalogIngredient }): React.JSX.Eleme
  * then the rest in the usual order, once (the amounts are shown in Thông báo › Cần mua tuần này). The search box stays on top (like Kho); a new search starts at the top.
  * The whole catalog (~139 products) is loaded once and searched on the device: typing sends no request.
  */
-export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = NO_SIGNAL, onLoadingChange, onTyping, refreshControl, horizontalPadding }: Props): React.JSX.Element {
+export default function MarketProducts({ accessToken, familyId, onAdded, onOpenFamily, refreshSignal = NO_SIGNAL, onLoadingChange, onTyping, onSelectionModeChange, refreshControl, horizontalPadding }: Props): React.JSX.Element {
   const { layout, columns, onLayout: onGridLayout, gap, cardWidth } = useCardGrid();
   const { api } = useGatewayApi();
   const [search, setSearch] = useState("");
@@ -92,6 +102,22 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const listRef = useRef<FlatList<CatalogIngredient>>(null);
+  // Multi-select (selection.ts): long press starts it; leaving the tab unmounts this screen and clears it.
+  const [selection, dispatchSelection] = useReducer(selectionReducer, NO_SELECTION);
+  const [bulkAdding, setBulkAdding] = useState(false);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+  const exitSelection = () => { if (!bulkAdding) { setBulkError(null); dispatchSelection({ type: "exit" }); } };
+  const selectionChange = useRef(onSelectionModeChange);
+  selectionChange.current = onSelectionModeChange;
+  useEffect(() => { selectionChange.current?.(selection.active); }, [selection.active]);
+  useEffect(() => () => selectionChange.current?.(false), []);
+  // Android back leaves selection mode first.
+  useEffect(() => {
+    if (!selection.active) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { exitSelection(); return true; });
+    return () => subscription.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selection.active, bulkAdding]);
 
   const lastSignal = useRef(refreshSignal.n);
   const loadingChange = useRef(onLoadingChange);
@@ -159,6 +185,34 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     setAddError(null);
   };
   const closeSheet = () => { if (!adding) setSelected(null); };
+
+  /**
+   * "Thêm vào Giỏ hàng" for every selected product with its default quantity (bulkAddQuantity: 0,5 kg or 1). The
+   * server raises the quantity of a line already in the cart (same product + unit), so nothing is duplicated.
+   */
+  const addSelectionToCart = async () => {
+    if (!accessToken || !familyId || bulkAdding || selection.ids.length === 0) return;
+    const byId = new Map((catalog ?? []).map((product) => [product.id, product]));
+    const products = selection.ids.map((id) => byId.get(id)).filter((product): product is CatalogIngredient => !!product);
+    setBulkAdding(true);
+    setBulkError(null);
+    const failedIds: string[] = [];
+    for (const product of products) {
+      try {
+        await addToCart(accessToken, familyId, { name: product.name, quantity: bulkAddQuantity(shoppingUnitFor(product)), product });
+      } catch {
+        failedIds.push(product.id);
+      }
+    }
+    setBulkAdding(false);
+    const added = products.length - failedIds.length;
+    if (added > 0) onAdded(`Đã thêm ${added} sản phẩm vào Giỏ hàng`);
+    if (failedIds.length === 0) { dispatchSelection({ type: "exit" }); return; }
+    // Failed products stay selected so "Thêm vào Giỏ hàng" can be tried again.
+    dispatchSelection({ type: "exit" });
+    failedIds.forEach((id, index) => dispatchSelection(index === 0 ? { type: "longPress", id } : { type: "tap", id }));
+    setBulkError(`Chưa thêm được ${failedIds.length} sản phẩm. Thử lại nhé.`);
+  };
   const rule = quantityRuleFor(selected ? shoppingUnitFor(selected) : "PIECE");
   const quantity = parseQuantity(quantityText, rule) ?? rule.min;
   const step = (direction: 1 | -1) => setQuantityText(formatQuantity(stepQuantity(quantity, direction, rule)));
@@ -185,7 +239,9 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
       <ProductCard
         width={cardWidth}
         accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
-        onPress={() => openProduct(product)}
+        onPress={() => (tapIntent(selection) === "toggle" ? dispatchSelection({ type: "tap", id: product.id }) : openProduct(product))}
+        onLongPress={() => dispatchSelection({ type: "longPress", id: product.id })}
+        selected={selection.active ? selection.ids.includes(product.id) : undefined}
         image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
         pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
         name={product.name}
@@ -200,10 +256,9 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 
   return (
     <View style={local.container}>
-      <View style={[local.searchHeader, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
-        <SearchBar accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
-      </View>
-      <View style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
+      <SearchHeader horizontalPadding={horizontalPadding} wide={layout.isWide} accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
+      {/* A tap on empty space (not on a card) leaves selection mode. */}
+      <Pressable accessible={false} onPress={selection.active ? exitSelection : undefined} style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
         <FlatList
           ref={listRef}
           // numColumns cannot change on a mounted FlatList.
@@ -226,7 +281,26 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
           showsVerticalScrollIndicator={false}
           showsHorizontalScrollIndicator={false}
         />
-      </View>
+      </Pressable>
+
+      {selection.active && (
+        <View style={[local.selectionBar, { paddingHorizontal: horizontalPadding }]}>
+          <IconButton icon={X} accessibilityLabel="Bỏ chọn" onPress={exitSelection} disabled={bulkAdding} />
+          <View style={local.selectionInfo}>
+            <Text accessibilityLiveRegion="polite" style={local.selectionCount}>Đã chọn {selection.ids.length}</Text>
+            {(bulkError || !familyId) && <Text style={local.error} numberOfLines={2}>{bulkError ?? "Tạo hoặc tham gia gia đình để thêm vào giỏ hàng."}</Text>}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ busy: bulkAdding, disabled: bulkAdding || selection.ids.length === 0 || !familyId }}
+            disabled={bulkAdding || selection.ids.length === 0 || !familyId}
+            onPress={() => void addSelectionToCart()}
+            style={[local.primaryButton, local.selectionButton, (bulkAdding || selection.ids.length === 0 || !familyId) && local.dimmed]}
+          >
+            {bulkAdding ? <ActivityIndicator color={colors.primaryText} /> : <View style={local.buttonContent}><AppIcon icon={ShoppingCart} size="sm" color={colors.primaryText} /><Text style={local.primaryButtonText}>Thêm vào Giỏ hàng</Text></View>}
+          </Pressable>
+        </View>
+      )}
 
       <Modal animationType="slide" transparent visible={selected !== null} onRequestClose={closeSheet}>
         <View style={local.backdrop}>
@@ -241,7 +315,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
                 <ProductImage uri={selected.imageUrl} style={local.sheetImage} />
                 <View style={local.sheetInfo}>
                   <Text style={local.unit}>{unitText(selected)}</Text>
-                  <PriceLine product={selected} />
+                  <SheetPrice product={selected} quantity={familyId ? quantity : 1} />
                   {selected.discountPercent !== null && (
                     <Badge label={`Giảm ${selected.discountPercent}%${selected.promoEndDate ? ` đến ${selected.promoEndDate.split("-").reverse().join("/")}` : ""}`} icon={BadgePercent} color={colors.success} background={colors.successSoft} />
                   )}
@@ -293,9 +367,12 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 const local = StyleSheet.create({
   container: { flex: 1 },
   // Same placement as Kho's search box (top padding, centred max width on wide screens).
-  searchHeader: { paddingTop: spacing.xl, width: "100%" },
-  wide: { alignSelf: "center", maxWidth: 920, width: "100%" },
+  wide: { alignSelf: "center", maxWidth: SEARCH_MAX_WIDTH, width: "100%" },
   listArea: { flex: 1 },
+  selectionBar: { alignItems: "center", backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: spacing.sm, paddingVertical: spacing.sm },
+  selectionInfo: { flex: 1, minWidth: 0 },
+  selectionCount: { ...textStyles.label, color: colors.text },
+  selectionButton: { marginTop: 0, paddingHorizontal: spacing.lg },
   // SEARCH_CONTENT_GAP above the grid like Kho's list; bottom room for the floating cart button.
   content: { paddingBottom: LIST_BOTTOM_SPACE, paddingTop: SEARCH_CONTENT_GAP },
   fill: { flexGrow: 1 },
@@ -305,6 +382,7 @@ const local = StyleSheet.create({
   unit: { ...textStyles.caption },
   priceRow: { alignItems: "baseline", flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   price: { ...textStyles.labelSmall, color: colors.primary },
+  sheetTotal: { ...textStyles.subheading, color: colors.primary },
   oldPrice: { ...textStyles.caption, textDecorationLine: "line-through" },
   backdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
   sheet: { backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, gap: spacing.md, padding: spacing.lg, width: "100%" },

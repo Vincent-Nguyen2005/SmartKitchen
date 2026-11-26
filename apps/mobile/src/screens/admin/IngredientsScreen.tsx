@@ -50,7 +50,7 @@ type SavedIngredient = Ingredient & { promotionSync?: "synced" | "failed" | "non
  */
 const UNIT_OPTIONS: { value: string; label: string }[] = [
   { value: "GRAM", label: "g" }, { value: "KILOGRAM", label: "kg" }, { value: "MILLILITER", label: "ml" },
-  { value: "LITER", label: "lít" }, { value: "PIECE", label: "cái / quả" }, { value: "PACK", label: "gói / bó" },
+  { value: "LITER", label: "lít" }, { value: "PIECE", label: "cái" }, { value: "PACK", label: "gói" },
   { value: "BOTTLE", label: "chai" }, { value: "CAN", label: "lon" }, { value: "BOX", label: "hộp" },
 ];
 const DEFAULT_UNIT = "GRAM";

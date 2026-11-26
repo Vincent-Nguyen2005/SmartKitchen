@@ -24,7 +24,8 @@ import { inventoryApi, type CatalogIngredient, type ItemMatch, InventoryUnit, Re
 import { marketCatalog } from "./marketCatalog";
 import { createServerSearch, type ServerSearch } from "../../services/localSearch";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
-import { catalogProductNamed, catalogUnitForName, dayFromToday, matchCatalog, UNIT_LABELS, unitFromCatalog } from "./catalogSuggest";
+import { catalogProductNamed, catalogUnitForName, dayFromToday, matchCatalog, unitFromCatalog } from "./catalogSuggest";
+import { choiceFor, choiceLabel, kitchenAmount, storedUnitLabel, UNIT_CHOICES } from "./unitChoices";
 import { useConfirm } from "../../components/ConfirmDialog";
 
 const isWeb = Platform.OS === "web";
@@ -51,8 +52,6 @@ type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecogniti
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
 type CaptureAsset = { uri: string; base64?: string | null; mimeType?: string | null; fileName?: string | null };
 
-const units: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-const unitLabels: Record<InventoryUnit, string> = UNIT_LABELS;
 
 function parseVoiceDraft(text: string): { name: string; quantity: string; unit: InventoryUnit } {
   const match = text.trim().match(/^(\d+(?:[,.]\d+)?)\s*(kg|kilogram|cân|gram|g|ml|milliliter|lít|lit|l)\s+(.+)$/i);
@@ -72,6 +71,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [unit, setUnit] = useState<InventoryUnit>("PIECE");
+  // The specific piece word picked with the unit ("quả", "trái"...); stored only for PIECE (unitChoices.ts).
+  const [pieceWord, setPieceWord] = useState<string | null>(null);
   const [barcode, setBarcode] = useState("");
   const [barcodeResult, setBarcodeResult] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -130,6 +131,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setSuggestionApplied(false);
     setName("");
     unitTouched.current = false;
+    setPieceWord(null);
     setBarcodeResult(null);
     setPhotoGuess({ state: "idle", options: [] });
   };
@@ -150,7 +152,10 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   useEffect(() => {
     if (mode !== "photo" || unitTouched.current || !catalog) return;
     const catalogUnit = catalogUnitForName(catalog, name);
-    if (catalogUnit) setUnit(catalogUnit);
+    if (catalogUnit) {
+      setUnit(catalogUnit);
+      setPieceWord(catalogProductNamed(catalog, name)?.unitLabel ?? null);
+    }
   }, [mode, catalog, name]);
 
   // Catalog image for the typed name (server rule): debounced 400 ms, at least 2 characters, a repeat of the same
@@ -186,7 +191,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const applySuggestion = (entry: CatalogIngredient) => {
     setName(entry.name);
     const catalogUnit = unitFromCatalog(entry.unit);
-    if (catalogUnit) setUnit(catalogUnit);
+    if (catalogUnit) { setUnit(catalogUnit); setPieceWord(entry.unitLabel ?? null); }
     if (entry.shelfLifeDays !== null && entry.shelfLifeDays !== undefined) setExpiryDay(dayFromToday(entry.shelfLifeDays));
     if (entry.group?.trim()) setGroup(entry.group.trim());
     setSuggestionApplied(true);
@@ -249,6 +254,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setBarcode(value);
     setName("");
     unitTouched.current = false;
+    setPieceWord(null);
     setReceiptDrafts([]);
     setReceiptText("");
     setNote(null);
@@ -267,6 +273,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
       } else {
         setName("");
         unitTouched.current = false;
+        setPieceWord(null);
+    setPieceWord(null);
         setBarcodeResult("Chưa tìm được tên sản phẩm cho mã này. Hãy chụp sản phẩm hoặc thử mã khác.");
       }
     } catch (error) {
@@ -315,7 +323,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     itemName: string,
     itemQuantity: string,
     itemUnit: InventoryUnit,
-    extras: { barcode?: string; expiryDay?: string; group?: string } = {},
+    extras: { barcode?: string; expiryDay?: string; group?: string; unitLabel?: string | null } = {},
   ) => {
     const parsedQuantity = Number(itemQuantity.replace(",", "."));
     if (!familyId || !accessToken) { setNote("Đăng nhập và tạo hoặc tham gia gia đình để lưu vào kho."); return null; }
@@ -337,7 +345,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
           // A used-up row is restocked as a new batch on the server (new quantity and expiry), so no old amount is shown.
           message: existing.status === "CONSUMED"
             ? `Kho đã có ${existing.name} (đã dùng hết). Thêm lại vào?`
-            : `Kho đã có ${existing.name} (${existing.quantity} ${UNIT_LABELS[existing.unit as InventoryUnit] ?? existing.unit}). Cộng thêm vào?`,
+            : `Kho đã có ${existing.name} (${kitchenAmount(existing)}). Cộng thêm vào?`,
           confirmLabel: "Cộng thêm",
           cancelLabel: "Thêm riêng",
         });
@@ -358,6 +366,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         ...(extras.barcode ? { barcode: extras.barcode } : {}),
         ...(expiryDate ? { expiryDate } : {}),
         ...(extras.group?.trim() ? { categoryName: extras.group.trim().slice(0, 50) } : {}),
+        // PIECE word picked by the user; omitted = the server copies the linked catalog product's word.
+        ...(extras.unitLabel ? { unitLabel: extras.unitLabel } : {}),
       });
       onSaved();
       return { ...created, merged: false as const };
@@ -393,10 +403,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     const itemPhoto = mode === "photo" ? photo : null;
     if (mode === "photo" && !itemPhoto) { setNote("Hãy chụp ảnh sản phẩm trước khi lưu."); return; }
     const itemName = name.trim();
-    const created = await saveItem(name, quantity, unit, { barcode: itemBarcode, expiryDay, group });
+    const created = await saveItem(name, quantity, unit, { barcode: itemBarcode, expiryDay, group, unitLabel: storedUnitLabel(unit, pieceWord) });
     if (!created) return;
     setName("");
     unitTouched.current = false;
+    setPieceWord(null);
     setQuantity("1");
     setBarcode("");
     setBarcodeResult(null);
@@ -419,6 +430,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setNote(null);
     setName("");
     unitTouched.current = false;
+    setPieceWord(null);
     setBarcodeResult(null);
     setCameraActive(false);
     try {
@@ -509,6 +521,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setName(parsed.name);
     setQuantity(parsed.quantity);
     setUnit(parsed.unit);
+    setPieceWord(null);
   };
 
   // Transcript heard by the bottom-bar voice overlay: same draft as speaking inside this panel.
@@ -715,14 +728,14 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   <Text style={styles.label}>Khối lượng *</Text>
                   <View style={styles.barcodeRow}>
                     <TextInput accessibilityLabel="Khối lượng, bắt buộc" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={[styles.input, styles.quantityInput]} />
-                    <View style={styles.unitPicker}><UnitButtons value={unit} onChange={(next) => { unitTouched.current = true; setUnit(next); }} /></View>
+                    <View style={styles.unitPicker}><UnitButtons value={unit} word={pieceWord} onChange={(next, word) => { unitTouched.current = true; setUnit(next); setPieceWord(word); }} /></View>
                   </View>
                 </>
               ) : (
                 <>
                   <Text style={styles.label}>Số lượng *</Text>
                   <TextInput accessibilityLabel="Số lượng thực phẩm, bắt buộc" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad" style={styles.input} />
-                  <UnitButtons value={unit} onChange={setUnit} />
+                  <UnitButtons value={unit} word={pieceWord} onChange={(next, word) => { setUnit(next); setPieceWord(word); }} />
                 </>
               )}
               {/* DateField shows dd/mm/yyyy and reports YYYY-MM-DD. */}
@@ -760,13 +773,14 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   );
 }
 
-function UnitButtons({ value, onChange }: { value: InventoryUnit; onChange: (unit: InventoryUnit) => void }): React.JSX.Element {
+/** Unit picker with specific words (gói, cái, quả, trái, bìa, nải, hộp, chai, lon, g, kg, ml, lít). */
+function UnitButtons({ value, word = null, onChange }: { value: InventoryUnit; word?: string | null; onChange: (unit: InventoryUnit, word: string | null) => void }): React.JSX.Element {
   return (
-    <RadioDropdown<InventoryUnit>
+    <RadioDropdown<string>
       label="Đơn vị"
-      value={value}
-      options={units.map((unit) => ({ value: unit, label: unitLabels[unit] }))}
-      onChange={onChange}
+      value={choiceLabel(value, word)}
+      options={UNIT_CHOICES.map((choice) => ({ value: choice.label, label: choice.label }))}
+      onChange={(label) => { const choice = choiceFor(label); if (choice) onChange(choice.unit, choice.unitLabel); }}
       searchable
       searchPlaceholder="Tìm đơn vị (kg, hộp...)"
     />

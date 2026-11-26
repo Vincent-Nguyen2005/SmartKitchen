@@ -11,6 +11,8 @@ export type NewFoodItem = {
   name: string;
   quantity: number;
   unit: InventoryUnit;
+  /** PIECE only: "quả", "trái", "bìa", "nải"; null / omitted = "cái" (or the catalog product's word on create). */
+  unitLabel?: string | null;
   storageLocation: InventoryLocation;
   barcode?: string;
   /** ISO date-time, e.g. 2026-12-31T00:00:00.000Z. */

@@ -1,6 +1,7 @@
 import { prisma } from "../lib/prisma";
 import { normalizeName } from "../lib/names";
 import { PhotoStorage, managedPhotoFileName } from "./photo-storage.service";
+import { normalizeUnitLabel } from "../lib/unit-label";
 import {
   CreateItemInput,
   UpdateItemInput,
@@ -86,7 +87,8 @@ export class ItemsService {
    * `productId`: the admin catalog product matched from the name by the caller (catalog-match.service); null when the
    * name matches no product. The server decides it, never the client.
    */
-  static async create(data: CreateItemInput, productId: string | null = null) {
+  /** `product`: the catalog product matched from the name; its piece word is used when the client sent none. */
+  static async create(data: CreateItemInput, productId: string | null = null, productUnitLabel: string | null = null) {
     const categoryId = data.categoryId ?? await resolveCategoryId(prisma, data.categoryName);
     return prisma.foodItem.create({
       data: {
@@ -96,6 +98,7 @@ export class ItemsService {
         description: data.description,
         quantity: data.quantity,
         unit: data.unit,
+        unitLabel: normalizeUnitLabel(data.unit, data.unitLabel !== undefined ? data.unitLabel : productUnitLabel),
         minQuantity: data.minQuantity,
         categoryId,
         storageLocation: data.storageLocation,
@@ -226,8 +229,12 @@ export class ItemsService {
         replacedImageUrl = previous.imageUrl;
       }
 
-      const { categoryName, ...fields } = data;
-      const updateData: Omit<UpdateItemInput, "categoryName"> & { productId?: string | null } = { ...fields };
+      const { categoryName, unitLabel, ...fields } = data;
+      const updateData: Omit<UpdateItemInput, "categoryName" | "unitLabel"> & { productId?: string | null; unitLabel?: string | null } = { ...fields };
+      // The piece word follows the (new) unit: kept only for PIECE rows, "cái" stored as null.
+      if (unitLabel !== undefined || data.unit !== undefined) {
+        updateData.unitLabel = normalizeUnitLabel(data.unit ?? previous.unit, unitLabel !== undefined ? unitLabel : previous.unitLabel);
+      }
       if (product !== undefined) updateData.productId = product?.id ?? null;
       if (categoryName && !fields.categoryId) updateData.categoryId = await resolveCategoryId(transaction, categoryName);
       if (typeof data.quantity === "number" && data.quantity > 0 && previous.status === "CONSUMED" && data.status === undefined) {

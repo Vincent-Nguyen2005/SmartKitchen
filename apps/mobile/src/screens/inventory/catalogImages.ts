@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { normalizeVi } from "./catalogSuggest";
-import { inventoryApi, type CatalogIngredient } from "./inventoryApi";
+import { type CatalogIngredient } from "./inventoryApi";
+import { marketCatalog } from "./marketCatalog";
 
-type CatalogImageRow = Pick<CatalogIngredient, "id" | "name" | "imageUrl">;
+type CatalogImageRow = Pick<CatalogIngredient, "id" | "name" | "imageUrl" | "unit" | "unitLabel">;
 
 /**
  * Catalog product image for a Kho item without its own photo: the product with the item's stored id (bought from
@@ -19,36 +20,23 @@ export function catalogImageFor(item: { name: string; productId?: string | null 
   return rows.find((row) => row.imageUrl && normalizeVi(row.name) === name)?.imageUrl ?? null;
 }
 
-const CACHE_MS = 10 * 60 * 1000;
-const PAGE_SIZE = 50;
-const MAX_PAGES = 10;
-let cache: { at: number; rows: CatalogImageRow[] } | null = null;
-let loading: Promise<CatalogImageRow[]> | null = null;
-
-/** All active catalog rows (id, name, image), loaded once and kept for 10 minutes; shared by every screen. */
-function loadCatalogImages(accessToken: string): Promise<CatalogImageRow[]> {
-  if (cache && Date.now() - cache.at < CACHE_MS) return Promise.resolve(cache.rows);
-  if (loading) return loading;
-  loading = (async () => {
-    const rows: CatalogImageRow[] = [];
-    for (let page = 1; page <= MAX_PAGES; page += 1) {
-      const result = await inventoryApi.ingredientCatalog(accessToken, { page, limit: PAGE_SIZE });
-      rows.push(...result.items.map(({ id, name, imageUrl }) => ({ id, name, imageUrl })));
-      if (page >= result.totalPages) break;
-    }
-    cache = { at: Date.now(), rows };
-    return rows;
-  })().finally(() => { loading = null; });
-  return loading;
+/**
+ * The linked catalog product's word for one piece ("quả", "bìa"), used to show the Kho amount ("2 quả"). Only an
+ * item linked by productId takes it (a name match is not enough to change the word the user chose).
+ */
+export function catalogUnitLabelFor(item: { productId?: string | null }, rows: CatalogImageRow[]): string | null {
+  if (!item.productId) return null;
+  return rows.find((row) => row.id === item.productId)?.unitLabel ?? null;
 }
 
 /** Catalog rows for image fallbacks; empty until loaded (or when the catalog cannot be read: items keep the placeholder). */
 export function useCatalogImages(accessToken: string | null): CatalogImageRow[] {
-  const [rows, setRows] = useState<CatalogImageRow[]>(() => cache?.rows ?? []);
+  // The shared market catalog copy (marketCatalog.ts): no separate catalog requests for images and unit words.
+  const [rows, setRows] = useState<CatalogImageRow[]>(() => (accessToken ? marketCatalog(accessToken).peek() ?? [] : []));
   useEffect(() => {
     if (!accessToken) return;
     let active = true;
-    loadCatalogImages(accessToken).then((loaded) => { if (active) setRows(loaded); }).catch(() => undefined);
+    marketCatalog(accessToken).get().then((loaded) => { if (active) setRows(loaded); }).catch(() => undefined);
     return () => { active = false; };
   }, [accessToken]);
   return rows;

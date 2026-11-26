@@ -44,7 +44,7 @@ export class ItemsController {
       await requireFamilyMembership(req as InventoryAuthRequest, data.familyId);
       // The catalog product is decided here from the name (photo suggestion or typed), never by the client.
       const product = await resolveCatalogProduct((req as InventoryAuthRequest).authUser.userId, data.name);
-      const item = await ItemsService.create(data, product?.id ?? null);
+      const item = await ItemsService.create(data, product?.id ?? null, product?.unit === "PIECE" ? product.unitLabel ?? null : null);
       res.status(201).json({ success: true, data: item });
     } catch (err) {
       next(err);

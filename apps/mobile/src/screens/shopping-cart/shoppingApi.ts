@@ -3,7 +3,7 @@ import { UNIT_LABELS } from "../inventory/catalogSuggest";
 
 export type ShoppingUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export const shoppingUnits: ShoppingUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
-/** Same short Vietnamese labels as Kho (g, kg, ml, lít, cái/quả, ...). */
+/** Same short Vietnamese words as Kho (g, kg, ml, lít, cái, gói, ...); the catalog's piece word wins where known. */
 export const shoppingUnitLabels: Record<ShoppingUnit, string> = UNIT_LABELS;
 export type ShoppingItem = {
   id: string;

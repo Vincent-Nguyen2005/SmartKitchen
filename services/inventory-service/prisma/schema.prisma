@@ -59,6 +59,8 @@ model FoodItem {
   description     String?
   quantity        Float           @default(0)
   unit            Unit            @default(PIECE)
+  /// Specific word for a PIECE unit ("quả", "trái", "bìa", "nải"); null = "cái". Other units never have one.
+  unitLabel       String?         @db.VarChar(16)
   minQuantity     Float?
   categoryId      String?         @db.Uuid
   storageLocation StorageLocation @default(FRIDGE)

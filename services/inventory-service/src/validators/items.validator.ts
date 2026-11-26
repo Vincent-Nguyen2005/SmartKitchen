@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PIECE_WORDS } from "../lib/unit-label";
 
 const UnitEnum = z.enum([
   "GRAM",
@@ -26,6 +27,8 @@ export const createItemSchema = z.object({
   description: z.string().max(500).optional(),
   quantity: z.number().finite().min(0).default(0),
   unit: UnitEnum.default("PIECE"),
+  /** PIECE only: "quả", "trái", "bìa", "nải" ("cái" / null = the plain word); ignored for other units. */
+  unitLabel: z.enum(PIECE_WORDS).nullable().optional(),
   minQuantity: z.number().finite().min(0).optional(),
   categoryId: z.string().uuid().optional(),
   /** Free-text group ("Nhóm"), e.g. "Rau củ"; the matching category is created on first use. */

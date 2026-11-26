@@ -28,10 +28,10 @@ const UNIT_ALIASES: Record<string, InventoryUnit> = {
   goi: "PACK", bo: "PACK", "goi / bo": "PACK", chai: "BOTTLE", lon: "CAN", hop: "BOX",
 };
 
-/** Short Vietnamese unit labels shown everywhere in the app (never the code or English). */
+/** Short Vietnamese unit words shown everywhere in the app (never the code, English or a combined "gói/bó"). */
 export const UNIT_LABELS: Record<InventoryUnit, string> = {
   GRAM: "g", KILOGRAM: "kg", MILLILITER: "ml", LITER: "lít",
-  PIECE: "cái/quả", PACK: "gói/bó", BOTTLE: "chai", CAN: "lon", BOX: "hộp",
+  PIECE: "cái", PACK: "gói", BOTTLE: "chai", CAN: "lon", BOX: "hộp",
 };
 
 /** Label for a unit code or an older free-text unit ("Gram", "Kg", "KILOGRAM" → "g", "kg"); unknown text as is. */
