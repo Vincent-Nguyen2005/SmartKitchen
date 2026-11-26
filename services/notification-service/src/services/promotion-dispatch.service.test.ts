@@ -123,9 +123,38 @@ describe("promotion quiet window 22:00–07:00 (Asia/Ho_Chi_Minh)", () => {
   });
 });
 
+const fresh = (id: string, hoursAgo = 1) => ({ id, startsAt: new Date(Date.now() - hoursAgo * 3_600_000), createdAt: new Date(Date.now() - hoursAgo * 3_600_000) });
+
+describe("first run / restart: no burst of old promotions", () => {
+  it("the job only pushes promotions in their first 24 hours (from start or creation, whichever is later)", async () => {
+    prismaMock.promotion.findMany.mockResolvedValue([
+      fresh("p-new", 2),
+      fresh("p-day", 24),
+      fresh("p-old", 25),
+      { id: "p-backdated", startsAt: new Date(Date.now() - 30 * 24 * 3_600_000), createdAt: new Date(Date.now() - 3_600_000) }, // synced today
+    ]);
+    prismaMock.deviceToken.findMany.mockResolvedValueOnce([{ userId: "u1" }]).mockResolvedValue([token("u1")]);
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await dispatchActivePromotions();
+    expect(prismaMock.promotion.findUnique.mock.calls.map((call) => call[0].where.id)).toEqual(["p-new", "p-day", "p-backdated"]);
+    // Counts only in the log.
+    expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toEqual({ event: "promotion_dispatch_run", active: 4, fresh: 3, users: 1, sent: 3 });
+    log.mockRestore();
+  });
+
+  it("a restart does not send again: users who already have the promotion's notification are skipped", async () => {
+    prismaMock.promotion.findMany.mockResolvedValue([fresh("p1")]);
+    prismaMock.deviceToken.findMany.mockResolvedValueOnce([{ userId: "u1" }]).mockResolvedValue([token("u1")]);
+    prismaMock.notification.findMany.mockResolvedValue([{ userId: "u1" }]);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    await dispatchActivePromotions();
+    expect(prismaMock.notification.create).not.toHaveBeenCalled();
+  });
+});
+
 describe("dispatchActivePromotions (cron job)", () => {
   it("dispatches every active promotion to every user with an active token", async () => {
-    prismaMock.promotion.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
+    prismaMock.promotion.findMany.mockResolvedValue([fresh("p1"), fresh("p2")]);
     prismaMock.deviceToken.findMany.mockResolvedValueOnce([{ userId: "u1" }]).mockResolvedValue([]);
     await dispatchActivePromotions();
     expect(prismaMock.promotion.findUnique).toHaveBeenCalledTimes(2);

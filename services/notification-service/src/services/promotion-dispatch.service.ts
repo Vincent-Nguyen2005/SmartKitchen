@@ -11,6 +11,15 @@ import { createPushProvider, type PushProvider } from "./push-provider";
 export const PROMOTION_QUIET_START = "22:00";
 export const PROMOTION_QUIET_END = "07:00";
 export const PROMOTION_TIME_ZONE = "Asia/Ho_Chi_Minh";
+/**
+ * The cron job only pushes a promotion during its first 24 hours (counted from when it started or was created,
+ * whichever is later; the overnight quiet window fits inside). Older active promotions are never pushed by the job,
+ * so turning jobs on, a restart, or a phone that registers its token later does not get a burst of old promotions.
+ * They still show in the Thông báo feed. (An explicit POST /promotions/:id/dispatch is not limited.)
+ */
+export const PROMOTION_PUSH_MAX_AGE_MS = 24 * 3_600_000;
+export const isFreshPromotion = (promotion: { startsAt: Date; createdAt: Date }, now: Date = new Date()): boolean =>
+  now.getTime() - Math.max(promotion.startsAt.getTime(), promotion.createdAt.getTime()) <= PROMOTION_PUSH_MAX_AGE_MS;
 export const inPromotionQuietWindow = (now: Date = new Date()): boolean =>
   isWithinQuietHours(now, PROMOTION_QUIET_START, PROMOTION_QUIET_END, PROMOTION_TIME_ZONE);
 
@@ -55,9 +64,14 @@ export const dispatchActivePromotions = async (): Promise<void> => {
   if (inPromotionQuietWindow()) return;
   running = true;
   try {
-    const promotions = await prisma.promotion.findMany({ where: { isActive: true, startsAt: { lte: new Date() }, endsAt: { gte: new Date() } } });
+    const now = new Date();
+    const active = await prisma.promotion.findMany({ where: { isActive: true, startsAt: { lte: now }, endsAt: { gte: now } } });
+    const promotions = active.filter((promotion) => isFreshPromotion(promotion, now));
     const users = await prisma.deviceToken.findMany({ where: { isActive: true }, distinct: ["userId"], select: { userId: true } });
-    for (const promotion of promotions) await dispatchPromotion(promotion.id, users.map((user) => user.userId));
+    let sent = 0;
+    for (const promotion of promotions) sent += await dispatchPromotion(promotion.id, users.map((user) => user.userId));
+    // Counts only (no ids, titles or users).
+    console.log(JSON.stringify({ event: "promotion_dispatch_run", active: active.length, fresh: promotions.length, users: users.length, sent }));
   } finally {
     running = false;
   }

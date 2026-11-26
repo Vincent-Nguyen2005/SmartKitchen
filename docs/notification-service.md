@@ -51,7 +51,7 @@ x-api-key: <INTERNAL_API_KEY>
 
 ## Jobs
 
-With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Stored preferences (push / promotion off, quiet hours) are ignored since the app's "Cài đặt thông báo" was removed: every user with an active token gets each promotion once. The rows stay in `notification_preferences`. Promotion **push** has a fixed quiet window, 22:00–07:00 Asia/Ho_Chi_Minh (not configurable): nothing is created or sent inside it, and the first run from 07:00 sends whatever is still active (a promotion that ended overnight is skipped; still once per user). Enable jobs on **one** instance only.
+With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Stored preferences (push / promotion off, quiet hours) are ignored since the app's "Cài đặt thông báo" was removed: every user with an active token gets each promotion once. The rows stay in `notification_preferences`. The job pushes a promotion only during its first 24 hours (from its start or creation, whichever is later), so turning jobs on, a restart or a phone registering later never gets a burst of old promotions (they still show in the feed; an explicit `POST /promotions/:id/dispatch` is not limited). Promotion **push** has a fixed quiet window, 22:00–07:00 Asia/Ho_Chi_Minh (not configurable): nothing is created or sent inside it, and the first run from 07:00 sends whatever is still active (a promotion that ended overnight is skipped; still once per user). Enable jobs on **one** instance only.
 
 **"Chào buổi sáng ☀️" (the only daily push).** Same `ENABLE_JOBS` switch; cron every 5 minutes 07:00–09:55 Asia/Ho_Chi_Minh. One push per user per Vietnam day to users with an active token: "Chúc bạn một ngày vui vẻ! Bữa sáng nay: A, B." (family breakfast for today from menu-service `POST /internal/breakfast-today` with `INTERNAL_API_KEY` and `MENU_SERVICE_URL`; at most 3 names, then "…"; greeting only without a family / menu or when menu-service is down). Tap data `{ type: "morning", screen: "menu", meal: "BREAKFAST", day }` (or `screen: "home"`) opens Lịch on today's breakfast. A `morning_pushes` row (userId, day) is written before sending, so restarts and retries never send twice; a missed 07:00 is caught up until 09:59, then the day is skipped. Push only: no `notifications` row, not in the feed or the bell badge. Logs carry counts only.
 
@@ -76,9 +76,9 @@ With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) mat
 | `DATABASE_URL` | local 5410 | Postgres connection string |
 | `PARTNER_API_KEY` | — | Key for `/partners*` |
 | `INTERNAL_API_KEY` | — | Key for `/internal/*`; must equal admin-service's |
-| `PUSH_PROVIDER` | `mock` | `mock` or `expo` |
-| `EXPO_ACCESS_TOKEN` | — | Optional, for Expo push |
-| `ENABLE_JOBS` | false | Promotion cron |
+| `PUSH_PROVIDER` | `mock` | `mock` or `expo`. In compose: root `.env` `PUSH_PROVIDER` |
+| `EXPO_ACCESS_TOKEN` | — | Optional (only if the Expo project enforces push security); secret, never logged. In compose: root `.env` `EXPO_ACCESS_TOKEN` |
+| `ENABLE_JOBS` | false | Promotion push cron + 07:00 morning push. In compose: root `.env` `NOTIFICATION_ENABLE_JOBS`. One stack only |
 | `PROMOTION_CRON` | `*/15 * * * *` | Cron expression |
 | `DEFAULT_TIMEZONE` | `Asia/Ho_Chi_Minh` | No longer read (was the quiet-hours timezone) |
 
@@ -89,3 +89,22 @@ Tables: `notifications`, `device_tokens`, `notification_preferences`, `partner_s
 ## Tests
 
 `pnpm --filter notification-service test` (89 tests, 97.99 % line coverage at the last run), including IDOR attempts (user A on user B's inbox, preferences and tokens), missing identity and the dispatch role check.
+
+## Turning jobs on (compose project smartkitchen)
+
+Jobs are off by default. In the root `.env` (never committed) set:
+
+```
+NOTIFICATION_ENABLE_JOBS=true
+PUSH_PROVIDER=expo
+```
+
+(`EXPO_ACCESS_TOKEN=` stays empty unless the Expo project enforces push security.) Then recreate only notification-service:
+`docker compose -p smartkitchen up -d --no-build notification-service`.
+
+What runs: the promotion push every 15 minutes (not 22:00–07:00; only promotions in their first 24 hours; once per user per promotion) and the "Chào buổi sáng" push every 5 minutes 07:00–09:55 (once per user per day). admin-service's health poller / log retention is a separate switch (already on). Expiry alerts and "Tuần này còn thiếu" are computed on read, not jobs.
+
+Check the logs (counts only, no ids or names): `docker compose -p smartkitchen logs -f notification-service | grep -E "promotion_dispatch_run|morning_push"`.
+- `{"event":"promotion_dispatch_run","active":N,"fresh":N,"users":N,"sent":N}` every 15 minutes outside 22:00–07:00.
+- `{"event":"morning_push_sent","users":N,"devices":N,"delivered":N}` once in the morning (later runs that day log nothing: everyone already has it).
+- `morning_push_menu_unavailable` means menu-service didn't answer; those pushes were greeting-only.

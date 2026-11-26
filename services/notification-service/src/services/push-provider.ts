@@ -14,7 +14,8 @@ export class MockPushProvider implements PushProvider {
 }
 
 export class ExpoPushProvider implements PushProvider {
-  private readonly expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN });
+  // The access token is optional (only needed when the Expo project enforces push security); never logged.
+  private readonly expo = new Expo({ accessToken: process.env.EXPO_ACCESS_TOKEN || undefined });
 
   async send(messages: PushMessage[]): Promise<Set<string>> {
     const valid = messages.filter((message) => Expo.isExpoPushToken(message.token));
