@@ -12,7 +12,7 @@ test("family roles are owner and member only: a leftover ADMIN is shown and trea
   assert.equal(isFamilyOwner(undefined), false);
 });
 
-test("only the owner can ask someone to leave; never the owner, never oneself", () => {
+test("only the owner can remove someone; never the owner, never oneself", () => {
   const member = { role: "MEMBER" as const, userId: "u2" };
   assert.equal(canRemoveMember(member, "OWNER", "u1"), true);
   assert.equal(canRemoveMember({ role: "ADMIN", userId: "u3" }, "OWNER", "u1"), true);
@@ -29,11 +29,11 @@ test("leave: Rời gia đình <tên>? with Ở lại / Rời gia đình (destruc
   });
 });
 
-test("remove: Mời <tên> ra khỏi gia đình? with Hủy / Mời ra", () => {
+test("remove: Xóa <tên> khỏi gia đình? with Hủy / Xóa", () => {
   const request = removeConfirm("Lan");
-  assert.equal(request.title, "Mời Lan ra khỏi gia đình?");
-  assert.deepEqual([request.cancelLabel, request.confirmLabel, request.destructive], ["Hủy", "Mời ra", true]);
-  assert.equal(removeConfirm("  ").title, "Mời thành viên này ra khỏi gia đình?");
+  assert.equal(request.title, "Xóa Lan khỏi gia đình?");
+  assert.deepEqual([request.cancelLabel, request.confirmLabel, request.destructive], ["Hủy", "Xóa", true]);
+  assert.equal(removeConfirm("  ").title, "Xóa thành viên này khỏi gia đình?");
 });
 
 test("transfer: Chuyển quyền chủ gia đình cho <tên>? Bạn sẽ trở thành thành viên. with Hủy / Chuyển quyền", () => {

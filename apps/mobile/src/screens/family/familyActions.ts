@@ -15,7 +15,7 @@ export const familyRoleLabel = (role: FamilyRoleValue): string => (role === "OWN
 
 const nameOf = (displayName: string | null | undefined, fallback: string): string => displayName?.trim() || fallback;
 
-/** Only the owner can ask someone to leave ("Mời ra"); never the owner, never oneself. */
+/** Only the owner can remove someone ("Xóa"); never the owner, never oneself. */
 export const canRemoveMember = (member: { role: FamilyRoleValue; userId: string }, currentUserRole: FamilyRoleValue | null | undefined, currentUserId: string): boolean =>
   isFamilyOwner(currentUserRole) && member.role !== "OWNER" && member.userId !== currentUserId;
 
@@ -46,12 +46,12 @@ export const ownerLeaveNotice = (otherMembers: number): ConfirmRequest => otherM
     confirmLabel: "Đã hiểu",
   };
 
-/** Owner removing a member: "Mời <tên> ra khỏi gia đình?" — "Hủy" / "Mời ra". */
+/** Owner removing a member: "Xóa <tên> khỏi gia đình?" — "Hủy" / "Xóa". */
 export const removeConfirm = (displayName: string | null | undefined): ConfirmRequest => ({
-  title: `Mời ${nameOf(displayName, "thành viên này")} ra khỏi gia đình?`,
+  title: `Xóa ${nameOf(displayName, "thành viên này")} khỏi gia đình?`,
   message: "Người này sẽ không còn xem Kho, thực đơn và giỏ hàng của gia đình.",
   cancelLabel: "Hủy",
-  confirmLabel: "Mời ra",
+  confirmLabel: "Xóa",
   destructive: true,
 });
 

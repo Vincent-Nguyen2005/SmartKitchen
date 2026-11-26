@@ -17,8 +17,9 @@ type Props = {
 };
 
 /**
- * "Quản lý thành viên": family roles are only the owner and members. The owner can ask a member to leave ("Mời ra")
- * and transfer ownership (pick a member, then confirm); both use the in-app ConfirmDialog. Members only see the list.
+ * "Quản lý thành viên": family roles are only the owner and members. Each row: avatar, name (one line, ellipsis) with
+ * the role badge under it, and for the owner a small "Xóa" button on the right of the same row (never on the owner's
+ * or one's own row). Removing and transferring ownership (pick a member, then confirm) use the in-app ConfirmDialog.
  */
 export default function ManageMembersScreen({ members, currentUserRole, currentUserId, onRemove, onTransferOwnership, onBack }: Props): React.JSX.Element {
   const [busyMemberId, setBusyMemberId] = useState<string | null>(null);
@@ -35,7 +36,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
     if (!(await confirm(removeConfirm(member.displayName)))) return;
     setBusyMemberId(member.id); setError("");
     try { await onRemove(member.id); }
-    catch { setError("Không thể mời thành viên ra khỏi gia đình. Vui lòng thử lại."); }
+    catch { setError("Không thể xóa thành viên. Vui lòng thử lại."); }
     finally { setBusyMemberId(null); }
   };
 
@@ -73,14 +74,13 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
                 <View style={styles.memberTop}>
                   <MemberAvatar name={displayName} avatarUrl={member.avatarUrl} />
                   <View style={styles.memberInfo}>
-                    <Text style={styles.memberName}>{displayName}{isSelf ? " (Bạn)" : ""}</Text>
+                    <Text numberOfLines={1} ellipsizeMode="tail" style={styles.memberName}>{displayName}</Text>
                     <View style={[styles.badge, member.role === "OWNER" && styles.ownerBadge]}><Text style={[styles.badgeText, member.role === "OWNER" && styles.ownerText]}>{familyRoleLabel(member.role)}</Text></View>
                   </View>
-                  {isBusy && <ActivityIndicator color="#2F6B5F" />}
+                  {isBusy ? <ActivityIndicator color="#2F6B5F" style={styles.rowAction} /> : canManageTarget && !!onRemove ? (
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${displayName} khỏi gia đình`} onPress={() => { void remove(member); }} style={[styles.removeButton, styles.rowAction]}><Text style={styles.removeText}>Xóa</Text></Pressable>
+                  ) : null}
                 </View>
-                {canManageTarget && !!onRemove && <View style={styles.actions}>
-                  <Pressable accessibilityRole="button" accessibilityLabel={`Mời ${displayName} ra khỏi gia đình`} disabled={isBusy} onPress={() => { void remove(member); }} style={styles.removeButton}><Text style={styles.removeText}>Mời ra</Text></Pressable>
-                </View>}
               </View>
             );
           })}
@@ -122,7 +122,7 @@ export default function ManageMembersScreen({ members, currentUserRole, currentU
 
 const styles = StyleSheet.create({
   safeArea: { backgroundColor: "#F7F8F4", flex: 1 },
-  content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 40, width: "100%" },
+  content: { alignSelf: "center", maxWidth: 720, padding: 24, paddingBottom: 120, width: "100%" },
   backButton: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 8, marginBottom: 12, minHeight: 44 },
   link: { color: "#2F6B5F", fontSize: typography.body.fontSize, fontWeight: "700" },
   title: { ...typography.pageTitle, color: colors.text, marginBottom: 20 },
@@ -131,13 +131,13 @@ const styles = StyleSheet.create({
   member: { paddingBottom: 16, paddingTop: 16 },
   divider: { borderTopColor: "#EDF0ED", borderTopWidth: 1 },
   memberTop: { alignItems: "center", flexDirection: "row" },
-  memberInfo: { flex: 1 },
+  memberInfo: { flex: 1, minWidth: 0 },
   memberName: { color: "#17211F", fontSize: typography.body.fontSize, fontWeight: "600", marginBottom: 6 },
   badge: { alignSelf: "flex-start", backgroundColor: "#EFF2EF", borderRadius: 16, paddingHorizontal: 9, paddingVertical: 4 },
   ownerBadge: { backgroundColor: "#FFF2CC" },
   badgeText: { ...typography.caption, color: "#56635C", fontWeight: "700" },
   ownerText: { color: "#8A5A00" },
-  actions: { flexDirection: "row", gap: 9, marginLeft: 52, marginTop: 13 },
+  rowAction: { flexShrink: 0, marginLeft: 12 },
   removeButton: { borderColor: "#F2C6C3", borderRadius: 9, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
   removeText: { color: "#B42318", fontSize: typography.caption.fontSize, fontWeight: "700" },
   transferButton: { alignItems: "center", borderColor: "#F2C6C3", borderRadius: 11, borderWidth: 1, marginTop: 18, minHeight: 48, justifyContent: "center" },
