@@ -12,8 +12,9 @@ const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 const dispatchMock = vi.hoisted(() => vi.fn());
+const ensureMock = vi.hoisted(() => vi.fn(async () => 0));
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
-vi.mock("../services/promotion-dispatch.service", () => ({ dispatchPromotion: dispatchMock }));
+vi.mock("../services/promotion-dispatch.service", () => ({ dispatchPromotion: dispatchMock, ensureActivePromotionRows: ensureMock }));
 
 import promotionRouter from "./promotion.route";
 import { errorHandler } from "../middleware/error-handler";
@@ -182,6 +183,8 @@ describe("promotions and notifications", () => {
     prismaMock.notification.findMany.mockResolvedValue([{ id: "n1" }]);
     prismaMock.notification.count.mockResolvedValue(1);
     expect((await request(app).get("/notifications?status=SENT").set(USER_A)).body.total).toBe(1);
+    // Promotions are in-app only: the caller's rows for active promotions are made before listing.
+    expect(ensureMock).toHaveBeenLastCalledWith("u1");
     expect(prismaMock.notification.findMany.mock.calls[0][0].where).toEqual({ userId: "u1", status: "SENT" });
     prismaMock.notification.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.notification.findUnique.mockResolvedValue({ id: "n1", status: "READ" });

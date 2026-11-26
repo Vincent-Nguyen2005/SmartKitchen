@@ -104,7 +104,7 @@ services:
     region: singapore
     branch: main
     autoDeployTrigger: checksPass
-    numInstances: 1 # ENABLE_JOBS=true must run on exactly one instance (promotion cron)
+    numInstances: 1 # ENABLE_JOBS=true must run on exactly one instance (07:00 morning push)
     dockerContext: ./services/notification-service
     dockerfilePath: ./services/notification-service/Dockerfile
     envVars:

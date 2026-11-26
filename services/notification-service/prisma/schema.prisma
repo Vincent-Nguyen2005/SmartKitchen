@@ -46,6 +46,8 @@ model Notification {
   status    NotificationStatus @default(PENDING)
   sentAt    DateTime?
   readAt    DateTime?
+  /// One row per key: "promotion:<promotionId>:<userId>" for promotion feed rows (null for other notifications).
+  dedupeKey String?            @unique
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 

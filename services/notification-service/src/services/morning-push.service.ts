@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma";
 import { createPushProvider, type PushProvider } from "./push-provider";
 
 /**
- * "Chào buổi sáng ☀️": the only daily push. One per user per Vietnam day, to users with an active device token.
+ * "Chào buổi sáng": the only push (promotions are in-app only). One per user per Vietnam day, to users with an active device token.
  * - Sent from 07:00 (Asia/Ho_Chi_Minh); a run before 07:00 does nothing. If the service was down at 07:00 the job
  *   catches up until 09:59; from 10:00 the day is skipped.
  * - Body: "Chúc bạn một ngày vui vẻ! Bữa sáng nay: A, B." with the family's breakfast dishes for today (menu-service
@@ -14,7 +14,7 @@ import { createPushProvider, type PushProvider } from "./push-provider";
  *   so restarts, retries and overlapping runs never send twice. A failed send is not retried that day.
  * - Push only: no row in notifications (not in the Thông báo feed nor the bell badge). Logs carry counts only.
  */
-export const MORNING_TITLE = "Chào buổi sáng ☀️";
+export const MORNING_TITLE = "Chào buổi sáng";
 export const MORNING_GREETING = "Chúc bạn một ngày vui vẻ!";
 const MORNING_START_MINUTES = 7 * 60; // 07:00
 const CATCH_UP_END_MINUTES = 10 * 60; // last run at 09:59

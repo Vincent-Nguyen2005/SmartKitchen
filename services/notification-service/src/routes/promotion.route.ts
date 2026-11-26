@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { keywordsOverlap, normalizedKeywords } from "../lib/promotion";
-import { dispatchPromotion } from "../services/promotion-dispatch.service";
+import { dispatchPromotion, ensureActivePromotionRows } from "../services/promotion-dispatch.service";
 import { createApiKeyGuard } from "../middleware/api-key";
 import { callerUserId, forbidOtherUser, namesOtherUser, requireAdmin, requireUser } from "../middleware/identity";
 
@@ -90,6 +90,9 @@ router.get("/notifications", requireUser, async (request, response) => {
   if (!status.success) return error(response, status.error.flatten());
   const take = page(request.query.limit, 20, 100); const skip = (page(request.query.page, 1, 100000) - 1) * take;
   const where = { userId: callerUserId(request), status: status.data };
+  // Promotions are in-app only: the caller's feed rows for active promotions are made here (feed and badge both call
+  // this). A failure only means they appear on the next read.
+  await ensureActivePromotionRows(callerUserId(request)).catch((caught: unknown) => console.warn(JSON.stringify({ event: "promotion_feed_rows_failed", message: caught instanceof Error ? caught.message : "unknown" })));
   const [items, total] = await prisma.$transaction([prisma.notification.findMany({ where, skip, take, orderBy: { createdAt: "desc" } }), prisma.notification.count({ where })]); return response.json({ items, page: Math.floor(skip / take) + 1, limit: take, total });
 });
 router.patch("/notifications/:id/read", requireUser, async (request, response) => {
@@ -98,8 +101,9 @@ router.patch("/notifications/:id/read", requireUser, async (request, response) =
   if (result.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Notification not found" });
   return response.json(await prisma.notification.findUnique({ where: { id: request.params.id } }));
 });
-// Sending a promotion to users is an operator action (admin screens / support), not a partner one:
-// partners only ingest promotions, and the scheduled job calls dispatchPromotion() directly.
+// Putting a promotion into users' Thông báo now is an operator action (admin screens / support, e2e smoke), not a
+// partner one. Feed rows only: promotions are never pushed. Without userIds: every user with an active device token
+// (everyone else gets the row on their next read anyway).
 router.post("/promotions/:id/dispatch", requireAdmin, async (request, response) => {
   const parsed = z.object({ userIds: z.array(z.string()).optional() }).safeParse(request.body || {}); if (!parsed.success) return error(response, parsed.error.flatten());
   const users = parsed.data.userIds || (await prisma.deviceToken.findMany({ where: { isActive: true }, distinct: ["userId"], select: { userId: true } })).map((user) => user.userId);

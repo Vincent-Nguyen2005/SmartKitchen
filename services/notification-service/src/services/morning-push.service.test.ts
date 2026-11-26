@@ -68,7 +68,8 @@ describe("runMorningPush", () => {
     expect(await runMorningPush({ now: vn("07:00"), provider: push, breakfasts: breakfasts({ u1: ["Bánh mì trứng ốp la", "Bún riêu cua"] }) })).toBe(2);
     const messages = vi.mocked(push.send).mock.calls[0][0];
     expect(messages.map((message) => message.token)).toEqual(["ExponentPushToken[u1a]", "ExponentPushToken[u1b]", "ExponentPushToken[u2]"]);
-    expect(messages[0]).toMatchObject({ title: MORNING_TITLE, body: "Chúc bạn một ngày vui vẻ! Bữa sáng nay: Bánh mì trứng ốp la, Bún riêu cua.", data: { type: "morning", screen: "menu", meal: "BREAKFAST", day: "2026-11-27" } });
+    expect(MORNING_TITLE).toBe("Chào buổi sáng"); // no emoji
+    expect(messages[0]).toMatchObject({ title: "Chào buổi sáng", body: "Chúc bạn một ngày vui vẻ! Bữa sáng nay: Bánh mì trứng ốp la, Bún riêu cua.", data: { type: "morning", screen: "menu", meal: "BREAKFAST", day: "2026-11-27" } });
     // u2 has no family / breakfast: greeting only, tap opens the app home.
     expect(messages[2]).toMatchObject({ body: "Chúc bạn một ngày vui vẻ!", data: { type: "morning", screen: "home" } });
     // Push only: nothing in the Thông báo feed.

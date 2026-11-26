@@ -147,7 +147,7 @@ The gateway limits `/api/*` by IP, protects `/api/auth` with a stricter limit, a
 
 ## Notification Service: Promotions
 
-Promotion ingestion, keyword matching, preferences, device tokens, mock/Expo dispatch, quiet hours, and scheduled dispatch are available on port 4010. Set `PARTNER_API_KEY`, `PUSH_PROVIDER`, `ENABLE_JOBS`, and `PROMOTION_CRON` before enabling partner traffic. With Docker Compose, jobs and real push are switched on from the root `.env`: `NOTIFICATION_ENABLE_JOBS=true` and `PUSH_PROVIDER=expo` (optional secret `EXPO_ACCESS_TOKEN`); see [docs/notification-service.md](docs/notification-service.md#turning-jobs-on-compose-project-smartkitchen).
+Promotion ingestion, keyword matching, device tokens, in-app promotion rows (promotions are never pushed) and the 07:00 morning push (the only push) are available on port 4010. Set `PARTNER_API_KEY`, `PUSH_PROVIDER` and `ENABLE_JOBS` before enabling partner traffic. With Docker Compose, the morning push and real push are switched on from the root `.env`: `NOTIFICATION_ENABLE_JOBS=true` and `PUSH_PROVIDER=expo` (optional secret `EXPO_ACCESS_TOKEN`); see [docs/notification-service.md](docs/notification-service.md#turning-jobs-on-compose-project-smartkitchen).
 
 ## Admin Service: Ingredients & Weights
 
