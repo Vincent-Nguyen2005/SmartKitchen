@@ -123,10 +123,11 @@ services:
         sync: false
       - key: ENABLE_JOBS
         value: "true"
-      - key: PROMOTION_CRON
-        value: "*/15 * * * *"
       - key: DEFAULT_TIMEZONE
         value: Asia/Ho_Chi_Minh
+      # Stage 2 (menu-service deployed): the 07:00 push lists today's breakfast. Until then it is greeting-only.
+      # - key: MENU_SERVICE_URL
+      #   fromService: { type: pserv, name: smartkitchen-menu, property: hostport }
 
   - type: pserv
     name: smartkitchen-admin
