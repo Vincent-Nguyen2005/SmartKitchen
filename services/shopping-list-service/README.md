@@ -70,7 +70,7 @@ pnpm --filter shopping-list-service prisma:generate
 - **What counts:** only completed purchases. A `Purchase` row is written when "Mua" (checkout) or a single-item purchase puts lines into Kho; lines that failed stay in the cart and never count. Đi chợ has no payment step (payment-service is not involved).
 - **Amounts:** the checkout's rounding, snapshotted on each line when bought: paid unit price = round(unitPrice × (100 − discount%) / 100), line total = round(paid × quantity), purchase total = sum of the rounded line totals (lines without a price: 0). Totals, groups (percent of the month, whole numbers) and the comparison (whole % vs the previous month; null when that was 0) are computed here.
 - **Months:** Vietnam calendar months (UTC+7). Purchases newest first; the list is paginated, totals and groups cover the whole month.
-- **People:** only `buyerUserId`; the app shows the member's name and avatar from the family it already loaded. Purchases made before migration `20261214000000_purchases` were backfilled (same cart and minute = one purchase) with no buyer.
+- **People:** only `buyerUserId`; the app shows the member's name and avatar from the family it already loaded. Every new purchase has a buyer (recording without one is refused, 400). The purchases migration `20261214000000_purchases` backfilled without a buyer are removed by `scripts/data-fixes/2026-12-delete-unknown-buyer-purchases.js`, so "Chi tiêu" starts with purchases made after this release.
 
 ## Internal: product usage
 

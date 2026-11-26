@@ -64,9 +64,10 @@ export const groupTotals = (lines: GroupLine[]): Array<{ name: string; amount: n
 /**
  * Records one purchase for the lines that were just bought (in Kho, not yet in a purchase): snapshots the paid unit
  * price, line total, group and piece word, and stores buyer, time, total and item count. Idempotent: lines already in
- * a purchase are skipped; nothing to record → null.
+ * a purchase are skipped; nothing to record → null. Every new purchase has a buyer: without one it is refused (400).
  */
 export async function recordPurchase(familyId: string, buyerUserId: string, itemIds: string[], catalog: Map<string, CatalogInfo>, now: Date = new Date()): Promise<{ id: string; total: number; itemCount: number } | null> {
+  if (typeof buyerUserId !== "string" || !buyerUserId.trim()) throw new AppError(400, "BUYER_REQUIRED", "A purchase needs the buyer.");
   if (itemIds.length === 0) return null;
   return prisma.$transaction(async (transaction) => {
     const items = await transaction.shoppingItem.findMany({

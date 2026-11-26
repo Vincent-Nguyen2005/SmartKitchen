@@ -94,6 +94,15 @@ describe("recordPurchase", () => {
     expect(updates[2]).toMatchObject({ paidUnitPrice: null, lineTotal: null, groupName: null });
   });
 
+  it("a purchase always has a buyer: recording without one is refused and nothing is written", async () => {
+    mocks.prisma.shoppingItem.findMany.mockResolvedValue([{ id: "i1", quantity: 1, unitPrice: 1000, discountPercent: null, productId: null }]);
+    for (const buyer of ["", "  ", null, undefined]) {
+      await expect(recordPurchase(familyId, buyer as unknown as string, ["i1"], new Map())).rejects.toMatchObject({ statusCode: 400, code: "BUYER_REQUIRED" });
+    }
+    expect(mocks.prisma.shoppingItem.findMany).not.toHaveBeenCalled();
+    expect(mocks.prisma.purchase.create).not.toHaveBeenCalled();
+  });
+
   it("nothing completed (failed lines stay in the cart, or already recorded): no purchase", async () => {
     mocks.prisma.shoppingItem.findMany.mockResolvedValue([]);
     expect(await recordPurchase(familyId, userId, ["i9"], new Map())).toBeNull();
