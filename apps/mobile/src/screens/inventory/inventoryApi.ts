@@ -1,9 +1,7 @@
 import { Platform } from "react-native";
 import { File } from "expo-file-system";
-import { ApiError, GATEWAY_BASE_URL, gatewayFetch, gatewayHeaders } from "../../services/api";
+import { ApiError, gatewayFetch } from "../../services/api";
 import { appendPhoto } from "./photoUpload";
-
-const API_BASE_URL = GATEWAY_BASE_URL;
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
@@ -91,14 +89,6 @@ export type CatalogPage = { items: CatalogIngredient[]; page: number; limit: num
 /** `ids`: only these products (Đi chợ: this week's missing products first); at most 100. */
 export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number; ids?: string[] };
 
-/** Absolute URL and auth headers for an item photo; external URLs (e.g. Open Food Facts) need no headers. */
-export const photoRequest = (imageUrl: string, accessToken: string | null): { uri: string; headers?: Record<string, string> } => {
-  if (/^https?:\/\//i.test(imageUrl)) return { uri: imageUrl };
-  return {
-    uri: `${API_BASE_URL}${imageUrl}`,
-    headers: { ...gatewayHeaders(), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-  };
-};
 
 export const inventoryApi = {
   list: async (accessToken: string, familyId: string) => {

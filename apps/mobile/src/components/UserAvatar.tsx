@@ -2,14 +2,14 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { colors, textStyles } from "../theme";
 import { useSession } from "../services/session";
-import { InventoryPhoto } from "../screens/inventory/inventoryPhoto";
+import AuthImage from "./AuthImage";
 import { initialsOf } from "../screens/profile/profileName";
 
 type Props = { name?: string | null; avatarUrl?: string | null; size?: number; accessibilityLabel?: string };
 
 /**
- * A user's avatar: their uploaded photo (Hồ sơ; stored like Kho photos, so the request carries the access token),
- * else a circle with their initials in the theme colours.
+ * A user's avatar (Hồ sơ, Gia đình): their uploaded photo (served to signed-in users only, loaded by AuthImage with
+ * the access token), else, while loading and if it fails, a circle with their initials in the theme colours.
  */
 export default function UserAvatar({ name, avatarUrl, size = 40, accessibilityLabel }: Props): React.JSX.Element {
   const { accessToken } = useSession();
@@ -22,7 +22,7 @@ export default function UserAvatar({ name, avatarUrl, size = 40, accessibilityLa
   );
   return (
     <View style={[styles.frame, circle]}>
-      <InventoryPhoto imageUrl={avatarUrl} accessToken={accessToken} accessibilityLabel={label} style={circle} placeholder={initials} />
+      <AuthImage url={avatarUrl} accessToken={accessToken} accessibilityLabel={label} style={circle} fallback={initials} />
     </View>
   );
 }

@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
-import { Image, Platform, StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from "react-native";
+import React from "react";
+import { Platform, StyleSheet, View, type ImageStyle, type StyleProp, type ViewStyle } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { ImageManipulator, SaveFormat } from "expo-image-manipulator";
 import { Package } from "lucide-react-native";
 import { AppIcon, colors } from "../../theme";
-import { photoRequest, type ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
+import AuthImage from "../../components/AuthImage";
+import { type ReceiptMimeType, type UploadPhoto } from "./inventoryApi";
 
 export const MAX_UPLOAD_EDGE = 1280;
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -173,55 +174,18 @@ type PhotoProps = {
 };
 
 /**
- * Item photo or a placeholder. Uploaded photos are family-only, so the request carries the access token:
- * native Image sends headers itself; web Image cannot, so the bytes are fetched and shown from a blob URL.
+ * Item photo or a placeholder. Uploaded photos are family-only, so AuthImage loads them with the access token (and
+ * shows the placeholder while loading or if loading fails).
  */
 export function InventoryPhoto({ imageUrl: ownUrl, fallbackUrl, accessToken, style, placeholderStyle, accessibilityLabel, placeholder }: PhotoProps): React.JSX.Element {
-  const [webUri, setWebUri] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
   // The family's own photo always wins; the catalog image is used only when there is none.
   const imageUrl = ownUrl || fallbackUrl || null;
-  const source = imageUrl ? photoRequest(imageUrl, accessToken) : null;
-  const needsWebFetch = Platform.OS === "web" && !!source?.headers;
-
-  useEffect(() => {
-    setFailed(false);
-    setWebUri(null);
-    if (!needsWebFetch || !source) return;
-    let objectUrl: string | null = null;
-    let active = true;
-    fetch(source.uri, { headers: source.headers })
-      .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
-      .then((blob) => {
-        if (!active) return;
-        objectUrl = URL.createObjectURL(blob);
-        setWebUri(objectUrl);
-      })
-      .catch(() => { if (active) setFailed(true); });
-    return () => {
-      active = false;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-    };
-  }, [imageUrl, accessToken, needsWebFetch]);
-
-  const uri = needsWebFetch ? webUri : source?.uri;
-  if (!source || failed || !uri) {
-    if (placeholder) return placeholder;
-    return (
-      <View accessibilityLabel={imageUrl && !failed ? "Đang tải ảnh" : "Chưa có ảnh"} style={[styles.placeholder, style, placeholderStyle]}>
-        <AppIcon icon={Package} size="lg" color={colors.primary} />
-      </View>
-    );
-  }
-  return (
-    <Image
-      accessibilityLabel={accessibilityLabel}
-      source={needsWebFetch ? { uri } : { uri, headers: source.headers }}
-      onError={() => setFailed(true)}
-      resizeMode="cover"
-      style={[styles.image, style as StyleProp<ImageStyle>]}
-    />
+  const fallback = placeholder ?? (
+    <View accessibilityLabel={imageUrl ? "Đang tải ảnh" : "Chưa có ảnh"} style={[styles.placeholder, style, placeholderStyle]}>
+      <AppIcon icon={Package} size="lg" color={colors.primary} />
+    </View>
   );
+  return <AuthImage url={imageUrl} accessToken={accessToken} accessibilityLabel={accessibilityLabel} style={[styles.image, style as StyleProp<ImageStyle>]} fallback={fallback} />;
 }
 
 const styles = StyleSheet.create({
