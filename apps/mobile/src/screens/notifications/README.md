@@ -7,6 +7,7 @@ Owner: Huy. Responsibility: notification center and promotions (#61). There are 
 | File | What it does |
 |---|---|
 | `NotificationsHome.tsx` | Entry point of the "Thông báo" tab: one list, no title, segments or read filter |
+| `GreetingCard.tsx` | Time-of-day greeting at the top (07:00–09:59 sáng, 10:00–13:59 trưa, 17:00–21:59 tối, Vietnam time; nothing otherwise) with today's dishes of that meal from the family menu ("Bữa sáng: …"); tap opens Lịch on that meal. In-app only: nothing stored, not a notification, not in the bell badge. Helpers and the push-tap target in `greeting.ts` |
 | `NotificationFeed.tsx` | The list: notifications (paging on scroll, unread dot + bold title, tap marks read), expiry alerts from the inventory alerts API (expired or within 3 days; tap opens Kho with the item's edit dialog) and active promotions (hidden when a promotion notification exists). Expiry first, then unread, then newest. Pull-to-refresh |
 | `PromotionDetail.tsx` | Promotion detail with "Mua" (adds to Giỏ hàng) |
 | `registerDeviceToken.ts` | Registers the Expo push token after sign-in; never throws |

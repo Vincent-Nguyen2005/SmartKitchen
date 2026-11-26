@@ -156,6 +156,8 @@ Missing ingredients for the caller's family, computed on read (`src/services/wee
 
 `GET /internal/recipes/:recipeId/usage` (x-api-key = `INTERNAL_API_KEY`; the gateway answers 404 for `/internal/*`) returns `{ menuItems, removedDishes }`: saved menu items (any family, past or future) and dislike-history rows with that recipe id. recipe-service calls it before deleting a dish. Saved AI dishes keep their own copy and have no recipe id, so they never count.
 
+`POST /internal/breakfast-today` (same key) with `{ userIds }` (1–500) returns `{ day, items: [{ userId, dishes }] }`: today's (Vietnam day) breakfast dish names of each user's family menu (the day's own menu first, else a covering week / month menu; Lịch order). Users without a family are left out; 503 when family-service can't answer. notification-service uses it for the 07:00 "Chào buổi sáng" push.
+
 ## Database
 
 Migrations are in `prisma/migrations`. The container runs `prisma migrate deploy` at start (Prisma CLI 5.22.0).

@@ -81,6 +81,48 @@ describe("dispatchPromotion", () => {
   });
 });
 
+describe("promotion quiet window 22:00–07:00 (Asia/Ho_Chi_Minh)", () => {
+  const at = (iso: string) => vi.setSystemTime(new Date(iso));
+
+  it("defers sending inside the window: nothing is created or pushed", async () => {
+    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1")]);
+    const provider = providerDelivering(["ExponentPushToken[u1]"]);
+    for (const time of ["2026-11-04T15:00:00Z", "2026-11-04T18:00:00Z", "2026-11-04T23:59:00Z"]) { // 22:00, 01:00, 06:59
+      at(time);
+      expect(await dispatchPromotion("p1", ["u1"], provider)).toBe(0);
+    }
+    expect(provider.send).not.toHaveBeenCalled();
+    expect(prismaMock.notification.create).not.toHaveBeenCalled();
+    at("2026-11-04T14:59:00Z"); // 21:59: still sends
+    expect(await dispatchPromotion("p1", ["u1"], provider)).toBe(1);
+  });
+
+  it("the 07:00 run sends the deferred promotion, once per user", async () => {
+    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
+    at("2026-11-05T00:00:00Z"); // 07:00
+    expect(await dispatchPromotion("p1", ["u1", "u2"], providerDelivering(["ExponentPushToken[u1]", "ExponentPushToken[u2]"]))).toBe(2);
+    // The next run finds both notifications already made: no duplicates.
+    prismaMock.notification.findMany.mockResolvedValue([{ userId: "u1" }, { userId: "u2" }]);
+    at("2026-11-05T00:15:00Z");
+    const again = providerDelivering([]);
+    expect(await dispatchPromotion("p1", ["u1", "u2"], again)).toBe(0);
+    expect(again.send).not.toHaveBeenCalled();
+  });
+
+  it("the cron job does nothing inside the window and only dispatches promotions still active at 07:00", async () => {
+    at("2026-11-04T20:00:00Z"); // 03:00
+    await dispatchActivePromotions();
+    expect(prismaMock.promotion.findMany).not.toHaveBeenCalled();
+    at("2026-11-05T00:00:00Z"); // 07:00
+    prismaMock.promotion.findMany.mockResolvedValue([]); // the one that ended at 05:00 is not active any more
+    prismaMock.deviceToken.findMany.mockResolvedValue([{ userId: "u1" }]);
+    await dispatchActivePromotions();
+    const where = prismaMock.promotion.findMany.mock.calls[0][0].where as { endsAt: { gte: Date } };
+    expect(where.endsAt.gte.toISOString()).toBe("2026-11-05T00:00:00.000Z");
+    expect(prismaMock.promotion.findUnique).not.toHaveBeenCalled();
+  });
+});
+
 describe("dispatchActivePromotions (cron job)", () => {
   it("dispatches every active promotion to every user with an active token", async () => {
     prismaMock.promotion.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);

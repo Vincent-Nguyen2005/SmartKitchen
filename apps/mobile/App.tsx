@@ -56,6 +56,7 @@ import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
+import { pushTarget, type GreetingMeal } from "./src/screens/notifications/greeting";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
@@ -154,6 +155,9 @@ function AppContent(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("inventory");
   // Bumped to open Đi chợ directly on Giỏ hàng (from "Cần mua tuần này" in Thông báo).
   const [cartOpenKey, setCartOpenKey] = useState(0);
+  // Lịch opened on today's meal (greeting card in Thông báo, "Chào buổi sáng" push); a new key re-opens it.
+  const [menuFocus, setMenuFocus] = useState<{ meal: GreetingMeal; key: number } | null>(null);
+  const openMeal = useCallback((meal: GreetingMeal) => { setMenuFocus({ meal, key: Date.now() }); setTab("menu"); }, []);
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -277,6 +281,26 @@ function AppContent(): React.JSX.Element {
     if (!session.user || !session.accessToken) return;
     void registerDeviceToken(createGatewayClient(session.accessToken));
   }, [session.user?.id, session.accessToken]);
+
+  // Tapping the 07:00 "Chào buổi sáng" push: Lịch on today's breakfast (or the home when there was no menu).
+  // expo-notifications is loaded lazily like registerDeviceToken; native only.
+  useEffect(() => {
+    if (Platform.OS === "web" || !session.user) return undefined;
+    let subscription: { remove: () => void } | null = null;
+    let active = true;
+    const handle = (data: unknown) => {
+      const target = pushTarget(data);
+      if (!target || !active) return;
+      if (target.meal) openMeal(target.meal);
+    };
+    void import("expo-notifications").then(async (Notifications) => {
+      if (!active) return;
+      subscription = Notifications.addNotificationResponseReceivedListener((response) => handle(response.notification.request.content.data));
+      const last = await Notifications.getLastNotificationResponseAsync().catch(() => null);
+      if (last) handle(last.notification.request.content.data);
+    }).catch(() => undefined);
+    return () => { active = false; subscription?.remove(); };
+  }, [session.user?.id, openMeal]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -633,6 +657,7 @@ function AppContent(): React.JSX.Element {
           <MenuScreen
             accessToken={session.accessToken}
             familyId={session.family?.id}
+            focusMeal={menuFocus}
           />
         )}
         {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
@@ -641,6 +666,7 @@ function AppContent(): React.JSX.Element {
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
             onChanged={() => void refreshNotificationBadge()}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
+            onOpenMeal={openMeal}
           />
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}

@@ -51,7 +51,9 @@ x-api-key: <INTERNAL_API_KEY>
 
 ## Jobs
 
-With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Stored preferences (push / promotion off, quiet hours) are ignored since the app's "Cài đặt thông báo" was removed: every user with an active token gets each promotion once. The rows stay in `notification_preferences`. Enable jobs on **one** instance only.
+With `ENABLE_JOBS=true`, a cron (`PROMOTION_CRON`, default every 15 minutes) matches and dispatches promotions. Stored preferences (push / promotion off, quiet hours) are ignored since the app's "Cài đặt thông báo" was removed: every user with an active token gets each promotion once. The rows stay in `notification_preferences`. Promotion **push** has a fixed quiet window, 22:00–07:00 Asia/Ho_Chi_Minh (not configurable): nothing is created or sent inside it, and the first run from 07:00 sends whatever is still active (a promotion that ended overnight is skipped; still once per user). Enable jobs on **one** instance only.
+
+**"Chào buổi sáng ☀️" (the only daily push).** Same `ENABLE_JOBS` switch; cron every 5 minutes 07:00–09:55 Asia/Ho_Chi_Minh. One push per user per Vietnam day to users with an active token: "Chúc bạn một ngày vui vẻ! Bữa sáng nay: A, B." (family breakfast for today from menu-service `POST /internal/breakfast-today` with `INTERNAL_API_KEY` and `MENU_SERVICE_URL`; at most 3 names, then "…"; greeting only without a family / menu or when menu-service is down). Tap data `{ type: "morning", screen: "menu", meal: "BREAKFAST", day }` (or `screen: "home"`) opens Lịch on today's breakfast. A `morning_pushes` row (userId, day) is written before sending, so restarts and retries never send twice; a missed 07:00 is caught up until 09:59, then the day is skipped. Push only: no `notifications` row, not in the feed or the bell badge. Logs carry counts only.
 
 ## Errors
 

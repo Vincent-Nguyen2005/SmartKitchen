@@ -84,6 +84,17 @@ model NotificationPreference {
   @@map("notification_preferences")
 }
 
+/// The 07:00 "Chào buổi sáng" push: one row per user and Vietnam day, written before sending, so restarts and retries
+/// never send twice the same day. Push only (no row in notifications, not in the bell badge).
+model MorningPush {
+  userId    String
+  day       String   @db.VarChar(10)
+  createdAt DateTime @default(now())
+
+  @@id([userId, day])
+  @@map("morning_pushes")
+}
+
 model PartnerSupermarket {
   id         String      @id @default(uuid())
   name       String
