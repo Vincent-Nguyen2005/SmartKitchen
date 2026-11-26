@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
-import { GATEWAY_BASE_URL, gatewayFetch, gatewayHeaders } from "../../services/api";
-
-const API_BASE_URL = GATEWAY_BASE_URL;
+import { File } from "expo-file-system";
+import { ApiError, gatewayFetch } from "../../services/api";
+import { appendPhoto } from "./photoUpload";
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
@@ -35,10 +35,19 @@ async function request<T>(accessToken: string, path: string, options: Omit<Reque
   const response = await gatewayFetch(path, { ...options, accessToken, timeoutMs });
   const payload = await response.json().catch(() => ({})) as ApiEnvelope<T> & { code?: string };
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.message || payload.error || payload.code || `Yêu cầu thất bại (${response.status})`);
+    // The inventory service puts its error code (e.g. PHOTO_TOO_LARGE) in `error` and the text in `message`.
+    const code = payload.code ?? (typeof payload.error === "string" && /^[A-Z][A-Z0-9_]+$/.test(payload.error) ? payload.error : undefined);
+    throw new ApiError(payload.message || payload.error || payload.code || `Yêu cầu thất bại (${response.status})`, response.status, undefined, code);
   }
   return (payload.data !== undefined ? payload.data : payload) as T;
 }
+
+/** Multipart body with one photo (see photoUpload.ts for why phones send the bytes, not only the file uri). */
+const photoForm = async (photo: UploadPhoto): Promise<FormData> => {
+  const form = new FormData();
+  await appendPhoto(form, photo, { isWeb: Platform.OS === "web", readBytes: (uri) => new File(uri).bytes() });
+  return form;
+};
 
 const query = (values: Record<string, string | number>) =>
   `?${Object.entries(values).map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join("&")}`;
@@ -80,14 +89,6 @@ export type CatalogPage = { items: CatalogIngredient[]; page: number; limit: num
 /** `ids`: only these products (Đi chợ: this week's missing products first); at most 100. */
 export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; page?: number; limit?: number; ids?: string[] };
 
-/** Absolute URL and auth headers for an item photo; external URLs (e.g. Open Food Facts) need no headers. */
-export const photoRequest = (imageUrl: string, accessToken: string | null): { uri: string; headers?: Record<string, string> } => {
-  if (/^https?:\/\//i.test(imageUrl)) return { uri: imageUrl };
-  return {
-    uri: `${API_BASE_URL}${imageUrl}`,
-    headers: { ...gatewayHeaders(), ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
-  };
-};
 
 export const inventoryApi = {
   list: async (accessToken: string, familyId: string) => {
@@ -141,33 +142,19 @@ export const inventoryApi = {
       accessToken,
       `/api/inventory/items/catalog/search${query({ q: queryText })}`,
     ),
-  uploadPhoto: (accessToken: string, itemId: string, photo: UploadPhoto) => {
-    const form = new FormData();
-    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
-    // React Native's FormData reads the file from `uri`; the object form is RN-specific.
-    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
-    return request<{ id: string; imageUrl: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "POST", body: form }, 60_000);
-  },
+  uploadPhoto: async (accessToken: string, itemId: string, photo: UploadPhoto) =>
+    request<{ id: string; imageUrl: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "POST", body: await photoForm(photo) }, 60_000),
   /**
    * Kho "Chụp ảnh": up to 3 catalog names suggested from the (already downscaled) photo. The photo is analysed
    * on the server and not stored; the item photo is still uploaded separately after saving.
    */
-  suggestFromPhoto: (accessToken: string, photo: UploadPhoto) => {
-    const form = new FormData();
-    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
-    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
-    return request<PhotoSuggestResult>(accessToken, "/api/inventory/photo/suggest", { method: "POST", body: form }, 25_000);
-  },
+  suggestFromPhoto: async (accessToken: string, photo: UploadPhoto) =>
+    request<PhotoSuggestResult>(accessToken, "/api/inventory/photo/suggest", { method: "POST", body: await photoForm(photo) }, 25_000),
   deletePhoto: (accessToken: string, itemId: string) =>
     request<{ id: string; imageUrl: null }>(accessToken, `/api/inventory/items/${encodeURIComponent(itemId)}/photo`, { method: "DELETE" }),
   /** Hồ sơ avatar: stored like Kho photos (re-encoded to 512 px); save the returned URL with authApi.updateMe. */
-  uploadAvatar: (accessToken: string, photo: UploadPhoto) => {
-    const form = new FormData();
-    if (Platform.OS === "web" && photo.blob) form.append("photo", photo.blob, photo.name);
-    else form.append("photo", { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
-    return request<{ avatarUrl: string }>(accessToken, "/api/inventory/avatars", { method: "POST", body: form }, 60_000);
-  },
-  deleteAvatar: (accessToken: string) => request<{ avatarUrl: null }>(accessToken, "/api/inventory/avatars", { method: "DELETE" }),
+  uploadAvatar: async (accessToken: string, photo: UploadPhoto) =>
+    request<{ avatarUrl: string }>(accessToken, "/api/inventory/avatars", { method: "POST", body: await photoForm({ ...photo, name: "avatar.jpg" }) }, 60_000),
   /**
    * Nấu ăn "Hoàn thành": takes the dish's ingredients out of Kho (earliest expiry first; g/kg, packs and pieces
    * converted). `cookId` makes a retried request a no-op.

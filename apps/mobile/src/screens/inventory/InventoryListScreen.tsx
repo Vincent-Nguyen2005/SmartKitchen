@@ -27,6 +27,7 @@ import { useSession } from "../../services/session";
 import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
 import { UNIT_LABELS } from "./catalogSuggest";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
+import { photoUploadErrorMessage } from "./photoUpload";
 import { catalogImageFor, useCatalogImages } from "./catalogImages";
 
 const inventoryUnits: InventoryUnit[] = ["PIECE", "PACK", "BOX", "BOTTLE", "CAN", "GRAM", "KILOGRAM", "MILLILITER", "LITER"];
@@ -261,8 +262,8 @@ export default function InventoryListScreen({
     try {
       const uploaded = await inventoryApi.uploadPhoto(accessToken, item.id, result.photo);
       applyPhotoChange(item.id, uploaded.imageUrl);
-    } catch {
-      setPhotoError("Chưa tải được ảnh. Kiểm tra mạng rồi thử lại.");
+    } catch (error) {
+      setPhotoError(photoUploadErrorMessage(error));
     } finally {
       setPhotoBusy(false);
     }
