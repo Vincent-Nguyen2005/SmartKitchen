@@ -175,3 +175,10 @@ test("no family: nothing to compare, no notification (and no database or service
   const result = await weekMissing({ userId: "u1", familyId: null }, client, { now: new Date("2026-11-25T03:00:00Z") });
   assert.deepEqual([result.count, result.items.length], [0, 0]);
 });
+
+test("an Đi chợ order still being delivered counts as covered (not bought twice), but is not cookable", async () => {
+  const { usableKho } = await import("../services/kho-suggest");
+  const pending = kho("Thịt heo", 1, "KILOGRAM", { pendingDelivery: true });
+  assert.equal(run([dish([{ name: "Thịt heo", quantity: 500, unit: "GRAM" }], 1, 1)], [pending]).length, 0);
+  assert.deepEqual(usableKho([pending, kho("Cà rốt", 1, "KILOGRAM")], today).map((item) => item.name), ["Cà rốt"]);
+});

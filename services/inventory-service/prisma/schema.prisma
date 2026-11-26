@@ -74,6 +74,12 @@ model FoodItem {
   origin          ItemOrigin      @default(MANUAL)
   /// Day of the latest Đi chợ purchase in this row (origin PURCHASE); null for manual rows.
   purchasedAt     DateTime?
+  /// Đi chợ order not delivered yet ("Đang giao"): shown dimmed, read-only, and ignored by cooking, the duplicate
+  /// prompt, purchase merges and expiry alerts. Null for normal rows. On delivery the row is replaced by a normal
+  /// PURCHASE row (merged by the purchase rules, expiry from the delivery day); on cancel / failure it is removed.
+  deliveryOrderId   String?       @db.Uuid
+  /// The cart line of a pending-delivery row (makes creating it idempotent).
+  pendingPurchaseId String?       @unique @db.Uuid
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   deletedAt       DateTime?
@@ -84,6 +90,7 @@ model FoodItem {
   @@index([familyId])
   @@index([expiryDate])
   @@index([status])
+  @@index([deliveryOrderId])
 }
 
 model InventoryLog {

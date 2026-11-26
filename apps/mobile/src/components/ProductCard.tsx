@@ -55,10 +55,12 @@ type Props = {
   onLongPress?: () => void;
   /** Selection mode: undefined = not selectable; true / false = selected or not (check overlay + highlighted border). */
   selected?: boolean;
+  /** Shown faded (e.g. Kho items still being delivered). */
+  dimmed?: boolean;
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, onLongPress, selected, accessibilityLabel, cornerAction, marker }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, onLongPress, selected, accessibilityLabel, cornerAction, marker, dimmed }: Props): React.JSX.Element {
   const selectable = selected !== undefined;
   return (
     <Pressable
@@ -71,7 +73,7 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
       unstable_pressDelay={0}
       delayLongPress={300}
       disabled={!onPress && !onLongPress}
-      style={({ pressed }) => [local.card, { width }, selected && local.cardSelected, pressed && ui.pressed]}
+      style={({ pressed }) => [local.card, { width }, selected && local.cardSelected, dimmed && local.dimmed, pressed && ui.pressed]}
     >
       <View style={local.imageArea}>
         {image}
@@ -146,6 +148,7 @@ const local = StyleSheet.create({
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, overflow: "hidden" },
   // Selected: the theme's primary colour as a thicker border (the card keeps its size: 1 px border + 1 px outline).
   cardSelected: { borderColor: colors.primary, borderWidth: 2, margin: -1 },
+  dimmed: { opacity: 0.5 },
   selectedTint: { backgroundColor: colors.primarySoft, bottom: 0, left: 0, opacity: 0.45, position: "absolute", right: 0, top: 0 },
   check: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: 12, borderWidth: 2, height: 24, justifyContent: "center", position: "absolute", right: 8, top: 8, width: 24 },
   checkOn: { backgroundColor: colors.primary, borderColor: colors.primary },

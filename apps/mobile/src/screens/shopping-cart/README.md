@@ -13,7 +13,14 @@ The screen calls the gateway through the shared `gatewayFetch` with the bearer t
 
 - Giỏ hàng is the family's active shopping list: every line not yet in Kho. Each line shows image, name, quantity stepper, unit, unit price and line total, and can be removed. Lines without a price show "Chưa có giá" and count as 0.
 - Prices: the snapshot stored on the line when it was added (`unitPrice`, `discountPercent`, `productId`, `imageUrl`); older lines use the current catalog price looked up by name (accent-insensitive).
-- **Mua** (after "Thêm N món vào Kho?") calls `POST /api/shopping-list/checkout`. shopping-list-service runs the existing per-item purchase into inventory (internal key, idempotent per item) with the catalog group and an expiry of today + shelf-life days when known. Failed lines stay in the cart and are listed; when every line succeeded the list is completed and the cart is empty. Toast: "Đã thêm vào Kho". The lines that reached Kho are recorded as one purchase by this member for "Chi tiêu".
+- **Mua** opens **Đặt hàng** (`CheckoutSheet.tsx`):
+  - **Address:** prefilled from the member's last order, otherwise from the phone's location (permission asked at that moment, then reverse geocoded on the device to a Vietnamese address). It stays editable, and "Dùng vị trí hiện tại" fills it again. The map button opens `MapPicker.tsx`: OpenStreetMap / Leaflet in a WebView, no API key, with a draggable pin, "Dùng vị trí hiện tại" and "Xác nhận vị trí". If location is denied, the address is typed by hand.
+  - **Receiver:** name and phone, both required; the phone must be a Vietnamese number. A note is optional.
+  - **Payment:** "Thanh toán khi nhận hàng" is the only option. The summary shows the cart total (same rounding).
+  - **"Đặt hàng":** calls `POST /api/shopping-list/checkout` with the delivery details. Toast "Đã đặt hàng"; the ordered lines leave the cart.
+- In Kho, ordered items show dimmed with "Đang giao" until delivered (see inventory README).
+- **Đơn hàng** (box icon in the Giỏ hàng header, `OrdersScreen.tsx`): the family's orders, newest first, with a status chip (Đã đặt, Đang giao, Đã giao, Đã hủy, Không giao được), address, items, total and "Thanh toán khi nhận hàng". "Hủy đơn" (in-app confirm) only while the order is "Đã đặt".
+- Helpers in `orders.ts` (statuses, phone rule, address text, map page), covered by `orders.test.ts`.
 - Khuyến mãi **Mua** adds to Giỏ hàng with the same snapshot (catalog product with the promotion's name).
 
 Hidden from the UI (APIs kept in `shoppingApi.ts`): the "Lưu món để tham khảo" form, usage suggestions, "Tạo danh sách từ thực đơn", and the per-item "Đã mua" / "Sửa" / "Hoàn tất" actions.

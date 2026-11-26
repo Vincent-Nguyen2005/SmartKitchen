@@ -15,7 +15,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Archive, Camera, ImageMinus, Search, Trash2 } from "lucide-react-native";
+import { Archive, Camera, ImageMinus, Search, Trash2, Truck } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -42,6 +42,8 @@ function formatDateDdMmYyyy(value: string): string {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : "";
 }
 
+/** Đi chợ order not delivered yet: dimmed, "Đang giao", nothing can be changed until it arrives. */
+export const isPendingDelivery = (item: FoodItem): boolean => Boolean(item.deliveryOrderId);
 /** Bought in Đi chợ: only the storage place can change (no photo, no delete); cooking lowers the quantity. */
 const isLocked = (item: FoodItem): boolean => item.origin === "PURCHASE";
 /** One line for a bought item: "Mua ở Đi chợ ngày 28/11/2026 · Tự trừ khi nấu". */
@@ -146,6 +148,7 @@ export default function InventoryListScreen({
   useEffect(() => { listRef.current?.scrollToOffset({ offset: 0, animated: false }); }, [search]);
 
   const openEdit = (item: FoodItem) => {
+    if (isPendingDelivery(item)) return; // "Đang giao": read-only until delivered
     setActiveItem(item);
     setPhotoError(null);
     setEditName(item.name);
@@ -282,6 +285,21 @@ export default function InventoryListScreen({
     const expiry = expiryInfo(item);
     // "1 gói", "2 quả", "1,5 kg": the linked product's word, else the word chosen in Kho (never "gói/bó").
     const quantityText = kitchenAmount(item, catalogUnitLabelFor(item, catalogImages));
+    if (isPendingDelivery(item)) {
+      // Read-only until delivered: no edit sheet, no expiry yet, never used for cooking.
+      return (
+        <ProductCard
+          width={cardGrid.cardWidth}
+          dimmed
+          accessibilityLabel={`${item.name}, ${quantityText}, đang giao, dùng được khi nhận hàng`}
+          image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
+          pill={{ label: "Đang giao", tone: "ai", icon: Truck }}
+          name={item.name}
+          subtitle={quantityText}
+          footer={<CardCaption text="Dùng được khi nhận hàng" />}
+        />
+      );
+    }
     return (
       <ProductCard
         width={cardGrid.cardWidth}

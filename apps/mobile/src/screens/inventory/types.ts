@@ -18,6 +18,8 @@ export interface FoodItem {
   origin?: "MANUAL" | "PURCHASE";
   /** Day of the latest Đi chợ purchase in this row (ISO); null for manual rows. */
   purchasedAt?: string | null;
+  /** Đi chợ order not delivered yet ("Đang giao"): shown dimmed, read-only, not used for cooking. */
+  deliveryOrderId?: string | null;
 }
 
 export interface ShoppingItem {

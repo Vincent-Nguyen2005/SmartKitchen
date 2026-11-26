@@ -5,10 +5,10 @@ import jwt, { type JwtPayload } from "jsonwebtoken";
  * Matches services/auth-service/src/services/auth.service.ts:
  *   jwt.sign({ email, role }, JWT_SECRET, { subject: user.id, expiresIn: "15m" })
  * -> HS256 (jsonwebtoken default for a string secret), user id in `sub`,
- *    role in `role` (USER | ADMIN), no iss/aud. Refresh tokens are opaque, not JWTs.
+ *    role in `role` (USER | ADMIN | SHIPPER), no iss/aud. Refresh tokens are opaque, not JWTs.
  */
 export const ALLOWED_ALGORITHMS: jwt.Algorithm[] = ["HS256"];
-export const KNOWN_ROLES = ["USER", "ADMIN"] as const;
+export const KNOWN_ROLES = ["USER", "ADMIN", "SHIPPER"] as const;
 const DEV_FALLBACK_SECRET = "development-only-secret"; // same fallback as auth-service, never used in production
 
 export const IDENTITY_HEADERS = ["x-user-id", "x-user-role"] as const;

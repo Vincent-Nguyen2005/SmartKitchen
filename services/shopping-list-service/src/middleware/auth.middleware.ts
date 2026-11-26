@@ -1,7 +1,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
 
-export type ShoppingAuthRequest = Request & { authUser: { userId: string; token: string } };
+/** role: the platform role in the verified token (USER, ADMIN, SHIPPER); shipper endpoints need SHIPPER. */
+export type ShoppingAuthRequest = Request & { authUser: { userId: string; token: string; role?: string } };
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export const requireShoppingUser = (req: Request, res: Response, next: NextFunction): void => {
@@ -20,14 +21,23 @@ export const requireShoppingUser = (req: Request, res: Response, next: NextFunct
     const expected = createHmac("sha256", secret).update(`${encodedHeader}.${encodedPayload}`).digest();
     const received = Buffer.from(encodedSignature, "base64url");
     if (received.length !== expected.length || !timingSafeEqual(received, expected)) throw new Error("Invalid token signature");
-    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as { sub?: unknown; exp?: unknown; nbf?: unknown };
+    const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as { sub?: unknown; exp?: unknown; nbf?: unknown; role?: unknown };
     const now = Math.floor(Date.now() / 1000);
     if (typeof payload.sub !== "string" || !uuidPattern.test(payload.sub) ||
       (typeof payload.exp !== "number" || payload.exp <= now) ||
       (typeof payload.nbf === "number" && payload.nbf > now)) throw new Error("Expired or invalid token");
-    (req as ShoppingAuthRequest).authUser = { userId: payload.sub, token };
+    (req as ShoppingAuthRequest).authUser = { userId: payload.sub, token, ...(typeof payload.role === "string" ? { role: payload.role } : {}) };
     next();
   } catch {
     res.status(401).json({ success: false, error: "INVALID_OR_EXPIRED_TOKEN" });
   }
+};
+
+/** Shipper endpoints: the verified token must carry the SHIPPER role (403 otherwise). */
+export const requireShipper = (req: Request, res: Response, next: NextFunction): void => {
+  if ((req as ShoppingAuthRequest).authUser?.role !== "SHIPPER") {
+    res.status(403).json({ success: false, code: "SHIPPER_ONLY", message: "Only shipper accounts can do this." });
+    return;
+  }
+  next();
 };

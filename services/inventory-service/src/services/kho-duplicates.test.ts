@@ -8,7 +8,8 @@ type Row = { id: string; familyId: string; name: string; quantity: number; unit:
 const db = vi.hoisted(() => ({ rows: [] as Row[], logs: [] as Array<{ action: string }>, seq: 0 }));
 const matches = (row: Row, where: Record<string, any>) => Object.entries(where).every(([key, value]) => {
   if (value && typeof value === "object" && "in" in value) return value.in.includes((row as any)[key]);
-  return (row as any)[key] === value;
+  // A field the row never had counts as null (like a NULL column).
+  return ((row as any)[key] ?? null) === value;
 });
 const prismaMock = vi.hoisted(() => {
   const foodItem = {

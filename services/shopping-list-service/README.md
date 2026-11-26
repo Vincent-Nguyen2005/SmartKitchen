@@ -56,6 +56,23 @@ pnpm --filter shopping-list-service prisma:deploy
 pnpm --filter shopping-list-service prisma:generate
 ```
 
+## Delivery orders (Đặt hàng, cash on delivery)
+
+`POST /api/shopping-list/checkout` with `{ familyId, items: [{ id, categoryName?, shelfLifeDays? }], delivery: { address, latitude?, longitude?, receiverName, receiverPhone, note?, paymentMethod: "COD" } }` turns the cart into one order (201 `{ order }`). The phone must be a Vietnamese number. inventory-service first creates "Đang giao" Kho rows (`POST /api/inventory/internal/deliveries/pending`); if that fails nothing is written and the cart stays. The ordered lines leave the cart (`purchaseId` set) and the list is completed when nothing is left.
+
+| Status | Set by | Next |
+|---|---|---|
+| `PENDING` (đã đặt) | the order | `SHIPPING` (shipper accepts) or `CANCELLED` (family) |
+| `SHIPPING` (đang giao) | `POST /shipper/orders/:id/accept` | `DELIVERED` or `FAILED` (that shipper only) |
+| `DELIVERED` (đã giao) | `POST /shipper/orders/:id/deliver` | final: Kho rows become normal PURCHASE rows (expiry = delivery day in Vietnam + shelf life, merged by the purchase rules), lines marked bought |
+| `CANCELLED` (đã hủy) | `POST /orders/:id/cancel?familyId` while PENDING | final: "Đang giao" rows removed |
+| `FAILED` (không giao được) | `POST /shipper/orders/:id/fail` `{ reason }` | final: "Đang giao" rows removed |
+
+- Transitions are conditional updates (status in the WHERE), so a race can't skip a state; repeating a transition answers the order and re-runs its Kho step (idempotent).
+- Customer endpoints check family membership: `GET /orders?familyId` (newest first), `GET /orders/last-delivery?familyId` (the caller's last address / receiver, to prefill), `POST /orders/:id/cancel?familyId`. Another family's order is 404.
+- Shipper endpoints need the `SHIPPER` role in the token (403 otherwise): `GET /shipper/orders?scope=available|mine` returns delivery data only (address, lat / lng, receiver name / phone, note, items, COD amount); no family, buyer or prices. No app screens yet.
+- Purchases from before orders existed are `DELIVERED` (migration `20261215000000_delivery_orders`). A single-item purchase (`POST /items/:id/purchase`, not used by the app) is recorded as already delivered.
+
 ## "Chi tiêu" (GET /spending)
 
 `GET /api/shopping-list/spending?familyId=<uuid>&month=YYYY-MM&page=1&limit=50` (members of that family only: 403 otherwise; `month` defaults to the current Vietnam month) returns:
@@ -67,7 +84,7 @@ pnpm --filter shopping-list-service prisma:generate
     lines: [{ id, name, quantity, unit, unitLabel, unitPrice, originalUnitPrice, discountPercent, lineTotal, group }] }] } }
 ```
 
-- **What counts:** only completed purchases. A `Purchase` row is written when "Mua" (checkout) or a single-item purchase puts lines into Kho; lines that failed stay in the cart and never count. Đi chợ has no payment step (payment-service is not involved).
+- **What counts:** only `DELIVERED` orders, in the month of their delivery (`deliveredAt`); pending, shipping, cancelled and failed orders never count. Payment is cash on delivery (payment-service is not involved).
 - **Amounts:** the checkout's rounding, snapshotted on each line when bought: paid unit price = round(unitPrice × (100 − discount%) / 100), line total = round(paid × quantity), purchase total = sum of the rounded line totals (lines without a price: 0). Totals, groups (percent of the month, whole numbers) and the comparison (whole % vs the previous month; null when that was 0) are computed here.
 - **Months:** Vietnam calendar months (UTC+7). Purchases newest first; the list is paginated, totals and groups cover the whole month.
 - **People:** only `buyerUserId`; the app shows the member's name and avatar from the family it already loaded. Every new purchase has a buyer (recording without one is refused, 400). The purchases migration `20261214000000_purchases` backfilled without a buyer are removed by `scripts/data-fixes/2026-12-delete-unknown-buyer-purchases.js`, so "Chi tiêu" starts with purchases made after this release.

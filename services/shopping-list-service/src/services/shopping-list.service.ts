@@ -1,5 +1,5 @@
 import axios from "axios";
-import { recordPurchase, type CatalogInfo } from "./spending.service";
+import type { CatalogInfo } from "./spending.service";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/app-error";
@@ -32,7 +32,7 @@ type BaseQuantity = { baseUnit: string; factor: number };
 
 const uniqueConflict = (error: unknown): boolean => typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2002";
 const retryableTransactionConflict = (error: unknown): boolean => typeof error === "object" && error !== null && (error as { code?: unknown }).code === "P2034";
-const normalizedName = (value: string): string => value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi-VN");
+export const normalizedName = (value: string): string => value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase("vi-VN");
 const roundQuantity = (value: number): number => Math.round(value * 1000) / 1000;
 
 const baseQuantity = (unit: string): BaseQuantity | null => {
@@ -362,7 +362,8 @@ export class ShoppingListService {
             });
           }
           const inCart = await transaction.shoppingItem.findMany({
-            where: { shoppingListId: list.id, unit: data.unit, isPurchased: false, inventoryAppliedAt: null },
+            // Cart lines only: never a line already in an order.
+            where: { shoppingListId: list.id, unit: data.unit, isPurchased: false, inventoryAppliedAt: null, purchaseId: null },
           });
           const key = normalizedName(data.name);
           const existing = inCart.find((item) =>
@@ -512,11 +513,12 @@ export class ShoppingListService {
   static async updateItem(id: string, familyId: string, data: UpdateItemBody) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
-      select: { isPurchased: true, unit: true, productId: true, shoppingList: { select: { status: true } } },
+      select: { isPurchased: true, purchaseId: true, unit: true, productId: true, shoppingList: { select: { status: true } } },
     });
     if (!item) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     if (item.isPurchased) throw new AppError(409, "ITEM_ALREADY_PURCHASED", "Purchased items cannot be changed");
+    if (item.purchaseId) throw new AppError(409, "ITEM_ORDERED", "Ordered items cannot be changed");
     // Same quantity rule as adding (kg in 0.1 steps up to 20; catalog count units whole), checked on the line's unit.
     const problem = data.quantity === undefined ? null : quantityProblem(data.quantity, item.unit, Boolean(item.productId));
     if (problem) throw new AppError(400, "INVALID_QUANTITY", problem);
@@ -526,11 +528,12 @@ export class ShoppingListService {
   static async removeItem(id: string, familyId: string) {
     const item = await prisma.shoppingItem.findFirst({
       where: { id, shoppingList: { familyId } },
-      select: { isPurchased: true, shoppingList: { select: { status: true } } },
+      select: { isPurchased: true, purchaseId: true, shoppingList: { select: { status: true } } },
     });
     if (!item) throw new AppError(404, "NOT_FOUND", "Shopping item not found");
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     if (item.isPurchased) throw new AppError(409, "ITEM_ALREADY_PURCHASED", "Purchased items cannot be removed");
+    if (item.purchaseId) throw new AppError(409, "ITEM_ORDERED", "Ordered items cannot be removed");
     await prisma.shoppingItem.delete({ where: { id } });
   }
 
@@ -543,6 +546,8 @@ export class ShoppingListService {
     if (item.isPurchased && item.inventoryAppliedAt) {
       return { item, inventoryItemId: item.inventoryItemId, alreadyApplied: true, alreadyPurchased: true };
     }
+    // A line in a delivery order reaches Kho when the order is delivered, not here.
+    if (item.purchaseId) throw new AppError(409, "ITEM_ORDERED", "This item is in a delivery order.");
     if (item.shoppingList.status !== LIST_STATUS.ACTIVE) throw new AppError(409, "LIST_NOT_ACTIVE", "Shopping list is not active");
     if (!PURCHASE_SYNC_API_KEY) throw new AppError(503, "PURCHASE_SYNC_NOT_CONFIGURED", "Inventory synchronization is not configured");
 
@@ -614,66 +619,6 @@ export class ShoppingListService {
       alreadyApplied: inventoryResult.data?.alreadyApplied ?? false,
       alreadyPurchased: item.isPurchased,
     };
-  }
-
-  /**
-   * "Mua" in Giỏ hàng: every cart line (not yet in inventory) goes through the existing per-item purchase path
-   * (inventory internal purchase, idempotent per item), one after another. A failed line stays in the cart and is
-   * reported; the rest are purchased. When nothing is left in the cart the list is completed, so the next add
-   * starts a fresh cart.
-   */
-  static async checkout(familyId: string, userId: string, lines: CheckoutLine[] = []): Promise<CheckoutResult> {
-    const list = await prisma.shoppingList.findFirst({ where: { activeFamilyId: familyId }, orderBy: { createdAt: "desc" } });
-    if (!list) return { purchased: [], failed: [], listCompleted: false };
-    const cart = await prisma.shoppingItem.findMany({
-      where: { shoppingListId: list.id, inventoryAppliedAt: null },
-      orderBy: { createdAt: "asc" },
-    });
-    const extrasById = new Map(lines.map((line) => [line.id, line]));
-    // Expiry = purchase day + the product's shelf-life days: the catalog's value first, else the one the app sent.
-    const catalog = await catalogDetails(userId, cart.flatMap((item) => (item.productId ? [item.productId] : [])));
-    const result: CheckoutResult = { purchased: [], failed: [], listCompleted: false };
-    for (const item of cart) {
-      const line = extrasById.get(item.id);
-      const days = (item.productId ? catalog.get(item.productId)?.shelfLifeDays : undefined) ?? line?.shelfLifeDays;
-      const extras: PurchaseExtras = {
-        ...(line?.categoryName ? { categoryName: line.categoryName } : {}),
-        ...(typeof days === "number" ? { expiryDate: vnDayFromToday(days) } : {}),
-      };
-      try {
-        const purchase = await this.confirmPurchase(item.id, familyId, userId, extras);
-        result.purchased.push({ id: item.id, name: item.name, inventoryItemId: purchase.inventoryItemId ?? null });
-      } catch (error) {
-        const appError = error instanceof AppError ? error : null;
-        result.failed.push({
-          id: item.id,
-          name: item.name,
-          code: appError?.code ?? "PURCHASE_FAILED",
-          message: appError?.message ?? "The item could not be added to inventory.",
-        });
-      }
-    }
-    // "Chi tiêu": the lines that reached Kho in this "Mua" form one purchase by this member (failed lines stay out).
-    if (result.purchased.length > 0) {
-      const groups = new Map<string, CatalogInfo>(catalog);
-      for (const item of cart) {
-        const line = extrasById.get(item.id);
-        if (item.productId && !groups.get(item.productId)?.group && line?.categoryName) groups.set(item.productId, { ...groups.get(item.productId), group: line.categoryName });
-      }
-      try {
-        await recordPurchase(familyId, userId, result.purchased.map((entry) => entry.id), groups);
-      } catch (error) {
-        console.error(JSON.stringify({ event: "purchase_record_failed", lines: result.purchased.length, message: error instanceof Error ? error.message : "unknown" }));
-      }
-    }
-    if (result.failed.length === 0 && result.purchased.length > 0) {
-      const remaining = await prisma.shoppingItem.findMany({ where: { shoppingListId: list.id, inventoryAppliedAt: null }, select: { id: true } });
-      if (remaining.length === 0) {
-        await prisma.shoppingList.update({ where: { id: list.id }, data: { status: LIST_STATUS.COMPLETED, activeFamilyId: null } });
-        result.listCompleted = true;
-      }
-    }
-    return result;
   }
 
   static async complete(id: string, familyId: string) {

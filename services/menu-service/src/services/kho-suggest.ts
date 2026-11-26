@@ -16,7 +16,11 @@ const MAX_EXPIRING_COUNTED = 2;
 const REPEAT_PENALTY = 10;
 
 /** productId: admin catalog product (items bought in Đi chợ / matched by name); status: inventory status when known. */
-export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null; productId?: string | null; status?: string | null };
+/**
+ * pendingDelivery: an Đi chợ order not delivered yet ("Đang giao"). It cannot be cooked (left out of suggestions, AI
+ * and the Kho hash) but counts as covered in "Cần mua tuần này" so the family does not buy it twice.
+ */
+export type KhoItem = { name: string; quantity: number | null; unit: string | null; expiryDate: string | null; productId?: string | null; status?: string | null; pendingDelivery?: boolean };
 /**
  * isSeasoning: pantry staple (muối, nước mắm, dầu ăn...), never matched against Kho or counted as missing.
  * perPerson: eaten one per person (portions.ts scales it per person).
@@ -108,8 +112,9 @@ export function daysLeft(expiryDate: string | null, today: string): number | nul
 export const vnDay = (now = new Date()): string => new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
 
 /** Items that can be cooked: expired ones are left out (Kho still lists them until they are discarded). */
+/** What can be cooked now: not expired, not still being delivered. */
 export const usableKho = (items: KhoItem[], today: string): KhoItem[] =>
-  items.filter((item) => item.name.trim() && (daysLeft(item.expiryDate, today) ?? 0) >= 0);
+  items.filter((item) => item.name.trim() && !item.pendingDelivery && (daysLeft(item.expiryDate, today) ?? 0) >= 0);
 
 const lowerFirst = (value: string): string => value.toLocaleLowerCase("vi");
 

@@ -1,6 +1,6 @@
 # Chi tiêu
 
-The capture bar's third button (Chụp ảnh · QR gia đình · **Chi tiêu**) opens a full-screen page with what the family spent in Đi chợ, from completed purchases only. Data: shopping-list-service `GET /api/shopping-list/spending` (see its README); every family member sees the same page.
+The capture bar's third button (Chụp ảnh · QR gia đình · **Chi tiêu**) opens a full-screen page with what the family spent in Đi chợ, from delivered orders only (by delivery date; orders on their way are in Giỏ hàng > Đơn hàng). Data: shopping-list-service `GET /api/shopping-list/spending` (see its README); every family member sees the same page.
 
 | File | What it does |
 |---|---|

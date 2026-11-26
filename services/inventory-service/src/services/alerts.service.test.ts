@@ -47,6 +47,7 @@ describe("AlertsService", () => {
         deletedAt: null,
         quantity: { gt: 0 },
         status: { notIn: ["CONSUMED", "DISCARDED"] },
+        deliveryOrderId: null,
         familyId,
         OR: [
           { expiryDate: { not: null, lte: threshold } },

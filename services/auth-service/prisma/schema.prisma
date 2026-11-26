@@ -9,9 +9,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+/// USER: app user. ADMIN: platform admin (Quản trị). SHIPPER: delivers Đi chợ orders (shopping-list-service
+/// /shipper/* endpoints); assigned by an admin (no admin UI yet).
 enum Role {
   USER
   ADMIN
+  SHIPPER
 }
 
 model User {

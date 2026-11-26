@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
+import { DeliveriesService } from "../services/deliveries.service";
+import { cancelDeliverySchema, deliverSchema, deliveryLinesSchema, orderIdParamSchema } from "../validators/delivery.validator";
 import { applyPurchaseSchema, receiptOcrSchema } from "../validators/purchase.validator";
 import { PurchasesService } from "../services/purchases.service";
 import { ReceiptOcrService } from "../services/receipt-ocr.service";
@@ -34,6 +36,36 @@ export class CaptureController {
         }));
         return;
       }
+      next(error);
+    }
+  }
+
+  /** Internal: Kho rows "Đang giao" for a new delivery order (idempotent per cart line). */
+  static async createPendingDelivery(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json({ success: true, data: await DeliveriesService.createPending(deliveryLinesSchema.parse(req.body)) });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Internal: the order was delivered; its lines become normal purchased rows (idempotent). */
+  static async deliverOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { orderId } = orderIdParamSchema.parse(req.params);
+      res.json({ success: true, data: await DeliveriesService.deliver(orderId, deliverSchema.parse(req.body)) });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  /** Internal: the order was cancelled or failed; its "Đang giao" rows are removed (idempotent). */
+  static async cancelDelivery(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { orderId } = orderIdParamSchema.parse(req.params);
+      const { familyId } = cancelDeliverySchema.parse(req.body);
+      res.json({ success: true, data: await DeliveriesService.cancel(orderId, familyId) });
+    } catch (error) {
       next(error);
     }
   }

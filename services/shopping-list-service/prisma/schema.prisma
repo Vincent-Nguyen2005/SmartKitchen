@@ -47,6 +47,8 @@ model ShoppingItem {
   lineTotal          Int?
   groupName          String?
   unitLabel          String?
+  /// Catalog shelf-life days at order time: expiry in Kho = delivery day (Vietnam) + these days.
+  shelfLifeDays      Int?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -58,20 +60,52 @@ model ShoppingItem {
   @@index([purchaseId])
 }
 
-/// One completed "Mua" in Giỏ hàng (or one single-item purchase): who bought, when, and the total = sum of the
-/// rounded line totals of the lines that reached Kho. Lines that failed stay in the cart and are not part of it.
-/// buyerUserId is null for purchases made before this table existed (backfilled by migration).
+/// Delivery order status. PENDING (đã đặt) → SHIPPING (đang giao, a shipper accepted) → DELIVERED (đã giao);
+/// PENDING → CANCELLED (the family cancelled); SHIPPING → FAILED (the shipper could not deliver).
+enum OrderStatus {
+  PENDING
+  SHIPPING
+  DELIVERED
+  CANCELLED
+  FAILED
+}
+
+/// An Đi chợ order ("Đặt hàng"), paid cash on delivery (COD): buyer, delivery details, lines (the ordered cart lines,
+/// with price snapshots), total = sum of the rounded line totals = COD amount. Only DELIVERED orders count in
+/// "Chi tiêu" (by deliveredAt). Purchases made before orders existed are DELIVERED (migration). purchasedAt = when
+/// ordered. buyerUserId is always set for new orders.
 model Purchase {
-  id          String         @id @default(uuid()) @db.Uuid
-  familyId    String         @db.Uuid
-  buyerUserId String?        @db.Uuid
-  purchasedAt DateTime       @default(now())
-  total       Int            @default(0)
-  itemCount   Int            @default(0)
-  createdAt   DateTime       @default(now())
-  items       ShoppingItem[]
+  id              String         @id @default(uuid()) @db.Uuid
+  familyId        String         @db.Uuid
+  buyerUserId     String?        @db.Uuid
+  purchasedAt     DateTime       @default(now())
+  total           Int            @default(0)
+  itemCount       Int            @default(0)
+  status          OrderStatus    @default(PENDING)
+  /// Only "COD" (thanh toán khi nhận hàng) for now.
+  paymentMethod   String         @default("COD")
+  codAmount       Int            @default(0)
+  deliveryAddress String?
+  latitude        Float?
+  longitude       Float?
+  receiverName    String?
+  receiverPhone   String?
+  note            String?
+  /// The SHIPPER account that accepted the order.
+  shipperId       String?        @db.Uuid
+  shippingAt      DateTime?
+  deliveredAt     DateTime?
+  cancelledAt     DateTime?
+  failedAt        DateTime?
+  failReason      String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @default(now()) @updatedAt
+  items           ShoppingItem[]
 
   @@index([familyId, purchasedAt])
+  @@index([familyId, deliveredAt])
+  @@index([status, purchasedAt])
+  @@index([shipperId])
 }
 
 model PurchaseHistory {

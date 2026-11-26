@@ -11,7 +11,7 @@ import {
 type CategoryClient = Pick<typeof prisma, "category">;
 
 /** Category id for a free-text group name, creating the category on first use. */
-const resolveCategoryId = async (client: CategoryClient, name: string | undefined): Promise<string | undefined> => {
+export const resolveCategoryId = async (client: CategoryClient, name: string | undefined): Promise<string | undefined> => {
   if (!name) return undefined;
   const category = await client.category.upsert({ where: { name }, create: { name }, update: {}, select: { id: true } });
   return category.id;
@@ -58,6 +58,8 @@ export function lockedChanges(previous: Record<string, unknown> & { origin?: str
     return !sameValue(value, previous[field]);
   }).map(([field]) => field);
 }
+/** "Đang giao" rows (Đi chợ order not delivered yet) cannot be edited, used, merged into or deleted by the user. */
+export const pendingDeliveryError = () => httpError(409, "DELIVERY_PENDING", "This item is still being delivered; it can be used once it arrives.");
 export const lockedError = (fields: string[]) => httpError(409, "PURCHASED_ITEM_LOCKED", `Items bought in Đi chợ cannot change ${fields.join(", ")}; only the storage place can be changed.`);
 
 /** A bought row expired more than this many days ago (Vietnam calendar) is hidden from Kho, alerts and the weekly list. */
@@ -157,7 +159,8 @@ export class ItemsService {
   static async findDuplicate(familyId: string, match: { name: string; productId: string | null; unit: string }): Promise<DuplicateMatch> {
     const key = normalizeName(match.name);
     const rows = await prisma.foodItem.findMany({
-      where: { familyId, deletedAt: null, status: { in: [...MERGEABLE_STATUSES] } },
+      // "Đang giao" rows are never offered for "Cộng thêm".
+      where: { familyId, deletedAt: null, deliveryOrderId: null, status: { in: [...MERGEABLE_STATUSES] } },
       orderBy: { createdAt: "asc" },
       include: { category: true },
     });
@@ -178,6 +181,7 @@ export class ItemsService {
     return prisma.$transaction(async (transaction) => {
       const previous = await transaction.foodItem.findFirst({ where: { id, familyId, deletedAt: null } });
       if (!previous) throw new Error("Item not found");
+      if (previous.deliveryOrderId) throw pendingDeliveryError();
       if (!(MERGEABLE_STATUSES as readonly string[]).includes(previous.status)) {
         throw httpError(409, "ITEM_NOT_MERGEABLE", "This item is expired or discarded; add a new row instead.");
       }
@@ -223,6 +227,7 @@ export class ItemsService {
         where: { id, familyId, deletedAt: null },
       });
       if (!previous) throw new Error("Item not found");
+      if (previous.deliveryOrderId) throw pendingDeliveryError();
       const locked = lockedChanges(previous, data);
       if (locked.length > 0) throw lockedError(locked);
       if (data.imageUrl !== undefined && data.imageUrl !== previous.imageUrl && managedPhotoFileName(previous.imageUrl)) {
@@ -275,6 +280,7 @@ export class ItemsService {
         where: { id, familyId, deletedAt: null },
       });
       if (!previous) throw new Error("Item not found");
+      if (previous.deliveryOrderId) throw pendingDeliveryError();
       if (previous.origin === "PURCHASE") throw lockedError(["quantity"]);
       if (["EXPIRED", "DISCARDED", "CONSUMED"].includes(previous.status)) {
         throw Object.assign(new Error("This item cannot be consumed in its current status"), {
@@ -355,6 +361,7 @@ export class ItemsService {
 
   static async softDelete(id: string, familyId: string) {
     const item = await this.getById(id, familyId);
+    if (item.deliveryOrderId) throw pendingDeliveryError();
     if (item.origin === "PURCHASE") throw lockedError(["deletion"]);
     const deleted = await prisma.foodItem.update({
       where: { id },

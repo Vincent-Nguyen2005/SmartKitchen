@@ -84,7 +84,8 @@ export async function recordPurchase(familyId: string, buyerUserId: string, item
       return { item, unitPrice, discountPercent, paid, lineTotal: lineTotalOf(paid, item.quantity), info };
     });
     const total = lines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0);
-    const purchase = await transaction.purchase.create({ data: { familyId, buyerUserId, purchasedAt: now, total, itemCount: lines.length } });
+    // Bought directly into Kho (single-item purchase): an order that is already delivered.
+    const purchase = await transaction.purchase.create({ data: { familyId, buyerUserId, purchasedAt: now, total, codAmount: total, itemCount: lines.length, status: "DELIVERED", deliveredAt: now } });
     for (const line of lines) {
       await transaction.shoppingItem.update({
         where: { id: line.item.id },
@@ -126,14 +127,15 @@ export async function monthSpending(familyId: string, month: string, options: { 
   const previousRange = vnMonthRange(before);
   const page = Math.max(1, Math.floor(options.page ?? 1));
   const limit = Math.min(100, Math.max(1, Math.floor(options.limit ?? 50)));
-  const where = { familyId, purchasedAt: { gte: range.from, lt: range.to } };
+  // Only delivered orders count, in the month they were delivered.
+  const where = { familyId, status: "DELIVERED" as const, deliveredAt: { gte: range.from, lt: range.to } };
   const [sum, previous, count, lineRows, purchases] = await Promise.all([
     prisma.purchase.aggregate({ where, _sum: { total: true } }),
-    prisma.purchase.aggregate({ where: { familyId, purchasedAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { total: true } }),
+    prisma.purchase.aggregate({ where: { familyId, status: "DELIVERED", deliveredAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { total: true } }),
     prisma.purchase.count({ where }),
     prisma.shoppingItem.findMany({ where: { purchase: where }, select: { lineTotal: true, groupName: true, productId: true } }),
     prisma.purchase.findMany({
-      where, orderBy: { purchasedAt: "desc" }, skip: (page - 1) * limit, take: limit,
+      where, orderBy: { deliveredAt: "desc" }, skip: (page - 1) * limit, take: limit,
       include: { items: { orderBy: { createdAt: "asc" }, select: { id: true, name: true, quantity: true, unit: true, unitLabel: true, unitPrice: true, discountPercent: true, paidUnitPrice: true, lineTotal: true, groupName: true, productId: true } } },
     }),
   ]);
@@ -150,7 +152,8 @@ export async function monthSpending(familyId: string, month: string, options: { 
       page, limit, total: count,
       items: purchases.map((purchase) => ({
         id: purchase.id,
-        purchasedAt: purchase.purchasedAt.toISOString(),
+        // The delivery time (what the month counts by).
+        purchasedAt: (purchase.deliveredAt ?? purchase.purchasedAt).toISOString(),
         buyerUserId: purchase.buyerUserId,
         itemCount: purchase.itemCount,
         total: purchase.total,

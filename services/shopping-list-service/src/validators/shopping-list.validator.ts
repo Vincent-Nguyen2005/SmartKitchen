@@ -49,9 +49,27 @@ export const ensureItemsBodySchema = z.object({
   items: z.array(addItemFields.omit({ familyId: true, shoppingListId: true, note: true }).superRefine(checkQuantity)).min(1).max(100),
 });
 
-/** "Mua" in Giỏ hàng. `items` only adds catalog details per cart line (group, shelf-life days for the expiry). */
+/** Vietnamese phone: 0xxxxxxxxx or +84xxxxxxxxx (spaces, dots and dashes are ignored). */
+const vnPhone = z.string().trim().transform((value) => value.replace(/[\s.-]/g, "")).refine((value) => /^(?:\+84|84|0)(?:3|5|7|8|9|2\d)\d{8}$/.test(value), "Số điện thoại không hợp lệ");
+
+/** Delivery details of an order ("Đặt hàng"); COD is the only payment method. */
+export const deliverySchema = z.object({
+  address: z.string().trim().min(5, "Nhập địa chỉ giao hàng").max(300),
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
+  receiverName: z.string().trim().min(1, "Nhập tên người nhận").max(100),
+  receiverPhone: vnPhone,
+  note: z.string().trim().max(300).nullable().optional(),
+  paymentMethod: z.literal("COD").default("COD"),
+});
+
+/**
+ * "Đặt hàng" in Giỏ hàng: the cart becomes a delivery order. `items` only adds catalog details per cart line (group,
+ * shelf-life days for the expiry on delivery).
+ */
 export const checkoutBodySchema = z.object({
   familyId: z.string().uuid(),
+  delivery: deliverySchema,
   items: z.array(z.object({
     id: z.string().uuid(),
     categoryName: z.string().trim().min(1).max(50).optional(),
@@ -60,6 +78,14 @@ export const checkoutBodySchema = z.object({
 });
 
 export const generateBodySchema = z.object({ familyId: z.string().uuid() });
+
+export const ordersQuerySchema = z.object({
+  familyId: z.string().uuid(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+export const shipperOrdersQuerySchema = z.object({ scope: z.enum(["available", "mine"]).default("available") });
+export const failOrderBodySchema = z.object({ reason: z.string().trim().min(1, "Nhập lý do").max(300) });
 
 /** GET /spending ("Chi tiêu"): a Vietnam month (default: the current one) of the family's purchases. */
 export const spendingQuerySchema = z.object({

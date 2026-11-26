@@ -23,6 +23,10 @@ const config: ExpoConfig = {
       // Photos only (no video), and voice input was removed: no microphone permission.
       microphonePermission: false,
     }],
+    ["expo-location", {
+      // Asked only when ordering in Đi chợ ("Đặt hàng") or on the map picker, to fill the delivery address.
+      locationWhenInUsePermission: "SmartKitchen dùng vị trí của bạn khi đặt hàng để điền sẵn địa chỉ giao hàng.",
+    }],
     "@react-native-community/datetimepicker",
   ],
 };

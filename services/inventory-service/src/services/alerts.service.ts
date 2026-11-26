@@ -20,6 +20,8 @@ export class AlertsService {
         lte: threshold,
       },
       status: { notIn: ["CONSUMED", "DISCARDED"] },
+      // "Đang giao" rows have no expiry yet and never alert.
+      deliveryOrderId: null,
       // Bought rows expired more than 3 days ago have left Kho, so they leave the alerts too.
       ...hiddenPurchaseFilter(),
     };
@@ -51,6 +53,7 @@ export class AlertsService {
       deletedAt: null,
       quantity: { gt: 0 },
       status: { notIn: ["CONSUMED", "DISCARDED"] },
+      deliveryOrderId: null,
       ...(familyId ? { familyId } : {}),
     };
     return prisma.$transaction(async (transaction) => {

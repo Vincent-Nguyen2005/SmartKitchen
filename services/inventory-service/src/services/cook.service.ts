@@ -97,7 +97,8 @@ export class CookService {
       await transaction.cookApplication.create({ data: { cookId: input.cookId, familyId: input.familyId } });
       const rows: KhoRow[] = await transaction.foodItem.findMany({
         // Never rows that left Kho: expired bought rows past the hide window (hiddenPurchaseFilter) included.
-        where: { familyId: input.familyId, deletedAt: null, status: { in: USABLE as never }, quantity: { gt: 0 }, ...hiddenPurchaseFilter() },
+        // Nor "Đang giao" rows (not delivered yet).
+        where: { familyId: input.familyId, deletedAt: null, deliveryOrderId: null, status: { in: USABLE as never }, quantity: { gt: 0 }, ...hiddenPurchaseFilter() },
         select: { id: true, name: true, productId: true, quantity: true, unit: true, status: true, expiryDate: true, createdAt: true },
       });
       const lines: CookLineResult[] = [];

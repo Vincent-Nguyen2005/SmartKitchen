@@ -43,6 +43,15 @@ The service supports the prefixed paths below for direct calls and matching shor
 | `DELETE /api/inventory/items/:id/photo` | Remove the photo and its file. Deleting the item also deletes its photo file. |
 | `GET /api/inventory/items/:id/photo/:file` | Serve the item's current photo to members of its family only (the `imageUrl` value). No directory listing; any other file name is 404. |
 
+## "Đang giao" rows (Đi chợ delivery orders)
+
+shopping-list-service calls these internal endpoints (header `x-internal-api-key: PURCHASE_SYNC_API_KEY`), all idempotent:
+- `POST /api/inventory/internal/deliveries/pending` `{ orderId, familyId, createdByUserId, lines }`: one row per ordered line, origin PURCHASE, `deliveryOrderId` set, no expiry. Never merged into other rows.
+- `POST /api/inventory/internal/deliveries/:orderId/deliver` `{ familyId, createdByUserId, lines (with expiryDate) }`: each line goes through the normal purchase path (merge rules, expiry from the delivery day), then the pending rows are removed.
+- `POST /api/inventory/internal/deliveries/:orderId/cancel` `{ familyId }`: the pending rows are removed (cancelled or failed order).
+
+While a row has `deliveryOrderId` it is listed (the app shows it dimmed with "Đang giao") but it can't be edited, used, merged into ("Cộng thêm") or deleted (409 `DELIVERY_PENDING`), has no photo, and is left out of cooking, the duplicate prompt, purchase merges and expiry alerts. menu-service leaves it out of cooking suggestions but counts it as covered in "Cần mua tuần này".
+
 ## One product, no accidental duplicates
 
 - **Catalog product (`productId`):** on create and rename the server matches the name against the active admin catalog. The match is exact after `normalizeName` (NFC, trim, collapsed spaces, lower case, diacritics kept: "  CÀ  RỐT " = "Cà rốt", but "ca rot" ≠ "Cà rốt"), on the Vietnamese name, then on the English alias.

@@ -9,7 +9,7 @@ import { shoppingApi, type CartSnapshot, type ShoppingItem, type ShoppingList, t
  * (inventoryAppliedAt set); this includes older items marked bought but never synced, so "Mua" can finish them.
  */
 export const cartLines = (lists: ShoppingList[]): ShoppingItem[] =>
-  lists.filter((list) => list.status === "ACTIVE").flatMap((list) => list.items).filter((item) => !item.inventoryAppliedAt);
+  lists.filter((list) => list.status === "ACTIVE").flatMap((list) => list.items).filter((item) => !item.inventoryAppliedAt && !item.purchaseId);
 
 /** Shopping-list unit for a catalog product; admin units are codes or older labels such as "g". */
 export const shoppingUnitFor = (product: CatalogIngredient): ShoppingUnit => unitFromCatalog(product.unit) ?? "PIECE";

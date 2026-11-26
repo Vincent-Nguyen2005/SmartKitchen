@@ -245,6 +245,7 @@ function readKhoItems(values: unknown[]): KhoItem[] {
       expiryDate: typeof record.expiryDate === "string" ? record.expiryDate : null,
       productId: typeof record.productId === "string" && record.productId ? record.productId : null,
       status: typeof record.status === "string" ? record.status : null,
+      ...(typeof record.deliveryOrderId === "string" && record.deliveryOrderId ? { pendingDelivery: true } : {}),
     }];
   });
 }

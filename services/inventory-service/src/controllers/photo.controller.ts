@@ -53,7 +53,8 @@ export const readSingleImage = async (req: Request, res: Response) => {
 /** Loads a live item and checks that the signed-in user belongs to its family. */
 const loadOwnedItem = async (req: Request) => {
   const id = z.string().uuid().parse(req.params.id);
-  const item = await prisma.foodItem.findFirst({ where: { id, deletedAt: null }, select: { id: true, familyId: true, imageUrl: true, origin: true } });
+  // "Đang giao" rows are read-only (no photo until delivered).
+  const item = await prisma.foodItem.findFirst({ where: { id, deletedAt: null, deliveryOrderId: null }, select: { id: true, familyId: true, imageUrl: true, origin: true } });
   if (!item) throw new Error("Item not found");
   await requireFamilyMembership(req as InventoryAuthRequest, item.familyId);
   return item;

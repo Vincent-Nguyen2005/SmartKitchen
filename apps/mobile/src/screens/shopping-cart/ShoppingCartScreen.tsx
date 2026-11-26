@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, Minus, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
+import { ChevronLeft, Minus, Package, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
@@ -23,7 +23,9 @@ import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
 import { cartTotal, lineTotal, unitPriceText } from "./pricing";
 import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { unitWord } from "./unitDisplay";
-import { type CheckoutResult, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
+import { type CheckoutLine, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
+import CheckoutSheet from "./CheckoutSheet";
+import OrdersScreen from "./OrdersScreen";
 
 /**
  * "market" = Đi chợ product grid (main view); "cart" = Giỏ hàng, opened from the floating cart button.
@@ -63,9 +65,10 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   // Current catalog product per normalized name: price for older lines, group and shelf-life for checkout.
   const [catalog, setCatalog] = useState<Record<string, CatalogIngredient | null>>({});
   const lookedUp = useRef(new Set<string>());
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
-  const [failed, setFailed] = useState<CheckoutResult["failed"]>([]);
+  // "Mua" opens the delivery checkout ("Đặt hàng"); "Đơn hàng" lists the family's orders.
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const checkingOut = checkoutOpen;
 
   const loadData = async (showLoading = false) => {
     if (!ready) return;
@@ -184,7 +187,6 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
     setError(null);
     try {
       await shoppingApi.deleteItem(accessToken, family.id, item.id);
-      setFailed((current) => current.filter((line) => line.id !== item.id));
       await fetchData(false);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Không xóa được món khỏi giỏ hàng.");
@@ -193,31 +195,15 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
     }
   };
 
-  /** "Mua": one request puts every line into Kho; failed lines stay in the cart and are listed. */
-  const checkout = async () => {
-    if (!family?.id || !accessToken) return;
-    setConfirmOpen(false);
-    setCheckingOut(true);
-    setError(null);
-    try {
-      const lines = cart.map((item) => {
-        const product = catalogFor(item);
-        return {
-          id: item.id,
-          ...(product?.group ? { categoryName: product.group.slice(0, 50) } : {}),
-          ...(typeof product?.shelfLifeDays === "number" ? { shelfLifeDays: product.shelfLifeDays } : {}),
-        };
-      });
-      const result = await shoppingApi.checkout(accessToken, family.id, lines);
-      setFailed(result.failed);
-      if (result.purchased.length > 0) showToast("Đã thêm vào Kho");
-      await fetchData(false);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Chưa thêm được vào Kho. Giỏ hàng vẫn được giữ, hãy thử lại.");
-    } finally {
-      setCheckingOut(false);
-    }
-  };
+  /** Catalog details per cart line for the order: group (Kho category) and shelf life (expiry on delivery). */
+  const checkoutLines: CheckoutLine[] = cart.map((item) => {
+    const product = catalogFor(item);
+    return {
+      id: item.id,
+      ...(product?.group ? { categoryName: product.group.slice(0, 50) } : {}),
+      ...(typeof product?.shelfLifeDays === "number" ? { shelfLifeDays: product.shelfLifeDays } : {}),
+    };
+  });
 
   const renderLine = (item: ShoppingItem) => {
     const price = unitPriceOf(item, catalogFor(item));
@@ -312,6 +298,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
           <View style={[styles.cartHeader, isWide && styles.wideContent]}>
             <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại Đi chợ" color={colors.text} onPress={() => setView("market")} />
             <Text style={styles.cartTitle}>Giỏ hàng</Text>
+            {family && <IconButton icon={Package} accessibilityLabel="Đơn hàng của gia đình" color={colors.primary} onPress={() => setOrdersOpen(true)} style={styles.ordersButton} />}
           </View>
           {!ready || loading ? (
             <View style={styles.center}><ActivityIndicator size="large" color={colors.primary} /><Text style={styles.helper}>Đang tải giỏ hàng...</Text></View>
@@ -329,12 +316,6 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
               ) : (
                 <>
                   {error && <Text accessibilityRole="alert" style={styles.errorBox}>{error}</Text>}
-                  {failed.length > 0 && (
-                    <View accessibilityRole="alert" style={styles.failedBox}>
-                      <Text style={styles.failedTitle}>Chưa thêm được {failed.length} món vào Kho. Các món này vẫn trong giỏ, hãy bấm Mua để thử lại:</Text>
-                      {failed.map((line) => <Text key={line.id} style={styles.failedLine}>• {line.name}</Text>)}
-                    </View>
-                  )}
                   {cart.length === 0 ? (
                     <View style={styles.emptyBox}>
                       <AppIcon icon={ShoppingCart} size="xl" color={colors.muted} />
@@ -351,10 +332,10 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
               <Text style={styles.totalText} accessibilityLiveRegion="polite">Tổng: {formatVnd(total)}</Text>
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Mua ${cart.length} món, thêm vào Kho`}
+                accessibilityLabel={`Mua ${cart.length} món, đặt hàng giao tận nơi`}
                 accessibilityState={{ busy: checkingOut, disabled: checkingOut }}
                 disabled={checkingOut}
-                onPress={() => setConfirmOpen(true)}
+                onPress={() => setCheckoutOpen(true)}
                 style={[styles.buyButton, checkingOut && styles.disabled]}
               >
                 {checkingOut ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.primaryButtonText}>Mua</Text>}
@@ -364,19 +345,21 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
         </>
       )}
 
-      {/* Own dialog (not Alert) so the confirmation also works on web. */}
-      <Modal animationType="fade" transparent visible={confirmOpen} onRequestClose={() => setConfirmOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Thêm {cart.length} món vào Kho?</Text>
-            <Text style={styles.helper}>Các món sẽ được thêm vào Kho của gia đình và giỏ hàng sẽ trống.</Text>
-            <View style={styles.modalActions}>
-              <Pressable accessibilityRole="button" onPress={() => setConfirmOpen(false)} style={styles.cancelButton}><Text style={styles.cancelText}>Hủy</Text></Pressable>
-              <Pressable accessibilityRole="button" onPress={() => void checkout()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>Mua</Text></Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {family && accessToken && (
+        <>
+          <CheckoutSheet
+            visible={checkoutOpen}
+            familyId={family.id}
+            accessToken={accessToken}
+            lines={checkoutLines}
+            itemCount={cart.length}
+            total={total}
+            onClose={() => setCheckoutOpen(false)}
+            onPlaced={() => { setCheckoutOpen(false); showToast("Đã đặt hàng"); void fetchData(false); }}
+          />
+          <OrdersScreen visible={ordersOpen} familyId={family.id} accessToken={accessToken} onClose={() => setOrdersOpen(false)} />
+        </>
+      )}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>
           <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.toast}>{toast}</Text>
@@ -396,7 +379,8 @@ const styles = StyleSheet.create({
   cartBadge: { alignItems: "center", backgroundColor: colors.danger, borderColor: colors.surface, borderRadius: 11, borderWidth: 2, justifyContent: "center", minWidth: 22, paddingHorizontal: spacing.xs, position: "absolute", right: -2, top: -2 },
   cartBadgeText: { ...textStyles.caption, color: colors.surface, fontWeight: "700", lineHeight: 14 },
   cartHeader: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
-  cartTitle: { ...textStyles.heading },
+  cartTitle: { ...textStyles.heading, flex: 1 },
+  ordersButton: { marginLeft: "auto" },
   cartContent: { gap: spacing.md, paddingBottom: spacing.xl, paddingTop: spacing.lg },
   line: { alignItems: "flex-start", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, flexDirection: "row", gap: spacing.md, padding: spacing.md },
   lineImage: { borderRadius: radius.sm, height: 64, width: 64 },

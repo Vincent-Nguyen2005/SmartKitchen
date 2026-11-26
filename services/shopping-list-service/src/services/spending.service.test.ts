@@ -87,7 +87,8 @@ describe("recordPurchase", () => {
     expect(await recordPurchase(familyId, userId, ["i1", "i2", "i3"], catalog, now)).toEqual({ id: "pur-1", total: 38250 + 7000, itemCount: 3 });
     // Only completed lines (in Kho, not yet in a purchase) of this family are read.
     expect(mocks.prisma.shoppingItem.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["i1", "i2", "i3"] }, purchaseId: null, isPurchased: true, inventoryAppliedAt: { not: null }, shoppingList: { familyId } });
-    expect(mocks.prisma.purchase.create).toHaveBeenCalledWith({ data: { familyId, buyerUserId: userId, purchasedAt: now, total: 45250, itemCount: 3 } });
+    // A direct purchase is an order that is already delivered.
+    expect(mocks.prisma.purchase.create).toHaveBeenCalledWith({ data: { familyId, buyerUserId: userId, purchasedAt: now, total: 45250, codAmount: 45250, itemCount: 3, status: "DELIVERED", deliveredAt: now } });
     const updates = mocks.prisma.shoppingItem.update.mock.calls.map((call) => call[0].data);
     expect(updates[0]).toMatchObject({ purchaseId: "pur-1", paidUnitPrice: 25500, lineTotal: 38250, groupName: "Thịt" });
     expect(updates[1]).toMatchObject({ unitPrice: 3500, paidUnitPrice: 3500, lineTotal: 7000, groupName: "Trứng & sữa", unitLabel: "quả" });
@@ -120,7 +121,7 @@ describe("monthSpending", () => {
       { lineTotal: 320_000, groupName: null, productId: "p-veg" }, // bought before snapshots: catalog group now
     ]);
     mocks.prisma.purchase.findMany.mockResolvedValue([{
-      id: "pur-1", purchasedAt: new Date("2026-11-26T11:05:00Z"), buyerUserId: userId, itemCount: 1, total: 38250,
+      id: "pur-1", purchasedAt: new Date("2026-11-25T08:00:00Z"), deliveredAt: new Date("2026-11-26T11:05:00Z"), buyerUserId: userId, itemCount: 1, total: 38250,
       items: [{ id: "i1", name: "Thịt heo", quantity: 1.5, unit: "KILOGRAM", unitLabel: null, unitPrice: 30000, discountPercent: 15, paidUnitPrice: 25500, lineTotal: 38250, groupName: "Thịt", productId: "p1" }],
     }]);
     const catalog = vi.fn(async () => new Map([["p-veg", { group: "Rau củ" }]]));
@@ -131,10 +132,11 @@ describe("monthSpending", () => {
       id: "pur-1", purchasedAt: "2026-11-26T11:05:00.000Z", buyerUserId: userId, itemCount: 1, total: 38250,
       lines: [{ id: "i1", name: "Thịt heo", quantity: 1.5, unit: "KILOGRAM", unitLabel: null, unitPrice: 25500, originalUnitPrice: 30000, discountPercent: 15, lineTotal: 38250, group: "Thịt" }],
     });
-    // The month window is Vietnam time, the newest purchase first.
+    // Delivered orders only, by delivery day (Vietnam month), the newest delivery first; purchasedAt shows the delivery time.
     const where = mocks.prisma.purchase.findMany.mock.calls[0][0];
-    expect(where.where).toEqual({ familyId, purchasedAt: { gte: new Date("2026-10-31T17:00:00Z"), lt: new Date("2026-11-30T17:00:00Z") } });
-    expect(where.orderBy).toEqual({ purchasedAt: "desc" });
+    expect(where.where).toEqual({ familyId, status: "DELIVERED", deliveredAt: { gte: new Date("2026-10-31T17:00:00Z"), lt: new Date("2026-11-30T17:00:00Z") } });
+    expect(where.orderBy).toEqual({ deliveredAt: "desc" });
+    expect(mocks.prisma.purchase.aggregate.mock.calls[1][0].where).toEqual({ familyId, status: "DELIVERED", deliveredAt: { gte: new Date("2026-09-30T17:00:00Z"), lt: new Date("2026-10-31T17:00:00Z") } });
     expect(catalog).toHaveBeenCalledWith(["p-veg"]);
   });
 

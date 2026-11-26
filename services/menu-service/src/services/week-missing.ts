@@ -25,7 +25,8 @@ import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type Reci
  *   in the response's `unconverted`. A Kho row that cannot be converted does not count (`unitMismatch` when it is the
  *   only stock).
  * - Not sold in Đi chợ: shown in the recipe measure (g / ml switch to kg / l from 1000), no cart quantity.
- * - Usable Kho: quantity > 0, status not EXPIRED / CONSUMED / DISCARDED, expiry day not before today.
+ * - Usable Kho: quantity > 0, status not EXPIRED / CONSUMED / DISCARDED, expiry day not before today. Rows of an Đi chợ
+ *   order still being delivered ("Đang giao", pendingDelivery) count as covered: they are already bought.
  */
 export type WeekIngredient = PortionIngredient;
 export type WeekDish = { ingredients: WeekIngredient[]; servings: number | null; people: number };

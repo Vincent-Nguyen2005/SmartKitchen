@@ -6,7 +6,8 @@ import {
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
-  updateItemBodySchema, checkoutBodySchema, spendingQuerySchema } from "../validators/shopping-list.validator";
+  updateItemBodySchema, checkoutBodySchema, spendingQuerySchema, ordersQuerySchema, shipperOrdersQuerySchema, failOrderBodySchema } from "../validators/shopping-list.validator";
+import { OrdersService } from "../services/orders.service";
 import { monthSpending, recordPurchase, vnMonth } from "../services/spending.service";
 import { catalogDetails } from "../services/shopping-list.service";
 import { ShoppingAuthRequest } from "../middleware/auth.middleware";
@@ -72,11 +73,15 @@ export class ShoppingListController {
 
   static async checkout(req: Request, res: Response, next: NextFunction) {
     try {
-      const { familyId, items } = checkoutBodySchema.parse(req.body);
+      const { familyId, items, delivery } = checkoutBodySchema.parse(req.body);
       const request = auth(req);
       await requireFamilyMembership(request, familyId);
-      const result = await ShoppingListService.checkout(familyId, request.authUser.userId, items);
-      res.json({ success: true, data: result });
+      // Product ids of the active cart, for prices / groups / shelf life from the catalog.
+      const lists = await ShoppingListService.list(familyId);
+      const productIds = lists.flatMap((list) => (list.status === "ACTIVE" ? list.items : [])).flatMap((item) => (item.productId && !item.purchaseId && !item.inventoryAppliedAt ? [item.productId] : []));
+      const catalog = await catalogDetails(request.authUser.userId, productIds);
+      const order = await OrdersService.place(familyId, request.authUser.userId, delivery, items, catalog);
+      res.status(201).json({ success: true, data: { order } });
     } catch (err) {
       next(err);
     }
@@ -96,6 +101,79 @@ export class ShoppingListController {
           .catch((error: unknown) => console.error(JSON.stringify({ event: "purchase_record_failed", lines: 1, message: error instanceof Error ? error.message : "unknown" })));
       }
       res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /orders?familyId: the family's delivery orders, newest first (members only). */
+  static async orders(req: Request, res: Response, next: NextFunction) {
+    try {
+      const query = ordersQuerySchema.parse(req.query);
+      await requireFamilyMembership(auth(req), query.familyId);
+      res.json({ success: true, data: await OrdersService.list(query.familyId, query) });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /orders/last-delivery?familyId: the caller's last delivery details (prefill), or null. */
+  static async lastDelivery(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { familyId } = familyQuerySchema.parse(req.query);
+      const request = auth(req);
+      await requireFamilyMembership(request, familyId);
+      res.json({ success: true, data: { delivery: await OrdersService.lastDelivery(familyId, request.authUser.userId) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** POST /orders/:id/cancel?familyId: "Hủy đơn" while PENDING (members of the order's family only). */
+  static async cancelOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const { familyId } = familyQuerySchema.parse(req.query);
+      await requireFamilyMembership(auth(req), familyId);
+      res.json({ success: true, data: { order: await OrdersService.cancel(id, familyId) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** Shipper: GET /shipper/orders?scope=available|mine. */
+  static async shipperOrders(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { scope } = shipperOrdersQuerySchema.parse(req.query);
+      res.json({ success: true, data: { items: await OrdersService.shipperList(auth(req).authUser.userId, scope) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async acceptOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      res.json({ success: true, data: { order: await OrdersService.accept(id, auth(req).authUser.userId) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async deliverOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      res.json({ success: true, data: { order: await OrdersService.deliver(id, auth(req).authUser.userId) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async failOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const { reason } = failOrderBodySchema.parse(req.body);
+      res.json({ success: true, data: { order: await OrdersService.fail(id, auth(req).authUser.userId, reason) } });
     } catch (err) {
       next(err);
     }

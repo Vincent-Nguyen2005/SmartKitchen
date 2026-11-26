@@ -6,7 +6,7 @@ import { query, type GatewayClient, type Page } from "../notifications/gatewayAp
  * which proxy auth-service and family-service /internal/admin/*. Calls go through the gateway
  * client, which attaches the signed-in user's access token.
  */
-export type UserRole = "USER" | "ADMIN";
+export type UserRole = "USER" | "ADMIN" | "SHIPPER";
 export type FamilyRole = "OWNER" | "ADMIN" | "MEMBER";
 
 export type AdminUser = {
@@ -53,6 +53,7 @@ export const fetchFamily = (api: GatewayClient, id: string): Promise<AdminFamily
 export const userRoleBadge: Record<UserRole, { label: string; color: string; background: string }> = {
   ADMIN: { label: "Quản trị", color: colors.warning, background: colors.warningSoft },
   USER: { label: "Người dùng", color: colors.primary, background: colors.primarySoft },
+  SHIPPER: { label: "Người giao hàng", color: colors.success, background: colors.successSoft },
 };
 
 export const familyRoleText: Record<FamilyRole, string> = {

@@ -58,6 +58,8 @@ export class PurchasesService {
             unit: { in: sameKind },
             status: { in: [...MERGEABLE_STATUSES] },
             deletedAt: null,
+            // Never into a "Đang giao" row of another order.
+            deliveryOrderId: null,
           },
           orderBy: { createdAt: "asc" },
         });

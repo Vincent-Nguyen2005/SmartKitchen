@@ -20,14 +20,35 @@ export type ShoppingItem = {
   discountPercent?: number | null;
   productId?: string | null;
   imageUrl?: string | null;
+  /** Set once the line is in a delivery order ("Đặt hàng"): it is no longer in the cart. */
+  purchaseId?: string | null;
 };
 /** Optional market snapshot sent when adding to the cart. */
 export type CartSnapshot = { unitPrice?: number | null; discountPercent?: number | null; productId?: string | null; imageUrl?: string | null };
 export type CheckoutLine = { id: string; categoryName?: string; shelfLifeDays?: number };
-export type CheckoutResult = {
-  purchased: Array<{ id: string; name: string; inventoryItemId: string | null }>;
-  failed: Array<{ id: string; name: string; code: string; message: string }>;
-  listCompleted: boolean;
+export type OrderStatus = "PENDING" | "SHIPPING" | "DELIVERED" | "CANCELLED" | "FAILED";
+/** Delivery details of "Đặt hàng" (cash on delivery is the only payment method). */
+export type DeliveryInput = { address: string; latitude?: number | null; longitude?: number | null; receiverName: string; receiverPhone: string; note?: string | null };
+export type OrderLine = { id: string; name: string; quantity: number; unit: ShoppingUnit; unitLabel: string | null; paidUnitPrice: number | null; lineTotal: number | null };
+export type Order = {
+  id: string;
+  status: OrderStatus;
+  purchasedAt: string;
+  buyerUserId: string | null;
+  total: number;
+  codAmount: number;
+  itemCount: number;
+  paymentMethod: "COD";
+  deliveryAddress: string | null;
+  receiverName: string | null;
+  receiverPhone: string | null;
+  note: string | null;
+  shippingAt: string | null;
+  deliveredAt: string | null;
+  cancelledAt: string | null;
+  failedAt: string | null;
+  failReason: string | null;
+  items: OrderLine[];
 };
 export type ShoppingList = { id: string; familyId: string; name: string; status: string; items: ShoppingItem[] };
 export type ShoppingSuggestion = {
@@ -71,9 +92,18 @@ export const shoppingApi = {
   addItem: (token: string, input: { familyId: string; name: string; quantity: number; unit: ShoppingUnit } & CartSnapshot) =>
     request<ShoppingItem>(token, "/api/shopping-list/items", "POST", input),
   /** "Mua": every cart line goes into Kho; failed lines stay in the cart and are listed in `failed`. */
-  checkout: (token: string, familyId: string, items: CheckoutLine[]) =>
-    // One inventory call per line on the server, so allow more time than the default 15 s.
-    request<CheckoutResult>(token, "/api/shopping-list/checkout", "POST", { familyId, items }, 90_000),
+  /** "Đặt hàng": the cart becomes a delivery order paid on delivery; its lines show "Đang giao" in Kho. */
+  placeOrder: (token: string, familyId: string, items: CheckoutLine[], delivery: DeliveryInput) =>
+    request<{ order: Order }>(token, "/api/shopping-list/checkout", "POST", { familyId, items, delivery: { ...delivery, paymentMethod: "COD" } }, 30_000),
+  /** The family's orders, newest first. */
+  orders: (token: string, familyId: string) =>
+    request<{ items: Order[]; total: number }>(token, `/api/shopping-list/orders${familyQuery(familyId)}&limit=50`),
+  /** The caller's last delivery details (prefill), or null. */
+  lastDelivery: (token: string, familyId: string) =>
+    request<{ delivery: { address: string | null; latitude: number | null; longitude: number | null; receiverName: string | null; receiverPhone: string | null } | null }>(token, `/api/shopping-list/orders/last-delivery${familyQuery(familyId)}`),
+  /** "Hủy đơn" (only while the order waits for a shipper). */
+  cancelOrder: (token: string, familyId: string, orderId: string) =>
+    request<{ order: Order }>(token, `/api/shopping-list/orders/${encodeURIComponent(orderId)}/cancel${familyQuery(familyId)}`, "POST", {}),
   updateItem: (token: string, familyId: string, itemId: string, changes: { quantity?: number; note?: string | null }) =>
     request<ShoppingItem>(token, `/api/shopping-list/items/${encodeURIComponent(itemId)}${familyQuery(familyId)}`, "PATCH", changes),
   deleteItem: (token: string, familyId: string, itemId: string) =>
