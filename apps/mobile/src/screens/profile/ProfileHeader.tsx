@@ -6,6 +6,7 @@ import { useSession } from "../../services/session";
 import UserAvatar from "../../components/UserAvatar";
 import { inventoryApi } from "../inventory/inventoryApi";
 import { CAMERA_PERMISSION_TEXT, LIBRARY_PERMISSION_TEXT, pickAvatarPhoto } from "../inventory/inventoryPhoto";
+import { photoUploadErrorMessage } from "../inventory/photoUpload";
 import { nameProblem } from "./profileName";
 
 /** Typing pause after which the name saves itself (it also saves on blur / "done"). */
@@ -62,7 +63,7 @@ export default function ProfileHeader(): React.JSX.Element | null {
   };
 
   const changePhoto = async (source: "camera" | "library") => {
-    if (!accessToken) return;
+    if (!accessToken || photoBusy) return;
     setPhotoError(null);
     const result = await pickAvatarPhoto(source);
     if (result.status === "cancelled") return;
@@ -76,14 +77,15 @@ export default function ProfileHeader(): React.JSX.Element | null {
       const uploaded = await inventoryApi.uploadAvatar(accessToken, result.photo);
       await updateProfile({ avatarUrl: uploaded.avatarUrl });
     } catch (error) {
-      setPhotoError(error instanceof Error ? error.message : "Chưa tải được ảnh. Kiểm tra mạng rồi thử lại.");
+      // Only a real network failure keeps the "cannot reach the server" text; HTTP errors get their own message.
+      setPhotoError(photoUploadErrorMessage(error));
     } finally {
       setPhotoBusy(false);
     }
   };
 
   const removePhoto = async () => {
-    if (!accessToken) return;
+    if (!accessToken || photoBusy) return;
     setPhotoBusy(true);
     setPhotoError(null);
     try {
