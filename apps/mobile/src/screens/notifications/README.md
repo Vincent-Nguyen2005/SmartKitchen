@@ -1,15 +1,15 @@
 # Notifications screens
 
-Owner: Huy. Responsibility: notification center, promotions and user notification preferences (#61).
+Owner: Huy. Responsibility: notification center and promotions (#61). There are no notification settings: every notification type is shown and sent.
 
 ## Screens
 
 | File | What it does |
 |---|---|
 | `NotificationsHome.tsx` | Entry point of the "Thông báo" tab: one list, no title, segments or read filter |
+| `GreetingCard.tsx` | Time-of-day greeting at the top (07:00–09:59 sáng, 10:00–13:59 trưa, 17:00–21:59 tối, Vietnam time; nothing otherwise) with today's dishes of that meal from the family menu ("Bữa sáng: …"); tap opens Lịch on that meal. In-app only: nothing stored, not a notification, not in the bell badge. Helpers and the push-tap target in `greeting.ts` |
 | `NotificationFeed.tsx` | The list: notifications (paging on scroll, unread dot + bold title, tap marks read), expiry alerts from the inventory alerts API (expired or within 3 days; tap opens Kho with the item's edit dialog) and active promotions (hidden when a promotion notification exists). Expiry first, then unread, then newest. Pull-to-refresh |
 | `PromotionDetail.tsx` | Promotion detail with "Mua" (adds to Giỏ hàng) |
-| `NotificationPreferencesScreen.tsx` | Push / promotion toggles, quiet hours (HH:mm, overnight allowed), save. Opened from Hồ sơ > "Cài đặt thông báo" |
 | `registerDeviceToken.ts` | Registers the Expo push token after sign-in; never throws |
 
 Shared by the admin screens too: `gatewayApi.ts` (API client), `useGatewayApi.ts` (session → client), `ui.tsx` (layout, states, buttons, segmented tabs, fields, badges). Colours, spacing, font sizes and the icon wrapper come from `../../theme/` (see its README).
@@ -44,9 +44,9 @@ Preparation: `docker compose -p smartkitchen up -d`, then in `apps/mobile` run `
 5. **Paging:** with more than 20 notifications, scrolling to the end loads the next page.
 6. **Error + retry:** stop the gateway (`docker compose -p smartkitchen stop gateway`) → pull to refresh → "Không kết nối được máy chủ…" → start it → "Thử lại" works.
 7. **Promotions search:** type `ca chua` (no accents) → promotions titled "Cà chua…" appear; an unknown word → the empty state names it.
-8. **Preferences:** toggle Khuyến mãi off → Lưu → reopen → still off. Quiet hours `22:00`/`06:00` saves; `7:00` shows the HH:mm validation error and the save button is disabled.
+8. **No settings:** Hồ sơ has no "Cài đặt thông báo" row; promotions, expiry alerts and "Tuần này còn thiếu" always show.
 9. **Push registration (dev build):** allow notifications → `device_tokens` has a row for the user; deny → app keeps working.
-10. **Responsive:** on a wide window or tablet → inbox shows 2 columns, promotions 2–3 columns (a lone last card keeps the column width), preferences are centred (max 640 px). Native builds are portrait-locked by `app.config.ts`, so check landscape on web (`pnpm --filter mobile exec expo start --web`) or a tablet.
+10. **Responsive:** on a wide window or tablet → inbox shows 2 columns, promotions 2–3 columns (a lone last card keeps the column width). Native builds are portrait-locked by `app.config.ts`, so check landscape on web (`pnpm --filter mobile exec expo start --web`) or a tablet.
 11. **Accessibility:** with TalkBack/VoiceOver, every card reads its title and unread state; switches and buttons have labels.
 
 ## "Tuần này còn thiếu" and "Cần mua tuần này"

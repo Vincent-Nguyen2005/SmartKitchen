@@ -1,119 +1,80 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+/** In-memory notifications table with the unique dedupeKey, like Postgres (createMany skipDuplicates). */
+const rows = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 const prismaMock = vi.hoisted(() => ({
   promotion: { findUnique: vi.fn(), findMany: vi.fn() },
-  notificationPreference: { findMany: vi.fn() },
   deviceToken: { findMany: vi.fn() },
-  notification: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
-  $transaction: vi.fn(),
+  notification: { findMany: vi.fn(), createMany: vi.fn() },
 }));
+const pushSend = vi.hoisted(() => vi.fn());
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
+vi.mock("./push-provider", () => ({ createPushProvider: () => ({ send: pushSend }) }));
 
-import { dispatchActivePromotions, dispatchPromotion } from "./promotion-dispatch.service";
-import type { PushProvider } from "./push-provider";
+import { addPromotionRows, dispatchPromotion, ensureActivePromotionRows, promotionDedupeKey } from "./promotion-dispatch.service";
 
-const promotion = { id: "p1", partnerId: "partner-1", title: "Cà chua giảm 20%", description: "Chỉ hôm nay", discountInfo: null };
-const token = (userId: string, value = `ExponentPushToken[${userId}]`) => ({ userId, token: value, isActive: true });
+const promotion = (id: string) => ({ id, partnerId: "partner-1", title: `KM ${id}`, description: "Chỉ hôm nay", discountInfo: null });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.useFakeTimers();
-  vi.setSystemTime(new Date("2026-11-04T03:00:00Z")); // 10:00 in Ho Chi Minh City
-  prismaMock.promotion.findUnique.mockResolvedValue(promotion);
-  prismaMock.notificationPreference.findMany.mockResolvedValue([]);
-  prismaMock.notification.findMany.mockResolvedValue([]);
-  prismaMock.notification.create.mockImplementation(({ data }: { data: { userId: string } }) => ({ id: `n-${data.userId}`, ...data }));
-  prismaMock.notification.update.mockImplementation((args: unknown) => args);
-  prismaMock.$transaction.mockImplementation(async (ops: unknown[]) => ops);
+  rows.length = 0;
+  prismaMock.notification.findMany.mockImplementation(async ({ where }: { where: { userId: { in: string[] }; OR: Array<{ data: { equals: string } }> } }) =>
+    rows.filter((row) => row.dedupeKey === null && where.userId.in.includes(String(row.userId)) && where.OR.some((entry) => (row.data as { promotionId: string }).promotionId === entry.data.equals)));
+  prismaMock.notification.createMany.mockImplementation(async ({ data }: { data: Array<Record<string, unknown>> }) => {
+    let count = 0;
+    for (const row of data) if (!rows.some((existing) => existing.dedupeKey === row.dedupeKey)) { rows.push(row); count += 1; }
+    return { count };
+  });
 });
-afterEach(() => { vi.useRealTimers(); });
 
-const providerDelivering = (delivered: string[]): PushProvider => ({ send: vi.fn().mockResolvedValue(new Set(delivered)) });
-const updates = () => (prismaMock.$transaction.mock.calls.at(-1)?.[0] ?? []) as { where: { id: string }; data: { status: string } }[];
+describe("promotions are in-app only", () => {
+  it("an active promotion becomes one unread Thông báo row for the reader, and nothing is pushed", async () => {
+    prismaMock.promotion.findMany.mockResolvedValue([promotion("p1"), promotion("p2")]);
+    expect(await ensureActivePromotionRows("u1", new Date("2026-11-27T02:00:00Z"))).toBe(2);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ userId: "u1", type: "PROMOTION", channel: "IN_APP", status: "SENT", title: "KM p1", body: "Chỉ hôm nay", data: { promotionId: "p1", partnerId: "partner-1" }, dedupeKey: "promotion:p1:u1" });
+    expect(pushSend).not.toHaveBeenCalled();
+    // Only active promotions are read (no quiet window: in-app rows any time of day).
+    expect(prismaMock.promotion.findMany.mock.calls[0][0].where).toMatchObject({ isActive: true });
+  });
 
-describe("dispatchPromotion", () => {
-  it("returns 0 for an unknown promotion without touching tokens", async () => {
+  it("no duplicates: repeated reads, restarts and parallel reads keep one row per user and promotion", async () => {
+    prismaMock.promotion.findMany.mockResolvedValue([promotion("p1")]);
+    const [first, second] = await Promise.all([ensureActivePromotionRows("u1"), ensureActivePromotionRows("u1")]);
+    expect(first + second).toBe(1);
+    expect(await ensureActivePromotionRows("u1")).toBe(0);
+    expect(rows.filter((row) => row.userId === "u1")).toHaveLength(1);
+    // Another user gets their own row.
+    expect(await ensureActivePromotionRows("u2")).toBe(1);
+  });
+
+  it("a row made before the dedupe key existed counts as already there", async () => {
+    rows.push({ userId: "u1", type: "PROMOTION", data: { promotionId: "p1" }, dedupeKey: null });
+    expect(await addPromotionRows([promotion("p1")], ["u1", "u2"])).toBe(1);
+    expect(rows.map((row) => row.dedupeKey)).toEqual([null, promotionDedupeKey("p1", "u2")]);
+  });
+
+  it("no active promotion: nothing is written", async () => {
+    prismaMock.promotion.findMany.mockResolvedValue([]);
+    expect(await ensureActivePromotionRows("u1")).toBe(0);
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("admin dispatch (feed only)", () => {
+  it("adds the promotion's feed rows for the given users, once, with a counts-only log; no push", async () => {
+    prismaMock.promotion.findUnique.mockResolvedValue(promotion("p1"));
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    expect(await dispatchPromotion("p1", ["u1", "u2", "u2"])).toBe(2);
+    expect(await dispatchPromotion("p1", ["u1", "u2"])).toBe(0);
+    expect(JSON.parse(String(log.mock.calls[0][0]))).toEqual({ event: "promotion_feed_dispatch", users: 2, created: 2 });
+    expect(pushSend).not.toHaveBeenCalled();
+    log.mockRestore();
+  });
+
+  it("returns 0 for an unknown promotion", async () => {
     prismaMock.promotion.findUnique.mockResolvedValue(null);
-    expect(await dispatchPromotion("missing", ["u1"], providerDelivering([]))).toBe(0);
-    expect(prismaMock.deviceToken.findMany).not.toHaveBeenCalled();
-  });
-
-  it("creates PENDING notifications then marks delivered ones SENT and the rest FAILED", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
-    const provider = providerDelivering(["ExponentPushToken[u1]"]);
-    expect(await dispatchPromotion("p1", ["u1", "u2"], provider)).toBe(2);
-    expect(prismaMock.notification.create.mock.calls[0][0].data).toMatchObject({ type: "PROMOTION", channel: "PUSH", status: "PENDING", data: { promotionId: "p1", partnerId: "partner-1" } });
-    expect(updates().map((update) => [update.where.id, update.data.status])).toEqual([["n-u1", "SENT"], ["n-u2", "FAILED"]]);
-  });
-
-  it("skips users who disabled push or promotions", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2"), token("u3")]);
-    prismaMock.notificationPreference.findMany.mockResolvedValue([
-      { userId: "u1", pushEnabled: false, promotionEnabled: true },
-      { userId: "u2", pushEnabled: true, promotionEnabled: false },
-    ]);
-    const provider = providerDelivering(["ExponentPushToken[u3]"]);
-    expect(await dispatchPromotion("p1", ["u1", "u2", "u3"], provider)).toBe(1);
-    expect(vi.mocked(provider.send).mock.calls[0][0].map((message) => message.token)).toEqual(["ExponentPushToken[u3]"]);
-  });
-
-  it("skips users inside their quiet hours (evaluated in DEFAULT_TIMEZONE)", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
-    prismaMock.notificationPreference.findMany.mockResolvedValue([{ userId: "u1", pushEnabled: true, promotionEnabled: true, quietHoursStart: "09:00", quietHoursEnd: "11:00" }]);
-    expect(await dispatchPromotion("p1", ["u1", "u2"], providerDelivering(["ExponentPushToken[u2]"]))).toBe(1);
-    expect(prismaMock.notification.create.mock.calls.map((call) => call[0].data.userId)).toEqual(["u2"]);
-  });
-
-  it("does not notify a user twice for the same promotion", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
-    prismaMock.notification.findMany.mockResolvedValue([{ userId: "u1" }]);
-    expect(await dispatchPromotion("p1", ["u1", "u2"], providerDelivering(["ExponentPushToken[u2]"]))).toBe(1);
-    expect(prismaMock.notification.findMany).toHaveBeenCalledWith({ where: { userId: { in: ["u1", "u2"] }, type: "PROMOTION", data: { path: ["promotionId"], equals: "p1" } } });
-  });
-
-  it("marks every notification FAILED when the provider throws", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([token("u1"), token("u2")]);
-    const provider: PushProvider = { send: vi.fn().mockRejectedValue(new Error("expo down")) };
-    expect(await dispatchPromotion("p1", ["u1", "u2"], provider)).toBe(2);
-    expect(updates().every((update) => update.data.status === "FAILED")).toBe(true);
-  });
-
-  it("returns 0 and sends nothing when no target remains", async () => {
-    prismaMock.deviceToken.findMany.mockResolvedValue([]);
-    const provider = providerDelivering([]);
-    expect(await dispatchPromotion("p1", ["u1"], provider)).toBe(0);
-    expect(provider.send).not.toHaveBeenCalled();
-  });
-});
-
-describe("dispatchActivePromotions (cron job)", () => {
-  it("dispatches every active promotion to every user with an active token", async () => {
-    prismaMock.promotion.findMany.mockResolvedValue([{ id: "p1" }, { id: "p2" }]);
-    prismaMock.deviceToken.findMany.mockResolvedValueOnce([{ userId: "u1" }]).mockResolvedValue([]);
-    await dispatchActivePromotions();
-    expect(prismaMock.promotion.findUnique).toHaveBeenCalledTimes(2);
-  });
-
-  it("ignores a run that starts while the previous one is still running", async () => {
-    let release: (value: unknown) => void = () => undefined;
-    prismaMock.promotion.findMany
-      .mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }))
-      .mockResolvedValue([]);
-    prismaMock.deviceToken.findMany.mockResolvedValue([]);
-    const first = dispatchActivePromotions();
-    await dispatchActivePromotions(); // overlapping run returns immediately
-    expect(prismaMock.promotion.findMany).toHaveBeenCalledTimes(1);
-    release([]);
-    await first;
-    await dispatchActivePromotions(); // guard is released afterwards
-    expect(prismaMock.promotion.findMany).toHaveBeenCalledTimes(2);
-  });
-
-  it("releases the guard even when a run fails", async () => {
-    prismaMock.promotion.findMany.mockRejectedValueOnce(new Error("db down")).mockResolvedValue([]);
-    prismaMock.deviceToken.findMany.mockResolvedValue([]);
-    await expect(dispatchActivePromotions()).rejects.toThrow("db down");
-    await dispatchActivePromotions();
-    expect(prismaMock.promotion.findMany).toHaveBeenCalledTimes(2);
+    expect(await dispatchPromotion("missing", ["u1"])).toBe(0);
+    expect(prismaMock.notification.createMany).not.toHaveBeenCalled();
   });
 });

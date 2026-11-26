@@ -9,6 +9,7 @@ import {
   Text,
   View,
   useWindowDimensions,
+  type ScrollViewInstance,
 } from "react-native";
 import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react-native";
 import { AppIcon, AppText, breakpoints, colors, radius, spacing, textStyles, touchTarget } from "../../theme";
@@ -30,6 +31,8 @@ import {
 type Props = Readonly<{
   accessToken: string | null;
   familyId?: string | null;
+  /** Open today's day view on this meal (greeting card in Thông báo, "Chào buổi sáng" push); a new key re-opens. */
+  focusMeal?: { meal: MealType; key: number } | null;
 }>;
 
 const periods: Array<{ value: PeriodType; label: string }> = [
@@ -85,7 +88,7 @@ function itemsForDay(menus: MenuRecord[], key: string): MenuItem[] {
  * and then kept as saved; it never changes by itself. Dishes open read-only here ("Đổi món khác" is in Nấu ăn);
  * "Làm mới theo kho" regenerates the whole day after a confirmation. Past days are read-only.
  */
-export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.Element {
+export default function MenuScreen({ accessToken, familyId, focusMeal }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isWide = width >= breakpoints.wide;
   const horizontalPadding = width < 360 ? spacing.sm : isWide ? spacing.xl : spacing.lg;
@@ -113,6 +116,26 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
   const todayKey = dayKey(new Date());
   const selectedKey = dayKey(selectedDate);
   const isPast = selectedKey < todayKey;
+  // Scrolling to a focused meal: the meals block is a direct child of the ScrollView content.
+  const scrollRef = useRef<ScrollViewInstance>(null);
+  const mealsY = useRef<number | null>(null);
+  const sectionY = useRef(new Map<MealType, number>());
+  const pendingMeal = useRef<MealType | null>(null);
+  const scrollToPendingMeal = () => {
+    const meal = pendingMeal.current;
+    const offset = meal ? sectionY.current.get(meal) : undefined;
+    if (!meal || offset === undefined || mealsY.current === null) return;
+    pendingMeal.current = null;
+    scrollRef.current?.scrollTo({ y: Math.max(0, mealsY.current + offset - spacing.sm), animated: true });
+  };
+  useEffect(() => {
+    if (!focusMeal) return;
+    setPeriod("DAY");
+    setSelectedDate(new Date());
+    setFollowToday(true);
+    pendingMeal.current = focusMeal.meal;
+    scrollToPendingMeal();
+  }, [focusMeal?.key]);
 
   useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
@@ -310,13 +333,13 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
   } else {
     const meals = dayItems.some((item) => item.mealType === "SNACK") ? [...DAY_MEALS, "SNACK" as MealType] : DAY_MEALS;
     scheduleContent = (
-      <View style={styles.meals}>
+      <View style={styles.meals} onLayout={(event) => { mealsY.current = event.nativeEvent.layout.y; scrollToPendingMeal(); }}>
         {meals.map((meal) => {
           const items = dayItems.filter((item) => item.mealType === meal);
           if (items.length === 0 && meal === "SNACK") return null;
           const kcal = items.reduce((sum, item) => sum + (item.calories ?? 0), 0);
           return (
-            <View key={meal} style={styles.mealSection}>
+            <View key={meal} style={styles.mealSection} onLayout={(event) => { sectionY.current.set(meal, event.nativeEvent.layout.y); scrollToPendingMeal(); }}>
               <View style={styles.mealHeader}>
                 <Text style={styles.mealTitle} accessibilityRole="header">{mealLabels[meal]}</Text>
                 {kcal > 0 && <Text style={styles.mealKcal}>{Math.round(kcal)} kcal</Text>}
@@ -346,7 +369,7 @@ export default function MenuScreen({ accessToken, familyId }: Props): React.JSX.
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
+      <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.content, { maxWidth: isWide ? breakpoints.extraWide : undefined, paddingHorizontal: horizontalPadding }]}
         refreshControl={<RefreshControl refreshing={loading && menus.length > 0} onRefresh={() => void loadMenus()} tintColor={colors.primary} />}
       >

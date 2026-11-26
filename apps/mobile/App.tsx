@@ -56,12 +56,12 @@ import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
+import { pushTarget, type GreetingMeal } from "./src/screens/notifications/greeting";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
-import NotificationPreferencesScreen from "./src/screens/notifications/NotificationPreferencesScreen";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen, { type NutritionProfileHandle } from "./src/screens/nutrition/NutritionProfileScreen";
 import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
@@ -155,6 +155,9 @@ function AppContent(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("inventory");
   // Bumped to open Đi chợ directly on Giỏ hàng (from "Cần mua tuần này" in Thông báo).
   const [cartOpenKey, setCartOpenKey] = useState(0);
+  // Lịch opened on today's meal (greeting card in Thông báo, "Chào buổi sáng" push); a new key re-opens it.
+  const [menuFocus, setMenuFocus] = useState<{ meal: GreetingMeal; key: number } | null>(null);
+  const openMeal = useCallback((meal: GreetingMeal) => { setMenuFocus({ meal, key: Date.now() }); setTab("menu"); }, []);
   const [authView, setAuthView] = useState<AuthView>("login");
   const [paymentUrl, setPaymentUrl] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -168,8 +171,6 @@ function AppContent(): React.JSX.Element {
   }, [sessionNotice, clearSessionNotice]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  // Hồ sơ > "Cài đặt thông báo" (the notification settings screen, unchanged, moved out of Thông báo).
-  const [notificationSettingsOpen, setNotificationSettingsOpen] = useState(false);
   // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
   const [mealSizeOpen, setMealSizeOpen] = useState(false);
   // Hồ sơ > "Thông tin sức khỏe" (the nutrition profile form, moved out of Dinh dưỡng); closing it reloads targets.
@@ -235,7 +236,7 @@ function AppContent(): React.JSX.Element {
   // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
   // Đi chợ selection mode: its one-line bar takes the capture bar's place (same height) until selection ends.
   const marketSelection = useMarketSelectionBar();
-  const overlayOpen = profileOpen || notificationSettingsOpen || healthProfileOpen || mealSizeOpen;
+  const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen;
   const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
 
@@ -280,6 +281,26 @@ function AppContent(): React.JSX.Element {
     if (!session.user || !session.accessToken) return;
     void registerDeviceToken(createGatewayClient(session.accessToken));
   }, [session.user?.id, session.accessToken]);
+
+  // Tapping the 07:00 "Chào buổi sáng" push: Lịch on today's breakfast (or the home when there was no menu).
+  // expo-notifications is loaded lazily like registerDeviceToken; native only.
+  useEffect(() => {
+    if (Platform.OS === "web" || !session.user) return undefined;
+    let subscription: { remove: () => void } | null = null;
+    let active = true;
+    const handle = (data: unknown) => {
+      const target = pushTarget(data);
+      if (!target || !active) return;
+      if (target.meal) openMeal(target.meal);
+    };
+    void import("expo-notifications").then(async (Notifications) => {
+      if (!active) return;
+      subscription = Notifications.addNotificationResponseReceivedListener((response) => handle(response.notification.request.content.data));
+      const last = await Notifications.getLastNotificationResponseAsync().catch(() => null);
+      if (last) handle(last.notification.request.content.data);
+    }).catch(() => undefined);
+    return () => { active = false; subscription?.remove(); };
+  }, [session.user?.id, openMeal]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -525,12 +546,6 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.profileValue}>{session.user.email}</Text>
               <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
               <Text style={styles.profileValue}>{session.family?.currentUserRole ? familyRoleLabel(session.family.currentUserRole) : "Chưa tham gia gia đình"}</Text>
-              <TouchableOpacity accessibilityLabel="Cài đặt thông báo" accessibilityRole="button"
-                onPress={() => { setProfileOpen(false); setNotificationSettingsOpen(true); }} style={styles.sheetItem}>
-                <AppIcon icon={Bell} size="md" color={colors.primary} />
-                <Text style={styles.sheetItemText}>Cài đặt thông báo</Text>
-                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-              </TouchableOpacity>
               <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
                 onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
                 <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
@@ -551,18 +566,6 @@ function AppContent(): React.JSX.Element {
             </ScrollView>
           </View>
         </View>
-      </Modal>
-
-      <Modal animationType="slide" visible={notificationSettingsOpen && !isAdmin} onRequestClose={() => setNotificationSettingsOpen(false)}>
-        <SafeAreaView style={styles.settingsScreen}>
-          <View style={styles.settingsHeader}>
-            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setNotificationSettingsOpen(false)} />
-            <Text style={styles.settingsTitle}>Cài đặt thông báo</Text>
-          </View>
-          <View style={styles.settingsBody}>
-            <NotificationPreferencesScreen />
-          </View>
-        </SafeAreaView>
       </Modal>
 
       <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={() => void leaveHealthProfile()}>
@@ -654,6 +657,7 @@ function AppContent(): React.JSX.Element {
           <MenuScreen
             accessToken={session.accessToken}
             familyId={session.family?.id}
+            focusMeal={menuFocus}
           />
         )}
         {!paymentUrl && activeTab === "family" && <FamilyScreenFlow />}
@@ -662,6 +666,7 @@ function AppContent(): React.JSX.Element {
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
             onChanged={() => void refreshNotificationBadge()}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
+            onOpenMeal={openMeal}
           />
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
