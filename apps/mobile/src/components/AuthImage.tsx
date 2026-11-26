@@ -104,7 +104,7 @@ export function useAuthImageUri(url: string | null | undefined, accessToken: str
     // The token only matters for a download; a new token retries an image that failed (e.g. after a 401).
   }, [key, accessToken]);
 
-  // Until the effect runs for a new URL, never show the previous image (e.g. right after "Xóa ảnh" or a new upload).
+  // Until the effect runs for a new URL, never show the previous image (e.g. right after a new upload).
   const current = state.key === key ? state : { key, uri: null, failed: false };
   return {
     target,

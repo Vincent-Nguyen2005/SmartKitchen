@@ -155,7 +155,6 @@ export const inventoryApi = {
   /** Hồ sơ avatar: stored like Kho photos (re-encoded to 512 px); save the returned URL with authApi.updateMe. */
   uploadAvatar: async (accessToken: string, photo: UploadPhoto) =>
     request<{ avatarUrl: string }>(accessToken, "/api/inventory/avatars", { method: "POST", body: await photoForm({ ...photo, name: "avatar.jpg" }) }, 60_000),
-  deleteAvatar: (accessToken: string) => request<{ avatarUrl: null }>(accessToken, "/api/inventory/avatars", { method: "DELETE" }),
   /**
    * Nấu ăn "Hoàn thành": takes the dish's ingredients out of Kho (earliest expiry first; g/kg, packs and pieces
    * converted). `cookId` makes a retried request a no-op.
