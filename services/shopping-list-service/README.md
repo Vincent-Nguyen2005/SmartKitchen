@@ -56,6 +56,22 @@ pnpm --filter shopping-list-service prisma:deploy
 pnpm --filter shopping-list-service prisma:generate
 ```
 
+## "Chi tiêu" (GET /spending)
+
+`GET /api/shopping-list/spending?familyId=<uuid>&month=YYYY-MM&page=1&limit=50` (members of that family only: 403 otherwise; `month` defaults to the current Vietnam month) returns:
+
+```
+{ month, previousMonth, total, previousTotal, changePercent | null, purchaseCount,
+  groups: [{ name, amount, percent }],              // top 6 catalog groups, the rest and lines without a group in "Khác"
+  purchases: { page, limit, total, items: [{ id, purchasedAt, buyerUserId | null, itemCount, total,
+    lines: [{ id, name, quantity, unit, unitLabel, unitPrice, originalUnitPrice, discountPercent, lineTotal, group }] }] } }
+```
+
+- **What counts:** only completed purchases. A `Purchase` row is written when "Mua" (checkout) or a single-item purchase puts lines into Kho; lines that failed stay in the cart and never count. Đi chợ has no payment step (payment-service is not involved).
+- **Amounts:** the checkout's rounding, snapshotted on each line when bought: paid unit price = round(unitPrice × (100 − discount%) / 100), line total = round(paid × quantity), purchase total = sum of the rounded line totals (lines without a price: 0). Totals, groups (percent of the month, whole numbers) and the comparison (whole % vs the previous month; null when that was 0) are computed here.
+- **Months:** Vietnam calendar months (UTC+7). Purchases newest first; the list is paginated, totals and groups cover the whole month.
+- **People:** only `buyerUserId`; the app shows the member's name and avatar from the family it already loaded. Purchases made before migration `20261214000000_purchases` were backfilled (same cart and minute = one purchase) with no buyer.
+
 ## Internal: product usage
 
 `GET /internal/products/:productId/usage` (x-api-key = `INTERNAL_API_KEY`, at least 32 characters; the gateway answers 404 for `/internal/*`) returns `{ items }`, the number of shopping-list items added from that admin catalog product. admin-service calls it before deleting a catalog ingredient.

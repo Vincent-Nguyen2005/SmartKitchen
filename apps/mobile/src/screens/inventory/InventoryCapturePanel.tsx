@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
-import { Camera, Check, FileImage, Mic, RotateCcw, ScanBarcode, Search, Settings, X } from "lucide-react-native";
+import { Camera, Check, FileImage, RotateCcw, ScanBarcode, Search, Settings, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { DateField } from "../admin/DateField";
@@ -31,11 +31,11 @@ import { useConfirm } from "../../components/ConfirmDialog";
 const isWeb = Platform.OS === "web";
 const UPLOAD_FAILED_NOTE = "Đã lưu, nhưng chưa tải được ảnh. Thử lại";
 
-export type InventoryCaptureMode = "photo" | "scan" | "voice";
+export type InventoryCaptureMode = "photo" | "scan";
 type Mode = InventoryCaptureMode;
 /**
- * onClose closes the surrounding sheet (camera cancelled before any photo). initialPhoto / initialVoiceText come
- * from the bottom bar, which opens the camera or starts listening before this panel is shown.
+ * onClose closes the surrounding sheet (camera cancelled before any photo). initialPhoto comes from the bottom bar,
+ * which opens the camera before this panel is shown.
  */
 type Props = {
   familyId: string | null;
@@ -46,25 +46,12 @@ type Props = {
   autoStart?: boolean;
   onClose?: () => void;
   initialPhoto?: UploadPhoto | null;
-  initialVoiceText?: string;
 };
-type SpeechModule = typeof import("expo-speech-recognition").ExpoSpeechRecognitionModule;
 type ReceiptDraft = { id: string; name: string; quantity: string; unit: InventoryUnit; sourceText: string };
 type CaptureAsset = { uri: string; base64?: string | null; mimeType?: string | null; fileName?: string | null };
 
 
-function parseVoiceDraft(text: string): { name: string; quantity: string; unit: InventoryUnit } {
-  const match = text.trim().match(/^(\d+(?:[,.]\d+)?)\s*(kg|kilogram|cân|gram|g|ml|milliliter|lít|lit|l)\s+(.+)$/i);
-  if (!match) return { name: text.trim(), quantity: "1", unit: "PIECE" };
-  const spokenUnit = match[2].toLowerCase();
-  const unit: InventoryUnit = ["kg", "kilogram", "cân"].includes(spokenUnit) ? "KILOGRAM"
-    : ["gram", "g"].includes(spokenUnit) ? "GRAM"
-      : ["ml", "milliliter"].includes(spokenUnit) ? "MILLILITER"
-        : ["lít", "lit", "l"].includes(spokenUnit) ? "LITER" : "PIECE";
-  return { name: match[3].trim(), quantity: match[1].replace(",", "."), unit };
-}
-
-export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false, autoStart = false, onClose, initialPhoto = null, initialVoiceText }: Props): React.JSX.Element {
+export default function InventoryCapturePanel({ familyId, accessToken, onSaved, initialMode = "photo", embedded = false, autoStart = false, onClose, initialPhoto = null }: Props): React.JSX.Element {
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
   const [mode, setMode] = useState<Mode>(initialMode);
@@ -104,22 +91,11 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
   const [success, setSuccess] = useState<string | null>(null);
   const [receiptText, setReceiptText] = useState("");
   const [receiptDrafts, setReceiptDrafts] = useState<ReceiptDraft[]>([]);
-  const [recognizing, setRecognizing] = useState(false);
-  const [voiceText, setVoiceText] = useState("");
-  const speechModule = useRef<SpeechModule | null>(null);
-  const speechSubscriptions = useRef<Array<{ remove: () => void }>>([]);
   const lastScannedBarcode = useRef("");
   const autoStarted = useRef(false);
 
-  const clearSpeechSubscriptions = () => {
-    speechSubscriptions.current.forEach((subscription) => subscription.remove());
-    speechSubscriptions.current = [];
-  };
-
   useEffect(() => () => {
-    clearSpeechSubscriptions();
     if (galleryTimer.current) clearTimeout(galleryTimer.current);
-    try { speechModule.current?.abort(); } catch { /* Native speech module may be unavailable in Expo Go. */ }
   }, []);
 
   const chooseMode = (nextMode: Mode) => {
@@ -411,7 +387,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     setQuantity("1");
     setBarcode("");
     setBarcodeResult(null);
-    setVoiceText("");
     setPhoto(null);
     setExpiryDay("");
     setGroup("");
@@ -513,63 +488,7 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
     }
   };
 
-  const setVoiceDraft = (transcript: string) => {
-    const clean = transcript.trim();
-    setVoiceText(clean);
-    if (!clean) return;
-    const parsed = parseVoiceDraft(clean);
-    setName(parsed.name);
-    setQuantity(parsed.quantity);
-    setUnit(parsed.unit);
-    setPieceWord(null);
-  };
-
-  // Transcript heard by the bottom-bar voice overlay: same draft as speaking inside this panel.
-  useEffect(() => {
-    if (initialVoiceText) setVoiceDraft(initialVoiceText);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const startVoice = async () => {
-    setNote(null);
-    if (recognizing) {
-      speechModule.current?.stop();
-      return;
-    }
-    try {
-      const { ExpoSpeechRecognitionModule } = await import("expo-speech-recognition");
-      speechModule.current = ExpoSpeechRecognitionModule;
-      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable() || !ExpoSpeechRecognitionModule.supportsOnDeviceRecognition()) {
-        setNote("Thiết bị chưa hỗ trợ nhận dạng tiếng Việt trên máy. Hãy chụp sản phẩm hoặc quét mã vạch.");
-        return;
-      }
-      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
-      if (!permission.granted) { setNote("Chưa được cấp quyền micro hoặc nhận dạng giọng nói."); return; }
-      clearSpeechSubscriptions();
-      speechSubscriptions.current = [
-        ExpoSpeechRecognitionModule.addListener("result", (event) => {
-          setVoiceDraft(event.results[0]?.transcript ?? "");
-        }),
-        ExpoSpeechRecognitionModule.addListener("end", () => setRecognizing(false)),
-        ExpoSpeechRecognitionModule.addListener("error", (event) => {
-          setRecognizing(false);
-          setNote(`Không nhận dạng được giọng nói (${event.error}). Hãy thử lại hoặc chụp sản phẩm.`);
-        }),
-        ExpoSpeechRecognitionModule.addListener("nomatch", () => {
-          setRecognizing(false);
-          setNote("Chưa nghe rõ tên thực phẩm. Hãy thử lại hoặc chụp sản phẩm.");
-        }),
-      ];
-      ExpoSpeechRecognitionModule.start({ lang: "vi-VN", interimResults: true, continuous: false, requiresOnDeviceRecognition: true });
-      setRecognizing(true);
-      setNote("Đang nhận dạng trên thiết bị. Nói tên thực phẩm, ví dụ: ‘2 kg gạo’.");
-    } catch {
-      setRecognizing(false);
-      setNote("Chưa có module giọng nói trong bản ứng dụng này. Hãy chụp sản phẩm hoặc quét mã vạch.");
-    }
-  };
-
-  const showMainDraft = (mode === "photo" && !!photoUri) || (!!name.trim() && (mode === "scan" || mode === "voice"));
+  const showMainDraft = (mode === "photo" && !!photoUri) || (!!name.trim() && mode === "scan");
 
   return (
     <View style={[styles.panel, embedded && styles.embeddedPanel, { padding: isCompact ? spacing.md : spacing.lg }]}>
@@ -581,13 +500,12 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
         <>
           {!embedded && <View style={styles.modeRow}>
             {([
-              ["photo", "Chụp ảnh"], ["scan", "Mã vạch / hóa đơn"], ["voice", "Giọng nói"],
+              ["photo", "Chụp ảnh"], ["scan", "Mã vạch / hóa đơn"],
             ] as Array<[Mode, string]>).map(([value, label]) => (
               <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ selected: mode === value }} key={value} onPress={() => { chooseMode(value); if (value === "photo") void startPhotoCamera(); if (value === "scan") void startBarcodeCamera(); }} style={[styles.modeButton, mode === value && styles.modeButtonActive]}>
                 <View style={styles.modeContent}>
                   {value === "photo" ? <AppIcon icon={Camera} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                    : value === "scan" ? <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />
-                      : <AppIcon icon={Mic} size="sm" color={mode === value ? colors.surface : colors.muted} />}
+                    : <AppIcon icon={ScanBarcode} size="sm" color={mode === value ? colors.surface : colors.muted} />}
                   <Text style={[styles.modeText, mode === value && styles.modeTextActive]}>{label}</Text>
                 </View>
               </Pressable>
@@ -667,17 +585,6 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
                   <Pressable accessibilityRole="button" disabled={busy} onPress={() => void saveReceiptDraft(draft)} style={styles.saveButton}><Text style={styles.saveButtonText}>Xác nhận và thêm vào kho</Text></Pressable>
                 </View>
               ))}
-            </View>
-          )}
-
-          {mode === "voice" && (
-            <View style={styles.section}>
-              <Text style={styles.label}>Nhận dạng tiếng Việt trên thiết bị</Text>
-              <Pressable accessibilityRole="button" accessibilityState={{ busy: recognizing }} disabled={busy} onPress={() => void startVoice()} style={[styles.voiceButton, recognizing && styles.voiceButtonActive]}>
-                <View style={styles.actionContent}><AppIcon icon={Mic} size="sm" color={colors.surface} /><Text style={styles.saveButtonText}>{recognizing ? "Dừng nhận dạng" : "Bắt đầu nói"}</Text></View>
-              </Pressable>
-              {!!voiceText && <Text style={styles.helper}>Bản nháp nghe được: {voiceText}</Text>}
-              <Text style={styles.helper}>Âm thanh không được lưu hoặc gửi tới dịch vụ bên ngoài. Thiết bị cần hỗ trợ model tiếng Việt ngoại tuyến.</Text>
             </View>
           )}
 
@@ -828,8 +735,6 @@ const styles = StyleSheet.create({
   receiptCard: { backgroundColor: colors.background, borderRadius: 8, gap: spacing.sm, marginTop: spacing.xs, padding: spacing.md },
   sourceText: { color: colors.muted, ...typography.caption },
   saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, marginTop: spacing.xs, paddingHorizontal: spacing.md },
-  voiceButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.md },
-  voiceButtonActive: { backgroundColor: colors.danger },
   saveButtonText: { color: colors.surface, ...typography.labelSmall, textAlign: "center" },
   disabledButton: { opacity: 0.65 },
   notice: { color: colors.danger, ...typography.bodySmall, marginTop: spacing.md },

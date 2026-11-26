@@ -12,16 +12,16 @@ import {
   ChevronRight,
   CircleUserRound,
   LogOut,
-  Mic,
   Salad,
   QrCode,
+  Wallet,
   Settings,
   ShoppingBasket,
   Utensils,
   Users,
   X,
 } from "lucide-react-native";
-import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget } from "./src/theme";
+import { AppIcon, breakpoints, colors, IconButton, spacing, textStyles, touchTarget, type LucideIcon } from "./src/theme";
 import {
   ActivityIndicator,
   AppState,
@@ -49,7 +49,8 @@ import FamilyQrSheet from "./src/screens/family/FamilyQrSheet";
 import FamilyQrScanner from "./src/screens/family/FamilyQrScanner";
 import { familyQrAction, type FamilyQrAction } from "./src/screens/family/familyQr";
 import { familyRoleLabel } from "./src/screens/family/familyActions";
-import { CaptureDialog, MIC_PERMISSION_TEXT, useInstantVoice } from "./src/screens/inventory/InstantCapture";
+import { CaptureDialog } from "./src/screens/inventory/InstantCapture";
+import SpendingScreen from "./src/screens/spending/SpendingScreen";
 import { CAMERA_PERMISSION_TEXT, takeItemPhoto } from "./src/screens/inventory/inventoryPhoto";
 import type { UploadPhoto } from "./src/screens/inventory/inventoryApi";
 import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
@@ -69,7 +70,7 @@ import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed"
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
-import { captureBarVisible } from "./src/navigation/captureBar";
+import { CAPTURE_ACTIONS, captureBarVisible, type CaptureActionKey } from "./src/navigation/captureBar";
 import { SelectionBar } from "./src/components/SelectionBar";
 import { marketSelectionBar, useMarketSelectionBar } from "./src/screens/shopping-cart/selectionBar";
 
@@ -124,11 +125,9 @@ const menuKeys: ReadonlySet<Tab> = new Set(["menu", "recipes", "nutrition"]);
 const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 /** Dropdown order (and default screen): Nấu ăn, Dinh dưỡng, Lịch. */
 const menuTabs = (["recipes", "nutrition", "menu"] as const).map((key) => tabs.find((tab) => tab.key === key)!);
-const captureActions = [
-  { key: "photo", label: "Chụp ảnh", icon: Camera },
-  { key: "familyQr", label: "QR gia đình", icon: QrCode },
-  { key: "voice", label: "Giọng nói", icon: Mic },
-] as const;
+/** Capture bar: Chụp ảnh · QR gia đình · Chi tiêu (labels and order in navigation/captureBar.ts). */
+const CAPTURE_ICONS: Record<CaptureActionKey, LucideIcon> = { photo: Camera, familyQr: QrCode, spending: Wallet };
+const captureActions = CAPTURE_ACTIONS.map((action) => ({ ...action, icon: CAPTURE_ICONS[action.key] }));
 
 // Logic lấy API và User ID của Hùng
 function NoticeBanner({ message }: { message: string }): React.JSX.Element {
@@ -195,27 +194,23 @@ function AppContent(): React.JSX.Element {
   // "QR gia đình" sheet (owner) or scanner (everyone else).
   const [familyQr, setFamilyQr] = useState<FamilyQrAction | null>(null);
   const [captureReady, setCaptureReady] = useState(false);
-  // Result of the bottom-bar camera / microphone, handed to the capture panel when its sheet opens.
+  // Result of the bottom-bar camera, handed to the capture panel when its sheet opens.
   const [capturePhoto, setCapturePhoto] = useState<UploadPhoto | null>(null);
-  const [captureVoiceText, setCaptureVoiceText] = useState<string | undefined>(undefined);
   const [captureDialog, setCaptureDialog] = useState<{ text: string; settings: boolean } | null>(null);
-  const voice = useInstantVoice({
-    onTranscript: (text) => { setCaptureVoiceText(text); setCaptureReady(false); setCaptureMode("voice"); },
-    onPermissionDenied: () => setCaptureDialog({ text: MIC_PERMISSION_TEXT, settings: true }),
-    onMessage: (text) => setCaptureDialog({ text, settings: false }),
-  });
-  const closeCapture = () => { setCaptureReady(false); setCaptureMode(null); setCapturePhoto(null); setCaptureVoiceText(undefined); };
+  // "Chi tiêu" (capture bar): the family's Đi chợ spending, full screen.
+  const [spendingOpen, setSpendingOpen] = useState(false);
+  const closeCapture = () => { setCaptureReady(false); setCaptureMode(null); setCapturePhoto(null); };
 
   /**
    * Bottom bar. "Chụp ảnh": the phone camera opens in this tap (web: the camera file input is clicked synchronously
-   * inside it); after the shot the Kho photo form opens. "Giọng nói": listening starts in this tap with a small
-   * overlay. Without a family the sheet opens instead, to explain why nothing can be saved.
+   * inside it); after the shot the Kho photo form opens. Without a family the sheet opens instead, to explain why
+   * nothing can be saved. "Chi tiêu" opens the spending screen (its own "Bạn chưa có gia đình" state).
    */
-  const startCapture = (key: (typeof captureActions)[number]["key"]) => {
+  const startCapture = (key: CaptureActionKey) => {
     // "QR gia đình": the owner shows the family's one-time join QR; everyone else scans one.
     if (key === "familyQr") { setFamilyQr(familyQrAction(session.family?.currentUserRole)); return; }
+    if (key === "spending") { setSpendingOpen(true); return; }
     if (!session.family?.id || !session.accessToken) { setCaptureReady(false); setCaptureMode(key); return; }
-    if (key === "voice") { voice.start(); return; }
     void takeItemPhoto().then((result) => {
       if (result.status === "picked") { setCapturePhoto(result.photo); setCaptureReady(false); setCaptureMode("photo"); }
       else if (result.status === "denied") setCaptureDialog({ text: CAMERA_PERMISSION_TEXT, settings: true });
@@ -236,7 +231,7 @@ function AppContent(): React.JSX.Element {
   // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
   // Đi chợ selection mode: its one-line bar takes the capture bar's place (same height) until selection ends.
   const marketSelection = useMarketSelectionBar();
-  const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen;
+  const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen || spendingOpen;
   const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
 
@@ -604,7 +599,7 @@ function AppContent(): React.JSX.Element {
           <Pressable accessibilityLabel="Đóng chức năng" accessibilityRole="button" onPress={closeCapture} style={StyleSheet.absoluteFill} />
           <View style={styles.captureSheet}>
             <View style={styles.captureHeader}>
-              <Text style={styles.captureTitle}>{captureMode === "voice" ? "Thêm bằng giọng nói" : "Chụp ảnh sản phẩm"}</Text>
+              <Text style={styles.captureTitle}>Chụp ảnh sản phẩm</Text>
               <TouchableOpacity accessibilityLabel="Đóng" accessibilityRole="button" onPress={closeCapture} style={styles.sheetClose}>
                 <AppIcon icon={X} size="md" />
               </TouchableOpacity>
@@ -621,7 +616,6 @@ function AppContent(): React.JSX.Element {
                   onSaved={() => setInventoryRefreshKey((current) => current + 1)}
                   onClose={closeCapture}
                   initialPhoto={captureMode === "photo" ? capturePhoto : null}
-                  initialVoiceText={captureMode === "voice" ? captureVoiceText : undefined}
                 />
               )}
               {!session.family?.id && (
@@ -689,7 +683,7 @@ function AppContent(): React.JSX.Element {
         </View>
       )}
       {showSelectionBar && <SelectionBar state={marketSelection} onExit={marketSelectionBar.exit} onAdd={marketSelectionBar.add} />}
-      {voice.overlay}
+      <SpendingScreen visible={spendingOpen && !isAdmin} onClose={() => setSpendingOpen(false)} onOpenFamily={() => setTab("family")} />
       <CaptureDialog text={captureDialog?.text ?? null} settings={captureDialog?.settings} onClose={() => setCaptureDialog(null)} />
     </SafeAreaView>
   );

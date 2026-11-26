@@ -6,7 +6,9 @@ import {
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
-  updateItemBodySchema, checkoutBodySchema } from "../validators/shopping-list.validator";
+  updateItemBodySchema, checkoutBodySchema, spendingQuerySchema } from "../validators/shopping-list.validator";
+import { monthSpending, recordPurchase, vnMonth } from "../services/spending.service";
+import { catalogDetails } from "../services/shopping-list.service";
 import { ShoppingAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
 
@@ -87,7 +89,29 @@ export class ShoppingListController {
       const request = auth(req);
       await requireFamilyMembership(request, familyId);
       const result = await ShoppingListService.confirmPurchase(id, familyId, request.authUser.userId);
+      // "Chi tiêu": a single-item purchase is a purchase of one line (no-op when it was already recorded).
+      if (!result.alreadyPurchased) {
+        const productId = result.item.productId;
+        await recordPurchase(familyId, request.authUser.userId, [id], productId ? await catalogDetails(request.authUser.userId, [productId]) : new Map())
+          .catch((error: unknown) => console.error(JSON.stringify({ event: "purchase_record_failed", lines: 1, message: error instanceof Error ? error.message : "unknown" })));
+      }
       res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /spending?familyId&month=YYYY-MM: month summary + purchases of the caller's family (members only, 403 otherwise). */
+  static async spending(req: Request, res: Response, next: NextFunction) {
+    try {
+      const query = spendingQuerySchema.parse(req.query);
+      const request = auth(req);
+      await requireFamilyMembership(request, query.familyId);
+      const data = await monthSpending(query.familyId, query.month ?? vnMonth(), {
+        page: query.page, limit: query.limit,
+        catalog: (productIds) => catalogDetails(request.authUser.userId, productIds),
+      });
+      res.json({ success: true, data });
     } catch (err) {
       next(err);
     }

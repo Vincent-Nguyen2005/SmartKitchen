@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { captureBarVisible } from "./captureBar";
+import { CAPTURE_ACTIONS, captureBarVisible } from "./captureBar";
 
 const base = { isAdmin: false, profileOpen: false, paymentOpen: false };
 
@@ -24,4 +24,9 @@ test("hidden while Đi chợ selection mode shows its own bar; back when selecti
   assert.equal(captureBarVisible({ ...base, tab: "shopping", selecting: true }), false);
   assert.equal(captureBarVisible({ ...base, tab: "shopping", selecting: false }), true);
   assert.equal(captureBarVisible({ ...base, tab: "inventory" }), true);
+});
+
+test("the bar is Chụp ảnh · QR gia đình · Chi tiêu (no Giọng nói)", () => {
+  assert.deepEqual(CAPTURE_ACTIONS.map((action) => action.label), ["Chụp ảnh", "QR gia đình", "Chi tiêu"]);
+  assert.equal(CAPTURE_ACTIONS.some((action) => (action.key as string) === "voice" || (action.label as string) === "Giọng nói"), false);
 });

@@ -20,12 +20,8 @@ const config: ExpoConfig = {
     ["expo-image-picker", {
       photosPermission: "SmartKitchen cần truy cập ảnh khi bạn chọn ảnh thực phẩm hoặc ảnh hóa đơn để thêm vào kho.",
       cameraPermission: "SmartKitchen dùng camera khi bạn chụp ảnh thực phẩm hoặc hóa đơn. Ảnh thực phẩm chỉ lưu cùng món và chỉ gia đình bạn xem được.",
-      microphonePermission: "SmartKitchen dùng micro cho tính năng nhận dạng tên thực phẩm bằng giọng nói.",
-    }],
-    ["expo-speech-recognition", {
-      microphonePermission: "SmartKitchen dùng micro để nhận dạng tên thực phẩm bạn đọc.",
-      speechRecognitionPermission: "SmartKitchen dùng nhận dạng giọng nói trên thiết bị để tạo bản nháp thực phẩm.",
-      androidSpeechServicePackages: ["com.google.android.googlequicksearchbox"],
+      // Photos only (no video), and voice input was removed: no microphone permission.
+      microphonePermission: false,
     }],
     "@react-native-community/datetimepicker",
   ],

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { recordPurchase, type CatalogInfo } from "./spending.service";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { AppError } from "../lib/app-error";
@@ -184,24 +185,44 @@ const ADMIN_SERVICE_URL = (process.env.ADMIN_SERVICE_URL ?? "http://localhost:40
  * Shelf-life days of the cart's catalog products (admin-service user catalog, `ids` filter): the expiry of a bought
  * item is the purchase day (Vietnam) + these days. Empty when the catalog cannot be read; the app's value is used then.
  */
-export async function catalogShelfLife(userId: string, productIds: string[]): Promise<Map<string, number>> {
-  const days = new Map<string, number>();
+export type CatalogDetails = CatalogInfo & { shelfLifeDays?: number };
+
+/**
+ * Catalog details of the given products (admin-service user catalog, up to 100 ids): shelf-life days (expiry), group
+ * and piece word ("Chi tiêu"), price and running discount (cart lines without a price snapshot). Empty when the
+ * catalog cannot answer (the app's values are used instead).
+ */
+export async function catalogDetails(userId: string, productIds: string[]): Promise<Map<string, CatalogDetails>> {
+  const details = new Map<string, CatalogDetails>();
   const ids = [...new Set(productIds)].slice(0, 100);
-  if (ids.length === 0) return days;
+  if (ids.length === 0) return details;
   try {
     for (let page = 1; page <= 2; page += 1) {
       const response = await axios.get(`${ADMIN_SERVICE_URL}/catalog/ingredients`, {
         params: { ids: ids.join(","), page, limit: 50 }, headers: { "x-user-id": userId }, timeout: 5000,
       });
-      const body = response.data as { items?: Array<{ id?: unknown; shelfLifeDays?: unknown }>; totalPages?: number };
+      const body = response.data as { items?: Array<Record<string, unknown>>; totalPages?: number };
       for (const item of body.items ?? []) {
-        if (typeof item.id === "string" && typeof item.shelfLifeDays === "number" && Number.isInteger(item.shelfLifeDays) && item.shelfLifeDays >= 0) days.set(item.id, item.shelfLifeDays);
+        if (typeof item.id !== "string") continue;
+        details.set(item.id, {
+          ...(typeof item.shelfLifeDays === "number" && Number.isInteger(item.shelfLifeDays) && item.shelfLifeDays >= 0 ? { shelfLifeDays: item.shelfLifeDays } : {}),
+          group: typeof item.group === "string" && item.group.trim() ? item.group.trim() : null,
+          unitLabel: typeof item.unitLabel === "string" && item.unitLabel.trim() ? item.unitLabel.trim() : null,
+          price: typeof item.price === "number" ? item.price : null,
+          discountPercent: typeof item.discountPercent === "number" ? item.discountPercent : null,
+        });
       }
       if (page >= (body.totalPages ?? 1)) break;
     }
   } catch {
-    // The app's shelfLifeDays (from its own catalog lookup) is used instead.
+    // The app's shelfLifeDays / group are used instead.
   }
+  return details;
+}
+
+export async function catalogShelfLife(userId: string, productIds: string[]): Promise<Map<string, number>> {
+  const days = new Map<string, number>();
+  for (const [id, detail] of await catalogDetails(userId, productIds)) if (typeof detail.shelfLifeDays === "number") days.set(id, detail.shelfLifeDays);
   return days;
 }
 export type CheckoutResult = {
@@ -610,11 +631,11 @@ export class ShoppingListService {
     });
     const extrasById = new Map(lines.map((line) => [line.id, line]));
     // Expiry = purchase day + the product's shelf-life days: the catalog's value first, else the one the app sent.
-    const shelfLife = await catalogShelfLife(userId, cart.flatMap((item) => (item.productId ? [item.productId] : [])));
+    const catalog = await catalogDetails(userId, cart.flatMap((item) => (item.productId ? [item.productId] : [])));
     const result: CheckoutResult = { purchased: [], failed: [], listCompleted: false };
     for (const item of cart) {
       const line = extrasById.get(item.id);
-      const days = (item.productId ? shelfLife.get(item.productId) : undefined) ?? line?.shelfLifeDays;
+      const days = (item.productId ? catalog.get(item.productId)?.shelfLifeDays : undefined) ?? line?.shelfLifeDays;
       const extras: PurchaseExtras = {
         ...(line?.categoryName ? { categoryName: line.categoryName } : {}),
         ...(typeof days === "number" ? { expiryDate: vnDayFromToday(days) } : {}),
@@ -630,6 +651,19 @@ export class ShoppingListService {
           code: appError?.code ?? "PURCHASE_FAILED",
           message: appError?.message ?? "The item could not be added to inventory.",
         });
+      }
+    }
+    // "Chi tiêu": the lines that reached Kho in this "Mua" form one purchase by this member (failed lines stay out).
+    if (result.purchased.length > 0) {
+      const groups = new Map<string, CatalogInfo>(catalog);
+      for (const item of cart) {
+        const line = extrasById.get(item.id);
+        if (item.productId && !groups.get(item.productId)?.group && line?.categoryName) groups.set(item.productId, { ...groups.get(item.productId), group: line.categoryName });
+      }
+      try {
+        await recordPurchase(familyId, userId, result.purchased.map((entry) => entry.id), groups);
+      } catch (error) {
+        console.error(JSON.stringify({ event: "purchase_record_failed", lines: result.purchased.length, message: error instanceof Error ? error.message : "unknown" }));
       }
     }
     if (result.failed.length === 0 && result.purchased.length > 0) {

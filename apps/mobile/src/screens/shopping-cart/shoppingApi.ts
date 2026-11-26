@@ -60,6 +60,9 @@ async function request<T>(accessToken: string, path: string, method: RequestInit
 const familyQuery = (familyId: string) => `?familyId=${encodeURIComponent(familyId)}`;
 
 export const shoppingApi = {
+  /** "Chi tiêu": one Vietnam month (YYYY-MM) of the family's completed purchases; members only (403 otherwise). */
+  spending: <T>(token: string, familyId: string, month: string) =>
+    request<T>(token, `/api/shopping-list/spending${familyQuery(familyId)}&month=${encodeURIComponent(month)}&limit=100`),
   list: (token: string, familyId: string) => request<ShoppingList[]>(token, `/api/shopping-list/${familyQuery(familyId)}`),
   suggestions: (token: string, familyId: string) => request<ShoppingSuggestion[]>(token, `/api/shopping-list/suggestions${familyQuery(familyId)}`),
   generateFromMenu: (token: string, familyId: string) =>

@@ -135,6 +135,18 @@ describe("Giỏ hàng: checkout into Kho", () => {
     expect(mocks.prisma.shoppingList.update).not.toHaveBeenCalled();
     // Only the purchased line was marked; the failed one was never written.
     expect(tx.shoppingItem.update).toHaveBeenCalledTimes(1);
+    // "Chi tiêu": the purchase is recorded for the line that reached Kho only, by this member.
+    expect(tx.shoppingItem.findMany).toHaveBeenLastCalledWith(expect.objectContaining({ where: expect.objectContaining({ id: { in: [milkId] }, isPurchased: true }) }));
+  });
+
+  it("records one purchase by the buyer with the checkout's rounded total", async () => {
+    mocks.prisma.shoppingItem.findMany.mockResolvedValueOnce([item({ unitPrice: 30000, discountPercent: 15, quantity: 1.5 })]).mockResolvedValueOnce([]);
+    mocks.axios.post.mockResolvedValue({ data: { success: true, data: { item: { id: "66666666-6666-4666-8666-666666666666" } } } });
+    const purchaseCreate = vi.fn().mockResolvedValue({ id: "pur-1" });
+    Object.assign(tx, { purchase: { create: purchaseCreate } });
+    tx.shoppingItem.findMany.mockResolvedValueOnce([{ id: milkId, quantity: 1.5, unitPrice: 30000, discountPercent: 15, productId: null }]);
+    await ShoppingListService.checkout(familyId, userId);
+    expect(purchaseCreate).toHaveBeenCalledWith({ data: expect.objectContaining({ familyId, buyerUserId: userId, total: 38250, itemCount: 1 }) });
   });
 
   it("expiry = purchase day (Vietnam) + the catalog product's shelf-life days, before the app's value", async () => {

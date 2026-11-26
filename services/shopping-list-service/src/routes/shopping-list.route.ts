@@ -6,6 +6,7 @@ const router = Router();
 router.post("/generate", ShoppingListController.generate);
 router.get("/", ShoppingListController.list);
 router.get("/suggestions", ShoppingListController.suggestions);
+router.get("/spending", ShoppingListController.spending);
 router.post("/items", ShoppingListController.addItem);
 router.post("/items/ensure", ShoppingListController.ensureItems);
 router.post("/checkout", ShoppingListController.checkout);

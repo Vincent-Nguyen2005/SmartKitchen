@@ -1,5 +1,13 @@
+/** The bar's three buttons, left to right (icons are mapped in App.tsx). */
+export const CAPTURE_ACTIONS = [
+  { key: "photo", label: "Chụp ảnh" },
+  { key: "familyQr", label: "QR gia đình" },
+  { key: "spending", label: "Chi tiêu" },
+] as const;
+export type CaptureActionKey = (typeof CAPTURE_ACTIONS)[number]["key"];
+
 /**
- * Where the bottom "Chụp ảnh / QR hóa đơn / Giọng nói" bar (adds food to Kho) is shown: Kho, Đi chợ, Lịch, Nấu ăn,
+ * Where the bottom "Chụp ảnh / QR gia đình / Chi tiêu" bar is shown: Kho, Đi chợ, Lịch, Nấu ăn,
  * Dinh dưỡng and Gia đình. Hidden on Thông báo, while Hồ sơ (or one of its screens) is open, on a payment page, and
  * for admin accounts (Quản trị). Pure, covered by captureBar.test.ts.
  */

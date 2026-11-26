@@ -60,3 +60,11 @@ export const checkoutBodySchema = z.object({
 });
 
 export const generateBodySchema = z.object({ familyId: z.string().uuid() });
+
+/** GET /spending ("Chi tiêu"): a Vietnam month (default: the current one) of the family's purchases. */
+export const spendingQuerySchema = z.object({
+  familyId: z.string().uuid(),
+  month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, "month must be YYYY-MM").optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});

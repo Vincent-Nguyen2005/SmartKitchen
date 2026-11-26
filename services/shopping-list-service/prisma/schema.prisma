@@ -39,13 +39,39 @@ model ShoppingItem {
   discountPercent    Int?
   productId          String?
   imageUrl           String?
+  /// Set when the line is bought ("Chi tiêu"): the purchase (one "Mua"), the unit price paid after the discount,
+  /// the line total round(paidUnitPrice × quantity) in whole VND (null without a price), the catalog group and the
+  /// piece word ("quả") at purchase time.
+  purchaseId         String?   @db.Uuid
+  paidUnitPrice      Int?
+  lineTotal          Int?
+  groupName          String?
+  unitLabel          String?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
   shoppingList ShoppingList @relation(fields: [shoppingListId], references: [id], onDelete: Cascade)
+  purchase     Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
 
   @@unique([shoppingListId, generatedKey])
   @@index([shoppingListId])
+  @@index([purchaseId])
+}
+
+/// One completed "Mua" in Giỏ hàng (or one single-item purchase): who bought, when, and the total = sum of the
+/// rounded line totals of the lines that reached Kho. Lines that failed stay in the cart and are not part of it.
+/// buyerUserId is null for purchases made before this table existed (backfilled by migration).
+model Purchase {
+  id          String         @id @default(uuid()) @db.Uuid
+  familyId    String         @db.Uuid
+  buyerUserId String?        @db.Uuid
+  purchasedAt DateTime       @default(now())
+  total       Int            @default(0)
+  itemCount   Int            @default(0)
+  createdAt   DateTime       @default(now())
+  items       ShoppingItem[]
+
+  @@index([familyId, purchasedAt])
 }
 
 model PurchaseHistory {
