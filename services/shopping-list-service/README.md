@@ -94,6 +94,10 @@ Automatic checkout promotions are off unless `CHECKOUT_PROMOTIONS_ENABLED=true` 
 
 The mobile app shows no promotion rows then: Đi chợ has no "KM" tags or banner, Giỏ hàng and the checkout sheet show only "Tổng thanh toán", and order / shipper receipts show no "Khuyến mãi" row. Quản trị "Khuyến mãi" opens "Giảm giá tự động" (daily automatic discounts) directly.
 
+## Quản trị › Đơn hàng (GET /admin/orders, ADMIN)
+
+One list of every delivery order: optional `status` filter (the app sends none), `q` (receiver name / phone / address), `page`, `limit` (≤ 50), with `counts` per status. Sorted by the **last status change**, newest first. Every update of an order row is a status transition, so the row's `updatedAt` is that time (no extra column); each row returns it as `lastUpdatedAt`, plus `shipperName` for SHIPPING / DELIVERED orders (name only, no shipper id or phone). The admin app refreshes this list every 15 s while it is open.
+
 ## "Chi tiêu" (GET /spending)
 
 `GET /api/shopping-list/spending?familyId=<uuid>&month=YYYY-MM&page=1&limit=50` (members of that family only: 403 otherwise; `month` defaults to the current Vietnam month) returns:

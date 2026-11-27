@@ -14,7 +14,11 @@ const matches = (row: Row, where: Row): boolean => Object.entries(where).every((
 });
 const mocks = vi.hoisted(() => {
   const purchase = {
-    findMany: vi.fn(async ({ where, skip = 0, take = 100 }: { where: Row; skip?: number; take?: number }) => db.orders.filter((row) => matches(row, where)).sort((a, b) => b.purchasedAt - a.purchasedAt).slice(skip, skip + take)),
+    findMany: vi.fn(async ({ where, skip = 0, take = 100, orderBy }: { where: Row; skip?: number; take?: number; orderBy?: unknown }) => {
+      const byLastChange = JSON.stringify(orderBy ?? "").includes("updatedAt");
+      return db.orders.filter((row) => matches(row, where))
+        .sort((a, b) => (byLastChange ? b.updatedAt - a.updatedAt || b.purchasedAt - a.purchasedAt : b.purchasedAt - a.purchasedAt)).slice(skip, skip + take);
+    }),
     count: vi.fn(async ({ where }: { where: Row }) => db.orders.filter((row) => matches(row, where)).length),
     groupBy: vi.fn(async ({ where }: { where: Row }) => {
       const counts = new Map<string, number>();
@@ -22,7 +26,7 @@ const mocks = vi.hoisted(() => {
       return [...counts].map(([status, count]) => ({ status, _count: { _all: count } }));
     }),
     findFirst: vi.fn(async ({ where }: { where: Row }) => { const row = db.orders.find((entry) => matches(entry, where)); return row ? { ...row, items: row.items ?? [] } : null; }),
-    updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => { const hit = db.orders.filter((row) => matches(row, where)); hit.forEach((row) => Object.assign(row, data)); return { count: hit.length }; }),
+    updateMany: vi.fn(async ({ where, data }: { where: Row; data: Row }) => { const hit = db.orders.filter((row) => matches(row, where)); hit.forEach((row) => Object.assign(row, data, { updatedAt: new Date() })); return { count: hit.length }; }),
   };
   const orderAuditLog = { create: vi.fn(async ({ data }: { data: Row }) => { db.audit.push(data); return data; }) };
   return { prisma: { purchase, orderAuditLog }, axios: { post: vi.fn(), get: vi.fn() } };
@@ -48,6 +52,8 @@ const order = (id: string, status: string, extra: Row = {}): Row => ({
   shippingAt: null, deliveredAt: null, cancelledAt: null, failedAt: null, failReason: null, shipperId: null, deliveryAddress: "12 Lê Lợi, Quận 1",
   receiverName: "Lan", receiverPhone: "0901234567", note: null, latitude: null, longitude: null, paymentMethod: "COD", itemCount: 2,
   subtotal: 186_000, total: 171_000, codAmount: 171_000, discountAmount: 15_000, promotionName: "Giảm 10%", items: [], ...extra,
+  // The last status change (Prisma @updatedAt): the latest of the step times.
+  updatedAt: [new Date(`2026-11-${10 + Number(id.slice(-1))}T03:00:00Z`), extra.shippingAt, extra.deliveredAt, extra.cancelledAt, extra.failedAt].filter(Boolean).sort((a, b) => b - a)[0],
 });
 let server: ReturnType<ReturnType<typeof express>["listen"]>;
 let base = "";
@@ -105,6 +111,25 @@ describe("Quản trị › Đơn hàng", () => {
     const byAddress = await api("GET", "/admin/orders?q=L%C3%AA%20L%E1%BB%A3i");
     expect(byAddress.body.data.counts).toMatchObject({ SHIPPING: 0, PENDING: 1 });
     expect((await api("GET", "/admin/orders?status=WRONG")).status).toBe(400);
+  });
+
+  it("list: one list of every order sorted by last status change (newest first), lastUpdatedAt and the shipper's name", async () => {
+    // Order 1 (oldest purchase) just got accepted: it moves to the top.
+    db.orders[0].status = "SHIPPING";
+    db.orders[0].shipperId = "44444444-4444-4444-8444-444444444444";
+    db.orders[0].updatedAt = new Date("2026-11-20T08:00:00Z");
+    const list = (await api("GET", "/admin/orders?page=1&limit=20")).body.data;
+    expect(list.items.map((row: Row) => row.id.slice(-1))).toEqual(["1", "5", "4", "3", "2"]);
+    expect(list.items[0]).toMatchObject({ status: "SHIPPING", lastUpdatedAt: "2026-11-20T08:00:00.000Z", shipperName: "Anh Tú" });
+    expect(list.items[0]).not.toHaveProperty("shipperId");
+    // No shipper name for orders that are not SHIPPING / DELIVERED.
+    expect(list.items.find((row: Row) => row.status === "PENDING")).toBeUndefined();
+    expect(list.items.find((row: Row) => row.status === "CANCELLED").shipperName).toBeNull();
+    // A status change through the API updates lastUpdatedAt and the order.
+    await api("POST", "/admin/orders/aaaaaaaa-aaaa-4aaa-8aaa-000000000001/unassign");
+    const after = (await api("GET", "/admin/orders")).body.data.items;
+    expect(after[0]).toMatchObject({ id: "aaaaaaaa-aaaa-4aaa-8aaa-000000000001", status: "PENDING", shipperName: null });
+    expect(Date.parse(after[0].lastUpdatedAt)).toBeGreaterThan(Date.parse("2026-11-20T08:00:00Z"));
   });
 
   it("detail: totals, promotion, shipper name / phone, timeline and reason", async () => {
