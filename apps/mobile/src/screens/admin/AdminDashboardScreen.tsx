@@ -4,7 +4,7 @@ import { Activity, ChevronRight, Flag, House, ServerCrash, UserPlus, Users, type
 import { AppIcon, AppText, colors, spacing } from "../../theme";
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Button, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
+import { ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { fetchFamilies, fetchUsers, MAX_PAGE_SIZE, type AdminFamilySummary, type AdminUser } from "./directoryApi";
 import { directoryStyles, FamilyRow, UserRow } from "./directoryUi";
 import type { ServiceStatus } from "./healthTriage";
@@ -124,10 +124,7 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamilies, onOp
 
       <View style={[styles.wrapRow, local.lists, { gap: listGrid.gap }]} onLayout={listGrid.onLayout}>
         <View style={[styles.card, local.listCard, { width: listGrid.cellWidth ?? "100%" }]}>
-          <View style={styles.spaceBetween}>
-            <AppText variant="subheading" accessibilityRole="header" style={local.flex}>Người dùng gần đây</AppText>
-            <Button label="Xem tất cả" variant="secondary" onPress={onOpenUsers} />
-          </View>
+          <SectionHeader title="Người dùng gần đây" linkLabel="Xem tất cả người dùng" onOpen={onOpenUsers} />
           {users.error ? <ScreenState error={users.error} onRetry={() => void load()} /> : (
             <View>
               {recentUsers.length === 0 ? <AppText variant="caption">Chưa có người dùng</AppText> : recentUsers.map((user, index) => (
@@ -141,7 +138,7 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamilies, onOp
         </View>
 
         <View style={[styles.card, local.listCard, { width: listGrid.cellWidth ?? "100%" }]}>
-          <AppText variant="subheading" accessibilityRole="header">Gia đình gần đây</AppText>
+          <SectionHeader title="Gia đình gần đây" linkLabel="Xem tất cả gia đình" onOpen={onOpenFamilies} />
           {families.error ? <ScreenState error={families.error} onRetry={() => void load()} /> : (
             <View>
               {recentFamilies.length === 0 ? <AppText variant="caption">Chưa có gia đình</AppText> : recentFamilies.map((family, index) => (
@@ -152,19 +149,22 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamilies, onOp
               ))}
             </View>
           )}
-          <AppText
-            variant="caption"
-            color={colors.primary}
-            accessibilityRole="link"
-            accessibilityLabel="Xem tất cả gia đình"
-            onPress={onOpenFamilies}
-            style={local.link}
-          >
-            Xem tất cả →
-          </AppText>
         </View>
       </View>
     </ScrollView>
+  );
+}
+
+/** List card header: title on the left, "Xem tất cả" text link on the right (same style in every section). */
+function SectionHeader({ title, linkLabel, onOpen }: { title: string; linkLabel: string; onOpen: () => void }): React.JSX.Element {
+  return (
+    <View style={local.sectionHeader}>
+      <AppText variant="subheading" accessibilityRole="header" numberOfLines={1} style={local.flex}>{title}</AppText>
+      <Pressable accessibilityRole="link" accessibilityLabel={linkLabel} hitSlop={8} onPress={onOpen} style={({ pressed }) => [local.link, pressed && local.linkPressed]}>
+        <AppText variant="labelSmall" color={colors.primary}>Xem tất cả</AppText>
+        <AppIcon icon={ChevronRight} size="sm" color={colors.primary} />
+      </Pressable>
+    </View>
   );
 }
 
@@ -193,11 +193,13 @@ function StatCard({ card, width }: { card: Card; width?: number }): React.JSX.El
 }
 
 const local = StyleSheet.create({
-  content: { gap: spacing.lg },
+  content: { gap: spacing.md },
   card: { gap: spacing.xs, minHeight: 96 },
   flex: { flex: 1, minWidth: 0 },
   lists: { alignItems: "flex-start" },
   listCard: { gap: spacing.sm },
-  // Caption text with a 44 dp touch target.
-  link: { alignSelf: "flex-start", minHeight: 44, paddingVertical: spacing.md },
+  sectionHeader: { alignItems: "center", flexDirection: "row", gap: spacing.sm, minHeight: 44 },
+  // Text link with a 44 dp touch target.
+  link: { alignItems: "center", flexDirection: "row", gap: 2, justifyContent: "flex-end", minHeight: 44, paddingLeft: spacing.sm },
+  linkPressed: { opacity: 0.6 },
 });

@@ -77,6 +77,7 @@ import { registerDeviceToken } from "./src/screens/notifications/registerDeviceT
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import { CAPTURE_ACTIONS, captureBarVisible, type CaptureActionKey } from "./src/navigation/captureBar";
 import { SelectionBar } from "./src/components/SelectionBar";
+import { topTabStyles } from "./src/components/TopTab";
 import { marketSelectionBar, useMarketSelectionBar } from "./src/screens/shopping-cart/selectionBar";
 
 type Tab =
@@ -232,8 +233,7 @@ function AppContent(): React.JSX.Element {
   const sessionUserId = session.user?.id;
   const userId = resolveNutritionUserId(sessionUserId);
   const isAdmin = session.user?.role === "ADMIN";
-  // SCRUM-283: ADMIN accounts see only the admin tab; everyone else sees every tab except admin.
-  const visibleTabs = tabs.filter(({ key }) => (key === "admin") === isAdmin);
+  // SCRUM-283: ADMIN accounts see only Quản trị (AdminHome, with its own tab bar); everyone else never sees it.
   // Derived (not synced in an effect) so no other tab renders for a frame after the role changes.
   const activeTab: Tab = isAdmin ? "admin" : tab === "admin" ? "inventory" : tab;
   const memberTabWidth = width >= breakpoints.wide ? Math.min(140, width / 6) : "16.666667%";
@@ -448,32 +448,11 @@ function AppContent(): React.JSX.Element {
     setCaptureReady(false);
     void session.signOut();
   };
-  const renderTab = ({ key, label, icon: Icon }: (typeof tabs)[number]) => {
-    const active = activeTab === key;
-    return (
-      <TouchableOpacity
-        accessibilityLabel={label}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: active }}
-        key={key}
-        style={[styles.tab, { width: width >= breakpoints.wide ? 140 : 88 }, active && styles.tabActive]}
-        onPress={() => setTab(key)}
-      >
-        <AppIcon icon={Icon} size="md" color={active ? colors.primary : colors.muted} />
-        <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      </TouchableOpacity>
-    );
-  };
-
   return (
     <SafeAreaView style={styles.container}>
-      {isAdmin ? (
-        <View style={[styles.tabBar, styles.adminTabRow]}>
-          {visibleTabs.map(renderTab)}
-          <IconButton icon={LogOut} size="md" color={colors.text} accessibilityLabel="Đăng xuất" onPress={signOut} />
-        </View>
-      ) : (
-        <View style={[styles.tabBar, styles.memberTabRow]}>
+      {/* Admin accounts: AdminHome draws its own tab bar (sections + Đăng xuất) right here. */}
+      {isAdmin ? null : (
+        <View style={[topTabStyles.bar, styles.memberTabRow]}>
           {memberTabs.map(({ key, label, icon: Icon }) => {
             const active = menuKeys.has(key) ? menuKeys.has(activeTab) : activeTab === key;
             const displayedTab = key === "menu" ? selectedMenuTab : { label, icon: Icon };
@@ -490,7 +469,7 @@ function AppContent(): React.JSX.Element {
                   if (menuKeys.has(activeTab)) setMenuOpen((open) => !open);
                   else setTab("recipes");
                 }}
-                style={[styles.tab, { width: memberTabWidth }, active && styles.tabActive]}
+                style={[topTabStyles.tab, { width: memberTabWidth }, active && topTabStyles.tabActive]}
               >
                 {key === "menu" ? (
                   <View style={styles.menuTabIcons}>
@@ -507,7 +486,7 @@ function AppContent(): React.JSX.Element {
                     )}
                   </View>
                 )}
-                <Text numberOfLines={2} style={[styles.tabText, active && styles.tabTextActive]}>{displayedTab.label}</Text>
+                <Text numberOfLines={2} style={[topTabStyles.tabText, active && topTabStyles.tabTextActive]}>{displayedTab.label}</Text>
               </TouchableOpacity>
             );
           })}
@@ -516,10 +495,10 @@ function AppContent(): React.JSX.Element {
             accessibilityRole="button"
             accessibilityState={{ expanded: profileOpen }}
             onPress={() => setProfileOpen(true)}
-            style={[styles.tab, { width: memberTabWidth }]}
+            style={[topTabStyles.tab, { width: memberTabWidth }]}
           >
             <AppIcon icon={CircleUserRound} size="md" color={colors.muted} />
-            <Text style={styles.tabText}>Hồ sơ</Text>
+            <Text style={topTabStyles.tabText}>Hồ sơ</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -689,7 +668,7 @@ function AppContent(): React.JSX.Element {
             onOpenOrder={openOrder}
           />
         )}
-        {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
+        {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome onSignOut={signOut} />}
         {/* Hồ sơ / Nhật ký / Thống kê / Gợi ý; never for ADMIN accounts (they only see Quản trị). */}
         {!paymentUrl && activeTab === "nutrition" && !isAdmin && (
           <NutritionHome refreshKey={nutritionRefreshKey} />
@@ -749,39 +728,7 @@ const styles = StyleSheet.create({
   },
   loading: { alignItems: "center", flex: 1, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
-  tabBar: {
-    borderBottomWidth: 1 as number,
-    borderBottomColor: colors.border,
-    flexGrow: 0,
-  },
-  adminTabRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingRight: spacing.sm,
-  },
   memberTabRow: { flexDirection: "row", justifyContent: "center" },
-  tab: {
-    alignItems: "center",
-    gap: spacing.xs,
-    height: touchTarget + spacing.xl + spacing.sm,
-    paddingHorizontal: spacing.xs,
-    paddingTop: spacing.sm,
-    backgroundColor: colors.background,
-  },
-  tabActive: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: 3,
-    borderBottomColor: colors.primary,
-  },
-  tabText: {
-    ...textStyles.labelSmall,
-    color: colors.muted,
-    fontSize: 12,
-    lineHeight: 16,
-    textAlign: "center",
-  },
-  tabTextActive: { color: colors.primary },
   tabBadge: { alignItems: "center", backgroundColor: colors.danger, borderColor: colors.surface, borderRadius: 9, borderWidth: 1, justifyContent: "center", minWidth: 18, paddingHorizontal: 3, position: "absolute", right: -10, top: -6 },
   tabBadgeText: { ...textStyles.caption, color: colors.surface, fontWeight: "700", lineHeight: 14 },
   settingsScreen: { backgroundColor: colors.background, flex: 1 },

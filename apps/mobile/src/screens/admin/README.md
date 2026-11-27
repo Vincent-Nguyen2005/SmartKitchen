@@ -13,7 +13,7 @@ Owner: Huy. Responsibility: administration and operational management screens (#
 
 | File | What it does | API (through the gateway) |
 |---|---|---|
-| `AdminHome.tsx` | Sections: Tổng quan (default) / Báo cáo / Nguyên liệu / Món ăn / Khuyến mãi / Người giao hàng (Trọng số is hidden, see `WeightsScreen.tsx`; "Thống kê" was merged into Tổng quan); small state-based stack that pushes Người dùng, Gia đình and family detail over the dashboard (back / Android back pops one level) | — |
+| `AdminHome.tsx` | One top tab bar in the app's tab style (`components/TopTab.tsx`: icon above label, underline on the active tab): Tổng quan, Báo cáo, Nguyên liệu, Món ăn, Khuyến mãi, Giao hàng (`adminSections.ts`; the selected tab is remembered for the session), Đăng xuất icon at the right end. No "Quản trị" tab or page title. On phones the six tabs share one row equally; wide screens use 140 px tabs, centred. A small state-based stack pushes Người dùng, Gia đình and family detail under the bar (back / Android back pops one level; a tab tap returns to that section) | — |
 | `AdminDashboardScreen.tsx` | "Tổng quan": cards for total users, total families and system status; 5 newest users (name, email, role badge) and 5 newest families (name, member count) side by side on tablets, stacked on phones; "Xem tất cả" opens Người dùng, "Xem tất cả →" opens Gia đình, a family row opens its detail; pull-to-refresh | `GET /api/admin/users?limit=5`, `GET /api/admin/families?limit=5`, `GET /api/admin/health-monitor/status` |
 | `AdminShippersScreen.tsx` | "Người giao hàng": shipper accounts (name, phone, email, Đang hoạt động / Đã khóa, delivered count); "Thêm người giao hàng" (name, VN phone, email, initial password typed by the admin, never shown again); Khóa / Mở khóa with an in-app confirm (locking ends their sessions and sends their deliveries back to waiting); "Đặt lại mật khẩu". Form rules in `shippers.ts` | `GET /api/admin/shippers`, `POST /api/admin/shippers`, `PATCH /api/admin/shippers/:id/status`, `POST /api/admin/shippers/:id/password` |
 | `AdminUsersScreen.tsx` | Newest 100 users with client-side search by name or email, pull-to-refresh, "Chưa có người dùng" empty state | `GET /api/admin/users?limit=100` |
@@ -30,7 +30,7 @@ All screens use the shared client and UI from `../notifications/` (`gatewayApi.t
 
 Charts (`charts/`): `BarChart` and `LineChart` (react-native-svg, `chartColors` tokens, no chart library). Not used by any screen; kept for reuse.
 
-Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: LayoutDashboard (Tổng quan), Flag (Báo cáo), Carrot (Nguyên liệu), CookingPot (Món ăn), BadgePercent (Khuyến mãi), Truck (Người giao hàng). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
+Icons are Lucide (`lucide-react-native`, named imports) rendered through `AppIcon` / `IconButton`. Section tabs: LayoutDashboard (Tổng quan), Flag (Báo cáo), Carrot (Nguyên liệu), CookingPot (Món ăn), BadgePercent (Khuyến mãi), Truck (Giao hàng); LogOut (Đăng xuất). Report and service statuses are shown as icon + text badges, never colour alone. Icon-only controls (report detail back button, ingredient form close button) have an `accessibilityLabel` and a 44 × 44 touch target.
 
 ### Ẩm thực (Món ăn)
 
