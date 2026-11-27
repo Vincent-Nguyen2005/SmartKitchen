@@ -21,6 +21,10 @@ COPY --chown=node:node --from=build /app/package*.json ./
 COPY --chown=node:node --from=build /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node --from=build /app/prisma ./prisma
+# Catalog images uploaded by admins ("Chụp ảnh") live on a named volume mounted here; a fresh volume copies this
+# ownership so USER node can write. sharp (image re-encoding) ships a prebuilt musl binary for Alpine.
+RUN mkdir -p /data/uploads/admin && chown -R node:node /data/uploads
+ENV ADMIN_UPLOAD_DIR=/data/uploads/admin
 EXPOSE 4011
 USER node
 # Apply pending migrations (never migrate dev / db push), then start. Safe to run on every start:

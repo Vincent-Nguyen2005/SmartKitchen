@@ -71,7 +71,8 @@ export const promotionPayload = (ingredient: SyncableIngredient, now: Date) => {
     title: `${ingredient.name} giảm ${percent}%`,
     discountInfo: `${percent}%`,
     productKeywords: [ingredient.name],
-    imageUrl: ingredient.imageUrl,
+    // notification-service accepts https links only: an uploaded image (gateway path) is left out of the promotion.
+    imageUrl: ingredient.imageUrl && /^https:\/\//i.test(ingredient.imageUrl) ? ingredient.imageUrl : null,
     // From the start of the first day (Vietnam time). Rows without a start began "now". Never after endsAt, so an
     // already-ended promotion is stored (inactive by date) instead of rejected.
     startsAt: (() => {

@@ -44,6 +44,12 @@ const simpleHash = (text: string): string => {
 };
 
 /** null when there is nothing to show (no URL, or a gateway image without a session). */
+/**
+ * A path the gateway serves only to signed-in users (Kho photos, avatars, catalog images uploaded by an admin:
+ * "/api/..."), which a plain <Image> cannot load: show it with AuthImage. Absolute https links are external.
+ */
+export const isGatewayImage = (url: string | null | undefined): boolean => Boolean(url && /^\/api\//.test(url.trim()));
+
 export function imageTarget(url: string | null | undefined, options: ImageTargetOptions): ImageTarget | null {
   const value = url?.trim();
   if (!value) return null;

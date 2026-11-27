@@ -4,6 +4,12 @@ import { requireActiveShipper, requireAdmin, requireShipper } from "../middlewar
 
 const router = Router();
 
+// Quản trị › Đơn hàng and Doanh thu (ADMIN only; order actions are in OrderAuditLog).
+router.get("/admin/orders", requireAdmin, ShoppingListController.adminOrders);
+router.get("/admin/orders/:id", requireAdmin, ShoppingListController.adminOrder);
+router.post("/admin/orders/:id/cancel", requireAdmin, ShoppingListController.adminCancelOrder);
+router.post("/admin/orders/:id/unassign", requireAdmin, ShoppingListController.adminUnassignOrder);
+router.get("/admin/revenue", requireAdmin, ShoppingListController.adminRevenue);
 // Quản trị › Chương trình khuyến mãi (ADMIN only; every change is in PromotionAuditLog).
 router.get("/admin/promotions", requireAdmin, ShoppingListController.adminPromotions);
 router.post("/admin/promotions", requireAdmin, ShoppingListController.createPromotion);

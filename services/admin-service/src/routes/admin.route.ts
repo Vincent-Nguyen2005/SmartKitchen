@@ -8,11 +8,14 @@ import { imageUrlProblem } from "../lib/image-url";
 import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionStatus, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
 import { ingredientUsage, UsageCheckError } from "../lib/ingredient-usage";
 import { todaysDealPercents } from "../lib/daily-deal-store";
+import { managedCatalogImage } from "../lib/catalog-image";
 
 const router = Router();
 // Promotion fields: "" from a cleared form field means "none".
 const emptyToNull = (value: unknown): unknown => (typeof value === "string" && value.trim() === "" ? null : value);
 const imageUrlSchema = z.preprocess(emptyToNull, z.string().trim().superRefine((value, context) => {
+  // An image uploaded through "Chụp ảnh" (served by this service) is kept as is when the form is saved.
+  if (managedCatalogImage(value)) return;
   const problem = imageUrlProblem(value);
   if (problem) context.addIssue({ code: z.ZodIssueCode.custom, message: problem });
 }).nullable().optional());
