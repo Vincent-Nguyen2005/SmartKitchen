@@ -25,12 +25,12 @@ export type AdminFamilyDetail = AdminFamilyView;
 /** The directory endpoints accept at most 100 items per page. */
 export const MAX_PAGE_SIZE = 100;
 
-export const fetchUsers = (api: GatewayClient, limit: number): Promise<Page<AdminUser>> =>
-  api.get<Page<AdminUser>>(`/api/admin/users${query({ limit })}`);
+export const fetchUsers = (api: GatewayClient, limit: number, page = 1): Promise<Page<AdminUser>> =>
+  api.get<Page<AdminUser>>(`/api/admin/users${query({ limit, page })}`);
 
-export const fetchFamilies = async (api: GatewayClient, limit: number): Promise<Page<AdminFamilySummary>> => {
-  const page = await api.get<Page<AdminFamilySummary>>(`/api/admin/families${query({ limit })}`);
-  return { ...page, items: page.items.map(familyView) };
+export const fetchFamilies = async (api: GatewayClient, limit: number, page = 1): Promise<Page<AdminFamilySummary>> => {
+  const result = await api.get<Page<AdminFamilySummary>>(`/api/admin/families${query({ limit, page })}`);
+  return { ...result, items: result.items.map(familyView) };
 };
 
 export const fetchFamily = async (api: GatewayClient, id: string): Promise<AdminFamilyDetail> =>

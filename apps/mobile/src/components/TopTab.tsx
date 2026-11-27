@@ -32,14 +32,16 @@ type TopTabButtonProps = {
   accessibilityLabel?: string;
   /** Drawn over the icon (e.g. the Thông báo badge). */
   iconOverlay?: React.ReactNode;
+  /** "button" for an action drawn like a tab (Quản trị › Đăng xuất); default "tab". */
+  role?: "tab" | "button";
 };
 
-export function TopTabButton({ label, icon, active, onPress, width, flex, accessibilityLabel, iconOverlay }: TopTabButtonProps): React.JSX.Element {
+export function TopTabButton({ label, icon, active, onPress, width, flex, accessibilityLabel, iconOverlay, role = "tab" }: TopTabButtonProps): React.JSX.Element {
   return (
     <TouchableOpacity
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityRole="tab"
-      accessibilityState={{ selected: active }}
+      accessibilityRole={role}
+      accessibilityState={role === "tab" ? { selected: active } : undefined}
       onPress={onPress}
       style={[topTabStyles.tab, width !== undefined && { width }, flex !== undefined && { flex, minWidth: 0 }, active && topTabStyles.tabActive]}
     >

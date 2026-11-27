@@ -1,6 +1,6 @@
 /**
  * Quản trị sections (pure; covered by adminSections.test.ts): the one top tab bar, left to right. "Thống kê" was
- * merged into Tổng quan; checkout promotions and daily deals share Khuyến mãi; the tab says "Giao hàng" (the screen
+ * merged into Tổng quan; Khuyến mãi is the daily automatic discounts; the tab says "Giao hàng" (the screen
  * keeps "Người giao hàng" in its texts). No "Báo cáo": users and shippers have no way to send a report from the app
  * (admin-service keeps its /reports endpoints and data).
  */
@@ -25,3 +25,7 @@ export const adminSectionMemory = {
   get: (): AdminSection => lastSection,
   set: (value: unknown): AdminSection => { lastSection = isAdminSection(value) ? value : "dashboard"; return lastSection; },
 };
+
+/** "Đăng xuất" (last item of the tab bar, drawn like a tab): the in-app confirm before signing out. */
+export const LOGOUT_LABEL = "Đăng xuất";
+export const LOGOUT_CONFIRM = { title: "Đăng xuất khỏi tài khoản quản trị?", cancelLabel: "Hủy", confirmLabel: "Đăng xuất", destructive: true } as const;
