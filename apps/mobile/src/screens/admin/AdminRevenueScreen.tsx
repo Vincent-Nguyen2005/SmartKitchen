@@ -1,26 +1,23 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, ChevronRight, RefreshCw, X } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, RefreshCw, ShoppingBag, Truck, X } from "lucide-react-native";
 import { AppIcon, IconButton, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
 import { SegmentTabs } from "../../components/SegmentTabs";
+import UserAvatar from "../../components/UserAvatar";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { colors } from "../notifications/ui";
 import { vnd, vndSpoken } from "../spending/spending";
-import { BarChart } from "./charts";
-import { canGoForward, chartBars, comparisonText, PERIOD_OPTIONS, periodTitle, productQuantity, shipperTitle, type RevenuePeriod, type RevenueReport } from "./revenue";
+import { orderTime } from "../shopping-cart/orders";
+import { canGoForward, deliveredText, ordersText, PERIOD_OPTIONS, periodTitle, shipperTitle, type RevenuePeriod, type RevenueReport, type ShipperCash } from "./revenue";
 
 type Props = { visible: boolean; onClose: () => void };
 
-/** Short axis numbers for the chart ("1,2tr", "350k"). */
-const shortVnd = (value: number): string => (value >= 1_000_000 ? `${String(Math.round(value / 100_000) / 10).replace(".", ",")}tr` : value >= 1_000 ? `${Math.round(value / 1_000)}k` : String(value));
-
 /**
- * Quản trị › "Doanh thu" (full-screen page from the bottom bar), polished like Chi tiêu: today / 7 ngày / tháng này
- * with ‹ › to earlier periods (Vietnam days, delivered orders only). Revenue with the comparison to the period before,
- * orders and the average order, discounts (per item incl. daily deals / checkout promotions), a bar per day, the top 5
- * products, catalog groups and COD collected per shipper.
+ * Quản trị › "Doanh thu" (full-screen page from the bottom bar): shipper cash reconciliation for today / 7 ngày /
+ * tháng này with ‹ › to earlier periods (Vietnam days, delivered orders only). One summary card (Tổng tiền đã thu,
+ * <N> đơn đã giao), then "Theo nhân viên giao hàng" sorted by amount; a row opens that shipper's delivered orders.
  */
 export default function AdminRevenueScreen({ visible, onClose }: Props): React.JSX.Element {
   const { api } = useGatewayApi();
@@ -29,6 +26,7 @@ export default function AdminRevenueScreen({ visible, onClose }: Props): React.J
   const [report, setReport] = useState<RevenueReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [opened, setOpened] = useState<ShipperCash | null>(null);
   const requestId = useRef(0);
 
   const load = useCallback(async (refresh = false) => {
@@ -46,11 +44,10 @@ export default function AdminRevenueScreen({ visible, onClose }: Props): React.J
   }, [api, period, offset]);
 
   useEffect(() => { if (visible) { setReport(null); void load(); } }, [visible, load]);
-  useEffect(() => { if (!visible) { setPeriod("today"); setOffset(0); } }, [visible]);
+  useEffect(() => { if (!visible) { setPeriod("today"); setOffset(0); setOpened(null); } }, [visible]);
 
   const shown = report && report.period.kind === period && report.period.offset === offset ? report : null;
-  const comparison = shown ? comparisonText(shown.changePercent) : null;
-  const toneColor = comparison?.tone === "up" ? colors.success : comparison?.tone === "down" ? colors.danger : colors.muted;
+  const openShipper = useCallback((shipper: ShipperCash) => setOpened(shipper), []);
 
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
@@ -72,89 +69,89 @@ export default function AdminRevenueScreen({ visible, onClose }: Props): React.J
           {error && !shown ? (
             <StateView icon={RefreshCw} text={error} action="Thử lại" onAction={() => void load()} />
           ) : !shown ? (
-            <View style={{ gap: spacing.md }}>{[120, 80, 200].map((height) => <View key={height} style={[local.card, local.skeleton, { height }]} />)}</View>
+            <View style={{ gap: spacing.md }}>{[104, 64, 64].map((height, index) => <View key={index} style={[local.card, local.skeleton, { height }]} />)}</View>
           ) : (
             <>
-              <View style={local.card} accessible accessibilityLabel={`Doanh thu ${vndSpoken(shown.total)}. ${comparison?.text ?? ""}`}>
-                <Text style={local.caption}>Doanh thu (đơn đã giao)</Text>
+              <View style={local.card} accessible accessibilityLabel={`Tổng tiền đã thu ${vndSpoken(shown.total)}, ${deliveredText(shown.orders)}`}>
+                <Text style={local.caption}>Tổng tiền đã thu</Text>
                 <Text style={local.big}>{vnd(shown.total)}</Text>
-                {comparison ? <Text style={[local.comparison, { color: toneColor }]}>{comparison.text}</Text> : null}
+                <Text style={local.meta}>{deliveredText(shown.orders)}</Text>
               </View>
-              <View style={local.statRow}>
-                <Stat label="Đơn hàng" value={String(shown.orders)} spoken={`${shown.orders} đơn`} />
-                <Stat label="Trung bình / đơn" value={vnd(shown.average)} spoken={vndSpoken(shown.average)} />
-              </View>
-              <View style={local.card}>
-                <Text style={local.sectionTitle} accessibilityRole="header">Đã giảm cho khách</Text>
-                <AmountRow label="Giảm theo món (gồm giảm giá tự động)" amount={shown.discounts.items} />
-                <AmountRow label="Khuyến mãi khi đặt hàng" amount={shown.discounts.promotions} />
-              </View>
-              {shown.days.length > 1 ? (
-                <View style={local.card}>
-                  <Text style={local.sectionTitle} accessibilityRole="header">Doanh thu theo ngày</Text>
-                  <BarChart
-                    data={chartBars(shown.days, shown.period.kind)}
-                    accessibilityLabel={`Doanh thu theo ngày: ${shown.days.filter((day) => day.total > 0).map((day) => `${day.day.slice(8, 10)}/${day.day.slice(5, 7)} ${vndSpoken(day.total)}`).join(", ") || "chưa có"}`}
-                    formatValue={shortVnd}
-                    height={180}
-                  />
+              <Text style={local.sectionTitle} accessibilityRole="header">Theo nhân viên giao hàng</Text>
+              {shown.shippers.length === 0 ? (
+                <StateView icon={Truck} text="Chưa có đơn nào được giao trong kỳ này." />
+              ) : (
+                <View style={local.listCard}>
+                  {shown.shippers.map((shipper, index) => <ShipperRow key={`${shipper.name ?? "direct"}-${index}`} shipper={shipper} first={index === 0} onOpen={openShipper} />)}
                 </View>
-              ) : null}
-              <ListCard title="Sản phẩm bán chạy" empty="Chưa có sản phẩm nào.">
-                {shown.topProducts.map((product, index) => (
-                  <AmountRow key={`${product.name}-${index}`} label={`${index + 1}. ${product.name}`} detail={productQuantity(product)} amount={product.revenue} />
-                ))}
-              </ListCard>
-              <ListCard title="Theo nhóm hàng" empty="Chưa có dữ liệu.">
-                {shown.groups.map((group) => <AmountRow key={group.name} label={group.name} detail={`${group.percent}%`} amount={group.amount} />)}
-              </ListCard>
-              <ListCard title="Tiền thu theo người giao (COD)" empty="Chưa có đơn đã giao.">
-                {shown.shippers.map((shipper, index) => <AmountRow key={`${shipper.name ?? "direct"}-${index}`} label={shipperTitle(shipper)} detail={`${shipper.orders} đơn`} amount={shipper.amount} />)}
-              </ListCard>
+              )}
             </>
           )}
         </ScrollView>
+        <ShipperSheet shipper={opened} onClose={() => setOpened(null)} />
       </SafeAreaView>
     </Modal>
   );
 }
 
-function Stat({ label, value, spoken }: { label: string; value: string; spoken: string }): React.JSX.Element {
+const ShipperRow = memo(function ShipperRow({ shipper, first, onOpen }: { shipper: ShipperCash; first: boolean; onOpen: (shipper: ShipperCash) => void }): React.JSX.Element {
+  const title = shipperTitle(shipper);
   return (
-    <View style={[local.card, local.stat]} accessible accessibilityLabel={`${label}: ${spoken}`}>
-      <Text style={local.caption}>{label}</Text>
-      <Text style={local.statValue} numberOfLines={1}>{value}</Text>
-    </View>
-  );
-}
-
-function AmountRow({ label, detail, amount }: { label: string; detail?: string; amount: number }): React.JSX.Element {
-  return (
-    <View style={local.row} accessible accessibilityLabel={`${label}${detail ? `, ${detail}` : ""}: ${vndSpoken(amount)}`}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${title}, ${ordersText(shipper.orders)}, ${vndSpoken(shipper.amount)}. Xem các đơn`} onPress={() => onOpen(shipper)}
+      style={({ pressed }) => [local.row, !first && local.divider, pressed && local.pressed]}>
+      {shipper.direct ? (
+        <View style={local.directIcon}><AppIcon icon={ShoppingBag} size="sm" color={colors.primary} /></View>
+      ) : <UserAvatar name={shipper.name} avatarUrl={shipper.avatarUrl} size={40} />}
       <View style={local.flex}>
-        <Text style={local.rowLabel} numberOfLines={2}>{label}</Text>
-        {detail ? <Text style={local.caption}>{detail}</Text> : null}
+        <Text style={local.rowTitle} numberOfLines={1}>{title}</Text>
+        <Text style={local.meta}>{ordersText(shipper.orders)}</Text>
       </View>
-      <Text style={local.rowValue}>{vnd(amount)}</Text>
-    </View>
+      <Text style={local.amount}>{vnd(shipper.amount)}</Text>
+      <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
+    </Pressable>
   );
-}
+});
 
-function ListCard({ title, empty, children }: { title: string; empty: string; children: React.ReactNode[] }): React.JSX.Element {
+function ShipperSheet({ shipper, onClose }: { shipper: ShipperCash | null; onClose: () => void }): React.JSX.Element {
   return (
-    <View style={local.card}>
-      <Text style={local.sectionTitle} accessibilityRole="header">{title}</Text>
-      {children.length > 0 ? children : <Text style={local.caption}>{empty}</Text>}
-    </View>
+    <Modal animationType="slide" transparent visible={shipper !== null} onRequestClose={onClose}>
+      <View style={local.backdrop}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose} style={StyleSheet.absoluteFill} />
+        <SafeAreaView style={local.sheet} edges={["bottom"]}>
+          {shipper ? (
+            <>
+              <View style={local.sheetHeader}>
+                <View style={local.flex}>
+                  <Text style={local.sheetTitle} accessibilityRole="header" numberOfLines={1}>{shipperTitle(shipper)}</Text>
+                  <Text style={local.meta}>{ordersText(shipper.orders)} · {vnd(shipper.amount)}</Text>
+                </View>
+                <IconButton icon={X} accessibilityLabel="Đóng" onPress={onClose} />
+              </View>
+              <ScrollView contentContainerStyle={local.sheetBody} showsVerticalScrollIndicator={false}>
+                {shipper.deliveries.map((delivery, index) => (
+                  <View key={delivery.id} style={[local.row, index > 0 && local.divider]} accessible accessibilityLabel={`${orderTime(delivery.deliveredAt)}, ${delivery.receiverName ?? "không rõ người nhận"}, ${vndSpoken(delivery.total)}`}>
+                    <View style={local.flex}>
+                      <Text style={local.rowTitle} numberOfLines={1}>{delivery.receiverName ?? "Không rõ người nhận"}</Text>
+                      <Text style={local.meta}>{orderTime(delivery.deliveredAt)}</Text>
+                    </View>
+                    <Text style={local.amount}>{vnd(delivery.total)}</Text>
+                  </View>
+                ))}
+              </ScrollView>
+            </>
+          ) : null}
+        </SafeAreaView>
+      </View>
+    </Modal>
   );
 }
 
-function StateView({ icon, text, action, onAction }: { icon: LucideIcon; text: string; action: string; onAction: () => void }): React.JSX.Element {
+function StateView({ icon, text, action, onAction }: { icon: LucideIcon; text: string; action?: string; onAction?: () => void }): React.JSX.Element {
   return (
     <View style={local.state}>
       <View style={local.stateIcon}><AppIcon icon={icon} size="lg" color={colors.primary} /></View>
       <Text style={local.stateText}>{text}</Text>
-      <Pressable accessibilityRole="button" onPress={onAction} style={local.stateButton}><Text style={local.stateButtonText}>{action}</Text></Pressable>
+      {action && onAction ? <Pressable accessibilityRole="button" onPress={onAction} style={local.stateButton}><Text style={local.stateButtonText}>{action}</Text></Pressable> : null}
     </View>
   );
 }
@@ -167,20 +164,26 @@ const local = StyleSheet.create({
   content: { alignSelf: "center", gap: spacing.md, maxWidth: 720, padding: spacing.lg, width: "100%" },
   switcher: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: -spacing.sm },
   switcherTitle: { ...textStyles.label, flex: 1, textAlign: "center" },
-  card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.xs, padding: spacing.lg },
+  listCard: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.lg },
   skeleton: { backgroundColor: colors.border, opacity: 0.5 },
   caption: { ...textStyles.caption, color: colors.muted },
   big: { ...textStyles.pageTitle },
-  comparison: { ...textStyles.labelSmall },
-  statRow: { flexDirection: "row", gap: spacing.md },
-  stat: { flex: 1, minWidth: 0 },
-  statValue: { ...textStyles.subheading },
-  sectionTitle: { ...textStyles.label },
-  row: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: 40 },
+  meta: { ...textStyles.bodySmall, color: colors.muted },
+  sectionTitle: { ...textStyles.label, marginTop: spacing.xs },
+  row: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: 64, paddingVertical: spacing.sm },
+  divider: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+  pressed: { opacity: 0.7 },
+  directIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 20, height: 40, justifyContent: "center", width: 40 },
   flex: { flex: 1, minWidth: 0 },
-  rowLabel: { ...textStyles.body },
-  rowValue: { ...textStyles.label, textAlign: "right" },
-  state: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl * 2 },
+  rowTitle: { ...textStyles.label },
+  amount: { ...textStyles.label, textAlign: "right" },
+  backdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
+  sheet: { alignSelf: "center", backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: "80%", maxWidth: 720, width: "100%" },
+  sheetHeader: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", gap: spacing.sm, paddingLeft: spacing.lg, paddingRight: spacing.xs, paddingVertical: spacing.sm },
+  sheetTitle: { ...textStyles.subheading },
+  sheetBody: { paddingHorizontal: spacing.lg, paddingBottom: spacing.lg },
+  state: { alignItems: "center", gap: spacing.md, paddingVertical: spacing.xl },
   stateIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 32, height: 64, justifyContent: "center", width: 64 },
   stateText: { ...textStyles.body, color: colors.muted, textAlign: "center" },
   stateButton: { borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },

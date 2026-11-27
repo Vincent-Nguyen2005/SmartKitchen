@@ -91,13 +91,13 @@ export const notifyBuyer = async (order: { id: string; buyerUserId: string | nul
 };
 
 /** Shipper name and phone (auth-service), for the family once an order is on its way. */
-export const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: string | null; phone: string | null }>> => {
-  const profiles = new Map<string, { name: string | null; phone: string | null }>();
+export const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: string | null; phone: string | null; avatarUrl: string | null }>> => {
+  const profiles = new Map<string, { name: string | null; phone: string | null; avatarUrl: string | null }>();
   const key = process.env.INTERNAL_API_KEY;
   if (ids.length === 0 || !key) return profiles;
   try {
     const response = await axios.post(`${AUTH_SERVICE_URL()}/internal/admin/users/profiles`, { ids: [...new Set(ids)] }, { headers: { "x-api-key": key }, timeout: 5000 });
-    for (const item of (response.data?.items ?? []) as Array<{ id: string; name: string | null; phone?: string | null }>) profiles.set(item.id, { name: item.name, phone: item.phone ?? null });
+    for (const item of (response.data?.items ?? []) as Array<{ id: string; name: string | null; phone?: string | null; avatarUrl?: string | null }>) profiles.set(item.id, { name: item.name, phone: item.phone ?? null, avatarUrl: item.avatarUrl ?? null });
   } catch {
     // The list still shows, only without the shipper's name and phone.
   }

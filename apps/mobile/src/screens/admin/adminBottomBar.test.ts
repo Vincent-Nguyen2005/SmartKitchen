@@ -4,7 +4,7 @@ import test from "node:test";
 import { ADMIN_BAR_ACTIONS, overlayFor } from "./adminBar";
 import { canCancel, canUnassign, cancelConfirm, orderCardLabel, shortAddress, statusLabel, tabLabel, ADMIN_STATUS_TABS } from "./adminOrders";
 import { missingImageCount, missingImageText, photoPickerOrder, uploadConfirm, type CatalogProduct } from "./catalogPhoto";
-import { canGoForward, chartBars, comparisonText, periodTitle, productQuantity, shipperTitle } from "./revenue";
+import { canGoForward, deliveredText, ordersText, periodTitle, shipperTitle } from "./revenue";
 import { isGatewayImage } from "../../services/authImage";
 
 test("bottom bar: Chụp ảnh · Đơn hàng (centre, primary) · Doanh thu; each opens its own overlay", () => {
@@ -41,21 +41,15 @@ test("Đơn hàng: tabs with counts, short address, actions per status, card lab
   assert.equal(orderCardLabel({ id: "1", status: "PENDING", purchasedAt: "", receiverName: "Lan", deliveryAddress: "12 Lê Lợi, Quận 1, HCM", itemCount: 2, total: 171_000, discountAmount: 0 }, "01/12 · 08:00"), "Chờ giao, 01/12 · 08:00, Lan, 12 Lê Lợi, Quận 1, 2 món, 171.000 đồng");
 });
 
-test("Doanh thu: period titles, comparison line, chart labels, product and shipper texts", () => {
+test("Doanh thu (shipper cash): period titles, summary and shipper texts", () => {
   assert.equal(periodTitle({ kind: "today", offset: 0, firstDay: "2026-12-01", lastDay: "2026-12-01" }), "Hôm nay, 01/12");
   assert.equal(periodTitle({ kind: "today", offset: -1, firstDay: "2026-11-30", lastDay: "2026-11-30" }), "Thứ Hai, 30/11");
   assert.equal(periodTitle({ kind: "7d", offset: 0, firstDay: "2026-11-25", lastDay: "2026-12-01" }), "25/11 – 01/12");
   assert.equal(periodTitle({ kind: "month", offset: 0, firstDay: "2026-12-01", lastDay: "2026-12-31" }), "Tháng 12/2026");
-  assert.deepEqual(comparisonText(12), { text: "+12% so với kỳ trước", tone: "up" });
-  assert.deepEqual(comparisonText(-5), { text: "−5% so với kỳ trước", tone: "down" });
-  assert.equal(comparisonText(null).text, "Kỳ trước chưa có doanh thu");
-  const month = Array.from({ length: 31 }, (_, index) => ({ day: `2026-12-${String(index + 1).padStart(2, "0")}`, total: index }));
-  const bars = chartBars(month, "month");
-  assert.deepEqual(bars.filter((bar) => bar.label).map((bar) => bar.label), ["1", "6", "11", "16", "21", "26", "31"]);
-  assert.deepEqual(chartBars([{ day: "2026-11-25", total: 5 }], "7d"), [{ label: "25/11", value: 5 }]);
-  assert.equal(productQuantity({ name: "Thịt bò", quantity: 1.5, unit: "KILOGRAM", unitLabel: null, revenue: 0 }), "1,5 kg");
-  assert.equal(shipperTitle({ name: null, direct: true, orders: 1, amount: 1 }), "Mua trực tiếp");
-  assert.equal(shipperTitle({ name: "Anh Tú", direct: false, orders: 1, amount: 1 }), "Anh Tú");
+  assert.equal(deliveredText(5), "5 đơn đã giao");
+  assert.equal(ordersText(2), "2 đơn");
+  assert.equal(shipperTitle({ name: null, direct: true }), "Mua trực tiếp");
+  assert.equal(shipperTitle({ name: "Anh Tú", direct: false }), "Anh Tú");
   assert.equal(canGoForward(0), false);
   assert.equal(canGoForward(-1), true);
 });

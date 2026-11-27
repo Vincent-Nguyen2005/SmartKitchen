@@ -91,7 +91,8 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
             <AppIcon icon={Search} size="sm" color={colors.muted} />
             <TextInput accessibilityLabel="Tìm theo tên, số điện thoại hoặc địa chỉ" value={search} onChangeText={setSearch} placeholder="Tên, số điện thoại, địa chỉ" placeholderTextColor={colors.muted} style={local.searchInput} autoCorrect={false} />
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={local.tabs} accessibilityRole="tablist">
+          {/* All five chips stay visible: they wrap to a second row on narrow phones (no hidden chip at the edge). */}
+          <View style={local.tabs} accessibilityRole="tablist">
             {ADMIN_STATUS_TABS.map((tab) => {
               const selected = tab.key === status;
               return (
@@ -100,7 +101,7 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </View>
         </View>
         <FlatList
           data={items}
@@ -291,7 +292,7 @@ const local = StyleSheet.create({
   controls: { alignSelf: "center", gap: spacing.sm, maxWidth: 720, paddingHorizontal: spacing.lg, paddingTop: spacing.md, width: "100%" },
   search: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, minHeight: touchTarget, paddingHorizontal: spacing.md },
   searchInput: { ...textStyles.body, flex: 1, minHeight: touchTarget - 2, padding: 0 },
-  tabs: { gap: spacing.xs, paddingBottom: spacing.xs },
+  tabs: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingBottom: spacing.xs },
   tab: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center", minHeight: 36, paddingHorizontal: spacing.md },
   tabSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
   tabText: { ...textStyles.labelSmall, color: colors.text },
