@@ -22,7 +22,12 @@ export type ShipperOrder = {
   receiverPhone: string | null;
   note: string | null;
   paymentMethod: "COD";
+  /** What to collect: subtotal − discountAmount. */
   codAmount: number;
+  /** Before the automatic checkout promotion; with promotionName / discountAmount for the "Khuyến mãi" row. */
+  subtotal?: number;
+  promotionName?: string | null;
+  discountAmount?: number;
   itemCount: number;
   items: ShipperOrderLine[];
 };

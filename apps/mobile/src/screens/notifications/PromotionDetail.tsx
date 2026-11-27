@@ -17,7 +17,12 @@ export type Promotion = {
   imageUrl: string | null;
   startsAt: string;
   endsAt: string;
+  /** "checkout-promotion:<id>": an automatic checkout promotion (whole order / groups), not one product. */
+  externalId?: string | null;
 };
+
+/** Automatic checkout promotions apply when ordering: no product to put in the cart. */
+export const isCheckoutPromotion = (promotion: Pick<Promotion, "externalId">): boolean => Boolean(promotion.externalId?.startsWith("checkout-promotion:"));
 
 const formatDay = (iso: string) => new Date(iso).toLocaleDateString("vi-VN");
 /** "20%" (admin ingredient promotions) reads "Giảm 20%"; partner text such as "Mua 1 tặng 1" is shown as-is. */
@@ -80,7 +85,14 @@ export function PromotionDetail({ promotion, onClose }: PromotionDetailProps): R
                 <AppText variant="caption">Đến hết ngày {formatDay(promotion.endsAt)}</AppText>
               </View>
               {promotion.description ? <AppText variant="body">{promotion.description}</AppText> : null}
-              <Button label="Mua" icon={ShoppingCart} onPress={() => void buy()} busy={busy} accessibilityLabel={`Mua: thêm ${itemName(promotion.title)} vào giỏ hàng`} />
+              {isCheckoutPromotion(promotion) ? (
+                <View style={styles.row}>
+                  <AppIcon icon={CircleCheck} size="sm" color={colors.success} />
+                  <AppText variant="bodySmall" color={colors.success} style={local.flex}>Tự động áp dụng khi đặt hàng, không cần mã.</AppText>
+                </View>
+              ) : (
+                <Button label="Mua" icon={ShoppingCart} onPress={() => void buy()} busy={busy} accessibilityLabel={`Mua: thêm ${itemName(promotion.title)} vào giỏ hàng`} />
+              )}
               {message ? (
                 <View style={[styles.row, local.message]} accessibilityLiveRegion="polite">
                   <AppIcon icon={message.tone === "success" ? CircleCheck : CircleExclamationPoint} size="sm" color={message.tone === "success" ? colors.success : colors.danger} />

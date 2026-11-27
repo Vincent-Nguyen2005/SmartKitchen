@@ -57,10 +57,15 @@ type Props = {
   selected?: boolean;
   /** Shown faded (e.g. Kho items still being delivered). */
   dimmed?: boolean;
+  /**
+   * Đi chợ: an automatic checkout promotion covers this product ("KM −10%"), in the image's bottom-right corner, in
+   * the primary colour: unlike the red discount pill (top-left), it does not change the price shown.
+   */
+  promoTag?: string | null;
 };
 
 /** Square image with an optional corner pill, the name (max 2 lines), a subtitle and a footer. */
-export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, onLongPress, selected, accessibilityLabel, cornerAction, marker, dimmed }: Props): React.JSX.Element {
+export function ProductCard({ width, image, pill, name, subtitle, footer, onPress, onLongPress, selected, accessibilityLabel, cornerAction, marker, dimmed, promoTag }: Props): React.JSX.Element {
   const selectable = selected !== undefined;
   return (
     <Pressable
@@ -87,6 +92,11 @@ export function ProductCard({ width, image, pill, name, subtitle, footer, onPres
           <View style={[local.pill, pill.icon && local.pillWithIcon, { backgroundColor: pillColors[pill.tone] }]}>
             {pill.icon && <AppIcon icon={pill.icon} size="sm" color={colors.surface} />}
             <Text style={local.pillText} numberOfLines={1}>{pill.label}</Text>
+          </View>
+        )}
+        {!!promoTag && (
+          <View pointerEvents="none" style={local.promoTag}>
+            <Text style={local.promoTagText} numberOfLines={1}>{promoTag}</Text>
           </View>
         )}
         {!!marker && (
@@ -156,6 +166,8 @@ const local = StyleSheet.create({
   placeholder: { alignItems: "center", backgroundColor: colors.background, height: "100%", justifyContent: "center", width: "100%" },
   pill: { borderRadius: radius.pill, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", top: spacing.xs },
   marker: { alignItems: "center", backgroundColor: colors.success, borderRadius: radius.pill, bottom: spacing.xs, flexDirection: "row", gap: 2, left: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute" },
+  promoTag: { backgroundColor: colors.primary, borderColor: colors.surface, borderRadius: radius.pill, borderWidth: 1, bottom: spacing.xs, maxWidth: "90%", paddingHorizontal: spacing.xs + 2, paddingVertical: 1, position: "absolute", right: spacing.xs },
+  promoTagText: { ...textStyles.caption, color: colors.primaryText, fontWeight: "700", letterSpacing: 0.2 },
   markerText: { ...textStyles.caption, color: colors.primaryText, fontWeight: "700" },
   corner: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.primary, borderRadius: radius.pill, borderWidth: 1, height: 32, justifyContent: "center", position: "absolute", right: spacing.xs, top: spacing.xs, width: 32 },
   pillText: { ...textStyles.caption, color: colors.surface, fontWeight: "700" },

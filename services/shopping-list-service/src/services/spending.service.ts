@@ -9,6 +9,9 @@ import { AppError } from "../lib/app-error";
  * - Prices are the checkout's: paid unit price = round(unitPrice × (100 − discount%) / 100), line total =
  *   round(paid × quantity) in whole VND, purchase total = sum of the rounded line totals (lines without a price: 0).
  *   Snapshotted on the line when it is bought, so later catalog price changes do not rewrite history.
+ * - A checkout promotion lowers the order total (subtotal − discount). Its discount is split over the eligible lines
+ *   (ShoppingItem.discountShare, largest remainder in whole VND), so the group bars count lineTotal − discountShare
+ *   and still add up to the month total.
  * - Months are Vietnam calendar months (Asia/Ho_Chi_Minh = UTC+7, no daylight saving).
  */
 export type CatalogInfo = { group?: string | null; unitLabel?: string | null; price?: number | null; discountPercent?: number | null };
@@ -44,14 +47,14 @@ export const previousMonth = (month: string): string => {
 export const changePercent = (total: number, previous: number): number | null =>
   previous > 0 ? Math.round(((total - previous) / previous) * 100) : null;
 
-type GroupLine = { lineTotal: number | null; groupName: string | null };
+type GroupLine = { lineTotal: number | null; groupName: string | null; discountShare?: number | null };
 /** Amount per catalog group (no group → "Khác"), sorted by amount; beyond the top 6 merged into "Khác". */
 export const groupTotals = (lines: GroupLine[]): Array<{ name: string; amount: number; percent: number }> => {
   const sums = new Map<string, number>();
   for (const line of lines) {
     if (!line.lineTotal) continue;
     const name = line.groupName?.trim() || OTHER_GROUP;
-    sums.set(name, (sums.get(name) ?? 0) + line.lineTotal);
+    sums.set(name, (sums.get(name) ?? 0) + line.lineTotal - (line.discountShare ?? 0));
   }
   const total = [...sums.values()].reduce((sum, amount) => sum + amount, 0);
   const named = [...sums].filter(([name]) => name !== OTHER_GROUP).sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "vi"));
@@ -85,7 +88,7 @@ export async function recordPurchase(familyId: string, buyerUserId: string, item
     });
     const total = lines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0);
     // Bought directly into Kho (single-item purchase): an order that is already delivered.
-    const purchase = await transaction.purchase.create({ data: { familyId, buyerUserId, purchasedAt: now, total, codAmount: total, itemCount: lines.length, status: "DELIVERED", deliveredAt: now } });
+    const purchase = await transaction.purchase.create({ data: { familyId, buyerUserId, purchasedAt: now, total, subtotal: total, codAmount: total, itemCount: lines.length, status: "DELIVERED", deliveredAt: now } });
     for (const line of lines) {
       await transaction.shoppingItem.update({
         where: { id: line.item.id },
@@ -108,7 +111,12 @@ export type SpendingLine = {
   id: string; name: string; quantity: number; unit: string; unitLabel: string | null;
   unitPrice: number | null; originalUnitPrice: number | null; discountPercent: number | null; lineTotal: number | null; group: string;
 };
-export type SpendingPurchase = { id: string; purchasedAt: string; buyerUserId: string | null; itemCount: number; total: number; lines: SpendingLine[] };
+export type SpendingPurchase = {
+  id: string; purchasedAt: string; buyerUserId: string | null; itemCount: number; total: number;
+  /** Before the checkout promotion; with promotionName / discountAmount for the "Khuyến mãi" row. */
+  subtotal: number; promotionName: string | null; discountAmount: number;
+  lines: SpendingLine[];
+};
 export type MonthSpending = {
   month: string; previousMonth: string; total: number; previousTotal: number; changePercent: number | null; purchaseCount: number;
   groups: Array<{ name: string; amount: number; percent: number }>;
@@ -133,7 +141,7 @@ export async function monthSpending(familyId: string, month: string, options: { 
     prisma.purchase.aggregate({ where, _sum: { total: true } }),
     prisma.purchase.aggregate({ where: { familyId, status: "DELIVERED", deliveredAt: { gte: previousRange.from, lt: previousRange.to } }, _sum: { total: true } }),
     prisma.purchase.count({ where }),
-    prisma.shoppingItem.findMany({ where: { purchase: where }, select: { lineTotal: true, groupName: true, productId: true } }),
+    prisma.shoppingItem.findMany({ where: { purchase: where }, select: { lineTotal: true, groupName: true, productId: true, discountShare: true } }),
     prisma.purchase.findMany({
       where, orderBy: { deliveredAt: "desc" }, skip: (page - 1) * limit, take: limit,
       include: { items: { orderBy: { createdAt: "asc" }, select: { id: true, name: true, quantity: true, unit: true, unitLabel: true, unitPrice: true, discountPercent: true, paidUnitPrice: true, lineTotal: true, groupName: true, productId: true } } },
@@ -147,7 +155,7 @@ export async function monthSpending(familyId: string, month: string, options: { 
   const previousTotal = previous._sum.total ?? 0;
   return {
     month, previousMonth: before, total, previousTotal, changePercent: changePercent(total, previousTotal), purchaseCount: count,
-    groups: groupTotals(lineRows.map((line) => ({ lineTotal: line.lineTotal, groupName: groupOf(line) }))),
+    groups: groupTotals(lineRows.map((line) => ({ lineTotal: line.lineTotal, groupName: groupOf(line), discountShare: line.discountShare }))),
     purchases: {
       page, limit, total: count,
       items: purchases.map((purchase) => ({
@@ -157,6 +165,9 @@ export async function monthSpending(familyId: string, month: string, options: { 
         buyerUserId: purchase.buyerUserId,
         itemCount: purchase.itemCount,
         total: purchase.total,
+        subtotal: purchase.subtotal || purchase.total,
+        promotionName: purchase.promotionName ?? null,
+        discountAmount: purchase.discountAmount ?? 0,
         lines: purchase.items.map((line) => ({
           id: line.id, name: line.name, quantity: line.quantity, unit: line.unit,
           unitLabel: line.unitLabel ?? (line.productId ? catalog.get(line.productId)?.unitLabel ?? null : null),

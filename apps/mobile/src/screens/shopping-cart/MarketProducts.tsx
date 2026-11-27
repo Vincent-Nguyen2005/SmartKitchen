@@ -1,6 +1,6 @@
 import React, { memo, Profiler, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { ActivityIndicator, BackHandler, FlatList, Image, Modal, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
-import { BadgePercent, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
+import { BadgePercent, ChevronRight, Minus, Plus, ShoppingCart, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, radius, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { Badge, ScreenState } from "../notifications/ui";
 import { useGatewayApi } from "../notifications/useGatewayApi";
@@ -18,6 +18,12 @@ import { sameCardProps } from "./marketCard";
 import { formatQuantity, parseQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { neededProductIds, orderNeededFirst, type NeededItem } from "./neededFirst";
 import { unitLine, unitWord } from "./unitDisplay";
+import { bannerSession, orderBannerText, orderPromotions, promoTags, promotionDetailOf, type ShopPromotion } from "./marketPromotions";
+import { activePromotions } from "./promotionStore";
+import { PromotionDetail, type Promotion } from "../notifications/PromotionDetail";
+
+/** The order-promotion banner shows the next one after this long (when there are several). */
+const BANNER_ROTATE_MS = 5_000;
 
 type Props = {
   accessToken: string | null;
@@ -89,21 +95,24 @@ type MarketCardProps = {
   selected: boolean | undefined;
   onPress: (product: CatalogIngredient) => void;
   onLongPress: (product: CatalogIngredient) => void;
+  /** "KM −10%": an automatic checkout promotion covers this product (marketPromotions.ts). */
+  promoTag?: string | null;
 };
 
 /**
  * One product card. Memoized (sameCardProps): a selection toggle re-renders only the card whose `selected` changed;
  * the others (and their images) are left alone. Callbacks take the product, so they are the same for every card.
  */
-const MarketCard = memo(function MarketCard({ product, width, selected, onPress, onLongPress }: MarketCardProps): React.JSX.Element {
+const MarketCard = memo(function MarketCard({ product, width, selected, onPress, onLongPress, promoTag }: MarketCardProps): React.JSX.Element {
   const finalPrice = product.price !== null && product.discountPercent !== null ? discountedPrice(product.price, product.discountPercent) : product.price;
   return (
     <ProductCard
       width={width}
-      accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}`}
+      accessibilityLabel={`${product.name}, ${unitText(product)}, ${finalPrice !== null ? formatVnd(finalPrice) : "chưa có giá"}${product.discountPercent !== null ? `, giảm ${product.discountPercent}%` : ""}${promoTag ? `, khuyến mãi khi đặt hàng ${promoTag.replace("KM ", "")}` : ""}`}
       onPress={() => onPress(product)}
       onLongPress={() => onLongPress(product)}
       selected={selected}
+      promoTag={promoTag}
       image={<ProductImage uri={product.imageUrl} style={cardImageStyle} />}
       pill={product.discountPercent !== null ? { label: `-${product.discountPercent}%`, tone: "discount" } : null}
       name={product.name}
@@ -200,6 +209,26 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accessToken, reloadKey, refreshSignal.n]);
 
+  // Running checkout promotions (tags on cards, ORDER banner): cached with the catalog, same refresh ticks; a pull to
+  // refresh forces a reload, an auto tick reuses a copy younger than PROMOTIONS_MAX_AGE_MS. A failure keeps the old copy.
+  const [promotions, setPromotions] = useState<ShopPromotion[]>(() => (accessToken ? activePromotions(accessToken).peek() ?? [] : []));
+  const promotionsSignal = useRef(refreshSignal.n);
+  useEffect(() => {
+    if (!accessToken) { setPromotions([]); return undefined; }
+    const tick = promotionsSignal.current !== refreshSignal.n;
+    promotionsSignal.current = refreshSignal.n;
+    let active = true;
+    activePromotions(accessToken).get(tick ? { force: refreshSignal.force } : {})
+      .then((items) => { if (active) setPromotions(items); })
+      .catch(() => undefined);
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, reloadKey, refreshSignal.n]);
+  // One label per product, rebuilt only when the catalog or the promotions change (cards stay memoized).
+  const tags = useMemo(() => promoTags(catalog ?? [], promotions), [catalog, promotions]);
+  const banner = useMemo(() => orderPromotions(promotions), [promotions]);
+  const [detail, setDetail] = useState<Promotion | null>(null);
+
   // A new search shows its results from the top.
   useEffect(() => { listRef.current?.scrollToOffset({ offset: 0, animated: false }); }, [search]);
 
@@ -295,9 +324,9 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
 
   const renderProduct = useCallback(
     ({ item }: { item: CatalogIngredient }) => (
-      <MarketCard product={item} width={cardWidth} selected={selection.active ? selectedSet.has(item.id) : undefined} onPress={pressCard} onLongPress={longPressCard} />
+      <MarketCard product={item} width={cardWidth} selected={selection.active ? selectedSet.has(item.id) : undefined} onPress={pressCard} onLongPress={longPressCard} promoTag={tags.get(item.id) ?? null} />
     ),
-    [cardWidth, selection.active, selectedSet, pressCard, longPressCard],
+    [cardWidth, selection.active, selectedSet, pressCard, longPressCard, tags],
   );
 
   // App.tsx shows the one-line selection bar (in place of the capture bar) from this store.
@@ -315,6 +344,7 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
   return (
     <View style={local.container}>
       <SearchHeader horizontalPadding={horizontalPadding} wide={layout.isWide} accessibilityLabel="Tìm sản phẩm" placeholder="Tìm sản phẩm..." value={search} onChangeText={(text) => { setSearch(text); onTyping?.(); }} />
+      <OrderPromotionBanner promotions={banner} horizontalPadding={horizontalPadding} wide={layout.isWide} onOpen={(promotion) => setDetail(promotionDetailOf(promotion))} />
       {/* A tap on empty space (not on a card) leaves selection mode. */}
       <Pressable accessible={false} onPress={selection.active && !bulkAdding ? exitSelection : undefined} style={[local.listArea, { paddingHorizontal: horizontalPadding }, layout.isWide && local.wide]}>
         {(bulkError || (selection.active && !familyId)) && (
@@ -411,11 +441,61 @@ export default function MarketProducts({ accessToken, familyId, onAdded, onOpenF
           )}
         </View>
       </Modal>
+      <PromotionDetail promotion={detail} onClose={() => setDetail(null)} />
+    </View>
+  );
+}
+
+/**
+ * Whole-order promotions under the search bar: one slim line ("Giảm 10% (tối đa 50.000đ) cho đơn từ 200.000đ · đến
+ * 04/12"); several rotate every 5 s (dots show which one). ✕ hides it for this app session; a tap opens the detail.
+ */
+function OrderPromotionBanner({ promotions, horizontalPadding, wide, onOpen }: { promotions: ShopPromotion[]; horizontalPadding: number; wide: boolean; onOpen: (promotion: ShopPromotion) => void }): React.JSX.Element | null {
+  const [dismissed, setDismissed] = useState(bannerSession.dismissed());
+  const [index, setIndex] = useState(0);
+  const count = promotions.length;
+  useEffect(() => { if (index >= count) setIndex(0); }, [count, index]);
+  useEffect(() => {
+    if (dismissed || count < 2) return undefined;
+    const timer = setInterval(() => setIndex((current) => (current + 1) % count), BANNER_ROTATE_MS);
+    return () => clearInterval(timer);
+  }, [dismissed, count]);
+  if (dismissed || count === 0) return null;
+  const promotion = promotions[Math.min(index, count - 1)];
+  const text = orderBannerText(promotion);
+  return (
+    <View style={[{ paddingHorizontal: horizontalPadding }, wide && local.wide]}>
+      <View style={local.banner}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Khuyến mãi tự động: ${promotion.name}. ${text}. Chạm để xem chi tiết`}
+          accessibilityHint={count > 1 ? `${index + 1} trên ${count}` : undefined}
+          onPress={() => onOpen(promotion)}
+          style={({ pressed }) => [local.bannerMain, pressed && local.bannerPressed]}
+        >
+          <AppIcon icon={BadgePercent} size="sm" color={colors.primary} />
+          <Text style={local.bannerText} numberOfLines={1}>{text}</Text>
+          {count > 1 ? (
+            <View style={local.dots} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+              {promotions.map((entry, dot) => <View key={entry.id} style={[local.dot, dot === index && local.dotOn]} />)}
+            </View>
+          ) : null}
+          <AppIcon icon={ChevronRight} size="sm" color={colors.primary} />
+        </Pressable>
+        <IconButton icon={X} size="sm" accessibilityLabel="Ẩn khuyến mãi" color={colors.primary} onPress={() => { bannerSession.dismiss(); setDismissed(true); }} />
+      </View>
     </View>
   );
 }
 
 const local = StyleSheet.create({
+  banner: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.sm, flexDirection: "row", marginBottom: spacing.xs, paddingLeft: spacing.sm },
+  bannerMain: { alignItems: "center", flex: 1, flexDirection: "row", gap: spacing.xs, minHeight: 36, minWidth: 0 },
+  bannerPressed: { opacity: 0.7 },
+  bannerText: { ...textStyles.bodySmall, color: colors.primary, flex: 1, fontWeight: "600", minWidth: 0 },
+  dots: { flexDirection: "row", gap: 3 },
+  dot: { backgroundColor: colors.primary, borderRadius: 3, height: 5, opacity: 0.3, width: 5 },
+  dotOn: { opacity: 1 },
   container: { flex: 1 },
   // Same placement as Kho's search box (top padding, centred max width on wide screens).
   wide: { alignSelf: "center", maxWidth: SEARCH_MAX_WIDTH, width: "100%" },

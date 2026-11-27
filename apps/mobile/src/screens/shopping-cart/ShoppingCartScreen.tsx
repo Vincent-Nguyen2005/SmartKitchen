@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { ChevronLeft, Minus, Package, Plus, ShoppingCart, Trash2 } from "lucide-react-native";
+import { ChevronLeft, Minus, Package, Plus, ShoppingCart, Tag, Trash2 } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
@@ -23,8 +23,9 @@ import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
 import { cartTotal, lineTotal, unitPriceText } from "./pricing";
 import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { unitWord } from "./unitDisplay";
-import { type CheckoutLine, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
+import { type CheckoutLine, type ShoppingItem, type ShoppingList, shoppingApi, type CheckoutPreview } from "./shoppingApi";
 import CheckoutSheet from "./CheckoutSheet";
+import { cartSummary } from "./checkoutSummary";
 import OrdersScreen from "./OrdersScreen";
 
 /**
@@ -198,6 +199,26 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, open
     }
   };
 
+  // The automatic promotion for this cart (server preview, the same the checkout charges): summary rows like the
+  // checkout sheet (Tạm tính / Khuyến mãi / Tổng thanh toán) and the "Mua thêm" hint.
+  // Asked again 500 ms after the cart's total or lines change; an older answer never replaces a newer one.
+  const [cartPreview, setCartPreview] = useState<CheckoutPreview | null>(null);
+  const previewRequest = useRef(0);
+  const cartKey = cart.map((item) => `${item.id}:${item.quantity}`).join(",");
+  useEffect(() => {
+    if (!family?.id || !accessToken || cart.length === 0) { setCartPreview(null); return undefined; }
+    const id = ++previewRequest.current;
+    const timer = setTimeout(() => {
+      shoppingApi.checkoutPreview(accessToken, family.id, [])
+        .then((result) => { if (id === previewRequest.current) setCartPreview(result); })
+        .catch(() => { if (id === previewRequest.current) setCartPreview(null); });
+    }, 500);
+    return () => clearTimeout(timer);
+    // cartKey covers the lines and quantities; total covers catalog prices arriving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [family?.id, accessToken, cartKey, total]);
+  const summary = cartSummary(cartPreview, total);
+
   /** Catalog details per cart line for the order: group (Kho category) and shelf life (expiry on delivery). */
   const checkoutLines: CheckoutLine[] = cart.map((item) => {
     const product = catalogFor(item);
@@ -332,7 +353,20 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, open
           )}
           {family && cart.length > 0 && (
             <View style={[styles.totalBar, isWide && styles.wideContent]}>
-              <Text style={styles.totalText} accessibilityLiveRegion="polite">Tổng: {formatVnd(total)}</Text>
+              <View style={styles.totalBlock} accessibilityLiveRegion="polite">
+                {summary.rows.map((row) => (
+                  <View key={row.key} style={[styles.summaryRow, row.strong && styles.summaryTotalRow]} accessible accessibilityLabel={`${row.label}: ${row.value.replace("−", "trừ ").replace("đ", " đồng")}`}>
+                    <Text style={row.strong ? styles.summaryTotalLabel : styles.summaryLabel} numberOfLines={2}>{row.label}</Text>
+                    <Text style={row.strong ? styles.summaryTotalValue : [styles.summaryValue, row.tone === "success" && styles.summarySuccess]}>{row.value}</Text>
+                  </View>
+                ))}
+                {summary.hint ? (
+                  <View style={styles.hintRow}>
+                    <AppIcon icon={Tag} size="sm" color={colors.primary} />
+                    <Text style={styles.hintText}>{summary.hint}</Text>
+                  </View>
+                ) : null}
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Mua ${cart.length} món, đặt hàng giao tận nơi`}
@@ -397,8 +431,18 @@ const styles = StyleSheet.create({
   unitText: { ...textStyles.bodySmall, color: colors.muted },
   lineEnd: { alignItems: "flex-end", gap: spacing.xs },
   lineTotal: { ...textStyles.label, color: colors.primary },
-  totalBar: { alignItems: "center", backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  totalText: { ...textStyles.subheading, flexShrink: 1 },
+  // Summary rows (same as the checkout sheet), then "Mua" full width.
+  totalBar: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  totalBlock: { gap: spacing.xs },
+  summaryRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between" },
+  summaryLabel: { ...textStyles.bodySmall, color: colors.muted, flex: 1, minWidth: 0 },
+  summaryValue: { ...textStyles.bodySmall, textAlign: "right" },
+  summarySuccess: { color: colors.success, fontWeight: "700" },
+  summaryTotalRow: { borderTopColor: colors.border, borderTopWidth: 1, paddingTop: spacing.xs },
+  summaryTotalLabel: { ...textStyles.label, flex: 1 },
+  summaryTotalValue: { ...textStyles.subheading, textAlign: "right" },
+  hintRow: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.sm, flexDirection: "row", gap: spacing.xs, padding: spacing.sm },
+  hintText: { ...textStyles.bodySmall, color: colors.primary, flex: 1 },
   buyButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, minWidth: 120, paddingHorizontal: spacing.xl },
   primaryButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
   primaryButtonText: { ...textStyles.label, color: colors.primaryText },

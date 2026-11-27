@@ -67,15 +67,20 @@ export const deliverySchema = z.object({
  * "Đặt hàng" in Giỏ hàng: the cart becomes a delivery order. `items` only adds catalog details per cart line (group,
  * shelf-life days for the expiry on delivery).
  */
+const checkoutItemsSchema = z.array(z.object({
+  id: z.string().uuid(),
+  categoryName: z.string().trim().min(1).max(50).optional(),
+  shelfLifeDays: z.number().int().min(0).max(3650).optional(),
+})).max(200).default([]);
 export const checkoutBodySchema = z.object({
   familyId: z.string().uuid(),
   delivery: deliverySchema,
-  items: z.array(z.object({
-    id: z.string().uuid(),
-    categoryName: z.string().trim().min(1).max(50).optional(),
-    shelfLifeDays: z.number().int().min(0).max(3650).optional(),
-  })).max(200).default([]),
+  items: checkoutItemsSchema,
+  /** "Tổng thanh toán" the app showed; a different server total answers 409 TOTAL_CHANGED (nothing written). */
+  expectedTotal: z.number().int().min(0).optional(),
 });
+/** POST /checkout/preview: Tạm tính / Khuyến mãi / Tổng thanh toán for the active cart. */
+export const checkoutPreviewBodySchema = z.object({ familyId: z.string().uuid(), items: checkoutItemsSchema });
 
 export const generateBodySchema = z.object({ familyId: z.string().uuid() });
 

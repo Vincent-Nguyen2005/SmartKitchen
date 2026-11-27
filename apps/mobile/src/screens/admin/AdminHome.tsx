@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BackHandler, Text, View } from "react-native";
-import { Carrot, ChartColumn, CookingPot, Flag, LayoutDashboard, ShieldExclamationPoint, Truck } from "lucide-react-native";
+import { BadgePercent, Carrot, ChartColumn, CookingPot, Flag, LayoutDashboard, ShieldExclamationPoint, Truck } from "lucide-react-native";
 import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, PageTitle, Segmented, styles, useLayout } from "../notifications/ui";
@@ -13,11 +13,12 @@ import DashboardScreen from "./DashboardScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
 import ReportsScreen from "./ReportsScreen";
+import PromotionsScreen from "./PromotionsScreen";
 
 // "Hệ thống" was removed from the tabs; SystemHealthScreen.tsx is kept but no longer rendered.
 // "Trọng số" is hidden: no service reads the recommendation weights yet (WeightsScreen.tsx and the
 // admin-service routes/tables are kept). Show it again once a consumer exists.
-type Section = "dashboard" | "overview" | "ingredients" | "recipes" | "reports" | "shippers";
+type Section = "dashboard" | "overview" | "ingredients" | "recipes" | "reports" | "shippers" | "promotions";
 
 /**
  * Screens pushed over the sectioned home (the empty stack). Back pops one level, so a family opened
@@ -82,6 +83,7 @@ export default function AdminHome(): React.JSX.Element {
             { value: "reports", label: "Báo cáo", icon: Flag },
             { value: "ingredients", label: "Nguyên liệu", icon: Carrot },
             { value: "recipes", label: "Món ăn", icon: CookingPot },
+            { value: "promotions", label: "Khuyến mãi", icon: BadgePercent },
             { value: "shippers", label: "Người giao hàng", icon: Truck },
           ]}
         />
@@ -102,6 +104,7 @@ export default function AdminHome(): React.JSX.Element {
         {section === "ingredients" && <IngredientsScreen />}
         {section === "recipes" && <RecipesScreen />}
         {section === "shippers" && <AdminShippersScreen />}
+        {section === "promotions" && <PromotionsScreen />}
       </View>
     </View>
   );

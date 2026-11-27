@@ -42,6 +42,15 @@ export const requireShipper = (req: Request, res: Response, next: NextFunction):
   next();
 };
 
+/** Admin endpoints (Quản trị › Chương trình khuyến mãi): the verified token must carry the ADMIN role. */
+export const requireAdmin = (req: Request, res: Response, next: NextFunction): void => {
+  if ((req as ShoppingAuthRequest).authUser?.role !== "ADMIN") {
+    res.status(403).json({ success: false, code: "ADMIN_ONLY", message: "Administrator role required" });
+    return;
+  }
+  next();
+};
+
 /** Shipper accounts checked recently (30 s), so a disabled account is refused quickly without asking on every call. */
 const activeCache = new Map<string, { active: boolean; at: number }>();
 const ACTIVE_TTL_MS = 30_000;

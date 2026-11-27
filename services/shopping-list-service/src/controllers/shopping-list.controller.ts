@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { z } from "zod";
 import { ShoppingListService } from "../services/shopping-list.service";
 import {
   addItemBodySchema,
@@ -6,14 +7,16 @@ import {
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
-  updateItemBodySchema, checkoutBodySchema, spendingQuerySchema, ordersQuerySchema, shipperOrdersQuerySchema, failOrderBodySchema } from "../validators/shopping-list.validator";
+  updateItemBodySchema, checkoutBodySchema, checkoutPreviewBodySchema, spendingQuerySchema, ordersQuerySchema, shipperOrdersQuerySchema, failOrderBodySchema } from "../validators/shopping-list.validator";
 import { OrdersService } from "../services/orders.service";
+import { PromotionsService, promotionInputSchema } from "../services/promotions.service";
 import { monthSpending, recordPurchase, vnMonth } from "../services/spending.service";
 import { catalogDetails } from "../services/shopping-list.service";
 import { ShoppingAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
 
 const auth = (req: Request): ShoppingAuthRequest => req as ShoppingAuthRequest;
+const activeBodySchema = z.object({ isActive: z.boolean() });
 
 export class ShoppingListController {
   static async generate(req: Request, res: Response, next: NextFunction) {
@@ -71,20 +74,70 @@ export class ShoppingListController {
     }
   }
 
+  /** Catalog details (price, group, shelf life) of the active cart's products. */
+  private static async cartCatalog(familyId: string, userId: string) {
+    const lists = await ShoppingListService.list(familyId);
+    const productIds = lists.flatMap((list) => (list.status === "ACTIVE" ? list.items : [])).flatMap((item) => (item.productId && !item.purchaseId && !item.inventoryAppliedAt ? [item.productId] : []));
+    return catalogDetails(userId, productIds);
+  }
+
   static async checkout(req: Request, res: Response, next: NextFunction) {
     try {
-      const { familyId, items, delivery } = checkoutBodySchema.parse(req.body);
+      const { familyId, items, delivery, expectedTotal } = checkoutBodySchema.parse(req.body);
       const request = auth(req);
       await requireFamilyMembership(request, familyId);
-      // Product ids of the active cart, for prices / groups / shelf life from the catalog.
-      const lists = await ShoppingListService.list(familyId);
-      const productIds = lists.flatMap((list) => (list.status === "ACTIVE" ? list.items : [])).flatMap((item) => (item.productId && !item.purchaseId && !item.inventoryAppliedAt ? [item.productId] : []));
-      const catalog = await catalogDetails(request.authUser.userId, productIds);
-      const order = await OrdersService.place(familyId, request.authUser.userId, delivery, items, catalog);
+      const catalog = await ShoppingListController.cartCatalog(familyId, request.authUser.userId);
+      const order = await OrdersService.place(familyId, request.authUser.userId, delivery, items, catalog, { expectedTotal });
       res.status(201).json({ success: true, data: { order } });
     } catch (err) {
       next(err);
     }
+  }
+
+  /** POST /checkout/preview: the same totals "Đặt hàng" will charge (automatic promotion included). */
+  static async checkoutPreview(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { familyId, items } = checkoutPreviewBodySchema.parse(req.body);
+      const request = auth(req);
+      await requireFamilyMembership(request, familyId);
+      const catalog = await ShoppingListController.cartCatalog(familyId, request.authUser.userId);
+      res.json({ success: true, data: await OrdersService.preview(familyId, request.authUser.userId, items, catalog) });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** GET /promotions/active: running checkout promotions for Đi chợ (tags and banner); any signed-in user. */
+  static async activePromotions(_req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { items: await PromotionsService.activeForShoppers() } }); } catch (err) { next(err); }
+  }
+
+  // ---- Quản trị › Chương trình khuyến mãi (ADMIN role in the verified token) ----
+  static async adminPromotions(_req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { items: await PromotionsService.list() } }); } catch (err) { next(err); }
+  }
+
+  static async createPromotion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = promotionInputSchema.parse(req.body);
+      res.status(201).json({ success: true, data: await PromotionsService.create(auth(req).authUser.userId, input) });
+    } catch (err) { next(err); }
+  }
+
+  static async updatePromotion(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const input = promotionInputSchema.parse(req.body);
+      res.json({ success: true, data: await PromotionsService.update(auth(req).authUser.userId, id, input) });
+    } catch (err) { next(err); }
+  }
+
+  static async setPromotionActive(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const { isActive } = activeBodySchema.parse(req.body);
+      res.json({ success: true, data: await PromotionsService.setActive(auth(req).authUser.userId, id, isActive) });
+    } catch (err) { next(err); }
   }
 
   static async confirmPurchase(req: Request, res: Response, next: NextFunction) {

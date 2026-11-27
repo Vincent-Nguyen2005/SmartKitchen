@@ -10,6 +10,7 @@ import {
   barFractions, buyerOf, canGoNext, comparisonLine, currentMonth, itemCountText, lineQuantity, monthTitle, purchaseTime, shiftMonth, vnd, vndSpoken,
   type Member, type MonthSpending, type SpendingGroup, type SpendingPurchase,
 } from "./spending";
+import { discountText } from "../shopping-cart/checkoutSummary";
 
 type Props = {
   visible: boolean;
@@ -241,6 +242,12 @@ function PurchaseSheet({ purchase, members, onClose }: { purchase: SpendingPurch
                 </View>
               ))}
             </ScrollView>
+            {purchase.discountAmount && purchase.promotionName ? (
+              <View style={local.promoRow} accessible accessibilityLabel={`Khuyến mãi ${purchase.promotionName}, trừ ${vndSpoken(purchase.discountAmount)}`}>
+                <Text style={local.promoLabel} numberOfLines={2}>Khuyến mãi: {purchase.promotionName}</Text>
+                <Text style={local.promoValue}>{discountText(purchase.discountAmount)}</Text>
+              </View>
+            ) : null}
             <View style={local.totalRow} accessible accessibilityLabel={`Tổng cộng ${vndSpoken(purchase.total)}`}>
               <Text style={local.totalLabel}>Tổng cộng</Text>
               <Text style={local.totalValue}>{vnd(purchase.total)}</Text>
@@ -384,5 +391,8 @@ const local = StyleSheet.create({
   noPrice: { ...textStyles.caption, textAlign: "right" },
   totalRow: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   totalLabel: { ...textStyles.label },
+  promoRow: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  promoLabel: { ...textStyles.bodySmall, color: colors.muted, flex: 1, minWidth: 0 },
+  promoValue: { ...textStyles.labelSmall, color: colors.success, textAlign: "right" },
   totalValue: { ...textStyles.subheading },
 });
