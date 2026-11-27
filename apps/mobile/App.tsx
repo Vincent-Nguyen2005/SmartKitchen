@@ -70,6 +70,7 @@ import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import ShipperHome from "./src/screens/shipper/ShipperHome";
 import { appShellFor, showsOnboarding } from "./src/navigation/appShell";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
+import { shouldRefreshBadge } from "./src/screens/notifications/liveRefresh";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
@@ -251,10 +252,14 @@ function AppContent(): React.JSX.Element {
   const showNotificationSelectionBar = notificationSelection.active && activeTab === "notifications" && !isAdmin && !overlayOpen && !paymentUrl;
 
   /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */
-  const refreshNotificationBadge = useCallback(async (): Promise<void> => {
+  // Tab switches / app resume refresh it at most every 15 s; real changes (feed reload, deletions) force it.
+  const badgeLastAt = useRef<number | null>(null);
+  const refreshNotificationBadge = useCallback(async (force = false): Promise<void> => {
     const token = session.accessToken;
     if (isAdmin || !token) { setNotificationBadge(0); return; }
     if (badgeRunning.current) { badgePending.current = true; return; }
+    if (!shouldRefreshBadge(badgeLastAt.current, Date.now(), force)) return;
+    badgeLastAt.current = Date.now();
     badgeRunning.current = true;
     try {
       const [unread, expiring, dismissals] = await Promise.allSettled([
@@ -269,14 +274,14 @@ function AppContent(): React.JSX.Element {
       setNotificationBadge(unreadCount + expiryCount);
     } finally {
       badgeRunning.current = false;
-      if (badgePending.current) { badgePending.current = false; void refreshNotificationBadge(); }
+      if (badgePending.current) { badgePending.current = false; void refreshNotificationBadge(true); }
     }
   }, [isAdmin, session.accessToken, session.family?.id]);
 
   // On sign-in, tab changes and every minute while the app is in the foreground.
   useEffect(() => { void refreshNotificationBadge(); }, [refreshNotificationBadge, activeTab]);
   useEffect(() => {
-    const timer = setInterval(() => { if (AppState.currentState === "active") void refreshNotificationBadge(); }, 60_000);
+    const timer = setInterval(() => { if (AppState.currentState === "active") void refreshNotificationBadge(true); }, 60_000);
     const subscription = AppState.addEventListener("change", (next) => { if (next === "active") void refreshNotificationBadge(); });
     return () => { clearInterval(timer); subscription.remove(); };
   }, [refreshNotificationBadge]);
@@ -648,7 +653,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "notifications" && (
           <NotificationsHome
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
-            onChanged={() => void refreshNotificationBadge()}
+            onChanged={() => void refreshNotificationBadge(true)}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
             onOpenOrder={openOrder}
           />

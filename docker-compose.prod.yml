@@ -282,7 +282,10 @@ services:
       NOTIFICATION_SERVICE_URL: http://notification-service:4010
       ADMIN_SERVICE_URL: http://admin-service:4011
       RATE_LIMIT_WINDOW_MS: 60000
+      # Anonymous requests per IP per window; signed-in requests count per user (USER_RATE_LIMIT_MAX).
       RATE_LIMIT_MAX: 100
+      USER_RATE_LIMIT_MAX: ${USER_RATE_LIMIT_MAX:-600}
+      # Credential calls (non-GET /api/auth) per IP per window.
       AUTH_RATE_LIMIT_MAX: 20
       CACHE_TTL_SECONDS: 30
       CACHE_MAX_ITEMS: 100

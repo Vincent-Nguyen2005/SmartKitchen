@@ -5,7 +5,10 @@ const numberEnv = (key: string, fallback: number): number => {
 
 export const performanceConfig = {
   rateLimitWindowMs: numberEnv("RATE_LIMIT_WINDOW_MS", 60_000),
+  /** Anonymous requests per IP and window. */
   rateLimitMax: numberEnv("RATE_LIMIT_MAX", 100),
+  /** Signed-in requests per user and window (see middleware/rate-limit.ts). */
+  userRateLimitMax: numberEnv("USER_RATE_LIMIT_MAX", 600),
   authRateLimitMax: numberEnv("AUTH_RATE_LIMIT_MAX", 20),
   cacheTtlMs: numberEnv("CACHE_TTL_SECONDS", 30) * 1000,
   cacheMaxItems: numberEnv("CACHE_MAX_ITEMS", 100),
