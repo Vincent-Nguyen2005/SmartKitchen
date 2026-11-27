@@ -6,7 +6,8 @@ import { colors, radius, spacing, textStyles, touchTarget } from "../theme";
  * cancelLabel defaults to "Hủy"; null shows only the confirm button (a notice: "Đã hiểu"). destructive shows the
  * confirm button in the danger colour (permanent delete).
  */
-type Request = { title: string; message: string; confirmLabel: string; cancelLabel?: string | null; destructive?: boolean };
+/** message is optional: a title-only question ("Xác nhận đã giao và thu …?") shows no body line. */
+type Request = { title: string; message?: string; confirmLabel: string; cancelLabel?: string | null; destructive?: boolean };
 
 /**
  * In-app yes/no dialog (same look as the Giỏ hàng checkout confirmation). Not Alert.alert or window.confirm:
@@ -41,7 +42,7 @@ export function useConfirm() {
       <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => answer("dismiss")} style={StyleSheet.absoluteFill} />
       <View style={local.card}>
         <Text style={local.title} accessibilityRole="header">{request.title}</Text>
-        <Text style={local.message}>{request.message}</Text>
+        {request.message ? <Text style={local.message}>{request.message}</Text> : null}
         <View style={local.actions}>
           {request.cancelLabel === null ? null : <Pressable accessibilityRole="button" onPress={() => answer("cancel")} style={local.cancel}><Text style={local.cancelText}>{request.cancelLabel ?? "Hủy"}</Text></Pressable>}
           <Pressable accessibilityRole="button" onPress={() => answer("confirm")} style={[local.primary, request.destructive && local.destructive]}><Text style={local.primaryText}>{request.confirmLabel}</Text></Pressable>

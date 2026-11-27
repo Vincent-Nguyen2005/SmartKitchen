@@ -73,7 +73,7 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
 
   const deliver = async () => {
     if (!order) return;
-    const ok = await confirm({ title: deliverConfirmTitle(order.codAmount), message: "Các món sẽ được chuyển vào Kho của khách và đơn chuyển sang Lịch sử.", confirmLabel: "Đã giao", cancelLabel: "Chưa" });
+    const ok = await confirm({ title: deliverConfirmTitle(order.codAmount), confirmLabel: "Đã giao", cancelLabel: "Chưa" });
     if (ok) await run(() => api.deliver(order.id), "deliver", "history");
   };
   const fail = async () => {

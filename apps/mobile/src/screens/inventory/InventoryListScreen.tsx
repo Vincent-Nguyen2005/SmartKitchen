@@ -286,17 +286,16 @@ export default function InventoryListScreen({
     // "1 gói", "2 quả", "1,5 kg": the linked product's word, else the word chosen in Kho (never "gói/bó").
     const quantityText = kitchenAmount(item, catalogUnitLabelFor(item, catalogImages));
     if (isPendingDelivery(item)) {
-      // Read-only until delivered: no edit sheet, no expiry yet, never used for cooking.
+      // Read-only until delivered: badge, dimmed image, name and quantity only (no edit sheet, no expiry, not cooked).
       return (
         <ProductCard
           width={cardGrid.cardWidth}
           dimmed
-          accessibilityLabel={`${item.name}, ${quantityText}, đang giao, dùng được khi nhận hàng`}
+          accessibilityLabel={`${item.name}, ${quantityText}, đang giao`}
           image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
           pill={{ label: "Đang giao", tone: "ai", icon: Truck }}
           name={item.name}
           subtitle={quantityText}
-          footer={<CardCaption text="Dùng được khi nhận hàng" />}
         />
       );
     }
