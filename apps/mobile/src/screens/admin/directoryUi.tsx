@@ -29,7 +29,10 @@ export function UserRow({ user }: UserRowProps): React.JSX.Element {
         <AppText variant="body" numberOfLines={1}>{name}</AppText>
         <AppText variant="caption" numberOfLines={1}>{user.email}</AppText>
       </View>
-      <Badge label={badge.label} color={badge.color} background={badge.background} />
+      {/* Fixed-width column: every row's role badge lines up. */}
+      <View style={local.badgeColumn}>
+        <Badge label={badge.label} color={badge.color} background={badge.background} />
+      </View>
     </View>
   );
 }
@@ -85,4 +88,5 @@ const local = StyleSheet.create({
   row: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingVertical: spacing.sm },
   pressed: { backgroundColor: colors.primarySoft },
   text: { flex: 1, minWidth: 0 },
+  badgeColumn: { alignItems: "flex-end", minWidth: 112 },
 });

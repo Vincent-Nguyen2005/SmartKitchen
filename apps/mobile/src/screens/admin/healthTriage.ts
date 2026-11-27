@@ -1,5 +1,5 @@
 /**
- * Shared triage for the Thống kê and Hệ thống tabs, so "Dịch vụ có vấn đề" on one matches the cards
+ * Shared triage for Tổng quan ("Dịch vụ có vấn đề") and the Hệ thống screen, so the count matches the cards
  * shown on the other. A service needs attention when it is down, degraded, has never been measured
  * (we cannot claim it is healthy), or is slow (p95 above SLOW_P95_MS) even though it reports UP.
  */
