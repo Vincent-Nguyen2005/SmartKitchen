@@ -38,3 +38,13 @@ test("Kèm cơm trắng: the món mặn lists the meal's Gạo; cooking it takes
   assert.equal(cookLines(soup.ingredientDetails ?? []).some((line) => line.name === "Gạo"), false);
   assert.equal(soup.mealNote, undefined);
 });
+
+test("older saved menus (rice kcal only): the món mặn's Gạo is derived only for a Vietnamese món mặn", () => {
+  const old = { mealType: "DINNER", details: { role: "man", servings: 2, riceKcal: 1054 } };
+  assert.equal(dishRiceGrams(old, { role: "man", cuisine: "vietnam" }), 330);
+  assert.equal(dishRiceGrams(old, { role: "man", cuisine: "asian" }), 0);
+  assert.equal(dishRiceGrams({ ...old, details: { role: "mot_mon", riceKcal: 1054 } }, { role: "mot_mon", cuisine: "western" }), 0);
+  // Without the recipe the stored role decides (Vietnamese by default).
+  assert.equal(dishRiceGrams(old), 330);
+  assert.equal(mealHasRice([old], () => ({ role: "man", cuisine: "asian" })), false);
+});

@@ -2,7 +2,7 @@ import type { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { KhoItem } from "./kho-suggest";
 import { vnDay } from "./kho-suggest";
 import { dishServings, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
-import { RICE_INGREDIENT } from "./meal-plan";
+import { RICE_INGREDIENT, storedRiceGrams } from "./meal-plan";
 import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type RecipeCandidate } from "./menu.service";
 
 /**
@@ -234,9 +234,10 @@ export function dishesInRange(menus: MenuRow[], recipes: RecipeCandidate[], rang
       const day = itemDate(menu.startDate, item.dayOfWeek).toISOString().slice(0, 10);
       if (day < range.from || day > range.to) continue;
       const people = dishServings(item.details, menu.servings, memberCount);
-      // "Kèm cơm trắng": the meal's rice as raw Gạo (grams, already for the whole meal).
-      const rice = (item.details as { riceGrams?: unknown } | null)?.riceGrams;
-      if (typeof rice === "number" && rice > 0) dishes.push({ ingredients: [{ name: RICE_INGREDIENT, quantity: rice, unit: "GRAM" }], servings: 1, people: 1 });
+      // "Kèm cơm trắng": the meal's rice as raw Gạo (grams, for the whole meal); older menus: from its kcal when the
+      // carrying dish is a Vietnamese món mặn.
+      const rice = storedRiceGrams(item.details, item.recipeId ? byId.get(item.recipeId) : null);
+      if (rice > 0) dishes.push({ ingredients: [{ name: RICE_INGREDIENT, quantity: rice, unit: "GRAM" }], servings: 1, people: 1 });
       const recipe = item.recipeId ? byId.get(item.recipeId) : undefined;
       if (recipe) { dishes.push({ ingredients: recipe.details, servings: recipe.servings, people }); continue; }
       const aiDish = (item.details as { aiDish?: { ingredients?: unknown; servings?: unknown } } | null)?.aiDish;

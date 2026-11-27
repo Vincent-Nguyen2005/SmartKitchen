@@ -32,6 +32,18 @@ export const RICE_SHARE = 0.35;
 export const RICE_INGREDIENT = "Gạo";
 export const RAW_RICE_KCAL_PER_GRAM = 1.3 * 2.5;
 export const riceGrams = (riceKcal: number): number => (riceKcal > 0 ? Math.ceil(riceKcal / RAW_RICE_KCAL_PER_GRAM / 10) * 10 : 0);
+
+/**
+ * The meal's rice carried by a saved dish (raw Gạo grams): `details.riceGrams`; menus saved before rice became an
+ * ingredient only have `details.riceKcal`, which counts only when the carrying dish is a Vietnamese món mặn (rice only
+ * with a Vietnamese món mặn meal).
+ */
+export function storedRiceGrams(details: unknown, carrier?: { role?: string | null; cuisine?: string | null } | null): number {
+  const record = typeof details === "object" && details !== null ? details as { riceGrams?: unknown; riceKcal?: unknown } : {};
+  if (typeof record.riceGrams === "number") return record.riceGrams > 0 ? record.riceGrams : 0;
+  const kcal = typeof record.riceKcal === "number" ? record.riceKcal : 0;
+  return kcal > 0 && carrier?.role === "man" && (carrier.cuisine ?? "vietnam") === "vietnam" ? riceGrams(kcal) : 0;
+}
 export const MIN_SHARE = 0.9;
 export const MAX_SHARE = 1.15;
 

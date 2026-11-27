@@ -233,7 +233,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
   const labelFor = (item: MenuItem | null): string => portionLabel(mealMates(item).length, servingsFor(item), peopleFor(item));
   /** The dish's recipe scaled to its portions, with the meal's label and (món mặn) the meal's rice as Gạo. */
   const planned = (recipe: Recipe, item: MenuItem | null): Recipe =>
-    withRice({ ...scaleRecipe(recipe, servingsFor(item), peopleFor(item)), portionLabel: labelFor(item) }, dishRiceGrams(item));
+    withRice({ ...scaleRecipe(recipe, servingsFor(item), peopleFor(item)), portionLabel: labelFor(item) }, dishRiceGrams(item, item?.recipeId ? recipes.get(item.recipeId) ?? recipe : recipe));
 
   /** The alternative of an unsuitable dish (view-only here, like every dish in Lịch). */
   const openRecipe = async (recipeId: string): Promise<void> => {
@@ -361,7 +361,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
                 <Text style={styles.mealTitle} accessibilityRole="header">{mealLabels[meal]}</Text>
                 {kcal > 0 && <Text style={styles.mealKcal}>{Math.round(kcal)} kcal</Text>}
               </View>
-              {mealHasRice(items) && <Text style={styles.muted}>{RICE_NOTE}</Text>}
+              {mealHasRice(items, (entry) => recipes.get((entry as MenuItem).recipeId ?? "")) && <Text style={styles.muted}>{RICE_NOTE}</Text>}
               {items.length === 0 ? (
                 <Text style={styles.muted}>Chưa có món</Text>
               ) : (

@@ -349,3 +349,16 @@ test("sensible combinations: foreign main without Vietnamese canh / rau or rice;
   assert.ok(replanServings("LUNCH", [{ role: "man", kcal: 400, cuisine: "vietnam" }, { role: "canh", kcal: 150, cuisine: "vietnam" }], 4, 3200).riceKcal > 0);
   assert.equal(replanServings("LUNCH", [{ role: "mot_mon", kcal: 600, cuisine: "western" }], 4, 3200).riceKcal, 0);
 });
+
+test("older saved menus (rice kcal only): Gạo counts only when the meal's món mặn is Vietnamese", () => {
+  const recipe = (id: string, role: string, cuisine: string) => ({ id, name: id, ingredients: [], details: [{ name: `NL ${id}`, quantity: 400, unit: "GRAM" }], imageUrl: null, isActive: true, mealTypes: [], dietaryTags: [], tags: [], role, servings: 4, allergens: [], contraindications: [], cuisine });
+  const recipes = [recipe("bo-kho", "man", "vietnam"), recipe("ga-han", "man", "asian"), recipe("bo-bit-tet", "mot_mon", "western")];
+  const menus = [{ startDate: DAY, servings: 4, items: [
+    { recipeId: "bo-kho", dayOfWeek: 2, details: { role: "man", servings: 2, riceKcal: 1054 } },
+    { recipeId: "ga-han", dayOfWeek: 2, details: { role: "man", servings: 4, riceKcal: 1204 } },
+    { recipeId: "bo-bit-tet", dayOfWeek: 2, details: { role: "mot_mon", servings: 2, riceKcal: 1054 } },
+  ] }];
+  const rice = dishesInRange(menus, recipes, { from: "2026-11-24", to: "2026-11-30" }).filter((dish) => dish.ingredients[0].name === "Gạo");
+  // Only Bò kho's meal: 1054 ÷ 3,25 → 330 g.
+  assert.deepEqual(rice.map((dish) => dish.ingredients[0].quantity), [330]);
+});

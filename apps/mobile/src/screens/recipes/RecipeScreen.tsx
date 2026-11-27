@@ -129,7 +129,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
    * "Hoàn thành" on it takes the rice out of Kho (once per meal, with the dish's ingredients).
    */
   const showRecipe = (recipe: Recipe, item: MenuItem | null = openedItem) =>
-    setDetail(withRice({ ...scaleRecipe(recipe, portionsOf(item), people), portionLabel: labelOf(item) }, dishRiceGrams(item)));
+    setDetail(withRice({ ...scaleRecipe(recipe, portionsOf(item), people), portionLabel: labelOf(item) }, dishRiceGrams(item, item?.recipeId ? recipeById.get(item.recipeId) ?? recipe : recipe)));
   const mealItems = items.filter((item) => item.mealType === meal);
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
@@ -220,7 +220,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   } else {
     content = (
       <>
-      {mealHasRice(mealItems) && <AppText variant="bodySmall" color={colors.muted}>{RICE_NOTE}</AppText>}
+      {mealHasRice(mealItems, (entry) => recipeById.get((entry as MenuItem).recipeId ?? "")) && <AppText variant="bodySmall" color={colors.muted}>{RICE_NOTE}</AppText>}
       <View onLayout={cardGrid.onLayout} style={[styles.grid, { gap: cardGrid.gap }]}>
         {mealItems.map((item) => (
           <MenuDishCard
