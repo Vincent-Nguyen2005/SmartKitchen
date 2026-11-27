@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useState } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MapPin, Package, Phone, RefreshCw, Truck, X } from "lucide-react-native";
@@ -9,7 +9,8 @@ import { amountText } from "./unitDisplay";
 import { canCancel, ORDER_STATUS, orderTime, type StatusTone } from "./orders";
 import { shoppingApi, type Order } from "./shoppingApi";
 
-type Props = { visible: boolean; familyId: string; accessToken: string; onClose: () => void; onChanged?: () => void };
+/** focusOrderId: opened from an order notice; that order is scrolled to and highlighted. */
+type Props = { visible: boolean; familyId: string; accessToken: string; onClose: () => void; onChanged?: () => void; focusOrderId?: string | null };
 
 const TONES: Record<StatusTone, { background: string; text: string }> = {
   warning: { background: colors.warningSoft, text: colors.warning },
@@ -23,12 +24,20 @@ const TONES: Record<StatusTone, { background: string; text: string }> = {
  * "Đơn hàng" (Giỏ hàng header): the family's delivery orders, newest first, with status, address, items and total
  * (cash on delivery). "Hủy đơn" while the order still waits for a shipper (in-app confirm).
  */
-export default function OrdersScreen({ visible, familyId, accessToken, onClose, onChanged }: Props): React.JSX.Element {
+export default function OrdersScreen({ visible, familyId, accessToken, onClose, onChanged, focusOrderId = null }: Props): React.JSX.Element {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const { confirm, dialog } = useConfirm();
+  const list = useRef<FlatList<Order>>(null);
+  const focusIndex = focusOrderId && orders ? orders.findIndex((order) => order.id === focusOrderId) : -1;
+  // Once per opening: scroll the notice's order into view after the list rendered.
+  useEffect(() => {
+    if (!visible || focusIndex < 0) return undefined;
+    const timer = setTimeout(() => list.current?.scrollToIndex({ index: focusIndex, animated: true, viewPosition: 0.1 }), 150);
+    return () => clearTimeout(timer);
+  }, [visible, focusIndex]);
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
@@ -71,9 +80,15 @@ export default function OrdersScreen({ visible, familyId, accessToken, onClose, 
           <View style={local.center}><ActivityIndicator color={colors.primary} /></View>
         ) : (
           <FlatList
+            ref={list}
             data={orders ?? []}
             keyExtractor={(order) => order.id}
-            renderItem={({ item }) => <OrderCard order={item} busy={busyId === item.id} onCancel={cancel} />}
+            renderItem={({ item }) => <OrderCard order={item} busy={busyId === item.id} onCancel={cancel} highlighted={item.id === focusOrderId} />}
+            // Rows have different heights: on a miss, jump near it by an estimate, then retry.
+            onScrollToIndexFailed={({ index, averageItemLength }) => {
+              list.current?.scrollToOffset({ offset: index * averageItemLength, animated: false });
+              setTimeout(() => list.current?.scrollToIndex({ index, animated: true, viewPosition: 0.1 }), 120);
+            }}
             contentContainerStyle={local.content}
             ListHeaderComponent={error ? <Text style={local.error} accessibilityRole="alert">{error}</Text> : undefined}
             ListEmptyComponent={error ? <StateView icon={RefreshCw} text="Không tải được đơn hàng" action="Thử lại" onAction={() => void load()} /> : <StateView icon={Package} text="Chưa có đơn hàng" />}
@@ -87,11 +102,11 @@ export default function OrdersScreen({ visible, familyId, accessToken, onClose, 
   );
 }
 
-const OrderCard = memo(function OrderCard({ order, busy, onCancel }: { order: Order; busy: boolean; onCancel: (order: Order) => void }): React.JSX.Element {
+const OrderCard = memo(function OrderCard({ order, busy, onCancel, highlighted = false }: { order: Order; busy: boolean; onCancel: (order: Order) => void; highlighted?: boolean }): React.JSX.Element {
   const status = ORDER_STATUS[order.status];
   const tone = TONES[status.tone];
   return (
-    <View style={local.card} accessible={false}>
+    <View style={[local.card, highlighted && local.cardHighlighted]} accessible={false}>
       <View style={local.cardHeader}>
         <Text style={local.cardTime}>{orderTime(order.purchasedAt)}</Text>
         <View style={[local.chip, { backgroundColor: tone.background }]}><Text style={[local.chipText, { color: tone.text }]}>{status.label}</Text></View>
@@ -150,6 +165,8 @@ const local = StyleSheet.create({
   center: { alignItems: "center", flex: 1, justifyContent: "center" },
   content: { alignSelf: "center", gap: spacing.md, maxWidth: 720, padding: spacing.lg, width: "100%" },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
+  // The order a tapped notice is about.
+  cardHighlighted: { backgroundColor: colors.primarySoft, borderColor: colors.primary, borderWidth: 2, margin: -1 },
   cardHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   cardTime: { ...textStyles.label },
   chip: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },

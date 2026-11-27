@@ -6,7 +6,9 @@ const prismaMock = vi.hoisted(() => ({
   promotion: { findUnique: vi.fn(), findMany: vi.fn() },
   deviceToken: { findMany: vi.fn() },
   notification: { findMany: vi.fn(), createMany: vi.fn() },
+  notificationDismissal: { findMany: vi.fn() },
 }));
+const dismissals = vi.hoisted(() => [] as Array<{ userId: string; key: string }>);
 const pushSend = vi.hoisted(() => vi.fn());
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("./push-provider", () => ({ createPushProvider: () => ({ send: pushSend }) }));
@@ -18,6 +20,9 @@ const promotion = (id: string) => ({ id, partnerId: "partner-1", title: `KM ${id
 beforeEach(() => {
   vi.clearAllMocks();
   rows.length = 0;
+  dismissals.length = 0;
+  prismaMock.notificationDismissal.findMany.mockImplementation(async ({ where }: { where: { userId: { in: string[] }; key: { in: string[] } } }) =>
+    dismissals.filter((row) => where.userId.in.includes(row.userId) && where.key.in.includes(row.key)));
   prismaMock.notification.findMany.mockImplementation(async ({ where }: { where: { userId: { in: string[] }; OR: Array<{ data: { equals: string } }> } }) =>
     rows.filter((row) => row.dedupeKey === null && where.userId.in.includes(String(row.userId)) && where.OR.some((entry) => (row.data as { promotionId: string }).promotionId === entry.data.equals)));
   prismaMock.notification.createMany.mockImplementation(async ({ data }: { data: Array<Record<string, unknown>> }) => {
@@ -52,6 +57,14 @@ describe("promotions are in-app only", () => {
     rows.push({ userId: "u1", type: "PROMOTION", data: { promotionId: "p1" }, dedupeKey: null });
     expect(await addPromotionRows([promotion("p1")], ["u1", "u2"])).toBe(1);
     expect(rows.map((row) => row.dedupeKey)).toEqual([null, promotionDedupeKey("p1", "u2")]);
+  });
+
+  it("a promotion the user deleted in Thông báo is never made again for them (others still get it)", async () => {
+    dismissals.push({ userId: "u1", key: "promotion:p1" });
+    prismaMock.promotion.findMany.mockResolvedValue([promotion("p1"), promotion("p2")]);
+    expect(await ensureActivePromotionRows("u1")).toBe(1);
+    expect(rows.map((row) => row.dedupeKey)).toEqual(["promotion:p2:u1"]);
+    expect(await ensureActivePromotionRows("u2")).toBe(2);
   });
 
   it("no active promotion: nothing is written", async () => {

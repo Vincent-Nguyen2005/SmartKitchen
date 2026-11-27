@@ -3,11 +3,19 @@ import { ExpiringQuery } from "../validators/alerts.validator";
 import type { Prisma } from "../../node_modules/.prisma/client-inventory";
 import { hiddenPurchaseFilter } from "./items.service";
 
+const VN_OFFSET_MS = 7 * 3_600_000;
+/** Today's Vietnam calendar day as UTC midnight (expiry dates are stored as YYYY-MM-DDT00:00:00Z). */
+export const vietnamToday = (now: Date = new Date()): Date => new Date(`${new Date(now.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10)}T00:00:00.000Z`);
+
 export class AlertsService {
+  /**
+   * Thông báo expiry alerts: items with an expiry within `days` (or already expired) that are still in Kho. Never
+   * listed: consumed (quantity 0 / CONSUMED), discarded, deleted, "Đang giao" rows, and bought rows auto-hidden 3 days
+   * after expiry. daysLeft counts Vietnam calendar days (00:00-07:00 VN is still the previous UTC day).
+   */
   static async getExpiringItems(query: ExpiringQuery) {
     const { days, familyId } = query;
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const today = vietnamToday();
     const threshold = new Date(today);
     threshold.setUTCDate(threshold.getUTCDate() + days);
     threshold.setUTCHours(23, 59, 59, 999);

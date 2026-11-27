@@ -11,20 +11,20 @@ type Props = {
   onChanged?: () => void;
   /** Open Đi chợ on Giỏ hàng (after "Thêm vào Giỏ hàng" in "Cần mua tuần này"). */
   onOpenCart?: () => void;
-  /** An order notice was tapped: open Đi chợ › Đơn hàng. */
-  onOpenOrders?: () => void;
+  /** An order notice was tapped: open Đi chợ › Đơn hàng on that order. */
+  onOpenOrder?: (orderId: string) => void;
 };
 
 /**
  * The "Thông báo" tab: one list (notifications, expiry alerts, active promotions). No page title, no segments, no
  * read filter and no notification settings: every notification type is shown.
  */
-export default function NotificationsHome({ onOpenInventoryItem, onChanged, onOpenCart, onOpenOrders }: Props): React.JSX.Element {
+export default function NotificationsHome({ onOpenInventoryItem, onChanged, onOpenCart, onOpenOrder }: Props): React.JSX.Element {
   const [weekOpen, setWeekOpen] = useState(false);
   if (weekOpen) return <WeekShoppingScreen onBack={() => setWeekOpen(false)} onOpenCart={() => { setWeekOpen(false); onOpenCart?.(); }} />;
   return (
     <View style={styles.screen}>
-      <NotificationFeed onOpenInventoryItem={onOpenInventoryItem} onChanged={onChanged} onOpenOrders={onOpenOrders} onOpenWeekShopping={() => setWeekOpen(true)} />
+      <NotificationFeed onOpenInventoryItem={onOpenInventoryItem} onChanged={onChanged} onOpenOrder={onOpenOrder} onOpenWeekShopping={() => setWeekOpen(true)} />
     </View>
   );
 }

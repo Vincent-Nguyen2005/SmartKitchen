@@ -80,4 +80,29 @@ describe("AlertsService", () => {
       where: expect.objectContaining({ familyId, expiryDate: { not: null, lte: new Date("2026-11-09T23:59:59.999Z") } }),
     }));
   });
+
+  it("leaves out consumed, discarded, deleted, Đang giao and auto-hidden bought rows (in the query)", async () => {
+    prismaMock.foodItem.findMany.mockResolvedValue([]);
+    await AlertsService.getExpiringItems({ familyId, days: 3 });
+    const where = prismaMock.foodItem.findMany.mock.calls[0][0].where;
+    expect(where).toMatchObject({
+      deletedAt: null,
+      quantity: { gt: 0 },
+      status: { notIn: ["CONSUMED", "DISCARDED"] },
+      deliveryOrderId: null,
+      NOT: { origin: "PURCHASE", expiryDate: { not: null, lt: new Date("2026-11-03T00:00:00.000Z") } },
+    });
+  });
+
+  it("counts Vietnam days: 01:00 on 07/11 in Vietnam (18:00 UTC on 06/11) is already the 7th", async () => {
+    vi.setSystemTime(new Date("2026-11-06T18:00:00.000Z"));
+    prismaMock.foodItem.findMany.mockResolvedValue([
+      { id: "today", expiryDate: new Date("2026-11-07T00:00:00.000Z") },
+      { id: "yesterday", expiryDate: new Date("2026-11-06T00:00:00.000Z") },
+      { id: "in-two", expiryDate: new Date("2026-11-09T00:00:00.000Z") },
+    ]);
+    const result = await AlertsService.getExpiringItems({ familyId, days: 3 });
+    expect(result.map((item) => item.daysLeft)).toEqual([0, -1, 2]);
+    expect(prismaMock.foodItem.findMany.mock.calls[0][0].where.expiryDate).toEqual({ not: null, lte: new Date("2026-11-10T23:59:59.999Z") });
+  });
 });

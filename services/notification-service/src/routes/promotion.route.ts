@@ -2,11 +2,13 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { keywordsOverlap, normalizedKeywords } from "../lib/promotion";
-import { dispatchPromotion, ensureActivePromotionRows } from "../services/promotion-dispatch.service";
+import { dispatchPromotion, ensureActivePromotionRows, promotionDismissalKey } from "../services/promotion-dispatch.service";
 import { createApiKeyGuard } from "../middleware/api-key";
 import { callerUserId, forbidOtherUser, namesOtherUser, requireAdmin, requireUser } from "../middleware/identity";
 
 const router = Router();
+/** Week and expiry dismissals are kept this long (their keys name a week / day that is long past by then). */
+const DISMISSAL_KEEP_DAYS = 60;
 const apiKeyGuard = createApiKeyGuard("PARTNER_API_KEY", "Invalid partner API key");
 const error = (response: { status: (code: number) => { json: (body: unknown) => void } }, details: unknown): void => response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details });
 const page = (value: unknown, fallback: number, max: number): number => Math.min(Math.max(Number(value) || fallback, 1), max);
@@ -101,6 +103,39 @@ router.patch("/notifications/:id/read", requireUser, async (request, response) =
   if (result.count === 0) return response.status(404).json({ error: "NOT_FOUND", message: "Notification not found" });
   return response.json(await prisma.notification.findUnique({ where: { id: request.params.id } }));
 });
+// Thông báo multi-select "Xóa": deletes the caller's own rows among `ids` (bulk, idempotent: unknown, already deleted
+// and other users' ids are skipped silently, so nothing about them leaks and nobody else's feed changes). A deleted
+// promotion row also records the dismissal "promotion:<id>", otherwise the feed would make the row again on the next read.
+router.post("/notifications/delete", requireUser, async (request, response) => {
+  const parsed = z.object({ ids: z.array(z.string().trim().min(1).max(100)).min(1).max(200) }).safeParse(request.body);
+  if (!parsed.success) return error(response, parsed.error.flatten());
+  const userId = callerUserId(request);
+  const ids = [...new Set(parsed.data.ids)];
+  const deleted = await prisma.$transaction(async (tx) => {
+    const promotionRows = await tx.notification.findMany({ where: { id: { in: ids }, userId, type: "PROMOTION" }, select: { data: true } });
+    const keys = promotionRows.map((row) => (row.data as { promotionId?: unknown } | null)?.promotionId).filter((id): id is string => typeof id === "string").map(promotionDismissalKey);
+    if (keys.length > 0) await tx.notificationDismissal.createMany({ data: keys.map((key) => ({ userId, key })), skipDuplicates: true });
+    return (await tx.notification.deleteMany({ where: { id: { in: ids }, userId } })).count;
+  });
+  return response.json({ deleted });
+});
+
+// Dismissed computed items (see NotificationDismissal in schema.prisma): the caller's keys only.
+const dismissalKey = z.string().trim().regex(/^(week|expiry|promotion):[^\s]{1,190}$/);
+router.get("/notifications/dismissals", requireUser, async (request, response) => {
+  const rows = await prisma.notificationDismissal.findMany({ where: { userId: callerUserId(request) }, select: { key: true }, orderBy: { createdAt: "desc" }, take: 1000 });
+  return response.json({ keys: rows.map((row) => row.key) });
+});
+router.post("/notifications/dismissals", requireUser, async (request, response) => {
+  const parsed = z.object({ keys: z.array(dismissalKey).min(1).max(200) }).safeParse(request.body);
+  if (!parsed.success) return error(response, parsed.error.flatten());
+  const userId = callerUserId(request);
+  const created = await prisma.notificationDismissal.createMany({ data: [...new Set(parsed.data.keys)].map((key) => ({ userId, key })), skipDuplicates: true });
+  // Old week / expiry keys can never match again: drop the caller's keys older than DISMISSAL_KEEP_DAYS.
+  await prisma.notificationDismissal.deleteMany({ where: { userId, createdAt: { lt: new Date(Date.now() - DISMISSAL_KEEP_DAYS * 86_400_000) }, NOT: { key: { startsWith: "promotion:" } } } });
+  return response.json({ dismissed: created.count });
+});
+
 // Putting a promotion into users' Thông báo now is an operator action (admin screens / support, e2e smoke), not a
 // partner one. Feed rows only: promotions are never pushed. Without userIds: every user with an active device token
 // (everyone else gets the row on their next read anyway).

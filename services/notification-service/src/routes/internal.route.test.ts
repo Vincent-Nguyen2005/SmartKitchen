@@ -7,7 +7,7 @@ import { createInternalRouter } from "./internal.route";
 import { errorHandler } from "../middleware/error-handler";
 
 const prismaMock = {
-  notification: { create: vi.fn(), count: vi.fn(), findUnique: vi.fn() },
+  notification: { create: vi.fn(), count: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
   promotion: { upsert: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn() },
   partnerSupermarket: { findFirst: vi.fn(), create: vi.fn() },
 };
@@ -44,6 +44,35 @@ describe("POST /internal/notifications", () => {
     expect([first.status, second.status]).toEqual([201, 200]);
     expect(prismaMock.notification.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.notification.create.mock.calls[0][0].data).toMatchObject({ dedupeKey: "order:o1:DELIVERED", channel: "IN_APP", status: "SENT" });
+  });
+
+  it("one row per order: replace upserts by key, marks it unread again and moves it to the top", async () => {
+    const table = new Map<string, Record<string, unknown>>();
+    prismaMock.notification.upsert.mockImplementation(async ({ where, update, create }: { where: { dedupeKey: string }; update: object; create: object }) => {
+      const row = table.has(where.dedupeKey) ? { ...table.get(where.dedupeKey), ...update } : { id: `n${table.size + 1}`, ...create };
+      table.set(where.dedupeKey, row);
+      return row;
+    });
+    const send = (status: string, title: string) => request(buildApp()).post("/internal/notifications").set("x-api-key", "internal-test-key")
+      .send({ userId: "user-1", title, body: "Đơn 120.000 đ", data: { type: "order", orderId: "o1", status }, dedupeKey: "order:o1", replace: true });
+    await send("SHIPPING", "Đơn hàng đang được giao");
+    table.set("order:o1", { ...table.get("order:o1"), status: "READ", readAt: new Date("2026-11-27T01:00:00Z") });
+    const second = await send("DELIVERED", "Đơn hàng đã giao thành công");
+    expect(second.status).toBe(200);
+    expect(table.size).toBe(1);
+    expect(table.get("order:o1")).toMatchObject({ id: "n1", title: "Đơn hàng đã giao thành công", status: "SENT", readAt: null, data: { status: "DELIVERED" } });
+    expect(prismaMock.notification.upsert.mock.calls[1][0].update.createdAt).toBeInstanceOf(Date);
+    expect(prismaMock.notification.create).not.toHaveBeenCalled();
+  });
+
+  it("replace: a retry with the same text changes nothing (a read notice stays read)", async () => {
+    const read = { id: "n1", userId: "user-1", title: "Đơn hàng đã giao thành công", body: "Đơn 120.000 đ", status: "READ", dedupeKey: "order:o1" };
+    prismaMock.notification.findUnique.mockResolvedValue(read);
+    const response = await request(buildApp()).post("/internal/notifications").set("x-api-key", "internal-test-key")
+      .send({ userId: "user-1", title: read.title, body: read.body, data: { type: "order", orderId: "o1", status: "DELIVERED" }, dedupeKey: "order:o1", replace: true });
+    expect(response.status).toBe(200);
+    expect(response.body.status).toBe("READ");
+    expect(prismaMock.notification.upsert).not.toHaveBeenCalled();
   });
 
   it("rejects a missing or wrong API key with 401 and stores nothing", async () => {

@@ -16,6 +16,8 @@ import { prisma } from "../lib/prisma";
 type PromotionRow = { id: string; partnerId: string; title: string; description: string | null; discountInfo: string | null };
 
 export const promotionDedupeKey = (promotionId: string, userId: string): string => `promotion:${promotionId}:${userId}`;
+/** A user deleted this promotion in Thông báo (NotificationDismissal): its row is never made again for them. */
+export const promotionDismissalKey = (promotionId: string): string => `promotion:${promotionId}`;
 
 /** Creates the missing feed rows of `promotions` for `userIds`; returns how many were created. */
 export const addPromotionRows = async (promotions: PromotionRow[], userIds: string[], now: Date = new Date()): Promise<number> => {
@@ -27,6 +29,12 @@ export const addPromotionRows = async (promotions: PromotionRow[], userIds: stri
     select: { userId: true, data: true },
   });
   const had = new Set(legacy.map((row) => promotionDedupeKey(String((row.data as { promotionId?: unknown } | null)?.promotionId), row.userId)));
+  // Deleted by the user (multi-select "Xóa"): counts as had, so the row is not made again.
+  const dismissed = await prisma.notificationDismissal.findMany({
+    where: { userId: { in: users }, key: { in: promotions.map((promotion) => promotionDismissalKey(promotion.id)) } },
+    select: { userId: true, key: true },
+  });
+  for (const row of dismissed) had.add(promotionDedupeKey(row.key.slice("promotion:".length), row.userId));
   const data = promotions.flatMap((promotion) => users
     .filter((userId) => !had.has(promotionDedupeKey(promotion.id, userId)))
     .map((userId) => ({
