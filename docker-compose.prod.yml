@@ -173,6 +173,8 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in .env}
       AUTH_SERVICE_URL: http://auth-service:4001
       NOTIFICATION_SERVICE_URL: http://notification-service:4010
+      # Automatic checkout promotions ("Chương trình"): off by default (daily automatic discounts replace them).
+      CHECKOUT_PROMOTIONS_ENABLED: ${CHECKOUT_PROMOTIONS_ENABLED:-false}
     depends_on:
       shopping-list-db: { condition: service_healthy }
       family-service: { condition: service_healthy }

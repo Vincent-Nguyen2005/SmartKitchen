@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
 import request from "supertest";
 import express from "express";
-import directoryRouter from "./directory.route";
+import directoryRouter, { familyListView } from "./directory.route";
 
 const previous = {
   key: process.env.INTERNAL_API_KEY,
@@ -36,11 +36,11 @@ it("only routes ADMIN requests to internal services with the API key", async () 
     const headers = { "x-user-role": "ADMIN", "x-user-id": "admin-1" };
     expect((await request(app).get("/users?page=2").set(headers)).status).toBe(200);
     expect((await request(app).get("/families?limit=10").set(headers)).status).toBe(200);
-    expect((await request(app).get("/families/abc").set(headers)).status).toBe(200);
+    // The family detail endpoint is gone (the admin app shows everything in the list row).
+    expect((await request(app).get("/families/abc").set(headers)).status).toBe(404);
     expect(seen).toEqual([
       { path: "/internal/admin/users?page=2", key: process.env.INTERNAL_API_KEY },
       { path: "/internal/admin/families?limit=10", key: process.env.INTERNAL_API_KEY },
-      { path: "/internal/admin/families/abc", key: process.env.INTERNAL_API_KEY },
     ]);
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
@@ -74,4 +74,12 @@ it("answers 502 when the upstream responds with a non-JSON body", async () => {
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
   }
+});
+
+it("families: only id, name, member count and created date reach the admin (no owner email, no members)", () => {
+  const family = { id: "f1", name: "Nhà An", memberCount: 2, ownerEmail: "owner@example.com", createdAt: "2026-11-11T00:00:00.000Z", members: [{ id: "m1", userId: "u1", name: "An", email: "an@example.com", role: "OWNER" }] };
+  expect(familyListView({ items: [family], total: 1, page: 1, limit: 20 })).toEqual({ items: [{ id: "f1", name: "Nhà An", memberCount: 2, createdAt: "2026-11-11T00:00:00.000Z" }], total: 1, page: 1, limit: 20 });
+  expect((familyListView({ items: [{ id: "f2", name: "X", createdAt: "2026-01-01T00:00:00.000Z", members: [{}, {}, {}] }] }).items as Array<{ memberCount: number }>)[0].memberCount).toBe(3);
+  // Error bodies are not reshaped.
+  expect(familyListView({ error: "NOT_FOUND" })).toEqual({ error: "NOT_FOUND" });
 });

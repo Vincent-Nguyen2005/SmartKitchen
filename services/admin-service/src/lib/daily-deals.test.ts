@@ -72,7 +72,7 @@ describe("selection", () => {
     expect(deals.every((deal) => deal.percent >= 10 && deal.percent <= 30 && deal.percent % 5 === 0)).toBe(true);
   });
 
-  it("Đổi món: another eligible product not already in today's list", () => {
+  it("Đổi nguyên liệu: another eligible product not already in today's list", () => {
     const today = selectDeals({ day: DAY, products: catalog, settings: DEFAULT_SETTINGS, recentProductIds: none, usage: noUsage });
     const todayIds = new Set(today.map((deal) => deal.productId));
     const replacement = pickReplacement({ day: DAY, replacedId: today[0].productId, todayIds, products: catalog, settings: DEFAULT_SETTINGS, recentProductIds: none });

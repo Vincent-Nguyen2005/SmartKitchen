@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, AppState, FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ban, MapPin, Package, Phone, RefreshCw, Search, Truck, UserMinus, UserRound, X } from "lucide-react-native";
 import { AppIcon, IconButton, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
@@ -8,35 +8,37 @@ import { formatVnd } from "../../services/format";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage, query } from "../notifications/gatewayApi";
 import { colors } from "../notifications/ui";
-import { ORDER_STATUS, orderTime, type StatusTone } from "../shopping-cart/orders";
+import { orderTime } from "../shopping-cart/orders";
 import { amountText } from "../shopping-cart/unitDisplay";
 import { discountText } from "../shopping-cart/checkoutSummary";
 import {
-  ADMIN_STATUS_TABS, canCancel, canUnassign, cancelConfirm, orderCardLabel, shortAddress, statusLabel, tabLabel, unassignConfirm,
-  type AdminOrderDetail, type AdminOrderList, type AdminOrderStatus, type AdminOrderSummary,
+  canCancel, canUnassign, cancelConfirm, HIGHLIGHT_MS, itemsLine, LIVE_REFRESH_MS, mergeLive, orderCardLabel, shortAddress, shouldRefreshNow, sortByLastChange,
+  STATUS_TAGS, statusLabel, unassignConfirm, type AdminOrderDetail, type AdminOrderList, type AdminOrderStatus, type AdminOrderSummary, type TagTone,
 } from "./adminOrders";
 
 const BASE = "/api/shopping-list/admin/orders";
 const PAGE = 20;
-const TONES: Record<StatusTone, { background: string; text: string }> = {
+const TONES: Record<TagTone, { background: string; text: string }> = {
+  neutral: { background: colors.border, text: colors.muted },
   warning: { background: colors.warningSoft, text: colors.warning },
-  primary: { background: colors.primarySoft, text: colors.primary },
   success: { background: colors.successSoft, text: colors.success },
-  muted: { background: colors.background, text: colors.muted },
   danger: { background: colors.dangerSoft, text: colors.danger },
 };
-const toneOf = (status: AdminOrderStatus) => TONES[ORDER_STATUS[status].tone];
+const toneOf = (status: AdminOrderStatus) => TONES[STATUS_TAGS[status].tone];
 
 type Props = { visible: boolean; onClose: () => void };
 
 /**
- * Quản trị › "Đơn hàng" (full-screen page from the bottom bar): every delivery order, by status (tabs with counts),
- * searchable by receiver name / phone / address, newest first, more pages while scrolling. A card opens the detail
- * with "Hủy đơn" (waiting orders) or "Gỡ người giao" (orders being delivered), both confirmed and audit-logged.
+ * Quản trị › "Đơn hàng" (full-screen page from the bottom bar): ONE list of every delivery order (no status filter),
+ * one card per order with a coloured status tag, sorted by the last status change, newest first; the search box
+ * (receiver name / phone / address) stays pinned above it; more pages while scrolling.
+ * Live: every 15 s while the page is open, the app in front and no detail sheet is over it (paused for 3 s after a
+ * keystroke in the search), the newest window is fetched and merged; a card whose status changed moves to the top and
+ * its tag flashes (< 1 s). Otherwise the list and the scroll position stay put. A card opens the detail with "Hủy đơn"
+ * (waiting orders) or "Gỡ người giao" (orders being delivered), both confirmed and audit-logged.
  */
 export default function AdminOrdersScreen({ visible, onClose }: Props): React.JSX.Element {
   const { api } = useGatewayApi();
-  const [status, setStatus] = useState<AdminOrderStatus>("PENDING");
   const [search, setSearch] = useState("");
   const [term, setTerm] = useState("");
   const [list, setList] = useState<AdminOrderList | null>(null);
@@ -46,7 +48,15 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [openedId, setOpenedId] = useState<string | null>(null);
+  const [highlighted, setHighlighted] = useState<ReadonlySet<string>>(new Set());
+  const [appActive, setAppActive] = useState(AppState.currentState === "active");
   const requestId = useRef(0);
+  const lastTypedAt = useRef(0);
+  const itemsRef = useRef<AdminOrderSummary[]>([]);
+  itemsRef.current = items;
+
+  useEffect(() => { const subscription = AppState.addEventListener("change", (state) => setAppActive(state === "active")); return () => subscription.remove(); }, []);
+  const onSearch = (text: string) => { lastTypedAt.current = Date.now(); setSearch(text); };
 
   // The search is sent 400 ms after typing stops.
   useEffect(() => { const timer = setTimeout(() => setTerm(search.trim()), 400); return () => clearTimeout(timer); }, [search]);
@@ -57,20 +67,50 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
     if (mode === "refresh") setRefreshing(true);
     if (mode === "more") setLoadingMore(true);
     try {
-      const result = (await api.get<{ data: AdminOrderList }>(`${BASE}${query({ status, q: term || undefined, page, limit: PAGE })}`)).data;
+      const result = (await api.get<{ data: AdminOrderList }>(`${BASE}${query({ q: term || undefined, page, limit: PAGE })}`)).data;
       if (id !== requestId.current) return;
       setList(result);
-      setItems((current) => (mode === "more" ? [...current, ...result.items.filter((item) => !current.some((entry) => entry.id === item.id))] : result.items));
+      setItems((current) => (mode === "more" ? sortByLastChange([...current, ...result.items.filter((item) => !current.some((entry) => entry.id === item.id))]) : result.items));
       setError(null);
     } catch (caught) {
       if (id === requestId.current) setError(errorMessage(caught));
     } finally {
       if (id === requestId.current) { setLoading(false); setRefreshing(false); setLoadingMore(false); }
     }
-  }, [api, status, term]);
+  }, [api, term]);
 
   useEffect(() => { if (visible) void load("load"); }, [visible, load]);
-  useEffect(() => { if (!visible) { setOpenedId(null); setSearch(""); setTerm(""); setStatus("PENDING"); } }, [visible]);
+  useEffect(() => { if (!visible) { setOpenedId(null); setSearch(""); setTerm(""); setHighlighted(new Set()); } }, [visible]);
+
+  /** Live refresh: the newest window (as many rows as are loaded, ≤ 50) merged into the list. */
+  const refreshLive = useCallback(async () => {
+    const id = requestId.current;
+    try {
+      const limit = Math.min(50, Math.max(PAGE, itemsRef.current.length));
+      const result = (await api.get<{ data: AdminOrderList }>(`${BASE}${query({ q: term || undefined, page: 1, limit })}`)).data;
+      // A load, refresh or page that started meanwhile wins.
+      if (id !== requestId.current) return;
+      const merged = mergeLive(itemsRef.current, result.items);
+      setItems(merged.items);
+      setList((current) => (current ? { ...current, total: result.total, counts: result.counts } : current));
+      if (merged.changedIds.length > 0) setHighlighted(new Set(merged.changedIds));
+    } catch {
+      // Keep the list; the next tick tries again.
+    }
+  }, [api, term]);
+  const sheetOpen = openedId !== null;
+  useEffect(() => {
+    if (!visible || !appActive || sheetOpen) return undefined;
+    const timer = setInterval(() => {
+      if (shouldRefreshNow({ visible, appActive, sheetOpen, lastTypedAt: lastTypedAt.current, now: Date.now() })) void refreshLive();
+    }, LIVE_REFRESH_MS);
+    return () => clearInterval(timer);
+  }, [visible, appActive, sheetOpen, refreshLive]);
+  useEffect(() => {
+    if (highlighted.size === 0) return undefined;
+    const timer = setTimeout(() => setHighlighted(new Set()), HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [highlighted]);
 
   const loadMore = () => {
     if (!list || loading || loadingMore || items.length >= list.total) return;
@@ -89,24 +129,21 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
         <View style={local.controls}>
           <View style={local.search}>
             <AppIcon icon={Search} size="sm" color={colors.muted} />
-            <TextInput accessibilityLabel="Tìm theo tên, số điện thoại hoặc địa chỉ" value={search} onChangeText={setSearch} placeholder="Tên, số điện thoại, địa chỉ" placeholderTextColor={colors.muted} style={local.searchInput} autoCorrect={false} />
-          </View>
-          {/* All five chips stay visible: they wrap to a second row on narrow phones (no hidden chip at the edge). */}
-          <View style={local.tabs} accessibilityRole="tablist">
-            {ADMIN_STATUS_TABS.map((tab) => {
-              const selected = tab.key === status;
-              return (
-                <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setStatus(tab.key)} style={[local.tab, selected && local.tabSelected]}>
-                  <Text style={[local.tabText, selected && local.tabTextSelected]} numberOfLines={1}>{tabLabel(tab, list?.counts ?? null)}</Text>
-                </Pressable>
-              );
-            })}
+            <TextInput accessibilityLabel="Tìm theo tên, số điện thoại hoặc địa chỉ" value={search} onChangeText={onSearch} placeholder="Tên, số điện thoại, địa chỉ" placeholderTextColor={colors.muted} style={local.searchInput} autoCorrect={false} />
           </View>
         </View>
+        {/* The search stays pinned above (outside the list); the list scrolls under it. */}
         <FlatList
+          style={local.flex}
           data={items}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <OrderCard order={item} onOpen={open} />}
+          renderItem={({ item }) => <OrderCard order={item} onOpen={open} highlighted={highlighted.has(item.id)} />}
+          extraData={highlighted}
+          // A card that moves to the top does not jump the list (unless the admin is at the top: then it is shown).
+          maintainVisibleContentPosition={{ minIndexForVisible: 0, autoscrollToTopThreshold: 48 }}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          automaticallyAdjustKeyboardInsets
           contentContainerStyle={local.listContent}
           ItemSeparatorComponent={Gap}
           onEndReachedThreshold={0.4}
@@ -116,7 +153,7 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load("refresh")} tintColor={colors.primary} colors={[colors.primary]} />}
           ListEmptyComponent={loading || (!list && !error) ? <Skeleton /> : error ? (
             <StateView icon={RefreshCw} text={error} action="Thử lại" onAction={() => void load("load")} />
-          ) : <StateView icon={Package} text={term ? "Không tìm thấy đơn hàng phù hợp." : `Không có đơn "${statusLabel(status)}".`} />}
+          ) : <StateView icon={Package} text={term ? "Không tìm thấy đơn hàng phù hợp." : "Chưa có đơn hàng nào."} />}
           ListFooterComponent={loadingMore ? <ActivityIndicator color={colors.primary} style={local.more} /> : undefined}
           showsVerticalScrollIndicator={false}
         />
@@ -128,14 +165,16 @@ export default function AdminOrdersScreen({ visible, onClose }: Props): React.JS
 
 function Gap(): React.JSX.Element { return <View style={{ height: spacing.sm }} />; }
 
-const OrderCard = memo(function OrderCard({ order, onOpen }: { order: AdminOrderSummary; onOpen: (order: AdminOrderSummary) => void }): React.JSX.Element {
+const OrderCard = memo(function OrderCard({ order, onOpen, highlighted }: { order: AdminOrderSummary; onOpen: (order: AdminOrderSummary) => void; highlighted: boolean }): React.JSX.Element {
   const tone = toneOf(order.status);
   const time = orderTime(order.purchasedAt);
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={`${orderCardLabel(order, time)}. Xem chi tiết`} onPress={() => onOpen(order)} style={({ pressed }) => [local.card, pressed && local.pressed]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${orderCardLabel(order, time)}. Xem chi tiết`} onPress={() => onOpen(order)} style={({ pressed }) => [local.card, highlighted && local.cardFlash, pressed && local.pressed]}>
       <View style={local.cardTop}>
         <Text style={local.cardTime}>{time}</Text>
-        <View style={[local.chip, { backgroundColor: tone.background }]}><Text style={[local.chipText, { color: tone.text }]}>{statusLabel(order.status)}</Text></View>
+        <View style={[local.chip, { backgroundColor: tone.background }, highlighted && [local.chipFlash, { borderColor: tone.text }]]} accessibilityLiveRegion={highlighted ? "polite" : "none"}>
+          <Text style={[local.chipText, { color: tone.text }]}>{statusLabel(order.status)}</Text>
+        </View>
       </View>
       <Text style={local.cardName} numberOfLines={1}>{order.receiverName ?? "Không rõ người nhận"}</Text>
       <View style={local.row}>
@@ -143,7 +182,7 @@ const OrderCard = memo(function OrderCard({ order, onOpen }: { order: AdminOrder
         <Text style={local.meta} numberOfLines={1}>{shortAddress(order.deliveryAddress)}</Text>
       </View>
       <View style={local.cardBottom}>
-        <Text style={local.meta}>{order.itemCount} món</Text>
+        <Text style={[local.meta, local.flex]} numberOfLines={1}>{itemsLine(order)}</Text>
         <Text style={local.total}>{formatVnd(order.total)}</Text>
       </View>
     </Pressable>
@@ -289,25 +328,22 @@ const local = StyleSheet.create({
   topBar: { alignItems: "center", backgroundColor: colors.surface, borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
   topTitle: { ...textStyles.subheading, flex: 1, textAlign: "center" },
   spacer: { width: touchTarget },
-  controls: { alignSelf: "center", gap: spacing.sm, maxWidth: 720, paddingHorizontal: spacing.lg, paddingTop: spacing.md, width: "100%" },
+  controls: { alignSelf: "center", backgroundColor: colors.background, gap: spacing.sm, maxWidth: 720, paddingBottom: spacing.xs, paddingHorizontal: spacing.lg, paddingTop: spacing.md, width: "100%", zIndex: 1 },
   search: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.sm, minHeight: touchTarget, paddingHorizontal: spacing.md },
   searchInput: { ...textStyles.body, flex: 1, minHeight: touchTarget - 2, padding: 0 },
-  tabs: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, paddingBottom: spacing.xs },
-  tab: { alignItems: "center", backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.pill, borderWidth: 1, justifyContent: "center", minHeight: 36, paddingHorizontal: spacing.md },
-  tabSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { ...textStyles.labelSmall, color: colors.text },
-  tabTextSelected: { color: colors.primaryText },
   listContent: { alignSelf: "center", maxWidth: 720, padding: spacing.lg, width: "100%" },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.xs, padding: spacing.lg },
   pressed: { opacity: 0.85 },
+  cardFlash: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
+  chipFlash: { borderWidth: 2 },
   cardTop: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
   cardTime: { ...textStyles.labelSmall, color: colors.muted },
   cardName: { ...textStyles.label },
-  cardBottom: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: spacing.xs },
+  cardBottom: { alignItems: "center", flexDirection: "row", gap: spacing.sm, justifyContent: "space-between", marginTop: spacing.xs },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.xs },
   meta: { ...textStyles.bodySmall, color: colors.muted, flexShrink: 1 },
   total: { ...textStyles.label, color: colors.primary },
-  chip: { borderRadius: radius.pill, paddingHorizontal: spacing.sm, paddingVertical: 2 },
+  chip: { borderColor: "transparent", borderRadius: radius.pill, borderWidth: 2, paddingHorizontal: spacing.sm, paddingVertical: 1 },
   chipLarge: { alignSelf: "flex-start", paddingHorizontal: spacing.md, paddingVertical: 4 },
   chipText: { ...textStyles.caption, fontWeight: "700" },
   more: { marginVertical: spacing.lg },

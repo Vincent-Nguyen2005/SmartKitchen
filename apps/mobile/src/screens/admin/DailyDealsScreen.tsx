@@ -1,20 +1,25 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { Check, RefreshCw, Repeat, Save, Search, X } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import { Check, RefreshCw, Repeat, Search, X } from "lucide-react-native";
 import { AppIcon, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
-import { formatVnd } from "../../services/format";
+import { SegmentTabs } from "../../components/SegmentTabs";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage } from "../notifications/gatewayApi";
 import { Button, colors, ScreenState, styles, useLayout } from "../notifications/ui";
-import { dayLabel, formOf, settingsErrors, settingsPayload, settingsSummary, sourceLabel, statusNote, type DailyDealsResponse, type SettingsField, type SettingsForm } from "./dailyDeals";
+import type { AutoSaveState } from "../../services/autoSave";
+import { createSettingsAutoSave, DEAL_TABS, dealPriceParts, dealTabMemory, formOf, saveStatusText, settingsPayload, statusNote, swapNotice, switchLabel, todayHeader, type DailyDealsResponse, type DealTab, type SettingsField, type SettingsForm } from "./dailyDeals";
 
 const BASE = "/api/admin/daily-deals";
 
 /**
- * Quản trị › "Giảm giá tự động": every day N catalog products get a discount automatically (shown to users exactly
- * like a normal discount). Settings (on / off, products per day, % range, excluded products) and today's list with
- * "Đổi món" per row and "Chọn lại hôm nay". admin-service checks the ADMIN role and writes the audit log.
+ * Quản trị › "Khuyến mãi" (Giảm giá tự động): every day N catalog products get a discount automatically (shown to users
+ * exactly like a normal discount). Two segment tabs (choice kept for the session):
+ * - "Hôm nay" (default): "<Thứ>, dd/MM/yyyy · Giảm a–b%", today's list (% pill, name, "giá gốc → giá giảm / đơn vị",
+ *   icon button "Đổi nguyên liệu") and "Chọn lại hôm nay" (confirm).
+ * - "Cài đặt": auto-saved (no save button): the switch and exclusions at once, numbers ~600 ms after typing stops and
+ *   on blur (invalid values are not sent; the error shows under the field); "Đang lưu… / Đã lưu" at the top.
+ * admin-service checks the ADMIN role and writes the audit log.
  */
 export default function DailyDealsScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
@@ -23,18 +28,36 @@ export default function DailyDealsScreen(): React.JSX.Element {
   const [form, setForm] = useState<SettingsForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<SettingsField, string>>>({});
+  const [saveState, setSaveState] = useState<AutoSaveState>({ status: "idle", error: null, field: null });
+  const formRef = useRef<SettingsForm | null>(null);
+  const saverRef = useRef<ReturnType<typeof createSettingsAutoSave> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [tab, setTabState] = useState<DealTab>(dealTabMemory.get());
+  const setTab = (next: DealTab) => { if (next !== "settings") void saverRef.current?.flush(); setTabState(dealTabMemory.set(next)); setNotice(null); };
   const { confirm, dialog } = useConfirm();
+
+  /** Today's list after a settings save; the form being typed in is left alone. */
+  const refreshData = useCallback(async () => {
+    try { setData(await api.get<DailyDealsResponse>(BASE)); } catch { /* the next load shows it */ }
+  }, [api]);
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     try {
+      await saverRef.current?.flush();
       const next = await api.get<DailyDealsResponse>(BASE);
       setData(next);
-      setForm(formOf(next.settings));
+      const nextForm = formOf(next.settings);
+      formRef.current = nextForm;
+      setForm(nextForm);
+      setFieldErrors({});
+      saverRef.current = createSettingsAutoSave({
+        initial: settingsPayload(nextForm),
+        save: async (settings) => { await api.put(`${BASE}/settings`, settings); void refreshData(); },
+        onState: setSaveState,
+      });
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -43,33 +66,27 @@ export default function DailyDealsScreen(): React.JSX.Element {
     }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
+  // Leaving the screen saves anything still pending.
+  useEffect(() => () => { void saverRef.current?.flush(); }, []);
 
-  const errors = form && showErrors ? settingsErrors(form) : {};
-  const update = (patch: Partial<SettingsForm>) => { setNotice(null); setForm((current) => (current ? { ...current, ...patch } : current)); };
-
-  const save = async () => {
-    if (!form) return;
-    setShowErrors(true);
-    if (Object.keys(settingsErrors(form)).length > 0) return;
-    setSaving(true);
-    try {
-      await api.put(`${BASE}/settings`, settingsPayload(form));
-      setNotice("Đã lưu. Thay đổi áp dụng từ lần chọn tiếp theo (ngày mai hoặc khi bấm Chọn lại hôm nay).");
-      setShowErrors(false);
-      await load();
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setSaving(false);
-    }
+  /** "type": numbers while typing (debounced); "commit": switch, exclusions and blur (at once). */
+  const update = (patch: Partial<SettingsForm>, mode: "type" | "commit") => {
+    if (!formRef.current || !saverRef.current) return;
+    const next = { ...formRef.current, ...patch };
+    formRef.current = next;
+    setForm(next);
+    setNotice(null);
+    setFieldErrors(mode === "type" ? saverRef.current.type(next) : saverRef.current.commit(next));
   };
+  const commitCurrent = () => update({}, "commit");
 
-  const swap = async (productId: string, name: string) => {
+  const swap = async (productId: string) => {
+    const before = data?.deals ?? [];
     setBusyId(productId);
     try {
       const next = await api.post<{ deals: DailyDealsResponse["deals"] }>(`${BASE}/today/${encodeURIComponent(productId)}/swap`);
       setData((current) => (current ? { ...current, deals: next.deals } : current));
-      setNotice(`Đã đổi ${name} sang sản phẩm khác.`);
+      setNotice(swapNotice(before, next.deals));
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -99,65 +116,67 @@ export default function DailyDealsScreen(): React.JSX.Element {
     <View style={styles.screen}>
       <ScrollView contentContainerStyle={[local.content, { paddingHorizontal: gutter }]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}>
-        <Text style={local.heading} accessibilityRole="header">Giảm giá tự động</Text>
-        <Text style={local.meta}>Mỗi ngày hệ thống tự giảm giá một số nguyên liệu. Người dùng thấy như giảm giá bình thường.</Text>
+        <SegmentTabs options={DEAL_TABS} value={tab} onChange={setTab} />
         {notice ? <Text style={local.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
         {error ? <Text style={styles.errorText} accessibilityRole="alert">{error}</Text> : null}
 
-        <View style={local.section}>
-          <Text style={local.sectionTitle} accessibilityRole="header">Cài đặt</Text>
-          <View style={local.switchRow}>
-            <View style={local.flex}>
-              <Text style={local.label}>Đang bật</Text>
-              <Text style={local.meta}>Tắt để dừng ngay (sản phẩm hôm nay trở lại giá thường).</Text>
+        {tab === "settings" ? (
+          <View style={local.section}>
+            {saveStatusText(saveState) ? <Text style={local.saveStatus} accessibilityLiveRegion="polite">{saveStatusText(saveState)}</Text> : null}
+            {saveState.status === "error" && saveState.error ? <Text style={styles.errorText} accessibilityRole="alert">{saveState.error}</Text> : null}
+            <View style={local.switchRow}>
+              <Text style={[local.label, local.flex]}>{switchLabel(form.enabled)}</Text>
+              <Switch accessibilityLabel="Giảm giá tự động" accessibilityHint={switchLabel(form.enabled)} value={form.enabled} onValueChange={(enabled) => update({ enabled }, "commit")} trackColor={{ true: colors.primary, false: colors.border }} thumbColor={colors.surface} />
             </View>
-            <Switch accessibilityLabel="Bật giảm giá tự động" value={form.enabled} onValueChange={(enabled) => update({ enabled })} trackColor={{ true: colors.primary, false: colors.border }} thumbColor={colors.surface} />
-          </View>
-          <View style={local.columns}>
-            <NumberInput label="Số sản phẩm mỗi ngày" value={form.dealsPerDay} onChange={(dealsPerDay) => update({ dealsPerDay })} error={errors.dealsPerDay} />
-            <NumberInput label="Giảm thấp nhất (%)" value={form.minPercent} onChange={(minPercent) => update({ minPercent })} error={errors.minPercent} />
-            <NumberInput label="Giảm cao nhất (%)" value={form.maxPercent} onChange={(maxPercent) => update({ maxPercent })} error={errors.maxPercent} />
-          </View>
-          <ExcludedPicker products={data.products} value={form.excludedProductIds} onChange={(excludedProductIds) => update({ excludedProductIds })} />
-          <Button label="Lưu cài đặt" icon={Save} busy={saving} onPress={() => void save()} />
-        </View>
-
-        <View style={local.section}>
-          <View style={local.sectionHeader}>
-            <View style={local.flex}>
-              <Text style={local.sectionTitle} accessibilityRole="header">Hôm nay · {dayLabel(data.day)}</Text>
-              <Text style={local.meta}>{settingsSummary(data.settings)}</Text>
+            <View style={local.columns}>
+              <NumberInput label="Số sản phẩm mỗi ngày" value={form.dealsPerDay} onChange={(dealsPerDay) => update({ dealsPerDay }, "type")} onBlur={commitCurrent} error={fieldErrors.dealsPerDay} />
+              <NumberInput label="Giảm thấp nhất (%)" value={form.minPercent} onChange={(minPercent) => update({ minPercent }, "type")} onBlur={commitCurrent} error={fieldErrors.minPercent} />
+              <NumberInput label="Giảm cao nhất (%)" value={form.maxPercent} onChange={(maxPercent) => update({ maxPercent }, "type")} onBlur={commitCurrent} error={fieldErrors.maxPercent} />
             </View>
+            <ExcludedPicker products={data.products} value={form.excludedProductIds} onChange={(excludedProductIds) => update({ excludedProductIds }, "commit")} />
           </View>
-          {data.deals.length === 0 ? (
-            <Text style={local.meta}>{data.settings.enabled ? "Không có sản phẩm nào đủ điều kiện hôm nay." : "Giảm giá tự động đang tắt."}</Text>
-          ) : data.deals.map((deal, index) => {
-            const note = statusNote(deal.status);
-            return (
-              <View key={deal.productId} style={[local.dealRow, index > 0 && local.divider]}>
-                <View style={[local.percent, note && local.percentMuted]}><Text style={[local.percentText, note && local.percentTextMuted]}>−{deal.percent}%</Text></View>
-                <View style={local.flex}>
-                  <Text style={local.label} numberOfLines={1}>{deal.name}</Text>
-                  <Text style={local.meta} numberOfLines={1}>{[deal.group, deal.price !== null ? formatVnd(deal.price) : null, sourceLabel(deal.source)].filter(Boolean).join(" · ")}</Text>
-                  {note ? <Text style={local.warning}>{note}</Text> : null}
+        ) : (
+          <View style={local.section}>
+            <Text style={local.sectionTitle} accessibilityRole="header">{todayHeader(data.day, data.settings)}</Text>
+            {data.deals.length === 0 ? (
+              <Text style={local.meta}>{data.settings.enabled ? "Không có sản phẩm nào đủ điều kiện hôm nay." : "Giảm giá tự động đang tắt."}</Text>
+            ) : data.deals.map((deal, index) => {
+              const note = statusNote(deal.status);
+              const price = dealPriceParts(deal);
+              return (
+                <View key={deal.productId} style={[local.dealRow, index > 0 && local.divider]}>
+                  <View style={[local.percent, note && local.percentMuted]}><Text style={[local.percentText, note && local.percentTextMuted]}>−{deal.percent}%</Text></View>
+                  <View style={local.flex}>
+                    <Text style={local.label} numberOfLines={1} ellipsizeMode="tail">{deal.name}</Text>
+                    {price ? (
+                      <Text style={local.meta} numberOfLines={1}>
+                        <Text style={local.struck}>{price.original}</Text> → <Text style={local.discounted}>{price.discounted}</Text>
+                      </Text>
+                    ) : <Text style={local.meta}>Chưa có giá</Text>}
+                    {note ? <Text style={local.warning}>{note}</Text> : null}
+                  </View>
+                  {busyId === deal.productId ? (
+                    <View style={local.swapBusy}><ActivityIndicator color={colors.primary} accessibilityLabel="Đang đổi nguyên liệu" /></View>
+                  ) : (
+                    <IconButton icon={Repeat} color={colors.primary} accessibilityLabel="Đổi nguyên liệu" accessibilityHint={`Đổi ${deal.name} sang nguyên liệu khác`} disabled={busyId !== null} onPress={() => void swap(deal.productId)} />
+                  )}
                 </View>
-                <Button variant="secondary" icon={Repeat} label="Đổi món" busy={busyId === deal.productId} disabled={busyId !== null} onPress={() => void swap(deal.productId, deal.name)} accessibilityLabel={`Đổi ${deal.name} sang sản phẩm khác`} />
-              </View>
-            );
-          })}
-          <Button variant="secondary" icon={RefreshCw} label="Chọn lại hôm nay" busy={busyId === "reroll"} disabled={busyId !== null || !data.settings.enabled} onPress={() => void reroll()} />
-        </View>
+              );
+            })}
+            <Button variant="secondary" icon={RefreshCw} label="Chọn lại hôm nay" busy={busyId === "reroll"} disabled={busyId !== null || !data.settings.enabled} onPress={() => void reroll()} />
+          </View>
+        )}
       </ScrollView>
       {dialog}
     </View>
   );
 }
 
-function NumberInput({ label, value, onChange, error }: { label: string; value: string; onChange: (value: string) => void; error?: string }): React.JSX.Element {
+function NumberInput({ label, value, onChange, onBlur, error }: { label: string; value: string; onChange: (value: string) => void; onBlur: () => void; error?: string }): React.JSX.Element {
   return (
     <View style={local.inputBlock}>
       <Text style={local.inputLabel}>{label}</Text>
-      <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} keyboardType="number-pad" maxLength={3} style={[local.input, error ? local.inputError : null]} />
+      <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} onBlur={onBlur} keyboardType="number-pad" maxLength={3} style={[local.input, error ? local.inputError : null]} />
       {error ? <Text style={local.fieldError} accessibilityRole="alert">{error}</Text> : null}
     </View>
   );
@@ -201,11 +220,10 @@ function ExcludedPicker({ products, value, onChange }: { products: DailyDealsRes
 
 const local = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl, paddingTop: spacing.md },
-  heading: { ...textStyles.subheading },
   meta: { ...textStyles.bodySmall, color: colors.muted },
+  saveStatus: { ...textStyles.caption, color: colors.muted, textAlign: "right" },
   notice: { ...textStyles.bodySmall, backgroundColor: colors.successSoft, borderRadius: radius.sm, color: colors.success, padding: spacing.md },
   section: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
-  sectionHeader: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   sectionTitle: { ...textStyles.label },
   switchRow: { alignItems: "center", flexDirection: "row", gap: spacing.md },
   flex: { flex: 1, minWidth: 0 },
@@ -230,4 +248,7 @@ const local = StyleSheet.create({
   percentText: { ...textStyles.labelSmall, color: colors.surface },
   percentTextMuted: { color: colors.muted },
   warning: { ...textStyles.caption, color: colors.warning },
+  struck: { textDecorationLine: "line-through" },
+  discounted: { color: colors.text, fontWeight: "600" },
+  swapBusy: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
 });

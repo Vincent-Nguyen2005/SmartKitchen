@@ -11,7 +11,7 @@ import { hasManualDiscount } from "../lib/daily-deals";
  * Quản trị › "Giảm giá tự động" (ADMIN only; every change is in the audit log, targetType "DailyDeal"):
  * - GET  /daily-deals                          settings, today's list (product, %), the products for the exclusion list
  * - PUT  /daily-deals/settings                 enabled, dealsPerDay (1-30), minPercent ≤ maxPercent (1-50), excluded
- * - POST /daily-deals/today/:productId/swap    "Đổi món": another eligible product for that row
+ * - POST /daily-deals/today/:productId/swap    "Đổi nguyên liệu": another eligible product for that row
  * - POST /daily-deals/today/reroll             "Chọn lại hôm nay": a new selection for today
  * Settings changes apply to the next selection (tomorrow, or "Chọn lại hôm nay"); turning the feature off or
  * excluding a product takes effect in the catalog at once.
@@ -33,13 +33,13 @@ const audit = (adminId: string, action: string, metadata: unknown) =>
 const todayView = async (day: string) => {
   const settings = await getSettings();
   const deals = await ensureDay(day);
-  const products = await prisma.masterIngredient.findMany({ where: { id: { in: deals.map((deal) => deal.productId) } }, select: { id: true, name: true, englishName: true, category: true, isActive: true, price: true, discountPercent: true, promoStartDate: true, promoEndDate: true } });
+  const products = await prisma.masterIngredient.findMany({ where: { id: { in: deals.map((deal) => deal.productId) } }, select: { id: true, name: true, englishName: true, category: true, isActive: true, price: true, discountPercent: true, promoStartDate: true, promoEndDate: true, defaultUnit: true, unitLabel: true } });
   const byId = new Map(products.map((product) => [product.id, product]));
   const excluded = new Set(settings.excludedProductIds);
   return deals.map((deal) => {
     const product = byId.get(deal.productId);
     const status = !product || !product.isActive ? "INACTIVE" : excluded.has(deal.productId) ? "EXCLUDED" : hasManualDiscount(dealProductOf(product), day) ? "MANUAL_DISCOUNT" : !settings.enabled ? "OFF" : "APPLIED";
-    return { productId: deal.productId, name: product?.name ?? "(đã xóa)", group: product?.category ?? null, price: product?.price ?? null, percent: deal.percent, source: deal.source, status };
+    return { productId: deal.productId, name: product?.name ?? "(đã xóa)", group: product?.category ?? null, price: product?.price ?? null, unit: product?.defaultUnit ?? null, unitLabel: product?.unitLabel ?? null, percent: deal.percent, source: deal.source, status };
   });
 };
 

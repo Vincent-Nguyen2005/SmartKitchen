@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const prismaMock = vi.hoisted(() => ({
   dailyDealSettings: { findUnique: vi.fn(), upsert: vi.fn() },
   dailyDeal: { findMany: vi.fn(async () => []), count: vi.fn(async () => 0) },
-  masterIngredient: { findMany: vi.fn(async () => [{ id: "p1", name: "Cà chua", englishName: null, category: "Rau củ", isActive: true, price: 25000, discountPercent: null, promoStartDate: null, promoEndDate: null }]) },
+  masterIngredient: { findMany: vi.fn(async () => [{ id: "p1", name: "Cà chua", englishName: null, category: "Rau củ", isActive: true, price: 25000, discountPercent: null, promoStartDate: null, promoEndDate: null, defaultUnit: "KILOGRAM", unitLabel: null }]) },
   auditLog: { create: vi.fn(async () => ({})) },
   $transaction: vi.fn(),
 }));
@@ -48,7 +48,7 @@ describe("Quản trị › Giảm giá tự động", () => {
     const response = await admin(request(app).get("/daily-deals"));
     expect(response.status).toBe(200);
     expect(response.body.settings).toMatchObject({ enabled: true, dealsPerDay: 10, minPercent: 5, maxPercent: 20, excludedProductIds: [] });
-    expect(response.body.deals).toEqual([{ productId: "p1", name: "Cà chua", group: "Rau củ", price: 25000, percent: 15, source: "MENU", status: "APPLIED" }]);
+    expect(response.body.deals).toEqual([{ productId: "p1", name: "Cà chua", group: "Rau củ", price: 25000, unit: "KILOGRAM", unitLabel: null, percent: 15, source: "MENU", status: "APPLIED" }]);
     expect(response.body.products).toEqual([{ id: "p1", name: "Cà chua", group: "Rau củ" }]);
   });
 
@@ -67,7 +67,7 @@ describe("Quản trị › Giảm giá tự động", () => {
     expect(store.clearDealCache).toHaveBeenCalled();
   });
 
-  it("Chọn lại hôm nay and Đổi món are audited; a product not in today's list is 404, nothing eligible 409", async () => {
+  it("Chọn lại hôm nay and Đổi nguyên liệu are audited; a product not in today's list is 404, nothing eligible 409", async () => {
     expect((await admin(request(app).post("/daily-deals/today/reroll"))).status).toBe(200);
     expect(store.ensureDay).toHaveBeenCalledWith(expect.any(String), { reroll: true });
     store.swapDeal.mockResolvedValueOnce({ removed: "p1", added: { productId: "p2", percent: 10, source: "SWAP" } });

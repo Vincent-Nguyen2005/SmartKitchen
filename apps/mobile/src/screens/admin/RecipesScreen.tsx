@@ -6,12 +6,14 @@ import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { filterByName } from "../../services/localSearch";
-import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Button, colors, Dropdown, Field, looksLikeImageUrl, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { AdminListHeader } from "./AdminListHeader";
+import { AdminPager } from "./AdminPager";
+import { PinnedHeader } from "./PinnedHeader";
 import { DEFAULT_PER_PERSON, savedIngredient } from "./recipeIngredients";
 import { StepIngredientTags } from "./StepIngredientTags";
 import { recipeIngredientNames } from "./stepIngredients";
@@ -381,8 +383,11 @@ export default function RecipesScreen({ createRequest = null, onCreateHandled }:
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
+      {/* Search and add stay pinned above the list (like Kho / Đi chợ); the pager ends the list. */}
+      <PinnedHeader>{toolbar}</PinnedHeader>
       <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={local.flex}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
         data={showState ? [] : pageItems}
         key={`cols-${columns}`}
         numColumns={columns}
@@ -392,11 +397,10 @@ export default function RecipesScreen({ createRequest = null, onCreateHandled }:
         contentContainerStyle={local.listContent}
         ref={listRef}
         refreshControl={showState ? undefined : <RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
-        ListHeaderComponent={toolbar}
         ListFooterComponent={showState || recipes.length === 0 ? undefined : (
           <View style={local.footer}>
             <AppText variant="caption" style={local.pageInfo}>Trang {shownPage} / {totalPages} · {recipes.length} món</AppText>
-            <Pagination page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+            <AdminPager page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
           </View>
         )}
         ListEmptyComponent={showState

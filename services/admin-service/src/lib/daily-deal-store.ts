@@ -86,7 +86,7 @@ export async function ensureDay(day: string, options: { reroll?: boolean; usage?
   });
 }
 
-/** "Đổi món": replace one product of the day with another eligible one. null when nothing else is eligible. */
+/** "Đổi nguyên liệu": replace one product of the day with another eligible one. null when nothing else is eligible. */
 export async function swapDeal(day: string, productId: string): Promise<{ removed: string; added: PickedDeal } | null> {
   const settings = await getSettings();
   const rows = await prisma.masterIngredient.findMany({ where: { isActive: true, price: { gt: 0 } }, select: PRODUCT_SELECT });

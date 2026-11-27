@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ADMIN_BAR_ACTIONS, overlayFor } from "./adminBar";
-import { canCancel, canUnassign, cancelConfirm, orderCardLabel, shortAddress, statusLabel, tabLabel, ADMIN_STATUS_TABS } from "./adminOrders";
+import { canCancel, canUnassign, cancelConfirm, orderCardLabel, shortAddress, statusLabel, STATUS_TAGS } from "./adminOrders";
 import { canGoForward, deliveredText, ordersText, periodTitle, shipperTitle } from "./revenue";
 import { isGatewayImage } from "../../services/authImage";
 
@@ -11,16 +11,14 @@ test("bottom bar: Chụp ảnh (create from photo) · Đơn hàng (centre, prima
   assert.deepEqual(ADMIN_BAR_ACTIONS.map((action) => overlayFor(action.key)), ["photo", "orders", "revenue"]);
 });
 
-test("Đơn hàng: tabs with counts, short address, actions per status, card label", () => {
-  assert.deepEqual(ADMIN_STATUS_TABS.map((tab) => tab.label), ["Chờ giao", "Đang giao", "Đã giao", "Đã hủy", "Không giao được"]);
-  assert.equal(tabLabel(ADMIN_STATUS_TABS[0], { PENDING: 3 }), "Chờ giao (3)");
-  assert.equal(tabLabel(ADMIN_STATUS_TABS[4], null), "Không giao được");
+test("Đơn hàng: status labels (no filter chips), short address, actions per status, card label", () => {
+  assert.deepEqual(Object.values(STATUS_TAGS).map((tag) => tag.label), ["Chờ giao", "Đang giao", "Đã giao", "Đã hủy", "Không giao được"]);
   assert.equal(shortAddress("12 Lê Lợi, Quận 1, TP. Hồ Chí Minh"), "12 Lê Lợi, Quận 1");
   assert.equal(shortAddress(null), "Chưa có địa chỉ");
   assert.deepEqual(["PENDING", "SHIPPING", "DELIVERED"].map((status) => [canCancel(status as never), canUnassign(status as never)]), [[true, false], [false, true], [false, false]]);
   assert.equal(statusLabel("FAILED"), "Không giao được");
   assert.match(cancelConfirm(171_000).message, /171\.000đ/);
-  assert.equal(orderCardLabel({ id: "1", status: "PENDING", purchasedAt: "", receiverName: "Lan", deliveryAddress: "12 Lê Lợi, Quận 1, HCM", itemCount: 2, total: 171_000, discountAmount: 0 }, "01/12 · 08:00"), "Chờ giao, 01/12 · 08:00, Lan, 12 Lê Lợi, Quận 1, 2 món, 171.000 đồng");
+  assert.equal(orderCardLabel({ id: "1", status: "PENDING", purchasedAt: "", receiverName: "Lan", deliveryAddress: "12 Lê Lợi, Quận 1, HCM", itemCount: 2, total: 171_000, discountAmount: 0, lastUpdatedAt: "", shipperName: null }, "01/12 · 08:00"), "Chờ giao, 01/12 · 08:00, Lan, 12 Lê Lợi, Quận 1, 2 món, 171.000 đồng");
 });
 
 test("Doanh thu (shipper cash): period titles, summary and shipper texts", () => {

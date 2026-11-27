@@ -12,6 +12,7 @@
 | `FAMILY_SERVICE_URL` | yes in production | Family API used to verify ownership for every family-scoped request. |
 | `INVENTORY_API_URL` | yes in production | Private inventory-service address, e.g. `http://inventory-service:4003`. |
 | `PURCHASE_SYNC_API_KEY` | yes in production | Shared only with inventory-service for purchase sync. Never expose it to mobile or gateway clients. |
+| `CHECKOUT_PROMOTIONS_ENABLED` | no | Defaults to `false`. Automatic checkout promotions (the former Quản trị "Chương trình") are **disabled by default**; daily automatic discounts replace them. See "Checkout promotions (disabled)". |
 
 Production Docker Compose requires `JWT_SECRET` and `PURCHASE_SYNC_API_KEY` from the root `.env`.
 
@@ -82,6 +83,20 @@ pnpm --filter shopping-list-service prisma:generate
   - `GET /internal/shippers/stats?ids=` returns delivered counts.
   - `POST /internal/shippers/:id/release` sends a disabled shipper's SHIPPING orders back to PENDING with no shipper, so another shipper can take them. Their Kho rows stay "Đang giao".
 - Purchases from before orders existed are `DELIVERED` (migration `20261215000000_delivery_orders`). A single-item purchase (`POST /items/:id/purchase`, not used by the app) is recorded as already delivered.
+
+## Checkout promotions (disabled by default)
+
+Automatic checkout promotions are off unless `CHECKOUT_PROMOTIONS_ENABLED=true` (compose passes `${CHECKOUT_PROMOTIONS_ENABLED:-false}`). While off:
+
+- no promotion applies at checkout or in the preview (`promotion: null`, `discount: 0`, no "Mua thêm" hint), and `GET /promotions/active` returns an empty list;
+- `POST /admin/promotions`, `PUT /admin/promotions/:id` and switching one on (`PATCH /admin/promotions/:id/active` with `isActive: true`) answer 403 `FEATURE_DISABLED` "Tính năng đã tắt";
+- existing rows in `checkout_promotions` are ignored. The code, endpoints and tables stay (dormant, no migration), so setting the flag to `true` turns the feature back on.
+
+The mobile app shows no promotion rows then: Đi chợ has no "KM" tags or banner, Giỏ hàng and the checkout sheet show only "Tổng thanh toán", and order / shipper receipts show no "Khuyến mãi" row. Quản trị "Khuyến mãi" opens "Giảm giá tự động" (daily automatic discounts) directly.
+
+## Quản trị › Đơn hàng (GET /admin/orders, ADMIN)
+
+One list of every delivery order: optional `status` filter (the app sends none), `q` (receiver name / phone / address), `page`, `limit` (≤ 50), with `counts` per status. Sorted by the **last status change**, newest first. Every update of an order row is a status transition, so the row's `updatedAt` is that time (no extra column); each row returns it as `lastUpdatedAt`, plus `shipperName` for SHIPPING / DELIVERED orders (name only, no shipper id or phone). The admin app refreshes this list every 15 s while it is open.
 
 ## "Chi tiêu" (GET /spending)
 

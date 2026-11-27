@@ -4,9 +4,11 @@ import { inventory, notifyBuyer, shipperProfiles, type OrderStatus } from "./ord
 
 /**
  * Quản trị › "Đơn hàng": every delivery order across families (ADMIN only, routes in shopping-list.route.ts).
- * - list: status filter (with counts per status for the same search), search by receiver name / phone / address,
- *   newest first, paginated. Only delivery orders (they have a delivery address); single-item direct purchases are not
- *   orders.
+ * - list: one list of every order (optional status filter, counts per status for the same search), search by receiver
+ *   name / phone / address, sorted by the LAST STATUS CHANGE, newest first, paginated; each row has `lastUpdatedAt` and
+ *   the shipper's name once SHIPPING / DELIVERED. Every update of an order row is a status transition (updateMany with
+ *   the status in the WHERE), so the row's `updatedAt` is that time (no new column). Only delivery orders (they have a
+ *   delivery address); single-item direct purchases are not orders.
  * - detail: lines with prices, promotion, totals, address, receiver, shipper name / phone, status timeline, reason.
  * - cancel (PENDING only): the customer's cancel — Kho "Đang giao" rows removed, the order notice says "Đơn hàng đã hủy".
  * - unassign ("Gỡ người giao", SHIPPING only): back to PENDING without a shipper; the order notice says the order is
@@ -51,16 +53,24 @@ export class AdminOrdersService {
     const where = { ...base, ...(options.status ? { status: options.status } : {}) };
     const [rows, total, grouped] = await Promise.all([
       prisma.purchase.findMany({
-        where, orderBy: { purchasedAt: "desc" }, skip: (page - 1) * limit, take: limit,
-        select: { id: true, status: true, purchasedAt: true, receiverName: true, deliveryAddress: true, itemCount: true, total: true, discountAmount: true },
+        where, orderBy: [{ updatedAt: "desc" }, { purchasedAt: "desc" }, { id: "desc" }], skip: (page - 1) * limit, take: limit,
+        select: { id: true, status: true, purchasedAt: true, updatedAt: true, shipperId: true, receiverName: true, deliveryAddress: true, itemCount: true, total: true, discountAmount: true },
       }),
       prisma.purchase.count({ where }),
       prisma.purchase.groupBy({ by: ["status"], where: base, _count: { _all: true } }),
     ]);
     const counts = Object.fromEntries(ADMIN_ORDER_STATUSES.map((status) => [status, 0])) as Record<OrderStatus, number>;
     for (const row of grouped) counts[row.status as OrderStatus] = row._count._all;
+    // "Người giao: <tên>" on SHIPPING / DELIVERED cards: names only (no shipper id or phone in the list).
+    const withShipper = rows.filter((row) => row.shipperId && (row.status === "SHIPPING" || row.status === "DELIVERED"));
+    const profiles = withShipper.length > 0 ? await shipperProfiles([...new Set(withShipper.map((row) => row.shipperId as string))]) : new Map<string, { name: string | null }>();
     return {
-      items: rows.map((row) => ({ ...row, purchasedAt: row.purchasedAt.toISOString() })),
+      items: rows.map(({ shipperId, updatedAt, ...row }) => ({
+        ...row,
+        purchasedAt: row.purchasedAt.toISOString(),
+        lastUpdatedAt: updatedAt.toISOString(),
+        shipperName: shipperId && (row.status === "SHIPPING" || row.status === "DELIVERED") ? profiles.get(shipperId)?.name ?? null : null,
+      })),
       page, limit, total, counts,
     };
   }

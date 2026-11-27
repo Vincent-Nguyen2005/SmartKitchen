@@ -1,10 +1,32 @@
 /**
- * Quản trị › "Giảm giá tự động" (pure; covered by dailyDeals.test.ts): settings form, client validation (the same
- * rules as admin-service), and the texts of today's list. Users see these discounts exactly like admin discounts.
+ * Quản trị › "Khuyến mãi" (Giảm giá tự động; pure, covered by dailyDeals.test.ts): the "Hôm nay" / "Cài đặt" tabs,
+ * settings form, client validation (the same rules as admin-service), and the texts of today's list. Users see these
+ * discounts exactly like admin discounts.
  */
+import { createAutoSaver, type AutoSaveState } from "../../services/autoSave";
+import { discountedPrice, formatVnd } from "../../services/format";
+import { unitWord } from "../shopping-cart/unitDisplay";
+
 export type DealSettings = { enabled: boolean; dealsPerDay: number; minPercent: number; maxPercent: number; excludedProductIds: string[] };
 export type DealStatus = "APPLIED" | "EXCLUDED" | "MANUAL_DISCOUNT" | "INACTIVE" | "OFF";
-export type TodayDeal = { productId: string; name: string; group: string | null; price: number | null; percent: number; source: "MENU" | "RANDOM" | "SWAP"; status: DealStatus };
+export type TodayDeal = {
+  productId: string; name: string; group: string | null; price: number | null; percent: number; source: "MENU" | "RANDOM" | "SWAP"; status: DealStatus;
+  /** Sale unit code and specific word (older servers may omit them). */
+  unit?: string | null; unitLabel?: string | null;
+};
+
+/** Segment tabs: "Hôm nay" (default) and "Cài đặt". */
+export type DealTab = "today" | "settings";
+export const DEAL_TABS: ReadonlyArray<{ value: DealTab; label: string }> = [
+  { value: "today", label: "Hôm nay" },
+  { value: "settings", label: "Cài đặt" },
+];
+/** The chosen tab, remembered while the admin session lasts (like adminSectionMemory). */
+let lastTab: DealTab = "today";
+export const dealTabMemory = {
+  get: (): DealTab => lastTab,
+  set: (value: unknown): DealTab => { lastTab = value === "settings" ? "settings" : "today"; return lastTab; },
+};
 export type DealProductOption = { id: string; name: string; group: string };
 export type DailyDealsResponse = { day: string; settings: DealSettings & { updatedAt: string | null }; deals: TodayDeal[]; products: DealProductOption[] };
 
@@ -35,6 +57,53 @@ export const settingsPayload = (form: SettingsForm): DealSettings => ({
   enabled: form.enabled, dealsPerDay: whole(form.dealsPerDay), minPercent: whole(form.minPercent), maxPercent: whole(form.maxPercent), excludedProductIds: form.excludedProductIds,
 });
 
+/** The switch's label: what flipping it does. */
+export const switchLabel = (enabled: boolean): string => (enabled ? "Tắt để dừng ngay" : "Bật để chạy lại");
+
+/** Small status at the top of the Cài đặt card: "Đang lưu…" / "Đã lưu" (null when idle or failed; the error shows apart). */
+export const saveStatusText = (state: AutoSaveState): string | null =>
+  state.status === "pending" || state.status === "saving" ? "Đang lưu…" : state.status === "saved" ? "Đã lưu" : null;
+
+type SettingsSaverOptions = {
+  initial: DealSettings;
+  save: (settings: DealSettings) => Promise<void>;
+  onState?: (state: AutoSaveState) => void;
+  delayMs?: number;
+  timers?: Parameters<typeof createAutoSaver<DealSettings>>[0]["timers"];
+};
+
+/**
+ * Cài đặt auto-save (services/autoSave.ts): numbers are saved ~600 ms after typing stops (`type`) and at once on blur;
+ * the switch and the exclusion list are saved at once (`commit`). An invalid form is never sent: both return the inline
+ * errors and drop any pending save of an earlier value.
+ */
+export function createSettingsAutoSave(options: SettingsSaverOptions) {
+  const saver = createAutoSaver<DealSettings>({ initial: options.initial, save: options.save, delayMs: options.delayMs ?? 600, onState: options.onState, timers: options.timers });
+  const check = (form: SettingsForm): Partial<Record<SettingsField, string>> | null => {
+    const errors = settingsErrors(form);
+    if (Object.keys(errors).length === 0) return null;
+    const pending = saver.state().status === "pending";
+    saver.cancel();
+    if (pending) options.onState?.({ status: "idle", error: null, field: null });
+    return errors;
+  };
+  return {
+    type(form: SettingsForm): Partial<Record<SettingsField, string>> {
+      const errors = check(form);
+      if (errors) return errors;
+      saver.change(settingsPayload(form));
+      return {};
+    },
+    commit(form: SettingsForm): Partial<Record<SettingsField, string>> {
+      const errors = check(form);
+      if (errors) return errors;
+      void saver.saveNow(settingsPayload(form));
+      return {};
+    },
+    flush: (): Promise<boolean> => saver.flush(),
+  };
+}
+
 /** Why a deal of today's list is not applied right now (null when it is). */
 export const statusNote = (status: DealStatus): string | null => ({
   APPLIED: null,
@@ -44,8 +113,6 @@ export const statusNote = (status: DealStatus): string | null => ({
   OFF: "Đang tắt giảm giá tự động",
 }[status]);
 
-/** "Món hay dùng" (popular in this week's menus) / "Ngẫu nhiên" / "Đã đổi". */
-export const sourceLabel = (source: TodayDeal["source"]): string => ({ MENU: "Món hay dùng", RANDOM: "Ngẫu nhiên", SWAP: "Đã đổi" }[source]);
 
 /** "Thứ Sáu, 27/11/2026" for the list header. */
 export function dayLabel(day: string): string {
@@ -54,6 +121,26 @@ export function dayLabel(day: string): string {
   return `${names[date.getUTCDay()]}, ${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 }
 
-/** "Giảm 5–20% · 10 sản phẩm mỗi ngày". */
-export const settingsSummary = (settings: Pick<DealSettings, "minPercent" | "maxPercent" | "dealsPerDay">): string =>
-  `Giảm ${settings.minPercent === settings.maxPercent ? settings.minPercent : `${settings.minPercent}–${settings.maxPercent}`}% · ${settings.dealsPerDay} sản phẩm mỗi ngày`;
+/** "Giảm 5–20%" ("Giảm 10%" when both ends are equal). */
+export const percentRangeText = (settings: Pick<DealSettings, "minPercent" | "maxPercent">): string =>
+  `Giảm ${settings.minPercent === settings.maxPercent ? settings.minPercent : `${settings.minPercent}–${settings.maxPercent}`}%`;
+
+/** "Hôm nay" header: "Thứ Bảy, 28/11/2026 · Giảm 5–20%". */
+export const todayHeader = (day: string, settings: Pick<DealSettings, "minPercent" | "maxPercent">): string => `${dayLabel(day)} · ${percentRangeText(settings)}`;
+
+/**
+ * A row's second line, in parts so the original price can be struck through: "12.000đ" → "11.500đ / gói" (the same
+ * rounding and unit words as Đi chợ). null when the product has no price.
+ */
+export function dealPriceParts(deal: Pick<TodayDeal, "price" | "percent" | "unit" | "unitLabel">): { original: string; discounted: string } | null {
+  if (deal.price === null) return null;
+  const unit = deal.unit ? ` / ${unitWord(deal.unit, deal.unitLabel)}` : "";
+  return { original: formatVnd(deal.price), discounted: `${formatVnd(discountedPrice(deal.price, deal.percent))}${unit}` };
+}
+
+/** "Đổi nguyên liệu" toast: "Đã đổi sang <tên>" (the product that came in), or a generic text when it is unknown. */
+export function swapNotice(before: ReadonlyArray<Pick<TodayDeal, "productId">>, after: ReadonlyArray<Pick<TodayDeal, "productId" | "name">>): string {
+  const known = new Set(before.map((deal) => deal.productId));
+  const added = after.find((deal) => !known.has(deal.productId));
+  return added ? `Đã đổi sang ${added.name}` : "Đã đổi nguyên liệu";
+}
