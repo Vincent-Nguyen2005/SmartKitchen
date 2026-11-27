@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { ChevronDown, ChevronUp, CookingPot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, X } from "lucide-react-native";
+import { ChevronDown, ChevronUp, CookingPot, EyeOff, Pencil, Plus, Save, SearchX, Trash2, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { filterByName } from "../../services/localSearch";
-import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
+import { AdminListHeader } from "./AdminListHeader";
+import { DEFAULT_PER_PERSON, savedIngredient } from "./recipeIngredients";
 import { StepIngredientTags } from "./StepIngredientTags";
 import { recipeIngredientNames } from "./stepIngredients";
 
@@ -91,7 +93,7 @@ const newIngredient = (detail?: IngredientDetail): IngredientDraft => ({
   name: detail?.name ?? "",
   quantity: detail?.quantity != null ? String(detail.quantity) : detail?.note ?? "",
   isSeasoning: detail?.isSeasoning ?? false,
-  perPerson: detail?.perPerson ?? false,
+  perPerson: detail?.perPerson ?? DEFAULT_PER_PERSON,
   unit: (INVENTORY_UNITS as string[]).includes(detail?.unit ?? "") ? detail?.unit as InventoryUnit : "GRAM",
 });
 const emptyDraft = (): Draft => ({ name: "", description: "", imageUrl: "", mealTypes: [], calories: "", servings: "", preparationMinutes: "", ingredients: [newIngredient()], steps: [], hadSteps: false, role: "none", cuisine: "vietnam" });
@@ -122,8 +124,7 @@ export default function RecipesScreen(): React.JSX.Element {
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
   const term = search.trim();
-  const [active, setActive] = useState<"true" | "all">("all");
-  // Every recipe (~77, hidden ones too), loaded once; search and the "Đang dùng" filter run on the device.
+  // Every recipe (~77, hidden ones too, shown dimmed), loaded once; the search runs on the device.
   const [allRecipes, setAllRecipes] = useState<Recipe[]>([]);
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
@@ -156,12 +157,9 @@ export default function RecipesScreen(): React.JSX.Element {
   }, [api]);
 
   useEffect(() => { void load(); }, [load]);
-  // Accent-insensitive name search ("ca rot" finds "Cà rốt"); a new search or filter starts on the first page.
-  const recipes = useMemo(
-    () => filterByName(allRecipes, term).filter((recipe) => active !== "true" || recipe.isActive),
-    [allRecipes, term, active],
-  );
-  useEffect(() => { setPage(1); }, [term, active]);
+  // Accent-insensitive name search ("ca rot" finds "Cà rốt"); a new search starts on the first page.
+  const recipes = useMemo(() => filterByName(allRecipes, term), [allRecipes, term]);
+  useEffect(() => { setPage(1); }, [term]);
 
   const totalPages = Math.max(1, Math.ceil(recipes.length / PAGE_SIZE));
   const shownPage = Math.min(page, totalPages);
@@ -182,13 +180,10 @@ export default function RecipesScreen(): React.JSX.Element {
     if (minutes !== null && (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440)) return setFormError("Thời gian chuẩn bị là số phút nguyên từ 1 đến 1440.");
     const details: IngredientDetail[] = [];
     for (const row of ingredients) {
-      const amount = row.quantity.trim();
-      const quantity = /^[0-9]+([.,][0-9]+)?$/.test(amount) ? Number(amount.replace(",", ".")) : null;
-      if (quantity !== null && quantity <= 0) return setFormError(`Số lượng của "${row.name.trim()}" phải lớn hơn 0.`);
-      // Not a number: kept as the free-text amount ("vừa ăn", "1 muỗng canh").
-      const note = quantity === null && amount ? amount.slice(0, 40) : null;
-      // perPerson is always saved (true or false), so the starter-data step never changes an admin's choice.
-      details.push({ name: row.name.trim(), quantity, unit: quantity === null ? null : row.unit, note, ...(row.isSeasoning ? { isSeasoning: true } : {}), perPerson: row.perPerson });
+      // recipeIngredients.ts: perPerson ("Theo người", no longer shown) is saved exactly as loaded.
+      const result = savedIngredient(row);
+      if ("error" in result) return setFormError(result.error);
+      details.push(result.detail);
     }
     const steps = draft.steps.filter((step) => step.instruction.trim());
     if (steps.length > MAX_STEPS) return setFormError(`Tối đa ${MAX_STEPS} bước.`);
@@ -294,12 +289,8 @@ export default function RecipesScreen(): React.JSX.Element {
 
   const toolbar = (
     <View>
-      <View style={[styles.wrapRow, local.toolbar]}>
-        <View style={local.search}><Field label="Tìm món ăn" icon={Search} placeholder="Nhập tên món..." value={search} onChangeText={setSearch} autoCorrect={false} /></View>
-        <Button label="Thêm món" icon={Plus} onPress={() => { setFormError(null); setImageLoadFailed(false); setDraft(emptyDraft()); }} style={local.addButton} />
-      </View>
-      <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
-        options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
+      <AdminListHeader placeholder="Nhập tên món..." searchLabel="Tìm món ăn" search={search} onSearch={setSearch}
+        addLabel="Thêm món" onAdd={() => { setFormError(null); setImageLoadFailed(false); setDraft(emptyDraft()); }} />
       {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -326,25 +317,25 @@ export default function RecipesScreen(): React.JSX.Element {
         )}
         ListEmptyComponent={showState
           ? <ScreenState loading={loading} error={error} onRetry={() => void load()} />
-          : <ScreenState empty emptyIcon={term ? SearchX : CookingPot} emptyText={term || active !== "all" ? "Không tìm thấy món ăn." : "Chưa có món ăn nào. Bấm “Thêm món” để tạo."} />}
+          : <ScreenState empty emptyIcon={term ? SearchX : CookingPot} emptyText={term ? "Không tìm thấy món ăn." : "Chưa có món ăn nào. Bấm “Thêm” để tạo."} />}
         renderItem={({ item }) => (
           <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={`Sửa ${item.name}`}
-              onPress={() => { setFormError(null); setImageLoadFailed(false); setDraft(toDraft(item)); }}
-              style={({ pressed }) => [styles.spaceBetween, local.editArea, pressed && styles.pressed]}
-            >
-              <RemoteImage uri={item.imageUrl} size={48} />
-              <View style={[local.flex, local.rowText]}>
-                <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
-                <Text style={styles.muted}>{item.calories !== null ? `${Math.round(item.calories)} kcal/phần` : "Chưa có calo"}</Text>
-              </View>
-              <AppIcon icon={Pencil} size="sm" color={colors.muted} />
-            </Pressable>
-            <View style={styles.spaceBetween}>
-              <Text style={styles.muted}>{item.isActive ? "Đang dùng" : "Đã ẩn"}</Text>
-              <Switch accessibilityLabel={`${item.name}: đang dùng`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
+            {/* One compact row: tap to edit (pencil), the active switch next to it; hidden recipes are dimmed. */}
+            <View style={local.cardRow}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Sửa ${item.name}`}
+                onPress={() => { setFormError(null); setImageLoadFailed(false); setDraft(toDraft(item)); }}
+                style={({ pressed }) => [styles.spaceBetween, local.editArea, local.flex, pressed && styles.pressed]}
+              >
+                <RemoteImage uri={item.imageUrl} size={48} />
+                <View style={[local.flex, local.rowText]}>
+                  <Text style={styles.title} numberOfLines={2}>{item.name}</Text>
+                  <Text style={styles.muted}>{item.calories !== null ? `${Math.round(item.calories)} kcal/phần` : "Chưa có calo"}</Text>
+                </View>
+                <AppIcon icon={Pencil} size="sm" color={colors.muted} />
+              </Pressable>
+              <Switch accessibilityLabel={`${item.name}: ${item.isActive ? "đang dùng" : "đã ẩn"}`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
             </View>
           </View>
         )}
@@ -416,11 +407,7 @@ export default function RecipesScreen(): React.JSX.Element {
                         style={({ pressed }) => [styles.segment, local.unitPill, row.isSeasoning && styles.segmentSelected, pressed && !row.isSeasoning && styles.segmentPressed]}>
                         <Text style={[styles.segmentText, row.isSeasoning && styles.segmentTextSelected]}>Gia vị</Text>
                       </Pressable>
-                      <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: row.perPerson }} accessibilityLabel={`Nguyên liệu ${index + 1} tính theo người`}
-                        onPress={() => updateIngredient(row.key, { perPerson: !row.perPerson })}
-                        style={({ pressed }) => [styles.segment, local.unitPill, row.perPerson && styles.segmentSelected, pressed && !row.perPerson && styles.segmentPressed]}>
-                        <Text style={[styles.segmentText, row.perPerson && styles.segmentTextSelected]}>Theo người</Text>
-                      </Pressable>
+                      {/* "Theo người" (perPerson) is not editable here any more; the stored value is kept and saved as is. */}
                       <IconButton icon={Trash2} accessibilityLabel={`Bỏ nguyên liệu ${index + 1}`} color={colors.danger}
                         onPress={() => setDraft({ ...draft, ingredients: draft.ingredients.length > 1 ? draft.ingredients.filter((entry) => entry.key !== row.key) : [newIngredient()] })} />
                     </View>
@@ -446,7 +433,6 @@ export default function RecipesScreen(): React.JSX.Element {
                           <View style={local.third}><Field label="Phút" keyboardType="number-pad" placeholder="0" value={step.minutes} onChangeText={(minutes) => updateStep(step.key, { minutes: minutes.replace(/[^0-9]/g, "") })} /></View>
                           <View style={local.third}><Field label="Giây" keyboardType="number-pad" placeholder="0" value={step.seconds} onChangeText={(seconds) => updateStep(step.key, { seconds: seconds.replace(/[^0-9]/g, "") })} /></View>
                         </View>
-                        <AppText variant="caption">Để trống thời gian nếu bước này không cần hẹn giờ.</AppText>
                         {/* Only this step's ingredients, as tags; "+ Thêm nguyên liệu" picks from the rest of the recipe. */}
                         <StepIngredientTags stepNumber={index + 1} recipeNames={dishIngredients} value={step.ingredients} onChange={(ingredients) => updateStep(step.key, { ingredients })} />
                       </View>
@@ -476,14 +462,12 @@ export default function RecipesScreen(): React.JSX.Element {
 }
 
 const local = StyleSheet.create({
-  toolbar: { alignItems: "flex-end", paddingTop: 8 },
-  search: { flexBasis: 200, flexGrow: 1 },
-  addButton: { marginBottom: 10 },
   listContent: { gap: 12, paddingBottom: 24 },
   footer: { gap: 4, paddingTop: 4 },
   pageInfo: { textAlign: "center" },
   card: { flex: 1, gap: 8 },
   editArea: { minHeight: 44 },
+  cardRow: { alignItems: "center", flexDirection: "row", gap: 8 },
   rowText: { gap: 4 },
   preview: { marginBottom: 8 },
   flex: { flex: 1, minWidth: 0 },

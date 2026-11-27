@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Linking, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
-import { BadgePercent, Carrot, EyeOff, Pencil, Plus, Save, Search, SearchX, Trash2, TriangleExclamationPoint, X } from "lucide-react-native";
+import { BadgePercent, Carrot, EyeOff, Pencil, Plus, Save, SearchX, Trash2, TriangleExclamationPoint, X } from "lucide-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
@@ -11,6 +11,7 @@ import { formatVnd } from "../../services/format";
 import { filterByName, loadAllPages } from "../../services/localSearch";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
+import { AdminListHeader } from "./AdminListHeader";
 import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
 
 type Ingredient = {
@@ -135,8 +136,6 @@ export default function IngredientsScreen(): React.JSX.Element {
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
   const term = search.trim();
-  // "Đang dùng" (isActive=true) or "Tất cả"; hidden ingredients appear under "Tất cả" (dimmed).
-  const [active, setActive] = useState<"true" | "all">("all");
   // The whole admin catalog (~139 rows, hidden ones too), loaded once and searched / filtered / paged on the device.
   const [all, setAll] = useState<Ingredient[]>([]);
   const [page, setPage] = useState(1);
@@ -172,17 +171,15 @@ export default function IngredientsScreen(): React.JSX.Element {
 
   useEffect(() => { void load(); }, [load]);
 
-  // Accent-insensitive name search ("ca rot" finds "Cà rốt") and the "Đang dùng" filter, then pages of PAGE_SIZE.
-  const filtered = useMemo(
-    () => filterByName(all, term).filter((item) => active === "all" || item.isActive !== false),
-    [all, term, active],
-  );
+  // Accent-insensitive name search ("ca rot" finds "Cà rốt"), then pages of PAGE_SIZE. Every ingredient is listed;
+  // hidden ones are dimmed.
+  const filtered = useMemo(() => filterByName(all, term), [all, term]);
   const total = filtered.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const shownPage = Math.min(page, totalPages);
   const items = filtered.slice((shownPage - 1) * PAGE_SIZE, shownPage * PAGE_SIZE);
   // A new search or filter starts on the first page.
-  useEffect(() => { setPage(1); }, [term, active]);
+  useEffect(() => { setPage(1); }, [term]);
 
   const save = async () => {
     if (!draft) return;
@@ -279,26 +276,17 @@ export default function IngredientsScreen(): React.JSX.Element {
     return result.kind === "deleted" || result.kind === "hidden";
   });
 
-  // Search, add and filter are the list header, so on short screens (phones in landscape) they scroll
+  // Search and add are the list header, so on short screens (phones in landscape) they scroll
   // away with the list. While loading or after an error the list shows the state instead (same requests).
   const showState = loading || Boolean(error && items.length === 0);
-  // Hide the filter chips only when the whole catalog is empty ("Tất cả", no search, 0 items). A search or
-  // "Đang dùng" with no results keeps them, otherwise there would be no way back to "Tất cả".
-  const catalogEmpty = all.length === 0 && !term && active === "all";
   const goToPage = (nextPage: number) => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
     setPage(nextPage);
   };
   const toolbar = (
     <View>
-      <View style={[styles.wrapRow, local.toolbar]}>
-        <View style={local.search}><Field label="Tìm nguyên liệu" icon={Search} placeholder="Nhập tên nguyên liệu..." value={search} onChangeText={setSearch} autoCorrect={false} /></View>
-        <Button label="Thêm nguyên liệu" icon={Plus} onPress={() => { setFormError(null); setDraft(newDraft()); }} style={local.addButton} />
-      </View>
-      {catalogEmpty ? null : (
-        <Segmented<"true" | "all"> label="Trạng thái" value={active} onChange={setActive}
-          options={[{ value: "true", label: "Đang dùng" }, { value: "all", label: "Tất cả" }]} />
-      )}
+      <AdminListHeader placeholder="Nhập tên nguyên liệu..." searchLabel="Tìm nguyên liệu" search={search} onSearch={setSearch}
+        addLabel="Thêm nguyên liệu" onAdd={() => { setFormError(null); setDraft(newDraft()); }} />
       {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
       {notice ? (
         <View style={[styles.row, local.notice]} accessibilityLiveRegion="polite">
@@ -330,19 +318,21 @@ export default function IngredientsScreen(): React.JSX.Element {
         )}
         ListEmptyComponent={showState
           ? <ScreenState loading={loading} error={error} onRetry={() => void load()} />
-          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term || active !== "all"
+          : <ScreenState empty emptyIcon={term ? SearchX : Carrot} emptyText={term
             ? "Không tìm thấy nguyên liệu."
             // This is admin-service's master catalog (master_ingredients), not the items users add to their
             // inventory (inventory-service), so it stays empty until an admin adds or imports ingredients.
-            : "Danh mục nguyên liệu chuẩn chưa có mục nào. Nguyên liệu người dùng thêm vào kho được lưu riêng và không hiện ở đây — bấm “Thêm nguyên liệu” để tạo danh mục."} />}
+            : "Danh mục nguyên liệu chuẩn chưa có mục nào. Nguyên liệu người dùng thêm vào kho được lưu riêng và không hiện ở đây — bấm “Thêm” để tạo danh mục."} />}
         ListHeaderComponent={toolbar}
         renderItem={({ item }) => (
           <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>
+            {/* One compact row: tap to edit (pencil), the active switch next to it; hidden ingredients are dimmed. */}
+            <View style={local.cardRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Sửa ${item.name}`}
               onPress={() => { setFormError(null); setDraft(toDraft(item)); }}
-              style={({ pressed }) => [styles.spaceBetween, local.editArea, pressed && styles.pressed]}
+              style={({ pressed }) => [styles.spaceBetween, local.editArea, local.flex, pressed && styles.pressed]}
             >
               <RemoteImage uri={item.imageUrl} size={48} />
               <View style={[local.flex, local.rowText]}>
@@ -355,9 +345,7 @@ export default function IngredientsScreen(): React.JSX.Element {
               </View>
               <AppIcon icon={Pencil} size="sm" color={colors.muted} />
             </Pressable>
-            <View style={styles.spaceBetween}>
-              <Text style={styles.muted}>{item.isActive ? "Đang dùng" : "Đã ẩn (xóa mềm)"}</Text>
-              <Switch accessibilityLabel={`${item.name}: đang dùng`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
+            <Switch accessibilityLabel={`${item.name}: ${item.isActive ? "đang dùng" : "đã ẩn"}`} value={item.isActive} onValueChange={(value) => void setActiveFlag(item, value)} trackColor={{ true: colors.primary, false: colors.border }} />
             </View>
           </View>
         )}
@@ -526,14 +514,12 @@ const local = StyleSheet.create({
   formBlock: { gap: 4, marginBottom: 10 },
   otherRow: { alignItems: "flex-end" },
   otherButton: { marginBottom: 10 },
-  toolbar: { alignItems: "flex-end", paddingTop: 8 },
-  search: { flexBasis: 200, flexGrow: 1 },
-  addButton: { marginBottom: 10 },
   listContent: { gap: 12, paddingBottom: 24 },
   footer: { gap: 4, paddingTop: 4 },
   pageInfo: { textAlign: "center" },
   card: { flex: 1, gap: 8 },
   editArea: { minHeight: 44 },
+  cardRow: { alignItems: "center", flexDirection: "row", gap: 8 },
   rowText: { gap: 4 },
   notice: { alignItems: "flex-start", paddingVertical: 4 },
   preview: { marginBottom: 8 },
