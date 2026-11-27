@@ -60,8 +60,9 @@ export const DEFAULT_CENTER = { latitude: 10.7769, longitude: 106.7009 };
 
 /**
  * The map picker's page: Leaflet + OpenStreetMap tiles, a draggable pin; tapping the map moves the pin. It posts
- * {"latitude","longitude"} to the app after every move and accepts the same JSON to move the pin ("Dùng vị trí hiện
- * tại"). Coordinates are numbers only (no text is injected).
+ * {"latitude","longitude"} to the app after every move (phones: window.ReactNativeWebView; web: the parent window of
+ * the iframe) and accepts the same JSON to move the pin ("Dùng vị trí hiện tại"). Coordinates are numbers only (no
+ * text is injected).
  */
 export const mapPickerHtml = (center: { latitude: number; longitude: number }): string => {
   const lat = Number(center.latitude).toFixed(6);
@@ -73,7 +74,8 @@ export const mapPickerHtml = (center: { latitude: number; longitude: number }): 
 var map = L.map('map', { zoomControl: true }).setView([${lat}, ${lng}], 17);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(map);
 var pin = L.marker([${lat}, ${lng}], { draggable: true }).addTo(map);
-function send() { var p = pin.getLatLng(); window.ReactNativeWebView.postMessage(JSON.stringify({ latitude: p.lat, longitude: p.lng })); }
+function post(text) { if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(text); else if (window.parent && window.parent !== window) window.parent.postMessage(text, '*'); }
+function send() { var p = pin.getLatLng(); post(JSON.stringify({ latitude: p.lat, longitude: p.lng })); }
 pin.on('dragend', send);
 map.on('click', function (e) { pin.setLatLng(e.latlng); send(); });
 function moveTo(lat, lng) { pin.setLatLng([lat, lng]); map.setView([lat, lng], 17); send(); }
@@ -92,4 +94,31 @@ export const parsePinMessage = (data: string): { latitude: number; longitude: nu
   } catch {
     return null;
   }
+};
+
+/**
+ * Web: a message event from the picker iframe → the pin, only when it comes from that iframe (event.source) and is a
+ * coordinate pair; anything else (other frames, extensions, bad data) is ignored.
+ */
+export const pinFromFrameEvent = (event: { source: unknown; data: unknown }, frameWindow: unknown): { latitude: number; longitude: number } | null =>
+  frameWindow && event.source === frameWindow && typeof event.data === "string" ? parsePinMessage(event.data) : null;
+
+/**
+ * Web reverse geocoding (expo-location's reverseGeocodeAsync is not available in browsers): OpenStreetMap Nominatim,
+ * Vietnamese names. Called only after the pin stops moving (at most about once a second, per Nominatim's policy).
+ */
+export const nominatimUrl = (point: { latitude: number; longitude: number }): string =>
+  `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${point.latitude.toFixed(6)}&lon=${point.longitude.toFixed(6)}&accept-language=vi&zoom=18&addressdetails=1`;
+
+/** Nominatim answer → "12 Lê Lợi, Bến Nghé, Quận 1, Hồ Chí Minh" (house number + road, ward, district, city). */
+export const addressFromNominatim = (body: unknown): string => {
+  const value = body as { address?: Record<string, unknown>; display_name?: unknown } | null;
+  const address = value?.address ?? {};
+  const text = (key: string) => (typeof address[key] === "string" ? (address[key] as string).trim() : "");
+  const street = [text("house_number"), text("road")].filter(Boolean).join(" ");
+  const parts = [street || text("amenity") || text("building"), text("quarter") || text("suburb") || text("neighbourhood"), text("city_district") || text("county"), text("city") || text("town") || text("state")]
+    .filter(Boolean);
+  const unique = parts.filter((part, index) => parts.indexOf(part) === index);
+  if (unique.length > 0) return unique.join(", ");
+  return typeof value?.display_name === "string" ? value.display_name.replace(/,\s*(Việt Nam|Vietnam)$/i, "").trim() : "";
 };

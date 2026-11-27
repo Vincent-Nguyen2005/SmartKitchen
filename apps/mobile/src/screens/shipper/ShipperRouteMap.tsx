@@ -3,7 +3,7 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from "rea
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Crosshair, Navigation, Route as RouteIcon, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
-import MapFrame from "./MapFrame";
+import MapFrame from "../../components/MapFrame";
 import { loadRoute, routeMapHtml, routeSummary, type Point, type Route } from "./shipper";
 
 type Props = {

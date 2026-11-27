@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Banknote, MapPin, Maximize2, Navigation, Phone, StickyNote, User, X } from "lucide-react-native";
-import MapFrame from "./MapFrame";
+import MapFrame from "../../components/MapFrame";
 import ShipperRouteMap from "./ShipperRouteMap";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";

@@ -6,7 +6,8 @@ import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget }
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
 import MapPicker from "./MapPicker";
-import { addressText, deliveryProblem } from "./orders";
+import { deliveryProblem } from "./orders";
+import { currentPosition, reverseGeocode } from "./geocode";
 import { shoppingApi, type CheckoutLine, type Order } from "./shoppingApi";
 
 type Props = {
@@ -47,14 +48,11 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
     setLocating(true);
     setLocationNote(null);
     try {
-      const Location = await import("expo-location");
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) { setLocationNote("Chưa được cấp quyền vị trí. Hãy nhập địa chỉ."); return; }
-      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const next = { latitude: position.coords.latitude, longitude: position.coords.longitude };
-      const [place] = await Location.reverseGeocodeAsync(next).catch(() => []);
+      // Phones: expo-location + the device geocoder; web: the browser's geolocation + Nominatim (geocode.ts).
+      const { point: next, denied } = await currentPosition();
+      if (!next) { setLocationNote(denied ? "Chưa được cấp quyền vị trí. Hãy nhập địa chỉ." : "Không lấy được vị trí. Hãy nhập địa chỉ."); return; }
       setPoint(next);
-      const text = addressText(place);
+      const text = await reverseGeocode(next);
       if (text) setAddress(text);
       else setLocationNote("Không tìm được địa chỉ cho vị trí này. Hãy nhập hoặc chọn trên bản đồ.");
     } catch {

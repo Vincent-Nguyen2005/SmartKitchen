@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addressText, canCancel, deliveryProblem, isValidVnPhone, mapPickerHtml, ORDER_STATUS, orderTime, parsePinMessage } from "./orders";
+import { addressFromNominatim, addressText, canCancel, deliveryProblem, isValidVnPhone, mapPickerHtml, nominatimUrl, ORDER_STATUS, orderTime, parsePinMessage, pinFromFrameEvent } from "./orders";
 
 test("status chips and cancel rule", () => {
   assert.deepEqual(Object.values(ORDER_STATUS).map((status) => status.label), ["Đã đặt", "Đang giao", "Đã giao", "Đã hủy", "Không giao được"]);
@@ -41,4 +41,28 @@ test("map page: only numeric coordinates go in; only coordinate pairs come out",
   assert.equal(parsePinMessage('{"latitude":"x"}'), null);
   assert.equal(parsePinMessage("not json"), null);
   assert.equal(parsePinMessage('{"latitude":100,"longitude":0}'), null);
+});
+
+test("picker page posts to the WebView on phones and to the parent window in an iframe on web", () => {
+  const html = mapPickerHtml({ latitude: 10.7769, longitude: 106.7009 });
+  assert.match(html, /window\.ReactNativeWebView\.postMessage\(text\)/);
+  assert.match(html, /window\.parent\.postMessage\(text, '\*'\)/);
+  assert.match(html, /window\.addEventListener\('message'/); // the app can move the pin ("Dùng vị trí hiện tại")
+});
+
+test("web picker messages: only from our iframe and only coordinate pairs", () => {
+  const frame = {};
+  assert.deepEqual(pinFromFrameEvent({ source: frame, data: '{"latitude":10.5,"longitude":106.2}' }, frame), { latitude: 10.5, longitude: 106.2 });
+  assert.equal(pinFromFrameEvent({ source: {}, data: '{"latitude":10.5,"longitude":106.2}' }, frame), null); // another frame
+  assert.equal(pinFromFrameEvent({ source: frame, data: { latitude: 10.5 } }, frame), null); // not text
+  assert.equal(pinFromFrameEvent({ source: frame, data: "hello" }, frame), null);
+  assert.equal(pinFromFrameEvent({ source: frame, data: '{"latitude":1,"longitude":2}' }, null), null); // no iframe yet
+});
+
+test("web reverse geocoding (Nominatim): URL and Vietnamese address text", () => {
+  assert.equal(nominatimUrl({ latitude: 10.7769, longitude: 106.7009 }), "https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=10.776900&lon=106.700900&accept-language=vi&zoom=18&addressdetails=1");
+  assert.equal(addressFromNominatim({ address: { house_number: "12", road: "Lê Lợi", quarter: "Bến Nghé", city_district: "Quận 1", city: "Hồ Chí Minh" } }), "12 Lê Lợi, Bến Nghé, Quận 1, Hồ Chí Minh");
+  assert.equal(addressFromNominatim({ address: { amenity: "Chợ Bến Thành", suburb: "Bến Thành", city: "Hồ Chí Minh" } }), "Chợ Bến Thành, Bến Thành, Hồ Chí Minh");
+  assert.equal(addressFromNominatim({ display_name: "Đường X, Huyện Y, Việt Nam" }), "Đường X, Huyện Y");
+  assert.equal(addressFromNominatim(null), "");
 });
