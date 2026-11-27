@@ -8,6 +8,7 @@ import { errorMessage } from "../notifications/gatewayApi";
 import { Badge, Button, colors, Field, ScreenState, styles, useLayout } from "../notifications/ui";
 import { deliveredText, filterShippers, NO_SHIPPER_MATCH, newShipperFieldsProblem, passwordFieldError, shipperActions, shipperDetailRows, statusText, toggleConfirm, type NewShipper, type ShipperAccount } from "./shippers";
 import { AdminListHeader } from "./AdminListHeader";
+import { PinnedHeader } from "./PinnedHeader";
 import { Avatar } from "./directoryUi";
 
 const EMPTY: NewShipper = { name: "", phone: "", email: "", password: "" };
@@ -66,18 +67,19 @@ export default function AdminShippersScreen(): React.JSX.Element {
 
   return (
     <View style={styles.screen}>
+      {/* Search and add stay pinned above the list (like Kho / Đi chợ). */}
+      <PinnedHeader style={[local.headerBlock, { paddingHorizontal: gutter }]}>
+        <AdminListHeader placeholder="Tìm tên hoặc số điện thoại" searchLabel="Tìm người giao hàng" search={search} onSearch={setSearch}
+          addLabel="Thêm người giao hàng" onAdd={() => { setNotice(null); setForm({ ...EMPTY }); }} />
+        {notice ? <Text style={local.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
+        {error && items ? <Text style={styles.errorText}>{error}</Text> : null}
+      </PinnedHeader>
       <FlatList
+        style={local.flex}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
         data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[local.content, { paddingHorizontal: gutter }]}
-        ListHeaderComponent={
-          <View style={local.headerBlock}>
-            <AdminListHeader placeholder="Tìm tên hoặc số điện thoại" searchLabel="Tìm người giao hàng" search={search} onSearch={setSearch}
-              addLabel="Thêm người giao hàng" onAdd={() => { setNotice(null); setForm({ ...EMPTY }); }} />
-            {notice ? <Text style={local.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
-            {error && items ? <Text style={styles.errorText}>{error}</Text> : null}
-          </View>
-        }
         ListEmptyComponent={<ScreenState loading={items === null && !error} error={items === null ? error : null} empty={items !== null} emptyText={items && items.length > 0 && search.trim() ? NO_SHIPPER_MATCH : "Chưa có người giao hàng"} emptyIcon={Truck} onRetry={() => void load()} />}
         ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
@@ -268,8 +270,8 @@ function ResetSheet({ account, onClose, onDone }: { account: ShipperAccount | nu
 }
 
 const local = StyleSheet.create({
-  content: { gap: 0, paddingBottom: spacing.xl, paddingTop: spacing.md },
-  headerBlock: { gap: spacing.sm, marginBottom: spacing.md },
+  content: { gap: 0, paddingBottom: spacing.xl, paddingTop: spacing.xs },
+  headerBlock: { gap: spacing.sm, paddingBottom: spacing.sm, paddingTop: spacing.md },
   notice: { ...textStyles.bodySmall, backgroundColor: colors.successSoft, borderRadius: radius.sm, color: colors.success, padding: spacing.md },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
   cardTop: { alignItems: "center", flexDirection: "row", gap: spacing.md },

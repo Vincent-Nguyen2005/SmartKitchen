@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from "react-native";
+import { PinnedHeader } from "./PinnedHeader";
 import { House, Search, UserPlus, Users, type LucideIcon } from "lucide-react-native";
 import { AppIcon, AppText, colors, spacing } from "../../theme";
 import { loadAllPages } from "../../services/localSearch";
@@ -15,9 +16,6 @@ const empty = <T,>(): Section<T> => ({ data: null, error: null });
 const toSection = <T,>(result: PromiseSettledResult<T[]>): Section<T> =>
   result.status === "fulfilled" ? { data: result.value, error: null } : { data: null, error: errorMessage(result.reason) };
 
-export interface AdminDashboardScreenProps {
-  onOpenFamily: (family: AdminFamilySummary) => void;
-}
 
 const CARD_ICONS: Record<OverviewCardKey, LucideIcon> = { users: Users, families: House, newUsers: UserPlus };
 type Row = { kind: "user"; user: AdminUser } | { kind: "family"; family: AdminFamilySummary };
@@ -25,10 +23,11 @@ type Row = { kind: "user"; user: AdminUser } | { kind: "family"; family: AdminFa
 /**
  * Admin landing page "Tổng quan": one card whose three cells (Người dùng, Gia đình, Mới (7 ngày)) are a selector
  * (choice kept for the admin session), then a search box (on the device, accent-insensitive) and one virtualized list
- * for the selected cell: all users / all families / users new in the last 7 Vietnam days, newest first. A family
- * opens its detail; user rows have no action. Every page of both lists is loaded once (pull to refresh).
+ * for the selected cell: all users (admins first) / all families / users new in the last 7 Vietnam days. Rows have no
+ * action (a family row already shows everything an admin may see). The card and the search box stay pinned under the
+ * tab bar while the list scrolls (like Kho / Đi chợ). Every page of both lists is loaded once (pull to refresh).
  */
-export default function AdminDashboardScreen({ onOpenFamily }: AdminDashboardScreenProps): React.JSX.Element {
+export default function AdminDashboardScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
   const { gutter } = useLayout();
   const [users, setUsers] = useState<Section<AdminUser>>(empty);
@@ -96,24 +95,26 @@ export default function AdminDashboardScreen({ onOpenFamily }: AdminDashboardScr
   );
 
   return (
+    <View style={styles.screen}>
+    <PinnedHeader style={{ paddingHorizontal: gutter, paddingTop: gutter }}>{header}</PinnedHeader>
     <FlatList
+      style={local.list}
       data={rows}
       keyExtractor={(row) => (row.kind === "user" ? `u-${row.user.id}` : `f-${row.family.id}`)}
-      renderItem={({ item }) => (item.kind === "user" ? <UserRow user={item.user} /> : <FamilyRow family={item.family} onPress={() => onOpenFamily(item.family)} />)}
+      renderItem={({ item }) => (item.kind === "user" ? <UserRow user={item.user} /> : <FamilyRow family={item.family} />)}
       ItemSeparatorComponent={() => <View style={directoryStyles.separator} />}
-      ListHeaderComponent={header}
       ListEmptyComponent={source.error
         ? <ScreenState error={source.error} onRetry={retry} />
         : <AppText variant="caption" style={local.empty}>{overviewEmptyText(card, search.trim().length > 0)}</AppText>}
       // Bottom padding: the last row ends above the bottom bar, never under it.
-      contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: gutter, paddingBottom: gutter + spacing.xl }}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
+      contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: gutter + spacing.xl }}
+      keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
       showsVerticalScrollIndicator={false}
       initialNumToRender={20}
       windowSize={10}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
     />
+    </View>
   );
 }
 
@@ -136,6 +137,7 @@ function StatCell({ label, spoken, icon, value, error, selected, divider, onPres
 
 const local = StyleSheet.create({
   header: { gap: spacing.md, paddingBottom: spacing.sm },
+  list: { flex: 1 },
   statsCard: { flexDirection: "row", overflow: "hidden", padding: 0, paddingHorizontal: 0 },
   cell: { alignItems: "center", borderBottomColor: "transparent", borderBottomWidth: 3, flex: 1, gap: spacing.xs, minHeight: 44, minWidth: 0, paddingHorizontal: spacing.sm, paddingVertical: spacing.md },
   cellDivider: { borderLeftColor: colors.border, borderLeftWidth: StyleSheet.hairlineWidth },

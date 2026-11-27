@@ -13,6 +13,7 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { AdminListHeader } from "./AdminListHeader";
 import { AdminPager } from "./AdminPager";
+import { PinnedHeader } from "./PinnedHeader";
 import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
 import { useSession } from "../../services/session";
 import { isGatewayImage } from "../../services/authImage";
@@ -352,8 +353,8 @@ export default function IngredientsScreen({ createRequest = null, onCreateHandle
     return result.kind === "deleted" || result.kind === "hidden";
   });
 
-  // Search and add are the list header, so on short screens (phones in landscape) they scroll
-  // away with the list. While loading or after an error the list shows the state instead (same requests).
+  // Search and add stay pinned above the list (PinnedHeader, like Kho / Đi chợ); the pager ends the list. While
+  // loading or after an error the list shows the state instead (same requests).
   const showState = loading || Boolean(error && items.length === 0);
   const goToPage = (nextPage: number) => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -375,8 +376,10 @@ export default function IngredientsScreen({ createRequest = null, onCreateHandle
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
+      <PinnedHeader>{toolbar}</PinnedHeader>
       <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
         style={local.flex}
+        keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" automaticallyAdjustKeyboardInsets
         data={showState ? [] : items}
         key={`cols-${columns}`}
         numColumns={columns}
@@ -399,7 +402,6 @@ export default function IngredientsScreen({ createRequest = null, onCreateHandle
             // This is admin-service's master catalog (master_ingredients), not the items users add to their
             // inventory (inventory-service), so it stays empty until an admin adds or imports ingredients.
             : "Danh mục nguyên liệu chuẩn chưa có mục nào. Nguyên liệu người dùng thêm vào kho được lưu riêng và không hiện ở đây — bấm “Thêm” để tạo danh mục."} />}
-        ListHeaderComponent={toolbar}
         renderItem={({ item }) => (
           <View style={[styles.card, local.card, { maxWidth: grid.cellWidth, opacity: item.isActive ? 1 : 0.6 }]}>
             {/* One compact row: tap to edit (pencil), the active switch next to it; hidden ingredients are dimmed. */}

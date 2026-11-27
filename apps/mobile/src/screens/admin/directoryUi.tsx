@@ -1,7 +1,7 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
-import { ArrowLeft, ChevronRight, House } from "lucide-react-native";
-import { AppIcon, AppText, colors, IconButton, radius, spacing, touchTarget } from "../../theme";
+import { StyleSheet, View } from "react-native";
+import { House } from "lucide-react-native";
+import { AppIcon, AppText, colors, radius, spacing, touchTarget } from "../../theme";
 import { Badge } from "../notifications/ui";
 import { displayName, initial, userRoleBadge, type AdminFamilySummary, type AdminUser } from "./directoryApi";
 import { familyFacts } from "./familyView";
@@ -38,36 +38,17 @@ export function UserRow({ user }: UserRowProps): React.JSX.Element {
   );
 }
 
-type FamilyRowProps = { family: AdminFamilySummary; onPress: () => void };
+type FamilyRowProps = { family: AdminFamilySummary };
 
-/** One family: house icon, name (body 16), "<n> thành viên · Tạo ngày dd/MM/yyyy" (caption 12); opens the detail. */
-export function FamilyRow({ family, onPress }: FamilyRowProps): React.JSX.Element {
+/** One family: house icon, name (body 16), "<n> thành viên · Tạo ngày dd/MM/yyyy" (caption 12). Not tappable: that is all an admin sees. */
+export function FamilyRow({ family }: FamilyRowProps): React.JSX.Element {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${family.name}, ${familyFacts(family)}`}
-      accessibilityHint="Mở chi tiết gia đình"
-      onPress={onPress}
-      style={({ pressed }) => [local.row, pressed && local.pressed]}
-    >
+    <View style={local.row} accessible accessibilityLabel={`${family.name}, ${familyFacts(family)}`}>
       <AppIcon icon={House} size="md" color={colors.primary} />
       <View style={local.text}>
         <AppText variant="body" numberOfLines={1}>{family.name}</AppText>
         <AppText variant="caption">{familyFacts(family)}</AppText>
       </View>
-      <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-    </Pressable>
-  );
-}
-
-type ScreenHeaderProps = { title: string; onBack: () => void };
-
-/** Back button + screen title (heading 22) for screens pushed on the admin stack. */
-export function ScreenHeader({ title, onBack }: ScreenHeaderProps): React.JSX.Element {
-  return (
-    <View style={local.header}>
-      <IconButton icon={ArrowLeft} accessibilityLabel="Quay lại" onPress={onBack} />
-      <AppText variant="heading" accessibilityRole="header" numberOfLines={2} style={local.text}>{title}</AppText>
     </View>
   );
 }
@@ -85,9 +66,7 @@ const local = StyleSheet.create({
     justifyContent: "center",
     width: touchTarget - 4,
   },
-  header: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.md, minHeight: touchTarget, paddingVertical: spacing.sm },
-  pressed: { backgroundColor: colors.primarySoft },
   text: { flex: 1, minWidth: 0 },
   badgeColumn: { alignItems: "flex-end", minWidth: 112 },
 });

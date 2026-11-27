@@ -16,7 +16,6 @@ const familyView = (family: Body): Body => ({
   createdAt: family.createdAt,
 });
 export const familyListView = (body: Body): Body => (Array.isArray(body.items) ? { ...body, items: (body.items as Body[]).map(familyView) } : body);
-export const familyDetailView = (body: Body): Body => (typeof body.id === "string" ? familyView(body) : body);
 
 const proxy = async (base: string, path: string, query: string, res: Response, view?: (body: Body) => Body): Promise<void> => {
   const key = process.env.INTERNAL_API_KEY;
@@ -49,9 +48,6 @@ router.get("/users", async (req, res) => {
 });
 router.get("/families", async (req, res) => {
   await proxy(process.env.FAMILY_SERVICE_URL || "http://localhost:4002", "/internal/admin/families", req.url.slice(req.path.length), res, familyListView);
-});
-router.get("/families/:id", async (req, res) => {
-  await proxy(process.env.FAMILY_SERVICE_URL || "http://localhost:4002", `/internal/admin/families/${encodeURIComponent(req.params.id)}`, req.url.slice(req.path.length), res, familyDetailView);
 });
 
 export default router;

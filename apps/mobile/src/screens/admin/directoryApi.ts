@@ -20,7 +20,6 @@ export type AdminUser = {
 
 /** A family as an admin sees it: name, member count and created date only (no member data). */
 export type AdminFamilySummary = AdminFamilyView;
-export type AdminFamilyDetail = AdminFamilyView;
 
 /** The directory endpoints accept at most 100 items per page. */
 export const MAX_PAGE_SIZE = 100;
@@ -32,9 +31,6 @@ export const fetchFamilies = async (api: GatewayClient, limit: number, page = 1)
   const result = await api.get<Page<AdminFamilySummary>>(`/api/admin/families${query({ limit, page })}`);
   return { ...result, items: result.items.map(familyView) };
 };
-
-export const fetchFamily = async (api: GatewayClient, id: string): Promise<AdminFamilyDetail> =>
-  familyView(await api.get<AdminFamilyDetail>(`/api/admin/families/${encodeURIComponent(id)}`));
 
 export const userRoleBadge: Record<UserRole, { label: string; color: string; background: string }> = {
   ADMIN: { label: "Quản trị", color: colors.warning, background: colors.warningSoft },

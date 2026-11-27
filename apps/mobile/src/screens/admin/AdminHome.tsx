@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { BackHandler, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { BadgePercent, Camera, Carrot, ChartColumn, CookingPot, LayoutDashboard, LogOut, PackageCheck, ShieldExclamationPoint, Truck } from "lucide-react-native";
 import { AppIcon, breakpoints, spacing, type LucideIcon } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
@@ -7,7 +7,6 @@ import { TopTabButton, topTabStyles } from "../../components/TopTab";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, styles, useLayout } from "../notifications/ui";
 import AdminDashboardScreen from "./AdminDashboardScreen";
-import AdminFamilyDetailScreen from "./AdminFamilyDetailScreen";
 import AdminShippersScreen from "./AdminShippersScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
@@ -28,9 +27,6 @@ const SECTION_ICONS: Record<AdminSection, LucideIcon> = {
   dashboard: LayoutDashboard, ingredients: Carrot, recipes: CookingPot, promotions: BadgePercent, shippers: Truck,
 };
 
-/** Screens pushed over the selected section (the empty stack): a family opened from Tổng quan; back returns there. */
-type AdminRoute = { name: "familyDetail"; familyId: string; familyName: string };
-
 type Props = {
   /** Đăng xuất (the last item of the tab bar, after the in-app confirm). */
   onSignOut: () => void;
@@ -48,32 +44,16 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
   const { isAdmin } = useGatewayApi();
   const { width } = useLayout();
   const [section, setSectionState] = useState<AdminSection>(adminSectionMemory.get());
-  const [stack, setStack] = useState<AdminRoute[]>([]);
   // Bottom bar: the Chụp ảnh sheet, or the Đơn hàng / Doanh thu full-screen page (one at a time).
   const [overlay, setOverlay] = useState<AdminOverlay>(null);
   // "Chụp ảnh" → the create form of Nguyên liệu or Món ăn, prefilled (CreateRequest.key: one form per request).
   const [createRequest, setCreateRequest] = useState<CreateRequest | null>(null);
-  const route = stack[stack.length - 1];
-  const setSection = (next: AdminSection) => { setSectionState(adminSectionMemory.set(next)); setStack([]); };
-  const push = (next: AdminRoute) => setStack((current) => [...current, next]);
-  const back = () => setStack((current) => current.slice(0, -1));
-  const openFamily = (family: { id: string; name: string }) => push({ name: "familyDetail", familyId: family.id, familyName: family.name });
+  const setSection = (next: AdminSection) => setSectionState(adminSectionMemory.set(next));
   const wide = width >= breakpoints.wide;
   const { confirm, dialog } = useConfirm();
   const signOut = async () => { if (await confirm({ ...LOGOUT_CONFIRM })) onSignOut(); };
   // Phones: equal shares of the row; wide screens: the member bar's 140 px tabs, centred.
   const tabSize = wide ? { width: 140 } : { flex: 1 };
-
-  // Android back button pops a pushed admin screen instead of leaving the app.
-  const hasPushed = stack.length > 0;
-  useEffect(() => {
-    if (!hasPushed) return undefined;
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
-      setStack((current) => current.slice(0, -1));
-      return true;
-    });
-    return () => subscription.remove();
-  }, [hasPushed]);
 
   if (!isAdmin) {
     return (
@@ -103,17 +83,13 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
       </View>
       {/* The content takes the space above the bottom bar (never behind it). */}
       <View style={local.content}>
-        {/* key: a different family remounts the screen instead of showing stale data. */}
-        {route?.name === "familyDetail" ? <AdminFamilyDetailScreen key={route.familyId} familyId={route.familyId} familyName={route.familyName} onBack={back} />
-              : (
-                <>
-                  {section === "dashboard" && <AdminDashboardScreen onOpenFamily={openFamily} />}
+        <>
+                  {section === "dashboard" && <AdminDashboardScreen />}
                   {section === "ingredients" && <IngredientsScreen createRequest={createRequest?.kind === "ingredient" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
                   {section === "recipes" && <RecipesScreen createRequest={createRequest?.kind === "recipe" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
                   {section === "promotions" && <DailyDealsScreen />}
                   {section === "shippers" && <AdminShippersScreen />}
-                </>
-              )}
+        </>
       </View>
       <CaptureBar
         actions={ADMIN_BAR_ACTIONS.map((action) => ({ ...action, icon: BAR_ICONS[action.key], active: overlay === action.key }))}
