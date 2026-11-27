@@ -1,7 +1,7 @@
 import React, { memo, useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Linking, Modal, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MapPin, Package, RefreshCw, X } from "lucide-react-native";
+import { MapPin, Package, Phone, RefreshCw, Truck, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget, type LucideIcon } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { formatVnd } from "../../services/format";
@@ -105,6 +105,17 @@ const OrderCard = memo(function OrderCard({ order, busy, onCancel }: { order: Or
       <Text style={local.items} numberOfLines={2}>
         {order.items.map((line) => `${line.name} ${amountText(line.quantity, line.unit, line.unitLabel)}`).join(" · ")}
       </Text>
+      {order.shipper?.name || order.shipper?.phone ? (
+        <View style={local.shipperRow}>
+          <AppIcon icon={Truck} size="sm" color={colors.primary} />
+          <Text style={local.shipperText} numberOfLines={1}>Người giao: {order.shipper.name ?? "—"}{order.shipper.phone ? ` · ${order.shipper.phone}` : ""}</Text>
+          {order.shipper.phone && order.status === "SHIPPING" ? (
+            <Pressable accessibilityRole="button" accessibilityLabel={`Gọi người giao hàng ${order.shipper.name ?? ""}`} onPress={() => void Linking.openURL(`tel:${(order.shipper?.phone ?? "").replace(/[^\d+]/g, "")}`)} style={local.callButton}>
+              <AppIcon icon={Phone} size="sm" color={colors.primary} />
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
       {order.status === "FAILED" && order.failReason ? <Text style={local.failReason}>Lý do: {order.failReason}</Text> : null}
       <View style={local.cardFooter}>
         <View>
@@ -147,6 +158,9 @@ const local = StyleSheet.create({
   address: { ...textStyles.bodySmall, color: colors.muted, flex: 1 },
   items: { ...textStyles.bodySmall },
   failReason: { ...textStyles.bodySmall, color: colors.danger },
+  shipperRow: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.sm, flexDirection: "row", gap: spacing.sm, paddingLeft: spacing.sm },
+  shipperText: { ...textStyles.bodySmall, flex: 1 },
+  callButton: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
   cardFooter: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", justifyContent: "space-between", paddingTop: spacing.sm },
   total: { ...textStyles.subheading },
   cod: { ...textStyles.caption },

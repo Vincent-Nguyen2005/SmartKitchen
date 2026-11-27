@@ -19,7 +19,7 @@ The screen calls the gateway through the shared `gatewayFetch` with the bearer t
   - **Payment:** "Thanh toán khi nhận hàng" is the only option. The summary shows the cart total (same rounding).
   - **"Đặt hàng":** calls `POST /api/shopping-list/checkout` with the delivery details. Toast "Đã đặt hàng"; the ordered lines leave the cart.
 - In Kho, ordered items show dimmed with "Đang giao" until delivered (see inventory README).
-- **Đơn hàng** (box icon in the Giỏ hàng header, `OrdersScreen.tsx`): the family's orders, newest first, with a status chip (Đã đặt, Đang giao, Đã giao, Đã hủy, Không giao được), address, items, total and "Thanh toán khi nhận hàng". "Hủy đơn" (in-app confirm) only while the order is "Đã đặt".
+- **Đơn hàng** (box icon in the Giỏ hàng header, `OrdersScreen.tsx`): the family's orders, newest first, with a status chip (Đã đặt, Đang giao, Đã giao, Đã hủy, Không giao được), address, items, total and "Thanh toán khi nhận hàng". "Hủy đơn" (in-app confirm) only while the order is "Đã đặt". Once a shipper takes it, the card shows "Người giao: <tên> · <số điện thoại>" (call button while "Đang giao"). Tapping an order notice in Thông báo opens this screen.
 - Helpers in `orders.ts` (statuses, phone rule, address text, map page), covered by `orders.test.ts`.
 - Khuyến mãi **Mua** adds to Giỏ hàng with the same snapshot (catalog product with the promotion's name).
 

@@ -5,6 +5,7 @@ export function authErrorMessage(error: unknown, fallback: string): string {
   switch (error.code) {
     case "NETWORK_ERROR": return "Không kết nối được máy chủ. Vui lòng kiểm tra mạng và địa chỉ API.";
     case "INVALID_CREDENTIALS": return "Email hoặc mật khẩu không đúng.";
+    case "ACCOUNT_DISABLED": return "Tài khoản đã bị khóa. Liên hệ quản trị viên.";
     case "EMAIL_NOT_VERIFIED": return "Tài khoản chưa xác minh. Vui lòng nhập mã trong email.";
     case "EMAIL_ALREADY_REGISTERED": return "Email này đã có tài khoản. Vui lòng đăng nhập.";
     case "INVALID_OTP": return "Mã xác minh không đúng.";

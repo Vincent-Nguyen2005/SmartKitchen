@@ -70,7 +70,17 @@ pnpm --filter shopping-list-service prisma:generate
 
 - Transitions are conditional updates (status in the WHERE), so a race can't skip a state; repeating a transition answers the order and re-runs its Kho step (idempotent).
 - Customer endpoints check family membership: `GET /orders?familyId` (newest first), `GET /orders/last-delivery?familyId` (the caller's last address / receiver, to prefill), `POST /orders/:id/cancel?familyId`. Another family's order is 404.
-- Shipper endpoints need the `SHIPPER` role in the token (403 otherwise): `GET /shipper/orders?scope=available|mine` returns delivery data only (address, lat / lng, receiver name / phone, note, items, COD amount); no family, buyer or prices. No app screens yet.
+- **Shipper endpoints:**
+  - **Access:** the token needs the `SHIPPER` role, and the account must still be active in auth-service (checked with `AUTH_SERVICE_URL`, cached 30 s). Otherwise 403 (`SHIPPER_ONLY` / `SHIPPER_DISABLED`).
+  - **Lists:** `GET /shipper/orders?scope=available|mine|history&lat&lng`. `available` is the waiting orders, nearest first when `lat` / `lng` are given, else oldest first. `mine` is the caller's SHIPPING orders. `history` is the caller's DELIVERED / FAILED orders of the last 30 days.
+  - **Detail:** `GET /shipper/orders/:id` returns a waiting order or one of the caller's (404 otherwise).
+  - **Fields:** address, lat / lng, `distanceKm`, receiver name / phone, note, COD amount, and a receipt per line (`unitPrice` after discount, `originalUnitPrice` when discounted, `lineTotal`). No family, buyer or other user data.
+  - **Accept race:** a second shipper accepting the same order gets 409 "Đơn đã có người nhận.".
+- **Buyer notices:** on SHIPPING, DELIVERED and FAILED the buyer gets a Thông báo feed row via notification-service `POST /internal/notifications` (`NOTIFICATION_SERVICE_URL`): "Đơn hàng đang được giao", "Đơn hàng đã giao thành công", "Đơn hàng không giao được: <lý do>". These are in-app only (no push), with data `{ type: "order", orderId, status }` and `dedupeKey: order:<id>:<status>`, so retries add no second row. They count in the bell badge.
+- **Shipper on customer orders:** `GET /orders` adds `shipper: { name, phone }` once an order is SHIPPING (and after), from auth-service profiles; it never includes the shipper id or email.
+- **Internal (admin-service):**
+  - `GET /internal/shippers/stats?ids=` returns delivered counts.
+  - `POST /internal/shippers/:id/release` sends a disabled shipper's SHIPPING orders back to PENDING with no shipper, so another shipper can take them. Their Kho rows stay "Đang giao".
 - Purchases from before orders existed are `DELIVERED` (migration `20261215000000_delivery_orders`). A single-item purchase (`POST /items/:id/purchase`, not used by the app) is recorded as already delivered.
 
 ## "Chi tiêu" (GET /spending)

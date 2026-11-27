@@ -17,8 +17,8 @@ export type AppNotification = {
   status: "PENDING" | "SENT" | "FAILED" | "READ";
   createdAt: string;
   readAt: string | null;
-  /** Promotion notifications carry { promotionId }. */
-  data?: { promotionId?: string } | null;
+  /** Promotion notifications carry { promotionId }; order notices { type: "order", orderId, status }. */
+  data?: { promotionId?: string; type?: string; orderId?: string } | null;
 };
 
 /** Same rule as the old Kho card: expired, or expiring within the next 3 days (inventory alerts API). */
@@ -71,6 +71,8 @@ type Props = {
   onChanged?: () => void;
   /** "Tuần này còn thiếu N nguyên liệu" tapped: open "Cần mua tuần này". */
   onOpenWeekShopping?: () => void;
+  /** An order notice ("Đơn hàng đang được giao" ...) tapped: open Đi chợ › Đơn hàng. */
+  onOpenOrders?: () => void;
 };
 
 /**
@@ -78,7 +80,7 @@ type Props = {
  * them) and active promotions, in the same card style. Most urgent first: expiry alerts (soonest first), then
  * unread notifications, then the rest newest first. A promotion that already has a notification is shown once.
  */
-export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpenWeekShopping }: Props): React.JSX.Element {
+export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpenWeekShopping, onOpenOrders }: Props): React.JSX.Element {
   const { api, userId } = useGatewayApi();
   const { accessToken, family } = useSession();
   const { gutter, isWide } = useLayout();
@@ -172,6 +174,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
 
   const openNotification = (item: AppNotification) => {
     void markRead(item);
+    if (item.data?.type === "order") { onOpenOrders?.(); return; }
     const promotion = item.data?.promotionId ? promotions.find((entry) => entry.id === item.data?.promotionId) : undefined;
     if (promotion) setSelected(promotion);
   };

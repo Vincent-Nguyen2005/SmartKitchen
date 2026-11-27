@@ -48,6 +48,8 @@ export type Order = {
   cancelledAt: string | null;
   failedAt: string | null;
   failReason: string | null;
+  /** The shipper once the order is on its way (name and phone only). */
+  shipper?: { name: string | null; phone: string | null } | null;
   items: OrderLine[];
 };
 export type ShoppingList = { id: string; familyId: string; name: string; status: string; items: ShoppingItem[] };

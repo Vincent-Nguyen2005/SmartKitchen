@@ -60,6 +60,17 @@ For local development, the equivalent is `pnpm --filter auth-service exec prisma
 
 The registration endpoint returns a pending-verification response without issuing tokens. Submit `{ "email": "...", "otpCode": "123456" }` to `POST /api/auth/verify-otp`; successful verification issues the regular access and refresh tokens. `POST /api/auth/resend-otp` accepts `{ "email": "..." }`.
 
+## Shipper accounts (internal)
+
+Created and managed by admins through admin-service (`/api/admin/shippers`, ADMIN role, audit-logged without passwords), which calls these internal endpoints (`x-api-key: INTERNAL_API_KEY`):
+- `GET /internal/admin/shippers?q=`: `{ items: [{ id, name, phone, email, active, createdAt }] }`.
+- `POST /internal/admin/shippers` `{ name, phone (Vietnamese), email, password }`: role SHIPPER, verified (no OTP), no family. Same password rule as sign-up (at least 8 characters with upper, lower and a digit), hashed with bcrypt. 409 when the email exists. The password is never returned or logged.
+- `PATCH /internal/admin/shippers/:id/status` `{ active }`: disabling sets `disabledAt` and removes the account's refresh tokens and sessions. A disabled account gets 403 `ACCOUNT_DISABLED` on login, refresh and Google sign-in.
+- `POST /internal/admin/shippers/:id/password` `{ password }`: the admin types a new password; current sessions end.
+- `GET /internal/shippers/:id/status`: `{ active, role }`, used by shopping-list-service on every shipper call (cached 30 s).
+
+`POST /internal/admin/users/profiles` also returns `phone` (customers see their shipper's phone once the order is on its way).
+
 ## Admin user directory
 
 `GET /api/admin/users?page=1&limit=20&q=&role=` enters admin-service through the gateway. The gateway authenticates the bearer token and stamps `x-user-role: ADMIN`; admin-service forwards the request to this service at `GET /internal/admin/users` with `x-api-key: INTERNAL_API_KEY`. The internal route is not exposed by the gateway. `role` accepts `USER` or `ADMIN`; `limit` is 1–100.

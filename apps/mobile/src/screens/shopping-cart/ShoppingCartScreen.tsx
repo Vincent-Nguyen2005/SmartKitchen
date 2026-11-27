@@ -34,12 +34,13 @@ import OrdersScreen from "./OrdersScreen";
  */
 type ScreenView = "market" | "cart";
 /** openCartKey: bump it to show Giỏ hàng (e.g. after "Thêm vào Giỏ hàng" in Thông báo). */
-type Props = { onOpenFamily?: () => void; openCartKey?: number };
+/** openOrdersKey: a new value opens Đơn hàng (order notice tapped in Thông báo). */
+type Props = { onOpenFamily?: () => void; openCartKey?: number; openOrdersKey?: number };
 const AUTO_REFRESH_MS = 30_000;
 /** No auto refresh while the user typed in the product search within this window. */
 export const TYPING_QUIET_MS = 5_000;
 
-export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Props): React.JSX.Element {
+export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, openOrdersKey = 0 }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
@@ -69,6 +70,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0 }: Pr
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
   const checkingOut = checkoutOpen;
+  useEffect(() => { if (openOrdersKey > 0) setOrdersOpen(true); }, [openOrdersKey]);
 
   const loadData = async (showLoading = false) => {
     if (!ready) return;

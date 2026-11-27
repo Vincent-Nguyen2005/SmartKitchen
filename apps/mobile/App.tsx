@@ -66,6 +66,8 @@ import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
 import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen, { type NutritionProfileHandle } from "./src/screens/nutrition/NutritionProfileScreen";
 import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
+import ShipperHome from "./src/screens/shipper/ShipperHome";
+import { appShellFor, showsOnboarding } from "./src/navigation/appShell";
 import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed";
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
@@ -154,6 +156,8 @@ function AppContent(): React.JSX.Element {
   const [tab, setTab] = useState<Tab>("inventory");
   // Bumped to open Đi chợ directly on Giỏ hàng (from "Cần mua tuần này" in Thông báo).
   const [cartOpenKey, setCartOpenKey] = useState(0);
+  // Order notice tapped in Thông báo: Đi chợ opens Đơn hàng (a new key re-opens it).
+  const [ordersOpenKey, setOrdersOpenKey] = useState(0);
   // Lịch opened on today's meal (greeting card in Thông báo, "Chào buổi sáng" push); a new key re-opens it.
   const [menuFocus, setMenuFocus] = useState<{ meal: GreetingMeal; key: number } | null>(null);
   const openMeal = useCallback((meal: GreetingMeal) => { setMenuFocus({ meal, key: Date.now() }); setTab("menu"); }, []);
@@ -411,9 +415,15 @@ function AppContent(): React.JSX.Element {
     );
   }
 
+  // Shipper accounts see only the shipper shell (orders): no Kho / Đi chợ / Nấu ăn / Gia đình, capture bar or wizards.
+  const shell = appShellFor(session.user?.role);
+  if (shell === "shipper") {
+    return withNotice(<ShipperHome onSignOut={() => void session.signOut()} />);
+  }
+
   // "Thông tin cơ bản" wizard after a real sign-in (not a restored session); it ends at once when a profile already
-  // exists. Never for ADMIN accounts.
-  if (session.freshSignIn && !isAdmin) {
+  // exists. Normal users only.
+  if (showsOnboarding(shell, session.freshSignIn)) {
     return withNotice(<OnboardingWizard onDone={session.completeOnboarding} />);
   }
 
@@ -646,7 +656,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} />}
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} openOrdersKey={ordersOpenKey} />}
         {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
@@ -661,6 +671,7 @@ function AppContent(): React.JSX.Element {
             onChanged={() => void refreshNotificationBadge()}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
             onOpenMeal={openMeal}
+            onOpenOrders={() => { setOrdersOpenKey((key) => key + 1); setTab("shopping"); }}
           />
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
