@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Banknote, MapPin, Maximize2, Navigation, Phone, StickyNote, User, X } from "lucide-react-native";
+import { Banknote, MapPin, Maximize2, Phone, StickyNote, User, X } from "lucide-react-native";
 import MapFrame from "../../components/MapFrame";
 import ShipperRouteMap from "./ShipperRouteMap";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
@@ -124,10 +124,6 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
                   <Text style={local.address}>{order.deliveryAddress ?? "Chưa có địa chỉ"}</Text>
                 </View>
                 <Text style={local.meta}>{distance ? `Cách ${distance} · ` : ""}{itemCountText(order.itemCount)} · đặt {placedText(order.orderedAt)}</Text>
-                <Pressable accessibilityRole="button" onPress={() => void directions()} style={local.secondary}>
-                  <AppIcon icon={Navigation} size="sm" color={colors.primary} />
-                  <Text style={local.secondaryText}>Chỉ đường</Text>
-                </Pressable>
               </View>
 
               <View style={local.card}>
@@ -224,7 +220,7 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
           customer={routeOpen && order && hasPoint ? { latitude: order.latitude as number, longitude: order.longitude as number } : null}
           address={order?.deliveryAddress ?? null}
           onClose={() => setRouteOpen(false)}
-          onDirections={() => void directions()}
+          onOpenExternal={() => void directions()}
         />
         {dialog}
       </SafeAreaView>

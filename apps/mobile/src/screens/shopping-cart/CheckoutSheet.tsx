@@ -7,7 +7,9 @@ import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
 import MapPicker from "./MapPicker";
 import { deliveryProblem } from "./orders";
-import { currentPosition, reverseGeocode } from "./geocode";
+import { reverseGeocode } from "./geocode";
+import { askToEnableLocation, positionOnce } from "../../services/location";
+import LocationOffBanner from "../../components/LocationOffBanner";
 import { shoppingApi, type CheckoutLine, type Order } from "./shoppingApi";
 
 type Props = {
@@ -39,6 +41,8 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
   const [note, setNote] = useState("");
   const [locating, setLocating] = useState(false);
   const [locationNote, setLocationNote] = useState<string | null>(null);
+  // Device location off: our banner (no system dialog until "Bật định vị" is tapped).
+  const [locationOff, setLocationOff] = useState(false);
   const [mapOpen, setMapOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,9 +52,12 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
     setLocating(true);
     setLocationNote(null);
     try {
-      // Phones: expo-location + the device geocoder; web: the browser's geolocation + Nominatim (geocode.ts).
-      const { point: next, denied } = await currentPosition();
-      if (!next) { setLocationNote(denied ? "Chưa được cấp quyền vị trí. Hãy nhập địa chỉ." : "Không lấy được vị trí. Hãy nhập địa chỉ."); return; }
+      // One Balanced position, never a system dialog on its own (services/location.ts); address: device geocoder on
+      // phones, Nominatim on web (geocode.ts).
+      const { status, point: next } = await positionOnce();
+      setLocationOff(status === "services-off");
+      if (status === "denied") { setLocationNote("Chưa được cấp quyền vị trí. Hãy nhập địa chỉ."); return; }
+      if (!next) return;
       setPoint(next);
       const text = await reverseGeocode(next);
       if (text) setAddress(text);
@@ -131,6 +138,9 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
                 {locating ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={Crosshair} size="sm" color={colors.primary} />}
                 <Text style={local.linkText}>Dùng vị trí hiện tại</Text>
               </Pressable>
+              {locationOff ? (
+                <LocationOffBanner onEnable={() => void askToEnableLocation().then((on) => { if (on) void locate(); })} />
+              ) : null}
               {locationNote ? <Text style={local.note}>{locationNote}</Text> : null}
             </View>
 

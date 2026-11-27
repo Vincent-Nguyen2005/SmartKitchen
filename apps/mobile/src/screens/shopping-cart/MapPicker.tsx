@@ -4,7 +4,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Crosshair, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import MapFrame, { type MapFrameHandle } from "../../components/MapFrame";
-import { currentPosition, reverseGeocode } from "./geocode";
+import { reverseGeocode } from "./geocode";
+import { askToEnableLocation, positionOnce } from "../../services/location";
+import LocationOffBanner from "../../components/LocationOffBanner";
 import { DEFAULT_CENTER, mapPickerHtml, parsePinMessage } from "./orders";
 
 type Point = { latitude: number; longitude: number };
@@ -31,6 +33,7 @@ export default function MapPicker({ visible, initial, onClose, onConfirm }: Prop
   const [looking, setLooking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [locationOff, setLocationOff] = useState(false);
   const lookup = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The page is built once per opening (the pin then moves inside it).
@@ -61,15 +64,17 @@ export default function MapPicker({ visible, initial, onClose, onConfirm }: Prop
   const useCurrentLocation = async () => {
     setBusy(true);
     setMessage(null);
-    const { point, denied } = await currentPosition();
+    const { status, point } = await positionOnce();
     setBusy(false);
-    if (!point) { setMessage(denied ? "Chưa được cấp quyền vị trí. Hãy kéo ghim trên bản đồ." : "Không lấy được vị trí hiện tại. Hãy kéo ghim trên bản đồ."); return; }
+    setLocationOff(status === "services-off");
+    if (status === "denied") { setMessage("Chưa được cấp quyền vị trí. Hãy kéo ghim trên bản đồ."); return; }
+    if (!point) return;
     // The page moves the pin and answers with the new position (→ onMessage → address).
     frame.current?.postMessage(JSON.stringify(point));
   };
 
   return (
-    <Modal animationType="slide" visible={visible} onRequestClose={onClose} onShow={() => { setPin(initial); setAddress(""); setMessage(null); if (initial) geocodeSoon(initial); }}>
+    <Modal animationType="slide" visible={visible} onRequestClose={onClose} onShow={() => { setPin(initial); setAddress(""); setMessage(null); setLocationOff(false); if (initial) geocodeSoon(initial); }}>
       <SafeAreaView style={local.screen} edges={["top", "bottom", "left", "right"]}>
         <View style={local.topBar}>
           <IconButton icon={X} accessibilityLabel="Đóng bản đồ" onPress={onClose} />
@@ -85,6 +90,7 @@ export default function MapPicker({ visible, initial, onClose, onConfirm }: Prop
         </View>
         <View style={local.footer}>
           <Text style={local.hint}>Kéo ghim hoặc chạm vào bản đồ để chọn vị trí.</Text>
+          {locationOff ? <LocationOffBanner onEnable={() => void askToEnableLocation().then((on) => { if (on) void useCurrentLocation(); })} /> : null}
           {message ? <Text style={local.message} accessibilityRole="alert">{message}</Text> : null}
           <Text style={local.address} numberOfLines={3}>{looking ? "Đang tìm địa chỉ…" : address || (pin ? "Không tìm được địa chỉ, bạn có thể nhập tay sau." : "Chưa chọn vị trí")}</Text>
           <Pressable

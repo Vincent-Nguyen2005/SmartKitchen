@@ -22,19 +22,3 @@ export async function reverseGeocode(point: Point): Promise<string> {
     return "";
   }
 }
-
-/**
- * The device position: expo-location on phones; on web the same call uses the browser's geolocation (asks the
- * browser permission; needs https or localhost). null when denied or unavailable.
- */
-export async function currentPosition(): Promise<{ point: Point | null; denied: boolean }> {
-  try {
-    const Location = await import("expo-location");
-    const permission = await Location.requestForegroundPermissionsAsync();
-    if (!permission.granted) return { point: null, denied: true };
-    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    return { point: { latitude: position.coords.latitude, longitude: position.coords.longitude }, denied: false };
-  } catch {
-    return { point: null, denied: false };
-  }
-}

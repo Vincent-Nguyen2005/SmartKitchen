@@ -8,6 +8,7 @@ import { useSession } from "../../services/session";
 import ShipperOrderDetail from "./ShipperOrderDetail";
 import { codText, distanceText, itemCountText, placedText, SHIPPER_TABS, shortAddress, type ShipperOrder, type ShipperScope } from "./shipper";
 import { shipperApi, shipperErrorText } from "./shipperApi";
+import { positionOnce } from "../../services/location";
 
 type Props = { onSignOut: () => void };
 type Origin = { latitude: number; longitude: number } | null;
@@ -33,17 +34,8 @@ export default function ShipperHome({ onSignOut }: Props): React.JSX.Element {
   // The phone's position for distances (asked once; without it the list is oldest first).
   useEffect(() => {
     let active = true;
-    void (async () => {
-      try {
-        const Location = await import("expo-location");
-        const permission = await Location.requestForegroundPermissionsAsync();
-        if (!permission.granted) return;
-        const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        if (active) setOrigin({ latitude: position.coords.latitude, longitude: position.coords.longitude });
-      } catch {
-        // No location: oldest first, no distances.
-      }
-    })();
+    // One Balanced position; with device location off nothing is asked (oldest first, no distances).
+    void positionOnce().then(({ point }) => { if (active && point) setOrigin(point); });
     return () => { active = false; };
   }, []);
 
