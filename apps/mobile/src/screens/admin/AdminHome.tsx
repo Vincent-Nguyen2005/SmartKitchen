@@ -12,7 +12,8 @@ import AdminUsersScreen from "./AdminUsersScreen";
 import AdminShippersScreen from "./AdminShippersScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
-import PromotionsHome from "./PromotionsHome";
+// "Khuyến mãi" = the daily automatic discounts; checkout promotions ("Chương trình") are off (CHECKOUT_PROMOTIONS_ENABLED).
+import DailyDealsScreen from "./DailyDealsScreen";
 import { ADMIN_SECTIONS, adminSectionMemory, type AdminSection } from "./adminSections";
 import { CaptureBar } from "../../components/CaptureBar";
 import { ADMIN_BAR_ACTIONS, overlayFor, type AdminBarAction, type AdminOverlay } from "./adminBar";
@@ -120,7 +121,7 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
                   )}
                   {section === "ingredients" && <IngredientsScreen createRequest={createRequest?.kind === "ingredient" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
                   {section === "recipes" && <RecipesScreen createRequest={createRequest?.kind === "recipe" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
-                  {section === "promotions" && <PromotionsHome />}
+                  {section === "promotions" && <DailyDealsScreen />}
                   {section === "shippers" && <AdminShippersScreen />}
                 </>
               )}

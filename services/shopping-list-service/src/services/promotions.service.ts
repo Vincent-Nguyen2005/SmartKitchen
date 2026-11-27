@@ -13,6 +13,10 @@ import { promotionStatus, vnDay, type PromotionRule } from "./checkout-promotion
  * which reserve a use so one cannot place several orders past the limit. CANCELLED / FAILED orders never consume a
  * use (the reservation is released).
  *
+ * Disabled by default (CHECKOUT_PROMOTIONS_ENABLED, default false: daily automatic discounts replaced them): no
+ * promotion applies at checkout, /promotions/active is empty, and creating or editing one answers 403 "Tính năng đã
+ * tắt". The code, endpoints and tables stay (dormant); existing rows are ignored.
+ *
  * Thông báo: an active promotion is published to notification-service as an in-app promotion
  * (externalId "checkout-promotion:<id>", idempotent upsert; deactivated when switched off). A failure is logged and
  * the next save retries; checkout never depends on it.
@@ -108,9 +112,16 @@ export async function syncToFeed(row: Row): Promise<"synced" | "failed" | "skipp
   }
 }
 
+/** CHECKOUT_PROMOTIONS_ENABLED=true turns automatic checkout promotions back on (default off). */
+export const checkoutPromotionsEnabled = (env: NodeJS.ProcessEnv = process.env): boolean => env.CHECKOUT_PROMOTIONS_ENABLED?.trim().toLowerCase() === "true";
+const refuseWhenDisabled = (): void => {
+  if (!checkoutPromotionsEnabled()) throw new AppError(403, "FEATURE_DISABLED", "Tính năng đã tắt");
+};
+
 export class PromotionsService {
-  /** Promotions that may apply today (active, within their days). */
+  /** Promotions that may apply today (active, within their days); none while the feature is off. */
   static async runningRules(today: string = vnDay()): Promise<PromotionRule[]> {
+    if (!checkoutPromotionsEnabled()) return [];
     const date = new Date(`${today}T00:00:00.000Z`);
     const rows = await prisma.checkoutPromotion.findMany({ where: { isActive: true, startDate: { lte: date }, endDate: { gte: date } } });
     return (rows as Row[]).map(ruleOf);
@@ -150,6 +161,7 @@ export class PromotionsService {
   }
 
   static async create(adminUserId: string, input: PromotionInput) {
+    refuseWhenDisabled();
     if (input.endDate < vnDay()) throw new AppError(400, "PROMOTION_ENDED", "Ngày kết thúc phải từ hôm nay trở đi");
     const row = await prisma.$transaction(async (transaction) => {
       const created = await transaction.checkoutPromotion.create({ data: { ...columns(input), createdBy: adminUserId } });
@@ -160,6 +172,7 @@ export class PromotionsService {
   }
 
   static async update(adminUserId: string, id: string, input: PromotionInput) {
+    refuseWhenDisabled();
     const row = await prisma.$transaction(async (transaction) => {
       const before = await transaction.checkoutPromotion.findUnique({ where: { id } });
       if (!before) throw new AppError(404, "NOT_FOUND", "Promotion not found");
@@ -171,6 +184,8 @@ export class PromotionsService {
   }
 
   static async setActive(adminUserId: string, id: string, isActive: boolean) {
+    // Switching one off stays possible; switching one on needs the feature.
+    if (isActive) refuseWhenDisabled();
     const row = await prisma.$transaction(async (transaction) => {
       const before = await transaction.checkoutPromotion.findUnique({ where: { id } });
       if (!before) throw new AppError(404, "NOT_FOUND", "Promotion not found");

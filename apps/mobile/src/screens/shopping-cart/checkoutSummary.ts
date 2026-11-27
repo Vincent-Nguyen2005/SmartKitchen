@@ -11,11 +11,11 @@ type Totals = { subtotal: number; discount: number; promotionName: string | null
 /** "−15.000đ" */
 export const discountText = (amount: number): string => `−${formatVnd(amount)}`;
 
-/** Rows for a summary: without a promotion only "Tổng thanh toán" (or with `alwaysSubtotal`, Tạm tính too). */
-export function summaryRows(totals: Totals, options: { totalLabel?: string; alwaysSubtotal?: boolean } = {}): SummaryRow[] {
+/** Rows for a summary: without a promotion only "Tổng thanh toán" (no Tạm tính repeating it, no empty Khuyến mãi row). */
+export function summaryRows(totals: Totals, options: { totalLabel?: string } = {}): SummaryRow[] {
   const rows: SummaryRow[] = [];
   const promoted = totals.discount > 0 && !!totals.promotionName;
-  if (promoted || options.alwaysSubtotal) rows.push({ key: "subtotal", label: "Tạm tính", value: formatVnd(totals.subtotal) });
+  if (promoted) rows.push({ key: "subtotal", label: "Tạm tính", value: formatVnd(totals.subtotal) });
   if (promoted) rows.push({ key: "promotion", label: `Khuyến mãi: ${totals.promotionName}`, value: discountText(totals.discount), tone: "success" });
   rows.push({ key: "total", label: options.totalLabel ?? "Tổng thanh toán", value: formatVnd(totals.total), strong: true });
   return rows;
@@ -35,16 +35,17 @@ export const previewTotals = (preview: { subtotal: number; discount: number; tot
 });
 
 /**
- * Giỏ hàng summary, the same rows as the checkout sheet: "Tạm tính", "Khuyến mãi: <tên> −X" (only when a promotion
- * applies) and "Tổng thanh toán" (the discounted total, bold), plus the "Mua thêm … để được …" hint. Until the
- * server's preview arrives (or when it fails), the cart's own total: Tạm tính = Tổng thanh toán, no promotion.
+ * Giỏ hàng summary, the same rows as the checkout sheet: "Tạm tính" and "Khuyến mãi: <tên> −X" only when a promotion
+ * applies, then "Tổng thanh toán" (bold), plus the "Mua thêm … để được …" hint. Checkout promotions are off by default
+ * (CHECKOUT_PROMOTIONS_ENABLED), so normally only "Tổng thanh toán" shows (no repeated or empty rows). Until the
+ * server's preview arrives (or when it fails), the cart's own total.
  */
 export function cartSummary(
   preview: { subtotal: number; discount: number; total: number; promotion: { name: string } | null; hint: { text: string } | null } | null,
   cartTotal: number,
 ): { rows: SummaryRow[]; hint: string | null } {
   const shown = preview ?? { subtotal: cartTotal, discount: 0, total: cartTotal, promotion: null, hint: null };
-  return { rows: summaryRows(previewTotals(shown), { alwaysSubtotal: true }), hint: shown.hint?.text ?? null };
+  return { rows: summaryRows(previewTotals(shown)), hint: shown.hint?.text ?? null };
 }
 
 /** The checkout sheet notice when "Đặt hàng" found a different total. */

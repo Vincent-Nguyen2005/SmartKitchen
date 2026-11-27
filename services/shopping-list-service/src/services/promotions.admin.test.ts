@@ -53,6 +53,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   db.promotions.length = 0; db.audit.length = 0;
   process.env.INTERNAL_API_KEY = "k".repeat(40);
+  // These tests exercise the (dormant) feature switched on; "feature off" below checks the default.
+  process.env.CHECKOUT_PROMOTIONS_ENABLED = "true";
 });
 
 describe("Quản trị › Chương trình khuyến mãi", () => {
@@ -136,5 +138,28 @@ describe("GET /promotions/active (Đi chợ tags and banner)", () => {
     }
     expect((mocks.prisma.checkoutPromotion.findMany.mock.calls.at(-1) as unknown[] | undefined)?.[0]).toMatchObject({ where: { isActive: true } });
     expect((await api("GET", "/promotions/active", "")).status).toBe(401);
+  });
+});
+
+describe("feature off (CHECKOUT_PROMOTIONS_ENABLED not true, the default)", () => {
+  beforeEach(() => { delete process.env.CHECKOUT_PROMOTIONS_ENABLED; });
+
+  it("create / edit / switch on answer 403 'Tính năng đã tắt'; nothing stored or published", async () => {
+    const created = await api("POST", "/admin/promotions", sign(admin, "ADMIN"), valid);
+    expect(created.status).toBe(403);
+    expect(((await created.json()) as { message: string }).message).toBe("Tính năng đã tắt");
+    expect((await api("PUT", "/admin/promotions/99999999-9999-4999-8999-999999999990", sign(admin, "ADMIN"), valid)).status).toBe(403);
+    expect((await api("PATCH", "/admin/promotions/99999999-9999-4999-8999-999999999990/active", sign(admin, "ADMIN"), { isActive: true })).status).toBe(403);
+    expect(mocks.prisma.checkoutPromotion.create).not.toHaveBeenCalled();
+    expect(db.audit).toHaveLength(0);
+    expect(mocks.axios.put).not.toHaveBeenCalled();
+  });
+
+  it("/promotions/active is empty even when active rows exist", async () => {
+    db.promotions.push({ ...valid, id: "running", groups: [], productIds: [], startDate: new Date("2020-01-01T00:00:00Z"), endDate: new Date("2099-12-31T00:00:00Z"), createdBy: admin, createdAt: new Date(), updatedAt: new Date() });
+    const response = await api("GET", "/promotions/active", sign(user, "USER"));
+    expect(response.status).toBe(200);
+    expect(((await response.json()) as { data: { items: unknown[] } }).data.items).toEqual([]);
+    expect(mocks.prisma.checkoutPromotion.findMany).not.toHaveBeenCalled();
   });
 });

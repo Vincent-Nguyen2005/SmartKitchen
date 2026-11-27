@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextFunction, Request, Response } from "express";
 
 /** In-memory orders and cart lines, enough of Prisma's API for the order flow. */
@@ -383,7 +383,9 @@ describe("end to end through the API (customer + shipper)", () => {
   });
 });
 
-describe("automatic checkout promotion", () => {
+describe("automatic checkout promotion (CHECKOUT_PROMOTIONS_ENABLED=true)", () => {
+  beforeEach(() => { process.env.CHECKOUT_PROMOTIONS_ENABLED = "true"; });
+  afterEach(() => { delete process.env.CHECKOUT_PROMOTIONS_ENABLED; });
   const promo = (overrides: Record<string, unknown> = {}) => ({
     id: "99999999-9999-4999-8999-999999999991", name: "Giảm 10% đơn từ 150.000 đ", scope: "ORDER", groups: [], productIds: [], type: "PERCENT", value: 10,
     maxDiscount: 15_000, minSubtotal: 150_000, startDate: new Date("2000-01-01T00:00:00Z"), endDate: new Date("2999-12-31T00:00:00Z"),
@@ -456,5 +458,21 @@ describe("automatic checkout promotion", () => {
     const order = await place();
     expect(order).toMatchObject({ subtotal: 186_000, total: 186_000, codAmount: 186_000, promotionId: null, discountAmount: 0 });
     expect(db.lines.every((line) => line.discountShare === 0)).toBe(true);
+  });
+});
+
+describe("checkout promotions off (default)", () => {
+  it("a stored, running promotion is ignored: no discount, preview and order without a promotion", async () => {
+    delete process.env.CHECKOUT_PROMOTIONS_ENABLED;
+    db.promotions.push({
+      id: "99999999-9999-4999-8999-999999999991", name: "Giảm 10%", scope: "ORDER", groups: [], productIds: [], type: "PERCENT", value: 10, maxDiscount: null,
+      minSubtotal: null, startDate: new Date("2000-01-01T00:00:00Z"), endDate: new Date("2999-12-31T00:00:00Z"), usageLimitPerUser: null, isActive: true, createdAt: new Date(),
+    });
+    db.lines.push(cartLine("55555555-5555-4555-8555-555555555591"));
+    const preview = await OrdersService.preview(familyId, buyer, [], new Map());
+    expect(preview).toEqual({ subtotal: 162_000, promotion: null, discount: 0, total: 162_000, hint: null });
+    const order = await OrdersService.place(familyId, buyer, delivery, [], new Map(), { expectedTotal: 162_000 });
+    expect(order).toMatchObject({ subtotal: 162_000, discountAmount: 0, promotionId: null, total: 162_000, codAmount: 162_000 });
+    expect(mocks.prisma.checkoutPromotion.findMany).not.toHaveBeenCalled();
   });
 });

@@ -24,6 +24,7 @@ The screen calls the gateway through the shared `gatewayFetch` with the bearer t
 - **Đơn hàng** (box icon in the Giỏ hàng header, `OrdersScreen.tsx`): the family's orders, newest first, with a status chip (Đã đặt, Đang giao, Đã giao, Đã hủy, Không giao được), address, items, total and "Thanh toán khi nhận hàng". "Hủy đơn" (in-app confirm) only while the order is "Đã đặt". Once a shipper takes it, the card shows "Người giao: <tên> · <số điện thoại>" (call button while "Đang giao"). Tapping an order notice in Thông báo opens this screen.
 - Helpers in `orders.ts` (statuses, phone rule, address text, map page), covered by `orders.test.ts`.
 - Khuyến mãi **Mua** adds to Giỏ hàng with the same snapshot (catalog product with the promotion's name).
+- Automatic checkout promotions are **disabled by default** (`CHECKOUT_PROMOTIONS_ENABLED=false` in shopping-list-service): no "KM" tags or banner in Đi chợ, Giỏ hàng and the checkout sheet show only "Tổng thanh toán" (no "Tạm tính", "Khuyến mãi" row or "Mua thêm" hint), and receipts have no promotion row. Those rows appear only when the server reports a promotion (`checkoutSummary.ts`, `marketPromotions.ts`).
 
 Hidden from the UI (APIs kept in `shoppingApi.ts`): the "Lưu món để tham khảo" form, usage suggestions, "Tạo danh sách từ thực đơn", and the per-item "Đã mua" / "Sửa" / "Hoàn tất" actions.
 

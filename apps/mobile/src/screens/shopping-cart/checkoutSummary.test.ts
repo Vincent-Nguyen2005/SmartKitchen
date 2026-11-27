@@ -13,10 +13,9 @@ test("checkout rows: Tạm tính, Khuyến mãi (success colour, minus sign), T�
   ]);
 });
 
-test("no promotion: only the total (Tạm tính on request); the shipper's label", () => {
+test("no promotion: only the total; the shipper's label", () => {
   const plain = { ...preview, promotion: null, discount: 0, total: 186_000 };
   assert.deepEqual(summaryRows(previewTotals(plain)).map((row) => row.key), ["total"]);
-  assert.deepEqual(summaryRows(previewTotals(plain), { alwaysSubtotal: true }).map((row) => row.key), ["subtotal", "total"]);
   assert.equal(summaryRows(orderTotals({ total: 171_000, subtotal: 186_000, promotionName: "Giảm 10%", discountAmount: 15_000 }), { totalLabel: "Tổng tiền cần thu" }).at(-1)?.label, "Tổng tiền cần thu");
 });
 
@@ -27,7 +26,7 @@ test("older orders without the new fields: subtotal = total, no promotion row", 
 
 test("Giỏ hàng summary = the checkout sheet's rows: Tạm tính, Khuyến mãi (success), Tổng thanh toán (bold, discounted)", () => {
   const summary = cartSummary(preview, 186_000);
-  assert.deepEqual(summary.rows, summaryRows(previewTotals(preview), { alwaysSubtotal: true }));
+  assert.deepEqual(summary.rows, summaryRows(previewTotals(preview)));
   assert.deepEqual(summary.rows.map((row) => [row.label, row.value, row.tone ?? null, row.strong ?? false]), [
     ["Tạm tính", "186.000đ", null, false],
     ["Khuyến mãi: Giảm 10%", "−15.000đ", "success", false],
@@ -36,19 +35,25 @@ test("Giỏ hàng summary = the checkout sheet's rows: Tạm tính, Khuyến mã
   assert.equal(summary.hint, null);
 });
 
-test("Giỏ hàng without a promotion: Tạm tính and Tổng thanh toán only; the hint stays under them", () => {
-  const close = { ...preview, promotion: null, discount: 0, total: 186_000, hint: { name: "X", missing: 30_000, text: "Mua thêm 30.000đ để được X" } };
-  const summary = cartSummary(close, 186_000);
-  assert.deepEqual(summary.rows.map((row) => [row.label, row.value]), [["Tạm tính", "186.000đ"], ["Tổng thanh toán", "186.000đ"]]);
-  assert.equal(summary.hint, "Mua thêm 30.000đ để được X");
+test("Giỏ hàng without a promotion (the default, promotions off): only Tổng thanh toán, no Khuyến mãi / Tạm tính / hint", () => {
+  const none = { ...preview, promotion: null, discount: 0, total: 186_000, hint: null };
+  const summary = cartSummary(none, 186_000);
+  assert.deepEqual(summary.rows.map((row) => [row.label, row.value]), [["Tổng thanh toán", "186.000đ"]]);
+  assert.equal(summary.hint, null);
+  // A hint (only possible with promotions on) still shows under the total.
+  assert.equal(cartSummary({ ...none, hint: { text: "Mua thêm 30.000đ để được X" } }, 186_000).hint, "Mua thêm 30.000đ để được X");
 });
 
 test("Giỏ hàng before the server's preview arrives (or when it fails): the cart's own total", () => {
   const summary = cartSummary(null, 99_500);
-  assert.deepEqual(summary.rows.map((row) => [row.key, row.value]), [["subtotal", "99.500đ"], ["total", "99.500đ"]]);
+  assert.deepEqual(summary.rows.map((row) => [row.key, row.value]), [["total", "99.500đ"]]);
   assert.equal(summary.hint, null);
 });
 
 test("re-validation notice names both totals", () => {
   assert.equal(totalChangedText(186_000, 171_000), "Tổng thanh toán đã thay đổi từ 186.000đ thành 171.000đ. Kiểm tra lại rồi bấm Đặt hàng.");
+});
+
+test("orders, shipper receipt and Chi tiêu: no promotion → no Khuyến mãi or Tạm tính row", () => {
+  assert.deepEqual(summaryRows(orderTotals({ total: 171_000, subtotal: 171_000, promotionName: null, discountAmount: 0 }), { totalLabel: "Tổng tiền cần thu" }).map((row) => row.label), ["Tổng tiền cần thu"]);
 });

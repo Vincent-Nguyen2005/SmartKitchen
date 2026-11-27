@@ -78,3 +78,8 @@ test("card memo: tags are stable strings, so a selection toggle still re-renders
   const tagged = before.map((entry) => (entry.product.id === "salt" ? { ...entry, promoTag: "KM −5k" } : entry));
   assert.deepEqual(before.filter((entry, index) => !sameCardProps(entry, tagged[index])).map((entry) => entry.product.id), ["salt"]);
 });
+
+test("no active promotions (checkout promotions off): no KM tags and no banner", () => {
+  assert.equal(promoTags([carrot, beef, salt], []).size, 0);
+  assert.deepEqual(orderPromotions([]), []);
+});

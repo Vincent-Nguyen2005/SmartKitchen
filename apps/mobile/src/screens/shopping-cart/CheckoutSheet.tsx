@@ -189,7 +189,7 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
 
             <View style={local.card}>
               <Text style={local.cardTitle}>{itemCount} món</Text>
-              {summaryRows(previewTotals(shown), { alwaysSubtotal: true }).map((row) => (
+              {summaryRows(previewTotals(shown)).map((row) => (
                 <View key={row.key} style={[local.summaryRow, row.strong && local.totalRow]} accessible accessibilityLabel={`${row.label}: ${row.value.replace("−", "trừ ").replace("đ", " đồng")}`}>
                   <Text style={row.strong ? local.totalLabel : local.summaryLabel} numberOfLines={2}>{row.label}</Text>
                   <Text style={row.strong ? local.totalValue : [local.summaryValue, row.tone === "success" && local.success]}>{row.value}</Text>
