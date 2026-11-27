@@ -77,3 +77,27 @@ test("breakfast today handler: validates the body and answers 503 when family-se
   assert.equal((await run({ userIds: ["u1"] }, async () => { throw new FamilyLookupError("down"); })).status, 503);
   assert.deepEqual(((await run({ userIds: ["u1"] }, async () => [])).body as { items: unknown[] }).items, []);
 });
+
+test("week product usage: households per ingredient this week, anonymous, seasonings left out", async () => {
+  const { countWeekUsage, vnWeek, weekProductUsage } = await import("../services/week-product-usage");
+  assert.deepEqual(vnWeek(new Date("2026-11-29T16:30:00.000Z")), { from: "2026-11-23", to: "2026-11-29" }); // Sun 23:30 VN
+  assert.deepEqual(vnWeek(new Date("2026-11-29T17:30:00.000Z")), { from: "2026-11-30", to: "2026-12-06" }); // Mon 00:30 VN
+  const recipes = [
+    { id: "r1", details: [{ name: "Thịt heo", quantity: 300, unit: "g" }, { name: "Nước mắm", quantity: 2, unit: "muỗng", isSeasoning: true }] },
+    { id: "r2", details: [{ name: "thịt heo", quantity: 200, unit: "g" }, { name: "Cà chua", quantity: 2, unit: "quả" }] },
+  ];
+  const menus = [
+    { familyId: "f1", userId: "u1", items: [{ recipeId: "r1", details: null }, { recipeId: "r2", details: null }] },
+    { familyId: "f1", userId: "u2", items: [{ recipeId: "r2", details: null }] },
+    { familyId: null, userId: "u3", items: [{ recipeId: null, details: { availableIngredients: ["Trứng gà"], missingIngredients: [{ name: "Cà chua" }] } }] },
+  ];
+  // Thịt heo: family f1 only (two dishes, two menus) = 1; Cà chua: f1 and u3's personal menu = 2; no Nước mắm.
+  assert.deepEqual(countWeekUsage(menus, recipes as never), [{ name: "cà chua", households: 2 }, { name: "thịt heo", households: 1 }, { name: "trứng gà", households: 1 }]);
+  let where: unknown = null;
+  const client = { menu: { findMany: async (args: { where: unknown }) => { where = args.where; return menus; } } };
+  const result = await weekProductUsage(client as never, { now: new Date("2026-11-27T03:00:00.000Z"), recipes: [] });
+  assert.deepEqual(result.week, { from: "2026-11-23", to: "2026-11-29" });
+  assert.deepEqual(where, { archived: false, startDate: { lte: new Date("2026-11-29T00:00:00.000Z") }, endDate: { gte: new Date("2026-11-23T00:00:00.000Z") } });
+  // Only names and counts leave the service.
+  assert.ok(result.items.every((item) => Object.keys(item).sort().join() === "households,name"));
+});

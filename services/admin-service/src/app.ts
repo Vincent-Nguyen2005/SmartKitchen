@@ -3,6 +3,7 @@ import express from "express";
 import cors from "cors";
 import healthRouter from "./routes/health.route";
 import adminRouter from "./routes/admin.route";
+import dailyDealsRouter from "./routes/daily-deals.route";
 import directoryRouter from "./routes/directory.route";
 import { createShippersRouter } from "./routes/shippers.route";
 import { createHealthMonitorRouter } from "./routes/health-monitor.route";
@@ -47,6 +48,7 @@ export const createApp = (deps: AppDeps = {}): express.Express => {
     maxReportsPerHour: positiveInt(process.env.REPORT_RATE_LIMIT_PER_HOUR, 5),
   }));
   // adminRouter serves public routes first, then enforces ADMIN before directory routes.
+  app.use(dailyDealsRouter);
   app.use(adminRouter);
   app.use(directoryRouter);
   // Quản trị › Người giao hàng (ADMIN only).

@@ -434,6 +434,24 @@ describe("automatic checkout promotion", () => {
     expect((await place()).discountAmount).toBe(15_000);
   });
 
+  it("a daily deal is priced exactly like an admin discount; the checkout promotion applies on top of it", async () => {
+    // Two identical lines without a price snapshot: the catalog says 15% for both, once from an admin discount and
+    // once from today's daily deal (admin-service returns the same discountPercent field for both).
+    db.lines.push(
+      cartLine("55555555-5555-4555-8555-555555555581", { productId: "p-manual", unitPrice: null, discountPercent: null, quantity: 2 }),
+      cartLine("55555555-5555-4555-8555-555555555582", { productId: "p-deal", unitPrice: null, discountPercent: null, quantity: 2 }),
+    );
+    db.promotions.push(promo({ minSubtotal: null, maxDiscount: null }));
+    const catalog = new Map([["p-manual", { price: 33_333, discountPercent: 15 }], ["p-deal", { price: 33_333, discountPercent: 15 }]]);
+    const order = await OrdersService.place(familyId, buyer, delivery, [], catalog);
+    const [manual, deal] = db.lines;
+    // round(33 333 × 0.85) = 28 333 per unit, × 2 = 56 666 for both lines; snapshots stored on the lines.
+    expect([manual.paidUnitPrice, manual.lineTotal, manual.discountPercent]).toEqual([28_333, 56_666, 15]);
+    expect([deal.paidUnitPrice, deal.lineTotal, deal.discountPercent]).toEqual([28_333, 56_666, 15]);
+    // Subtotal after the per-item / daily discounts, then 10% off the order: 113 332 − 11 333 = 101 999 = COD.
+    expect(order).toMatchObject({ subtotal: 113_332, discountAmount: 11_333, total: 101_999, codAmount: 101_999 });
+  });
+
   it("an order without a promotion: subtotal = total = COD, no shares", async () => {
     const order = await place();
     expect(order).toMatchObject({ subtotal: 186_000, total: 186_000, codAmount: 186_000, promotionId: null, discountAmount: 0 });

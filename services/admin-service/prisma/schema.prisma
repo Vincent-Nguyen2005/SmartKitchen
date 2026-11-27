@@ -149,3 +149,43 @@ model AuditLog {
   @@index([targetType, targetId])
   @@map("audit_logs")
 }
+
+/// Quản trị › "Giảm giá tự động" settings (one row, id = 1). Every day N catalog products get a per-item discount
+/// that looks exactly like an admin discount in the app (no label, no notification).
+model DailyDealSettings {
+  id                 Int      @id @default(1)
+  enabled            Boolean  @default(true)
+  dealsPerDay        Int      @default(10)
+  minPercent         Int      @default(5)
+  maxPercent         Int      @default(20)
+  excludedProductIds String[] @default([])
+  updatedBy          String?
+  updatedAt          DateTime @updatedAt
+
+  @@map("daily_deal_settings")
+}
+
+/// One automatic discount of one Vietnam day. Unique per (day, product); expires with the day.
+model DailyDeal {
+  id        String   @id @default(uuid())
+  day       DateTime @db.Date
+  productId String
+  percent   Int
+  /// MENU (popular in this week's menus), RANDOM, or SWAP (admin "Đổi món").
+  source    String
+  createdAt DateTime @default(now())
+
+  @@unique([day, productId])
+  @@index([day])
+  @@map("daily_deals")
+}
+
+/// The day's selection was made (written in the same transaction, under a per-day advisory lock), so concurrent
+/// first requests never select twice. rerolls counts "Chọn lại hôm nay" (a new seed each time).
+model DailyDealDay {
+  day       DateTime @id @db.Date
+  rerolls   Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@map("daily_deal_days")
+}

@@ -7,6 +7,7 @@ import { defaultWeights, knownWeightKeys } from "../config/weights";
 import { imageUrlProblem } from "../lib/image-url";
 import { addDays, dayOf, DEFAULT_PROMO_DAYS, promotionStatus, promotionSync, vnToday, type SyncableIngredient } from "../lib/promotion-sync";
 import { ingredientUsage, UsageCheckError } from "../lib/ingredient-usage";
+import { todaysDealPercents } from "../lib/daily-deal-store";
 
 const router = Router();
 // Promotion fields: "" from a cleared form field means "none".
@@ -96,6 +97,8 @@ const catalogQuerySchema = z.object({
 /**
  * Read-only market catalog for any signed-in user (Đi chợ products, Kho add-item suggestions): active rows only,
  * public fields only. A discount (and its end date) is returned only while the promotion is still valid.
+ * Today's automatic daily deals (lib/daily-deals.ts) are returned the same way (discountPercent, promoEndDate = today)
+ * on products without an admin discount, so every client prices them like any other discount.
  */
 router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const parsed = catalogQuerySchema.safeParse(request.query);
@@ -104,11 +107,14 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
   const search = normalize(parsed.data.search ?? parsed.data.q ?? "").slice(0, 80);
   const todayDay = vnToday();
   const today = new Date(`${todayDay}T00:00:00.000Z`);
+  // Made lazily on the day's first catalog request; cached 30 s; never blocks the catalog (no deals on failure).
+  const deals = await todaysDealPercents();
   const where = {
     isActive: true,
     ...(search ? { nameNormalized: { contains: search } } : {}),
     ...(group ? { category: { equals: group, mode: "insensitive" as const } } : {}),
-    ...(onSale === "true" ? activeDiscountWhere(today) : {}),
+    // On sale: an admin discount running today, or one of today's daily deals.
+    ...(onSale === "true" ? { OR: [activeDiscountWhere(today), { id: { in: [...deals.keys()] } }] } : {}),
     ...(ids ? { id: { in: ids } } : {}),
   };
   const [rows, total, groups] = await prisma.$transaction([
@@ -126,6 +132,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
     const endDay = row.promoEndDate ? dayOf(row.promoEndDate) : null;
     // Only between the first and the last day (Vietnam time): an upcoming or ended discount is not shown.
     const onPromotion = row.discountPercent !== null && promotionStatus(row.promoStartDate ? dayOf(row.promoStartDate) : null, endDay, todayDay) === "running";
+    // Admin discount first; otherwise today's daily deal (ends today), shown exactly like an admin discount.
+    const dealPercent = onPromotion ? undefined : deals.get(row.id);
     return {
       id: row.id,
       name: row.name,
@@ -139,8 +147,8 @@ router.get("/catalog/ingredients", requireUser, async (request, response) => {
       imageLicense: row.imageLicense,
       // English alias for Kho photo recognition (inventory-service); null when not set.
       englishName: row.englishName,
-      discountPercent: onPromotion ? row.discountPercent : null,
-      promoEndDate: onPromotion ? endDay : null,
+      discountPercent: onPromotion ? row.discountPercent : dealPercent ?? null,
+      promoEndDate: onPromotion ? endDay : dealPercent !== undefined ? todayDay : null,
       price: row.price,
       // Grams in one pack / bunch (PACK / PIECE products); null when unknown.
       packGrams: row.packGrams,
