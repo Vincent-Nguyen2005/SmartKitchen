@@ -27,3 +27,12 @@ Inventory and capture requests go through `EXPO_PUBLIC_API_BASE_URL` with the be
 The app config includes camera and photo-library permission descriptions only; the microphone permission is turned off (`expo-image-picker` `microphonePermission: false`, photos only, no voice input).
 
 Run the app's static typecheck with `pnpm --filter mobile typecheck`.
+
+## Item sheet (auto-save)
+
+Tapping a Kho item opens its sheet. There are no "Hủy" / "Lưu thay đổi" buttons; it closes with ✕, a tap outside, or Android back.
+- **Bought items:** changing "Vị trí bảo quản" saves at once.
+- **Manual items:** text fields save 600 ms after you stop typing and when a field loses focus; dropdowns save at once. Closing saves anything pending first.
+- **Feedback:** "Đang lưu…" / "Đã lưu" under the title. A validation or server error shows at its field (or under the title), keeps the input, and keeps the sheet open, including on close.
+- **No wasted requests:** an unchanged value is never sent, and only one save runs at a time. The Kho list updates after each save.
+- Helpers: `services/autoSave.ts` (debounce / flush / errors) and `itemForm.ts` (validation), both tested.

@@ -15,8 +15,10 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Archive, Camera, ImageMinus, Search, Trash2, Truck } from "lucide-react-native";
-import { AppIcon, colors, fontFamily, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { Archive, Camera, ImageMinus, Search, Trash2, Truck, X } from "lucide-react-native";
+import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
+import { createAutoSaver, type AutoSaveState } from "../../services/autoSave";
+import { lockedPatch, manualPatch, type ItemField, type ItemFields } from "./itemForm";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { EmptyState } from "../notifications/ui";
@@ -24,7 +26,7 @@ import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid
 import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
-import { InventoryLocation, InventoryUnit, inventoryApi } from "./inventoryApi";
+import { InventoryLocation, inventoryApi } from "./inventoryApi";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { photoUploadErrorMessage } from "./photoUpload";
 import { filterByName } from "../../services/localSearch";
@@ -81,13 +83,11 @@ export default function InventoryListScreen({
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [activeItem, setActiveItem] = useState<FoodItem | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editQuantity, setEditQuantity] = useState("");
+  // The sheet auto-saves (services/autoSave.ts): text after 600 ms or on blur, dropdowns at once, pending on close.
+  const [fields, setFields] = useState<ItemFields>({ name: "", quantity: "", unit: "cái", location: "FRIDGE", expiry: "" });
+  const [saveState, setSaveState] = useState<AutoSaveState>({ status: "idle", error: null, field: null });
+  const saver = useRef<ReturnType<typeof createAutoSaver<ItemFields>> | null>(null);
   // Picker value: a specific word (gói, quả, kg...) mapped to the stored unit + piece word on save (unitChoices.ts).
-  const [editUnit, setEditUnit] = useState<string>("cái");
-  const [editLocation, setEditLocation] = useState<InventoryLocation>("FRIDGE");
-  const [editExpiryDate, setEditExpiryDate] = useState("");
-  const [savingItem, setSavingItem] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [photoError, setPhotoError] = useState<string | null>(null);
 
@@ -149,67 +149,49 @@ export default function InventoryListScreen({
 
   const openEdit = (item: FoodItem) => {
     if (isPendingDelivery(item)) return; // "Đang giao": read-only until delivered
+    const initial: ItemFields = {
+      name: item.name,
+      quantity: String(item.quantity),
+      unit: choiceLabel(item.unit, catalogUnitLabelFor(item, catalogImages) ?? item.unitLabel),
+      location: item.storageLocation as InventoryLocation,
+      expiry: item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "",
+    };
     setActiveItem(item);
     setPhotoError(null);
-    setEditName(item.name);
-    setEditQuantity(String(item.quantity));
-    setEditUnit(choiceLabel(item.unit, catalogUnitLabelFor(item, catalogImages) ?? item.unitLabel));
-    setEditLocation(item.storageLocation as InventoryLocation);
-    setEditExpiryDate(item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "");
+    setFields(initial);
+    setSaveState({ status: "idle", error: null, field: null });
+    saver.current = createAutoSaver<ItemFields>({
+      initial,
+      delayMs: 600,
+      onState: setSaveState,
+      save: async (value) => {
+        if (!family?.id || !accessToken) throw new Error("Đăng nhập lại để lưu.");
+        // Bought items: only the storage place; manual items: every field (FieldError → shown at that field).
+        const patch = isLocked(item) ? lockedPatch(value) : manualPatch(value, item.unit);
+        const updated = await inventoryApi.update(accessToken, family.id, item.id, patch);
+        // The Kho list shows the change at once.
+        setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, ...updated, category: updated.category ?? entry.category } : entry)));
+        setActiveItem((current) => (current && current.id === item.id ? { ...current, ...updated } : current));
+      },
+    });
   };
 
-  const closeDialog = () => {
-    if (savingItem || photoBusy) return;
-    setActiveItem(null);
+  /** Text fields: saved after a pause; dropdowns: at once. */
+  const editField = <K extends keyof ItemFields>(key: K, value: ItemFields[K], immediate = false) => {
+    const next = { ...fields, [key]: value };
+    setFields(next);
+    if (immediate) void saver.current?.saveNow(next);
+    else saver.current?.change(next);
   };
 
-  const saveItem = async () => {
-    if (!activeItem || !family?.id || !accessToken) return;
-    if (isLocked(activeItem)) {
-      setSavingItem(true);
-      setError(null);
-      try {
-        await inventoryApi.update(accessToken, family.id, activeItem.id, { storageLocation: editLocation });
-        setActiveItem(null);
-        await loadItems();
-      } catch (requestError) {
-        setError(requestError instanceof Error ? requestError.message : "Không thể cập nhật nguyên liệu.");
-      } finally {
-        setSavingItem(false);
-      }
-      return;
-    }
-    const parsedQuantity = Number(editQuantity.replace(",", "."));
-    if (!editName.trim()) { setError("Tên nguyên liệu không được để trống."); return; }
-    if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) { setError("Số lượng phải là số không âm."); return; }
-    let expiryDate: string | undefined;
-    if (editExpiryDate.trim()) {
-      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(editExpiryDate.trim());
-      if (!match) { setError("Hạn dùng cần có dạng DD/MM/YYYY."); return; }
-      const [, day, month, year] = match;
-      const isoDate = `${year}-${month}-${day}`;
-      const parsedDate = new Date(`${isoDate}T12:00:00.000Z`);
-      if (Number.isNaN(parsedDate.getTime()) || parsedDate.toISOString().slice(0, 10) !== isoDate) {
-        setError("Ngày hạn dùng không hợp lệ."); return;
-      }
-      expiryDate = `${isoDate}T00:00:00.000Z`;
-    }
-    setSavingItem(true);
-    setError(null);
-    try {
-      await inventoryApi.update(accessToken, family.id, activeItem.id, {
-        name: editName.trim(), quantity: parsedQuantity,
-        unit: (choiceFor(editUnit)?.unit ?? activeItem.unit) as InventoryUnit, unitLabel: choiceFor(editUnit)?.unitLabel ?? null,
-        storageLocation: editLocation, expiryDate: expiryDate ?? null,
-      });
-      setActiveItem(null);
-      await loadItems();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Không thể cập nhật nguyên liệu.");
-    } finally {
-      setSavingItem(false);
-    }
+  /** ✕, tapping outside, Android back: saves what is pending first; a failing save keeps the sheet open. */
+  const closeDialog = async () => {
+    if (photoBusy) return;
+    const ok = (await saver.current?.flush()) ?? true;
+    if (ok) setActiveItem(null);
   };
+
+  const fieldError = (field: ItemField): string | null => (saveState.status === "error" && saveState.field === field ? saveState.error : null);
 
   const deleteItem = async (item: FoodItem) => {
     if (!family?.id || !accessToken) return;
@@ -364,10 +346,17 @@ export default function InventoryListScreen({
           )}
         />
       </View>
-      <Modal animationType="slide" onRequestClose={closeDialog} transparent visible={activeItem !== null}>
+      <Modal animationType="slide" onRequestClose={() => void closeDialog()} transparent visible={activeItem !== null}>
         <View style={styles.modalBackdrop}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => void closeDialog()} style={StyleSheet.absoluteFill} />
           <View style={[styles.modalCard, isWide && styles.modalWide]}>
-            <Text style={styles.modalTitle}>{activeItem && isLocked(activeItem) ? activeItem.name : `Sửa ${activeItem?.name ?? "nguyên liệu"}`}</Text>
+            <View style={styles.sheetHeader}>
+              <Text style={[styles.modalTitle, styles.sheetTitle]} numberOfLines={2}>{activeItem && isLocked(activeItem) ? activeItem.name : `Sửa ${activeItem?.name ?? "nguyên liệu"}`}</Text>
+              <IconButton icon={X} accessibilityLabel="Đóng" onPress={() => void closeDialog()} />
+            </View>
+            <Text style={[styles.saveStatus, saveState.status === "error" && !saveState.field && styles.saveStatusError]} accessibilityLiveRegion="polite">
+              {saveState.status === "saving" ? "Đang lưu…" : saveState.status === "saved" ? "Đã lưu" : saveState.status === "error" && !saveState.field ? saveState.error : " "}
+            </Text>
             {(
               <ScrollView showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalForm}>
                 {activeItem && (
@@ -387,7 +376,7 @@ export default function InventoryListScreen({
                     </View>
                     {photoError && <Text accessibilityRole="alert" style={styles.photoErrorText}>{photoError}</Text>}
                     <View style={styles.photoActions}>
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${activeItem.name}`} disabled={savingItem || photoBusy} onPress={() => { const item = activeItem; setActiveItem(null); void deleteItem(item); }} style={styles.itemAction}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${activeItem.name}`} disabled={photoBusy || saveState.status === "saving"} onPress={() => { const item = activeItem; saver.current?.cancel(); setActiveItem(null); void deleteItem(item); }} style={styles.itemAction}>
                         <AppIcon icon={Trash2} size="sm" color={colors.danger} /><Text style={styles.deleteActionText}>Xóa</Text>
                       </Pressable>
                     </View>
@@ -406,27 +395,24 @@ export default function InventoryListScreen({
                 ) : (
                   <>
                     <Text style={styles.fieldLabel}>Tên nguyên liệu</Text>
-                    <TextInput accessibilityLabel="Tên nguyên liệu" value={editName} onChangeText={setEditName} style={styles.modalInput} />
+                    <TextInput accessibilityLabel="Tên nguyên liệu" value={fields.name} onChangeText={(value) => editField("name", value)} onBlur={() => void saver.current?.saveNow()} style={[styles.modalInput, fieldError("name") && styles.inputError]} />
+                    {fieldError("name") ? <Text accessibilityRole="alert" style={styles.fieldErrorText}>{fieldError("name")}</Text> : null}
                     <Text style={styles.fieldLabel}>Số lượng còn lại</Text>
-                    <TextInput accessibilityLabel="Số lượng còn lại" value={editQuantity} onChangeText={setEditQuantity} keyboardType="decimal-pad" style={styles.modalInput} />
-                    <RadioDropdown<string> label="Đơn vị" value={editUnit} options={UNIT_CHOICES.map((choice) => ({ value: choice.label, label: choice.label }))} onChange={setEditUnit} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
+                    <TextInput accessibilityLabel="Số lượng còn lại" value={fields.quantity} onChangeText={(value) => editField("quantity", value)} onBlur={() => void saver.current?.saveNow()} keyboardType="decimal-pad" style={[styles.modalInput, fieldError("quantity") && styles.inputError]} />
+                    {fieldError("quantity") ? <Text accessibilityRole="alert" style={styles.fieldErrorText}>{fieldError("quantity")}</Text> : null}
+                    <RadioDropdown<string> label="Đơn vị" value={fields.unit} options={UNIT_CHOICES.map((choice) => ({ value: choice.label, label: choice.label }))} onChange={(value) => editField("unit", value, true)} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
                   </>
                 )}
-                <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={editLocation} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={setEditLocation} />
+                <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={fields.location} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={(value) => editField("location", value, true)} />
                 {activeItem && !isLocked(activeItem) && (
                   <>
                     <Text style={styles.fieldLabel}>Hạn dùng · DD/MM/YYYY</Text>
-                    <TextInput accessibilityLabel="Hạn dùng theo DD/MM/YYYY, để trống nếu không có" value={editExpiryDate} onChangeText={setEditExpiryDate} placeholder="31/12/2026" style={styles.modalInput} />
+                    <TextInput accessibilityLabel="Hạn dùng theo DD/MM/YYYY, để trống nếu không có" value={fields.expiry} onChangeText={(value) => editField("expiry", value)} onBlur={() => void saver.current?.saveNow()} placeholder="31/12/2026" style={[styles.modalInput, fieldError("expiry") && styles.inputError]} />
+                    {fieldError("expiry") ? <Text accessibilityRole="alert" style={styles.fieldErrorText}>{fieldError("expiry")}</Text> : null}
                   </>
                 )}
               </ScrollView>
             )}
-            <View style={styles.modalActions}>
-              <Pressable accessibilityRole="button" disabled={savingItem} onPress={closeDialog} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Hủy</Text></Pressable>
-              <Pressable accessibilityRole="button" accessibilityState={{ busy: savingItem, disabled: savingItem }} disabled={savingItem} onPress={() => void saveItem()} style={[styles.saveButton, savingItem && styles.saveButtonDisabled]}>
-                {savingItem ? <ActivityIndicator color={colors.surface} /> : <Text style={styles.saveButtonText}>Lưu thay đổi</Text>}
-              </Pressable>
-            </View>
           </View>
         </View>
       </Modal>
@@ -475,12 +461,12 @@ const styles = StyleSheet.create({
   modalForm: { gap: spacing.sm, paddingBottom: spacing.sm },
   fieldLabel: { color: colors.muted, ...typography.labelSmall, marginTop: spacing.xs },
   modalInput: { backgroundColor: colors.background, borderColor: colors.border, borderRadius: 7, borderWidth: 1, color: colors.text, fontFamily, fontSize: typography.body.fontSize, minHeight: 44, paddingHorizontal: spacing.md },
-  modalActions: { flexDirection: "row", gap: spacing.sm, justifyContent: "flex-end" },
-  cancelButton: { alignItems: "center", borderColor: colors.border, borderRadius: 7, borderWidth: 1, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
-  cancelButtonText: { color: colors.muted, ...typography.labelSmall },
-  saveButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: 7, justifyContent: "center", minHeight: 44, paddingHorizontal: spacing.lg },
-  saveButtonDisabled: { opacity: 0.6 },
-  saveButtonText: { color: colors.surface, ...typography.labelSmall },
+  sheetHeader: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
+  sheetTitle: { flex: 1 },
+  saveStatus: { color: colors.muted, ...typography.caption, minHeight: 16 },
+  saveStatusError: { color: colors.danger },
+  inputError: { borderColor: colors.danger },
+  fieldErrorText: { color: colors.danger, ...typography.caption },
   photoBlock: { gap: spacing.sm, marginBottom: spacing.sm },
   detailPhoto: { alignSelf: "center", height: 180, width: "100%" },
   photoActions: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
