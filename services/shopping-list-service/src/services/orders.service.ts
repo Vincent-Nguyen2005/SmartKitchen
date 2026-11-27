@@ -63,7 +63,10 @@ export const ORDER_NOTICES: Partial<Record<OrderStatus, (reason: string | null) 
   SHIPPING: () => ({ title: "Đơn hàng đang được giao", body: "Người giao hàng đã nhận đơn và đang trên đường giao." }),
   DELIVERED: () => ({ title: "Đơn hàng đã giao thành công", body: "Các món đã được thêm vào Kho của gia đình." }),
   FAILED: (reason) => ({ title: `Đơn hàng không giao được: ${reason ?? "không rõ lý do"}`, body: "Các món \"Đang giao\" đã được bỏ khỏi Kho. Bạn có thể đặt lại." }),
+  CANCELLED: () => ({ title: "Đơn hàng đã hủy", body: "Các món \"Đang giao\" đã được bỏ khỏi Kho." }),
 };
+/** One Thông báo row per order: every status change replaces it (latest status, unread again, moved to the top). */
+export const orderNoticeKey = (orderId: string): string => `order:${orderId}`;
 const notifyBuyer = async (order: { id: string; buyerUserId: string | null; status: string; failReason: string | null }): Promise<void> => {
   const notice = ORDER_NOTICES[order.status as OrderStatus];
   const key = process.env.INTERNAL_API_KEY;
@@ -73,8 +76,9 @@ const notifyBuyer = async (order: { id: string; buyerUserId: string | null; stat
     await axios.post(`${NOTIFICATION_SERVICE_URL()}/internal/notifications`, {
       userId: order.buyerUserId, type: "SYSTEM", title, body,
       data: { type: "order", orderId: order.id, status: order.status },
-      // Repeated transitions / retries never add a second row.
-      dedupeKey: `order:${order.id}:${order.status}`,
+      // One row per order, replaced on each status change; a retry with the same text changes nothing.
+      dedupeKey: orderNoticeKey(order.id),
+      replace: true,
     }, { headers: { "x-api-key": key }, timeout: 5000 });
   } catch {
     console.warn(JSON.stringify({ event: "order_notice_failed", status: order.status }));
@@ -242,7 +246,10 @@ export class OrdersService {
       if (changed.count !== 1) throw new AppError(409, "ORDER_NOT_CANCELLABLE", "Only an order that has not been picked up can be cancelled.");
     }
     await inventory(`/deliveries/${id}/cancel`, { familyId });
-    return this.orderOf(id, familyId);
+    const cancelled = await this.orderOf(id, familyId);
+    // Only on the change itself (a repeated cancel only re-runs the Kho cleanup).
+    if (order.status !== "CANCELLED") await notifyBuyer(cancelled);
+    return cancelled;
   }
 
   /**

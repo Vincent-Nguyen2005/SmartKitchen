@@ -125,6 +125,14 @@ describe("status transitions", () => {
     await expect(OrdersService.cancel(second.id, familyId)).rejects.toMatchObject({ statusCode: 409, code: "ORDER_NOT_CANCELLABLE" });
   });
 
+  it("cancelling updates the order's one notice row to 'Đơn hàng đã hủy' once (not on a repeated cancel)", async () => {
+    process.env.INTERNAL_API_KEY = "k".repeat(40);
+    const order = await place();
+    await OrdersService.cancel(order.id, familyId);
+    await OrdersService.cancel(order.id, familyId);
+    expect(mocks.axios.post.mock.calls.filter((call) => String(call[0]).includes("/internal/notifications")).map((call) => call[1])).toEqual([expect.objectContaining({ title: "Đơn hàng đã hủy", dedupeKey: `order:${order.id}`, replace: true, data: { type: "order", orderId: order.id, status: "CANCELLED" } })]);
+  });
+
   it("another family cannot see or cancel the order (404)", async () => {
     const order = await place();
     await expect(OrdersService.cancel(order.id, otherFamilyId)).rejects.toMatchObject({ statusCode: 404 });
@@ -221,10 +229,10 @@ describe("shipper phase B2", () => {
     await expect(OrdersService.accept(order.id, otherShipper)).rejects.toMatchObject({ statusCode: 409, message: "Đơn đã có người nhận." });
     const notices = noticeCalls();
     expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatchObject({ userId: buyer, type: "SYSTEM", title: "Đơn hàng đang được giao", data: { type: "order", orderId: order.id, status: "SHIPPING" }, dedupeKey: `order:${order.id}:SHIPPING` });
+    expect(notices[0]).toMatchObject({ userId: buyer, type: "SYSTEM", title: "Đơn hàng đang được giao", data: { type: "order", orderId: order.id, status: "SHIPPING" }, dedupeKey: `order:${order.id}`, replace: true });
   });
 
-  it("delivered and failed notices carry a dedupe key per order and status; a failed one names the reason", async () => {
+  it("one notice row per order: every status uses the key order:<id> with replace; a failed one names the reason", async () => {
     process.env.INTERNAL_API_KEY = "k".repeat(40);
     const first = await place();
     await OrdersService.accept(first.id, shipper);
@@ -233,11 +241,13 @@ describe("shipper phase B2", () => {
     const second = await place();
     await OrdersService.accept(second.id, shipper);
     await OrdersService.fail(second.id, shipper, "Sai địa chỉ");
-    const byKey = new Map(noticeCalls().map((notice) => [notice.dedupeKey, notice]));
-    expect(byKey.get(`order:${first.id}:DELIVERED`)?.title).toBe("Đơn hàng đã giao thành công");
-    expect(byKey.get(`order:${second.id}:FAILED`)?.title).toBe("Đơn hàng không giao được: Sai địa chỉ");
-    // The retried delivery re-sends the same key: notification-service keeps one row (dedupeKey unique).
-    expect(noticeCalls().filter((notice) => notice.dedupeKey === `order:${first.id}:DELIVERED`)).toHaveLength(2);
+    const firstNotices = noticeCalls().filter((notice) => notice.dedupeKey === `order:${first.id}`);
+    expect(firstNotices.map((notice) => notice.data.status)).toEqual(["SHIPPING", "DELIVERED", "DELIVERED"]);
+    expect(firstNotices.every((notice) => notice.replace === true)).toBe(true);
+    expect(firstNotices.at(-1)?.title).toBe("Đơn hàng đã giao thành công");
+    expect(noticeCalls().filter((notice) => notice.dedupeKey === `order:${second.id}`).at(-1)?.title).toBe("Đơn hàng không giao được: Sai địa chỉ");
+    // Every key is per order, never per status.
+    expect(new Set(noticeCalls().map((notice) => notice.dedupeKey))).toEqual(new Set([`order:${first.id}`, `order:${second.id}`]));
   });
 
   it("waiting orders nearest first when the shipper's position is known; history = mine, delivered / failed, newest first", async () => {
@@ -361,7 +371,7 @@ describe("end to end through the API (customer + shipper)", () => {
       const mine = (await (await api("GET", `/orders?familyId=${familyId}`, sign(buyer, "USER"))).json()) as { data: { items: Array<{ status: string }> } };
       expect(mine.data.items[0].status).toBe("DELIVERED");
       const keys = mocks.axios.post.mock.calls.filter((call) => String(call[0]).includes("/internal/notifications")).map((call) => call[1].dedupeKey);
-      expect(keys).toEqual([`order:${orderId}:SHIPPING`, `order:${orderId}:DELIVERED`]);
+      expect(keys).toEqual([`order:${orderId}`, `order:${orderId}`]);
     } finally {
       vi.unstubAllGlobals();
       await new Promise<void>((resolve) => server.close(() => resolve()));

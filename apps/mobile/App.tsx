@@ -16,6 +16,7 @@ import {
   QrCode,
   Wallet,
   Settings,
+  Trash2,
   ShoppingBasket,
   Utensils,
   Users,
@@ -58,6 +59,8 @@ import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
 import { pushTarget, type GreetingMeal } from "./src/screens/notifications/pushTarget";
+import { expiryDismissKey, orderTarget, visibleExpiryAlerts } from "./src/screens/notifications/feedSelection";
+import { notificationSelectionBar, useNotificationSelectionBar } from "./src/screens/notifications/selectionStore";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
@@ -158,6 +161,9 @@ function AppContent(): React.JSX.Element {
   const [cartOpenKey, setCartOpenKey] = useState(0);
   // Order notice tapped in Thông báo: Đi chợ opens Đơn hàng (a new key re-opens it).
   const [ordersOpenKey, setOrdersOpenKey] = useState(0);
+  // The order a tapped notice (or push) is about: Đi chợ › Đơn hàng scrolls to and highlights it.
+  const [ordersFocusId, setOrdersFocusId] = useState<string | null>(null);
+  const openOrder = useCallback((orderId: string | null) => { setOrdersFocusId(orderId); setOrdersOpenKey((key) => key + 1); setTab("shopping"); }, []);
   // Lịch opened on today's meal (greeting card in Thông báo, "Chào buổi sáng" push); a new key re-opens it.
   const [menuFocus, setMenuFocus] = useState<{ meal: GreetingMeal; key: number } | null>(null);
   const openMeal = useCallback((meal: GreetingMeal) => { setMenuFocus({ meal, key: Date.now() }); setTab("menu"); }, []);
@@ -238,6 +244,9 @@ function AppContent(): React.JSX.Element {
   const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen || spendingOpen;
   const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
+  // Thông báo selection mode: "✕ · N đã chọn · Xóa" at the bottom (Thông báo has no capture bar).
+  const notificationSelection = useNotificationSelectionBar();
+  const showNotificationSelectionBar = notificationSelection.active && activeTab === "notifications" && !isAdmin && !overlayOpen && !paymentUrl;
 
   /** Unread notifications (status SENT, as the old "Chưa đọc" filter) + expiry alerts; one request at a time. */
   const refreshNotificationBadge = useCallback(async (): Promise<void> => {
@@ -246,12 +255,15 @@ function AppContent(): React.JSX.Element {
     if (badgeRunning.current) { badgePending.current = true; return; }
     badgeRunning.current = true;
     try {
-      const [unread, expiring] = await Promise.allSettled([
+      const [unread, expiring, dismissals] = await Promise.allSettled([
         createGatewayClient(token).get<{ total?: number }>("/api/notifications/notifications?status=SENT&limit=1"),
         session.family?.id ? inventoryApi.expiring(token, session.family.id, EXPIRY_ALERT_DAYS) : Promise.resolve(null),
+        createGatewayClient(token).get<{ keys: string[] }>("/api/notifications/notifications/dismissals"),
       ]);
       const unreadCount = unread.status === "fulfilled" ? unread.value.total ?? 0 : 0;
-      const expiryCount = expiring.status === "fulfilled" ? expiring.value?.items.length ?? 0 : 0;
+      // Expiry alerts the user removed in Thông báo (same keys as the feed) are not counted.
+      const dismissed = new Set(dismissals.status === "fulfilled" ? dismissals.value.keys : []);
+      const expiryCount = expiring.status === "fulfilled" ? visibleExpiryAlerts(expiring.value?.items ?? []).filter((item) => !dismissed.has(expiryDismissKey(item))).length : 0;
       setNotificationBadge(unreadCount + expiryCount);
     } finally {
       badgeRunning.current = false;
@@ -288,6 +300,10 @@ function AppContent(): React.JSX.Element {
     let subscription: { remove: () => void } | null = null;
     let active = true;
     const handle = (data: unknown) => {
+      if (!active) return;
+      // An order push (if one is ever sent) opens Đi chợ › Đơn hàng on that order, like the in-app notice.
+      const order = orderTarget(data);
+      if (order) { openOrder(order.orderId); return; }
       const target = pushTarget(data);
       if (!target || !active) return;
       if (target.meal) openMeal(target.meal);
@@ -299,7 +315,7 @@ function AppContent(): React.JSX.Element {
       if (last) handle(last.notification.request.content.data);
     }).catch(() => undefined);
     return () => { active = false; subscription?.remove(); };
-  }, [session.user?.id, openMeal]);
+  }, [session.user?.id, openMeal, openOrder]);
 
   useEffect(() => {
     if (!notice) return undefined;
@@ -656,7 +672,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} openOrdersKey={ordersOpenKey} onOrdered={() => setInventoryRefreshKey((current) => current + 1)} />}
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} openOrdersKey={ordersOpenKey} focusOrderId={ordersFocusId} onOrdered={() => setInventoryRefreshKey((current) => current + 1)} />}
         {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
@@ -670,7 +686,7 @@ function AppContent(): React.JSX.Element {
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
             onChanged={() => void refreshNotificationBadge()}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
-            onOpenOrders={() => { setOrdersOpenKey((key) => key + 1); setTab("shopping"); }}
+            onOpenOrder={openOrder}
           />
         )}
         {!paymentUrl && activeTab === "admin" && isAdmin && <AdminHome />}
@@ -693,6 +709,7 @@ function AppContent(): React.JSX.Element {
         </View>
       )}
       {showSelectionBar && <SelectionBar state={marketSelection} onExit={marketSelectionBar.exit} onAdd={marketSelectionBar.add} />}
+      {showNotificationSelectionBar && <SelectionBar state={notificationSelection} onExit={notificationSelectionBar.exit} onAdd={notificationSelectionBar.add} actionLabel="Xóa" actionIcon={Trash2} destructive />}
       <SpendingScreen visible={spendingOpen && !isAdmin} onClose={() => setSpendingOpen(false)} onOpenFamily={() => setTab("family")} />
       <CaptureDialog text={captureDialog?.text ?? null} settings={captureDialog?.settings} onClose={() => setCaptureDialog(null)} />
     </SafeAreaView>

@@ -12,8 +12,13 @@ const internalNotificationSchema = z.object({
   title: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(2000),
   data: z.record(z.unknown()).optional(),
-  /** Optional idempotency key (e.g. "order:<id>:DELIVERED"): a second call with the same key adds no row. */
+  /** Optional idempotency key (e.g. "order:<id>"): a second call with the same key adds no row. */
   dedupeKey: z.string().trim().min(1).max(200).optional(),
+  /**
+   * With dedupeKey: the existing row is REPLACED instead (one row per order: each status change updates its title,
+   * body and data, marks it unread again and moves it to the top by resetting createdAt).
+   */
+  replace: z.boolean().optional(),
 });
 
 const externalIdSchema = z.string().trim().min(1).max(200);
@@ -42,6 +47,22 @@ export const createInternalRouter = (prisma: InternalPrisma): Router => {
     const parsed = internalNotificationSchema.safeParse(request.body);
     if (!parsed.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details: parsed.error.flatten() });
     const now = new Date();
+    const { replace, ...fields } = parsed.data;
+    if (replace && fields.dedupeKey) {
+      const dedupeKey = fields.dedupeKey;
+      // A retry of the same status (same text) leaves the row alone: a notice the user read stays read.
+      const existing = await prisma.notification.findUnique({ where: { dedupeKey } });
+      if (existing && existing.userId === fields.userId && existing.title === fields.title && existing.body === fields.body) return response.status(200).json(existing);
+      const latest = { type: fields.type, title: fields.title, body: fields.body, data: fields.data as object | undefined, status: "SENT" as const, sentAt: now, readAt: null, createdAt: now };
+      const upsert = () => prisma.notification.upsert({ where: { dedupeKey }, update: latest, create: { ...latest, userId: fields.userId, dedupeKey, channel: "IN_APP" } });
+      try {
+        return response.status(200).json(await upsert());
+      } catch (error) {
+        // Two status changes at once both tried to create the row: the second one updates it.
+        if ((error as { code?: string }).code === "P2002") return response.status(200).json(await upsert());
+        throw error;
+      }
+    }
     if (parsed.data.dedupeKey) {
       const existing = await prisma.notification.findUnique({ where: { dedupeKey: parsed.data.dedupeKey } });
       if (existing) return response.status(200).json(existing);
@@ -49,7 +70,7 @@ export const createInternalRouter = (prisma: InternalPrisma): Router => {
     // In-app notifications are delivered by being stored; the app lists them via GET /notifications.
     try {
       const notification = await prisma.notification.create({
-        data: { ...parsed.data, data: parsed.data.data as object | undefined, channel: "IN_APP", status: "SENT", sentAt: now },
+        data: { ...fields, data: fields.data as object | undefined, channel: "IN_APP", status: "SENT", sentAt: now },
       });
       return response.status(201).json(notification);
     } catch (error) {

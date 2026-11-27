@@ -46,7 +46,8 @@ model Notification {
   status    NotificationStatus @default(PENDING)
   sentAt    DateTime?
   readAt    DateTime?
-  /// One row per key: "promotion:<promotionId>:<userId>" for promotion feed rows (null for other notifications).
+  /// One row per key: "promotion:<promotionId>:<userId>" for promotion feed rows, "order:<orderId>" for the one row per
+  /// order (updated on every status change); null for other notifications.
   dedupeKey String?            @unique
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
@@ -55,6 +56,19 @@ model Notification {
   @@index([familyId])
   @@index([createdAt])
   @@map("notifications")
+}
+
+/// Thông báo items a user removed that are not stored rows (or must not come back): "week:<weekStart>" (Cần mua tuần
+/// này), "expiry:<itemId>:<expiryDay>:<stage>" (hạn dùng), "promotion:<promotionId>". Keys carry the state, so the item
+/// comes back by itself when the state changes (new week, next alert stage, new expiry date). Per user, never shared.
+model NotificationDismissal {
+  userId    String
+  key       String   @db.VarChar(200)
+  createdAt DateTime @default(now())
+
+  @@id([userId, key])
+  @@index([createdAt])
+  @@map("notification_dismissals")
 }
 
 model DeviceToken {
