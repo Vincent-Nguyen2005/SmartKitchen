@@ -191,7 +191,7 @@ describe("promotions and notifications", () => {
     expect((await request(app).get("/notifications?status=SENT").set(USER_A)).body.total).toBe(1);
     // Promotions are in-app only: the caller's rows for active promotions are made before listing.
     expect(ensureMock).toHaveBeenLastCalledWith("u1");
-    expect(prismaMock.notification.findMany.mock.calls[0][0].where).toEqual({ userId: "u1", status: "SENT" });
+    expect(prismaMock.notification.findMany.mock.calls[0][0].where).toMatchObject({ userId: "u1", status: "SENT" });
     prismaMock.notification.updateMany.mockResolvedValue({ count: 1 });
     prismaMock.notification.findUnique.mockResolvedValue({ id: "n1", status: "READ" });
     expect((await request(app).patch("/notifications/n1/read").set(USER_A)).body.status).toBe("READ");
@@ -323,5 +323,78 @@ describe("Thông báo multi-select delete and dismissals", () => {
 
   it("rejects unknown dismissal key kinds", async () => {
     expect((await request(app).post("/notifications/dismissals").set(USER_A).send({ keys: ["order:o1"] })).status).toBe(400);
+  });
+});
+
+describe("finished order notices leave the feed 72 h after their last status", () => {
+  const NOW = new Date("2026-11-27T05:00:00.000Z"); // 12:00 in Vietnam
+  const hoursAgo = (hours: number) => new Date(NOW.getTime() - hours * 3_600_000);
+  type Row = { id: string; userId: string; status: string; dedupeKey: string | null; createdAt: Date; data: Record<string, unknown> | null };
+  let rows: Row[] = [];
+  /** Evaluates the Prisma where this route builds, enough for these rows (userId, status, NOT, OR on data.status). */
+  type Where = Record<string, any>;
+  const matches = (row: Row, where: Where): boolean => Object.entries(where).every(([field, condition]) => {
+    if (condition === undefined) return true;
+    if (field === "NOT") return !matches(row, condition);
+    if (field === "OR") return (condition as Where[]).some((entry) => matches(row, entry));
+    if (field === "data") return (row.data as Record<string, unknown> | null)?.[condition.path[0]] === condition.equals;
+    const value = (row as Record<string, unknown>)[field];
+    if (condition && typeof condition === "object" && !(condition instanceof Date)) {
+      if ("not" in condition && condition.not === null && value === null) return false;
+      if ("startsWith" in condition && !(typeof value === "string" && value.startsWith(condition.startsWith))) return false;
+      if ("lte" in condition && !((value as Date) <= condition.lte)) return false;
+      return true;
+    }
+    return value === condition;
+  });
+  const order = (id: string, userId: string, status: string, hours: number, read = false): Row =>
+    ({ id, userId, status: read ? "READ" : "SENT", dedupeKey: `order:${id}`, createdAt: hoursAgo(hours), data: { type: "order", orderId: id, status } });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(NOW);
+    rows = [
+      order("delivered-72h", "u1", "DELIVERED", 72),
+      order("failed-80h", "u1", "FAILED", 80, true),
+      order("cancelled-71h", "u1", "CANCELLED", 71),
+      order("shipping-200h", "u1", "SHIPPING", 200),
+      { id: "system-old", userId: "u1", status: "SENT", dedupeKey: null, createdAt: hoursAgo(500), data: null },
+      order("other-user-delivered-100h", "u2", "DELIVERED", 100),
+    ];
+    prismaMock.notification.findMany.mockImplementation(async ({ where }: { where: Where }) => rows.filter((row) => matches(row, where)));
+    prismaMock.notification.count.mockImplementation(async ({ where }: { where: Where }) => rows.filter((row) => matches(row, where)).length);
+    prismaMock.notification.deleteMany.mockImplementation(async ({ where }: { where: Where }) => {
+      const before = rows.length;
+      rows = rows.filter((row) => !matches(row, where));
+      return { count: before - rows.length };
+    });
+  });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it("hidden at 72 h, visible at 71 h; SHIPPING and non-order rows are never auto-removed", async () => {
+    const response = await request(app).get("/notifications").set(USER_A);
+    expect(response.body.items.map((row: Row) => row.id).sort()).toEqual(["cancelled-71h", "shipping-200h", "system-old"]);
+    expect(response.body.total).toBe(3);
+  });
+
+  it("the expired rows are deleted during the read (idempotent), only the caller's", async () => {
+    await request(app).get("/notifications").set(USER_A);
+    expect(rows.map((row) => row.id).sort()).toEqual(["cancelled-71h", "other-user-delivered-100h", "shipping-200h", "system-old"]);
+    expect(prismaMock.notification.deleteMany.mock.calls[0][0].where).toMatchObject({ userId: "u1" });
+    await request(app).get("/notifications").set(USER_A);
+    expect(rows).toHaveLength(4);
+  });
+
+  it("the bell badge count (status=SENT) excludes expired notices", async () => {
+    prismaMock.notification.deleteMany.mockRejectedValue(new Error("db busy")); // even when the cleanup fails
+    const response = await request(app).get("/notifications?status=SENT&limit=1").set(USER_A);
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(3); // cancelled-71h, shipping-200h, system-old (delivered-72h is expired)
+  });
+
+  it("a status change resets the clock: the replaced row is visible again", async () => {
+    rows[0] = { ...rows[0], createdAt: hoursAgo(1), data: { type: "order", orderId: "delivered-72h", status: "FAILED" } };
+    const response = await request(app).get("/notifications").set(USER_A);
+    expect(response.body.items.map((row: Row) => row.id)).toContain("delivered-72h");
   });
 });

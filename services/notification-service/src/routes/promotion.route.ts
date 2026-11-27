@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma";
 import { keywordsOverlap, normalizedKeywords } from "../lib/promotion";
 import { dispatchPromotion, ensureActivePromotionRows, promotionDismissalKey } from "../services/promotion-dispatch.service";
 import { createApiKeyGuard } from "../middleware/api-key";
+import { expiredOrderNoticeWhere, orderNoticeCutoff } from "../services/order-notice-expiry";
 import { callerUserId, forbidOtherUser, namesOtherUser, requireAdmin, requireUser } from "../middleware/identity";
 
 const router = Router();
@@ -91,10 +92,18 @@ router.get("/notifications", requireUser, async (request, response) => {
   const status = z.enum(["PENDING", "SENT", "FAILED", "READ"]).optional().safeParse(request.query.status || undefined);
   if (!status.success) return error(response, status.error.flatten());
   const take = page(request.query.limit, 20, 100); const skip = (page(request.query.page, 1, 100000) - 1) * take;
-  const where = { userId: callerUserId(request), status: status.data };
+  // Finished order notices older than 72 h are left out (feed and badge) and removed (services/order-notice-expiry.ts).
+  const expired = expiredOrderNoticeWhere(orderNoticeCutoff());
+  const where = { userId: callerUserId(request), status: status.data, NOT: expired };
   // Promotions are in-app only: the caller's feed rows for active promotions are made here (feed and badge both call
   // this). A failure only means they appear on the next read.
   await ensureActivePromotionRows(callerUserId(request)).catch((caught: unknown) => console.warn(JSON.stringify({ event: "promotion_feed_rows_failed", message: caught instanceof Error ? caught.message : "unknown" })));
+  // Lazy cleanup, only the caller's rows; a failure just leaves them hidden until the next read.
+  try {
+    await prisma.notification.deleteMany({ where: { userId: callerUserId(request), ...expired } });
+  } catch (caught) {
+    console.warn(JSON.stringify({ event: "order_notice_cleanup_failed", message: caught instanceof Error ? caught.message : "unknown" }));
+  }
   const [items, total] = await prisma.$transaction([prisma.notification.findMany({ where, skip, take, orderBy: { createdAt: "desc" } }), prisma.notification.count({ where })]); return response.json({ items, page: Math.floor(skip / take) + 1, limit: take, total });
 });
 router.patch("/notifications/:id/read", requireUser, async (request, response) => {
