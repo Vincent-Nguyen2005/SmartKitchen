@@ -4,6 +4,7 @@ import cors from "cors";
 import healthRouter from "./routes/health.route";
 import adminRouter from "./routes/admin.route";
 import directoryRouter from "./routes/directory.route";
+import { createShippersRouter } from "./routes/shippers.route";
 import { createHealthMonitorRouter } from "./routes/health-monitor.route";
 import { errorHandler } from "./middleware/error-handler";
 import { prisma as defaultPrisma } from "./lib/prisma";
@@ -48,6 +49,8 @@ export const createApp = (deps: AppDeps = {}): express.Express => {
   // adminRouter serves public routes first, then enforces ADMIN before directory routes.
   app.use(adminRouter);
   app.use(directoryRouter);
+  // Quản trị › Người giao hàng (ADMIN only).
+  app.use(createShippersRouter(prisma));
   app.use(errorHandler);
   return app;
 };

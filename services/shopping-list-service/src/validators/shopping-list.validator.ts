@@ -84,7 +84,12 @@ export const ordersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(1000).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
 });
-export const shipperOrdersQuerySchema = z.object({ scope: z.enum(["available", "mine"]).default("available") });
+/** Shipper lists; lat / lng (the shipper's position, optional) sort waiting orders by distance and add it. */
+export const shipperOrdersQuerySchema = z.object({
+  scope: z.enum(["available", "mine", "history"]).default("available"),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+});
 export const failOrderBodySchema = z.object({ reason: z.string().trim().min(1, "Nhập lý do").max(300) });
 
 /** GET /spending ("Chi tiêu"): a Vietnam month (default: the current one) of the family's purchases. */

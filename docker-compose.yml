@@ -160,6 +160,9 @@ services:
       PURCHASE_SYNC_API_KEY: ${PURCHASE_SYNC_API_KEY:?Set PURCHASE_SYNC_API_KEY in the root .env file}
       # admin-service asks GET /internal/products/:id/usage before deleting a catalog ingredient.
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Set INTERNAL_API_KEY in the root .env file}
+      # Delivery orders: shipper account checks and names (auth-service), order notices in Thông báo.
+      AUTH_SERVICE_URL: http://auth-service:4001
+      NOTIFICATION_SERVICE_URL: http://notification-service:4010
     ports: ["4008:4008"]
     depends_on:
       shopping-list-db: { condition: service_healthy }

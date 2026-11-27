@@ -12,6 +12,8 @@ const internalNotificationSchema = z.object({
   title: z.string().trim().min(1).max(200),
   body: z.string().trim().min(1).max(2000),
   data: z.record(z.unknown()).optional(),
+  /** Optional idempotency key (e.g. "order:<id>:DELIVERED"): a second call with the same key adds no row. */
+  dedupeKey: z.string().trim().min(1).max(200).optional(),
 });
 
 const externalIdSchema = z.string().trim().min(1).max(200);
@@ -40,11 +42,23 @@ export const createInternalRouter = (prisma: InternalPrisma): Router => {
     const parsed = internalNotificationSchema.safeParse(request.body);
     if (!parsed.success) return response.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid request", details: parsed.error.flatten() });
     const now = new Date();
+    if (parsed.data.dedupeKey) {
+      const existing = await prisma.notification.findUnique({ where: { dedupeKey: parsed.data.dedupeKey } });
+      if (existing) return response.status(200).json(existing);
+    }
     // In-app notifications are delivered by being stored; the app lists them via GET /notifications.
-    const notification = await prisma.notification.create({
-      data: { ...parsed.data, data: parsed.data.data as object | undefined, channel: "IN_APP", status: "SENT", sentAt: now },
-    });
-    return response.status(201).json(notification);
+    try {
+      const notification = await prisma.notification.create({
+        data: { ...parsed.data, data: parsed.data.data as object | undefined, channel: "IN_APP", status: "SENT", sentAt: now },
+      });
+      return response.status(201).json(notification);
+    } catch (error) {
+      // A parallel call with the same key won: answer that row.
+      if ((error as { code?: string }).code === "P2002" && parsed.data.dedupeKey) {
+        return response.status(200).json(await prisma.notification.findUnique({ where: { dedupeKey: parsed.data.dedupeKey } }));
+      }
+      throw error;
+    }
   });
 
   // Create or update the promotion identified by externalId (idempotent) and make it active.

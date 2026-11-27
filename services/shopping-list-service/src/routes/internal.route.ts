@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { Router, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import type { PrismaClient } from "../../node_modules/.prisma/client-shopping-list";
+import { OrdersService } from "../services/orders.service";
 
 /** Service-to-service only: x-api-key = INTERNAL_API_KEY. The gateway answers 404 for /internal/*. */
 export const requireInternalKey = (req: Request, res: Response, next: NextFunction): void => {
@@ -33,9 +34,28 @@ export const productUsageHandler = (client: Pick<PrismaClient, "shoppingItem">):
   }
 };
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const createInternalRouter = (client: Pick<PrismaClient, "shoppingItem">): Router => {
   const router = Router();
   router.use(requireInternalKey);
   router.get("/products/:productId/usage", productUsageHandler(client));
+  // admin-service (Quản trị › Người giao hàng): delivered counts, and releasing a disabled shipper's orders.
+  router.get("/shippers/stats", async (req, res, next) => {
+    try {
+      const ids = String(req.query.ids ?? "").split(",").map((id) => id.trim()).filter((id) => UUID.test(id)).slice(0, 500);
+      res.json({ items: await OrdersService.shipperStats(ids) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.post("/shippers/:id/release", async (req, res, next) => {
+    try {
+      if (!UUID.test(req.params.id)) { res.status(400).json({ error: "VALIDATION_ERROR", message: "Invalid id" }); return; }
+      res.json({ released: await OrdersService.releaseShipper(req.params.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
   return router;
 };

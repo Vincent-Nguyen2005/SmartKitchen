@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { ShoppingListController } from "../controllers/shopping-list.controller";
-import { requireShipper } from "../middleware/auth.middleware";
+import { requireActiveShipper, requireShipper } from "../middleware/auth.middleware";
 
 const router = Router();
 
@@ -12,11 +12,13 @@ router.get("/spending", ShoppingListController.spending);
 router.get("/orders", ShoppingListController.orders);
 router.get("/orders/last-delivery", ShoppingListController.lastDelivery);
 router.post("/orders/:id/cancel", ShoppingListController.cancelOrder);
-// Shipper API (SHIPPER role; no app screens yet).
-router.get("/shipper/orders", requireShipper, ShoppingListController.shipperOrders);
-router.post("/shipper/orders/:id/accept", requireShipper, ShoppingListController.acceptOrder);
-router.post("/shipper/orders/:id/deliver", requireShipper, ShoppingListController.deliverOrder);
-router.post("/shipper/orders/:id/fail", requireShipper, ShoppingListController.failOrder);
+// Shipper API: SHIPPER role in the token and an account that is still active (auth-service).
+const shipper = [requireShipper, requireActiveShipper];
+router.get("/shipper/orders", ...shipper, ShoppingListController.shipperOrders);
+router.get("/shipper/orders/:id", ...shipper, ShoppingListController.shipperOrder);
+router.post("/shipper/orders/:id/accept", ...shipper, ShoppingListController.acceptOrder);
+router.post("/shipper/orders/:id/deliver", ...shipper, ShoppingListController.deliverOrder);
+router.post("/shipper/orders/:id/fail", ...shipper, ShoppingListController.failOrder);
 router.post("/items", ShoppingListController.addItem);
 router.post("/items/ensure", ShoppingListController.ensureItems);
 router.post("/checkout", ShoppingListController.checkout);

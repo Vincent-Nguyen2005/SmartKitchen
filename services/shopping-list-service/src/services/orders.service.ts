@@ -46,6 +46,84 @@ const inventory = async (path: string, body: unknown): Promise<void> => {
   }
 };
 
+const AUTH_SERVICE_URL = () => (process.env.AUTH_SERVICE_URL || (process.env.NODE_ENV === "production" ? "http://auth-service:4001" : "http://localhost:4001")).replace(/\/+$/, "");
+const NOTIFICATION_SERVICE_URL = () => (process.env.NOTIFICATION_SERVICE_URL || (process.env.NODE_ENV === "production" ? "http://notification-service:4010" : "http://localhost:4010")).replace(/\/+$/, "");
+
+/** Distance in km between two points (haversine). */
+export const distanceKm = (from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }): number => {
+  const rad = (value: number) => (value * Math.PI) / 180;
+  const dLat = rad(to.latitude - from.latitude);
+  const dLng = rad(to.longitude - from.longitude);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(rad(from.latitude)) * Math.cos(rad(to.latitude)) * Math.sin(dLng / 2) ** 2;
+  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+/** Thông báo feed rows for the buyer when the order moves (in-app only, no push); one per order and status. */
+export const ORDER_NOTICES: Partial<Record<OrderStatus, (reason: string | null) => { title: string; body: string }>> = {
+  SHIPPING: () => ({ title: "Đơn hàng đang được giao", body: "Người giao hàng đã nhận đơn và đang trên đường giao." }),
+  DELIVERED: () => ({ title: "Đơn hàng đã giao thành công", body: "Các món đã được thêm vào Kho của gia đình." }),
+  FAILED: (reason) => ({ title: `Đơn hàng không giao được: ${reason ?? "không rõ lý do"}`, body: "Các món \"Đang giao\" đã được bỏ khỏi Kho. Bạn có thể đặt lại." }),
+};
+const notifyBuyer = async (order: { id: string; buyerUserId: string | null; status: string; failReason: string | null }): Promise<void> => {
+  const notice = ORDER_NOTICES[order.status as OrderStatus];
+  const key = process.env.INTERNAL_API_KEY;
+  if (!notice || !order.buyerUserId || !key) return;
+  const { title, body } = notice(order.failReason);
+  try {
+    await axios.post(`${NOTIFICATION_SERVICE_URL()}/internal/notifications`, {
+      userId: order.buyerUserId, type: "SYSTEM", title, body,
+      data: { type: "order", orderId: order.id, status: order.status },
+      // Repeated transitions / retries never add a second row.
+      dedupeKey: `order:${order.id}:${order.status}`,
+    }, { headers: { "x-api-key": key }, timeout: 5000 });
+  } catch {
+    console.warn(JSON.stringify({ event: "order_notice_failed", status: order.status }));
+  }
+};
+
+/** Shipper name and phone (auth-service), for the family once an order is on its way. */
+const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: string | null; phone: string | null }>> => {
+  const profiles = new Map<string, { name: string | null; phone: string | null }>();
+  const key = process.env.INTERNAL_API_KEY;
+  if (ids.length === 0 || !key) return profiles;
+  try {
+    const response = await axios.post(`${AUTH_SERVICE_URL()}/internal/admin/users/profiles`, { ids: [...new Set(ids)] }, { headers: { "x-api-key": key }, timeout: 5000 });
+    for (const item of (response.data?.items ?? []) as Array<{ id: string; name: string | null; phone?: string | null }>) profiles.set(item.id, { name: item.name, phone: item.phone ?? null });
+  } catch {
+    // The list still shows, only without the shipper's name and phone.
+  }
+  return profiles;
+};
+
+type ShipperLine = { name: string; quantity: number; unit: string; unitLabel: string | null; paidUnitPrice: number | null; unitPrice: number | null; discountPercent: number | null; lineTotal: number | null };
+type ShipperOrderRow = {
+  id: string; status: string; purchasedAt: Date; shippingAt: Date | null; deliveredAt: Date | null; failedAt: Date | null; failReason: string | null; shipperId: string | null;
+  deliveryAddress: string | null; latitude: number | null; longitude: number | null; receiverName: string | null; receiverPhone: string | null; note: string | null;
+  paymentMethod: string; codAmount: number; itemCount: number; items: ShipperLine[];
+};
+/**
+ * What a shipper sees: delivery data and a receipt (unit price after discount, original price when discounted, line
+ * total, COD amount). No family, buyer or other user data.
+ */
+export const shipperOrderView = (order: ShipperOrderRow, origin?: { latitude: number; longitude: number } | null) => ({
+  id: order.id, status: order.status, orderedAt: order.purchasedAt.toISOString(),
+  shippingAt: order.shippingAt?.toISOString() ?? null, deliveredAt: order.deliveredAt?.toISOString() ?? null,
+  failedAt: order.failedAt?.toISOString() ?? null, failReason: order.failReason,
+  deliveryAddress: order.deliveryAddress, latitude: order.latitude, longitude: order.longitude,
+  distanceKm: origin && order.latitude !== null && order.longitude !== null ? Math.round(distanceKm(origin, { latitude: order.latitude, longitude: order.longitude }) * 10) / 10 : null,
+  receiverName: order.receiverName, receiverPhone: order.receiverPhone, note: order.note,
+  paymentMethod: order.paymentMethod, codAmount: order.codAmount, itemCount: order.itemCount,
+  items: order.items.map((line) => ({
+    name: line.name, quantity: line.quantity, unit: line.unit, unitLabel: line.unitLabel,
+    unitPrice: line.paidUnitPrice,
+    originalUnitPrice: line.discountPercent && line.unitPrice !== null && line.paidUnitPrice !== null && line.unitPrice > line.paidUnitPrice ? line.unitPrice : null,
+    lineTotal: line.lineTotal,
+  })),
+});
+const SHIPPER_ITEMS = { items: { orderBy: { createdAt: "asc" as const }, select: { name: true, quantity: true, unit: true, unitLabel: true, paidUnitPrice: true, unitPrice: true, discountPercent: true, lineTotal: true } } };
+export type ShipperScope = "available" | "mine" | "history";
+const HISTORY_DAYS = 30;
+
 type LineRow = { id: string; name: string; quantity: number; unit: string; productId: string | null; groupName: string | null; unitLabel: string | null; shelfLifeDays: number | null };
 const inventoryLine = (line: LineRow) => ({
   externalPurchaseId: line.id, name: line.name, quantity: line.quantity, unit: line.unit,
@@ -126,10 +204,17 @@ export class OrdersService {
     const limit = Math.min(50, Math.max(1, options.limit ?? 20));
     const page = Math.max(1, options.page ?? 1);
     const where = { familyId, buyerUserId: { not: null } };
-    const [items, total] = await Promise.all([
+    const [rows, total] = await Promise.all([
       prisma.purchase.findMany({ where, orderBy: { purchasedAt: "desc" }, skip: (page - 1) * limit, take: limit, include: ORDER_INCLUDE }),
       prisma.purchase.count({ where }),
     ]);
+    // The shipper's name and phone once the order is on its way (and afterwards).
+    const withShipper = rows.filter((order) => order.shipperId && ["SHIPPING", "DELIVERED", "FAILED"].includes(order.status));
+    const profiles = await shipperProfiles(withShipper.map((order) => order.shipperId as string));
+    const items = rows.map(({ shipperId, ...order }) => {
+      const profile = shipperId && withShipper.some((entry) => entry.id === order.id) ? profiles.get(shipperId) : undefined;
+      return { ...order, shipper: profile ? { name: profile.name, phone: profile.phone } : null };
+    });
     return { items, page, limit, total };
   }
 
@@ -160,22 +245,41 @@ export class OrdersService {
     return this.orderOf(id, familyId);
   }
 
-  /** Shipper: orders waiting for a shipper (PENDING), oldest first, or the caller's own deliveries (SHIPPING). */
-  static async shipperList(shipperId: string, scope: "available" | "mine") {
-    const orders = await prisma.purchase.findMany({
-      where: scope === "available" ? { status: "PENDING", buyerUserId: { not: null } } : { status: "SHIPPING", shipperId },
-      orderBy: { purchasedAt: "asc" },
-      take: 100,
-      include: { items: { orderBy: { createdAt: "asc" }, select: { name: true, quantity: true, unit: true, unitLabel: true } } },
-    });
-    // Delivery data only: no family, buyer or prices beyond the amount to collect.
-    return orders.map((order) => ({
-      id: order.id, status: order.status, orderedAt: order.purchasedAt.toISOString(), shippingAt: order.shippingAt?.toISOString() ?? null,
-      deliveryAddress: order.deliveryAddress, latitude: order.latitude, longitude: order.longitude,
-      receiverName: order.receiverName, receiverPhone: order.receiverPhone, note: order.note,
-      paymentMethod: order.paymentMethod, codAmount: order.codAmount, itemCount: order.itemCount,
-      items: order.items,
-    }));
+  /**
+   * Shipper lists. available: PENDING orders, nearest first when the shipper's position is given (orders without a
+   * position last), else oldest first. mine: the caller's SHIPPING orders, oldest first. history: the caller's
+   * DELIVERED / FAILED orders of the last 30 days, newest first.
+   */
+  static async shipperList(shipperId: string, scope: ShipperScope, origin?: { latitude: number; longitude: number } | null) {
+    const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000);
+    const where = scope === "available" ? { status: "PENDING" as const, buyerUserId: { not: null } }
+      : scope === "mine" ? { status: "SHIPPING" as const, shipperId }
+        : { shipperId, OR: [{ status: "DELIVERED" as const, deliveredAt: { gte: since } }, { status: "FAILED" as const, failedAt: { gte: since } }] };
+    const orders = await prisma.purchase.findMany({ where, orderBy: { purchasedAt: scope === "history" ? "desc" : "asc" }, take: 100, include: SHIPPER_ITEMS });
+    const views = orders.map((order) => shipperOrderView(order, origin));
+    if (scope === "history") return views.sort((left, right) => (right.deliveredAt ?? right.failedAt ?? "").localeCompare(left.deliveredAt ?? left.failedAt ?? ""));
+    if (scope === "available" && origin) return views.sort((left, right) => (left.distanceKm ?? Number.POSITIVE_INFINITY) - (right.distanceKm ?? Number.POSITIVE_INFINITY) || left.orderedAt.localeCompare(right.orderedAt));
+    return views;
+  }
+
+  /** Shipper: one order (a waiting one, or one of the caller's). Another shipper's order is 404. */
+  static async shipperDetail(id: string, shipperId: string, origin?: { latitude: number; longitude: number } | null) {
+    const order = await prisma.purchase.findFirst({ where: { id, buyerUserId: { not: null }, OR: [{ status: "PENDING" }, { shipperId }] }, include: SHIPPER_ITEMS });
+    if (!order) throw new AppError(404, "ORDER_NOT_FOUND", "Order not found.");
+    return shipperOrderView(order, origin);
+  }
+
+  /** A disabled shipper's orders being delivered go back to waiting (no shipper), for another shipper to take. */
+  static async releaseShipper(shipperId: string): Promise<number> {
+    const released = await prisma.purchase.updateMany({ where: { shipperId, status: "SHIPPING" }, data: { status: "PENDING", shipperId: null, shippingAt: null } });
+    return released.count;
+  }
+
+  /** Delivered orders per shipper (admin list). */
+  static async shipperStats(ids: string[]): Promise<Array<{ shipperId: string; delivered: number }>> {
+    if (ids.length === 0) return [];
+    const rows = await prisma.purchase.groupBy({ by: ["shipperId"], where: { shipperId: { in: ids }, status: "DELIVERED" }, _count: { _all: true } });
+    return rows.flatMap((row) => (row.shipperId ? [{ shipperId: row.shipperId, delivered: row._count._all }] : []));
   }
 
   /** Shipper: take a PENDING order (→ SHIPPING, assigned to the caller). Repeating it is a no-op for the same shipper. */
@@ -183,7 +287,9 @@ export class OrdersService {
     const order = await this.orderOf(id);
     if (order.status === "SHIPPING" && order.shipperId === shipperId) return this.shipperView(id);
     const changed = await prisma.purchase.updateMany({ where: { id, status: "PENDING" }, data: { status: "SHIPPING", shipperId, shippingAt: new Date() } });
-    if (changed.count !== 1) throw new AppError(409, "ORDER_NOT_AVAILABLE", "This order is no longer waiting for a shipper.");
+    if (changed.count !== 1) throw new AppError(409, "ORDER_NOT_AVAILABLE", "Đơn đã có người nhận.");
+    const view = await this.orderOf(id);
+    await notifyBuyer(view);
     return this.shipperView(id);
   }
 
@@ -215,6 +321,7 @@ export class OrdersService {
         });
       }
     });
+    await notifyBuyer(order);
     return this.shipperView(id);
   }
 
@@ -227,11 +334,14 @@ export class OrdersService {
       if (changed.count !== 1) throw new AppError(409, "ORDER_NOT_SHIPPING", "Only an order being delivered can be marked failed.");
     }
     await inventory(`/deliveries/${id}/cancel`, { familyId: order.familyId });
+    await notifyBuyer(await this.orderOf(id));
     return this.shipperView(id);
   }
 
+  /** The order as the shipper sees it after an action (same shape as the shipper list / detail). */
   private static async shipperView(id: string) {
-    const order = await this.orderOf(id);
-    return { id: order.id, status: order.status, shipperId: order.shipperId, shippingAt: order.shippingAt?.toISOString() ?? null, deliveredAt: order.deliveredAt?.toISOString() ?? null, failedAt: order.failedAt?.toISOString() ?? null, failReason: order.failReason, codAmount: order.codAmount };
+    const order = await prisma.purchase.findFirst({ where: { id }, include: SHIPPER_ITEMS });
+    if (!order) throw new AppError(404, "ORDER_NOT_FOUND", "Order not found.");
+    return { ...shipperOrderView(order), shipperId: order.shipperId };
   }
 }

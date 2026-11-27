@@ -144,8 +144,21 @@ export class ShoppingListController {
   /** Shipper: GET /shipper/orders?scope=available|mine. */
   static async shipperOrders(req: Request, res: Response, next: NextFunction) {
     try {
-      const { scope } = shipperOrdersQuerySchema.parse(req.query);
-      res.json({ success: true, data: { items: await OrdersService.shipperList(auth(req).authUser.userId, scope) } });
+      const { scope, lat, lng } = shipperOrdersQuerySchema.parse(req.query);
+      const origin = lat !== undefined && lng !== undefined ? { latitude: lat, longitude: lng } : null;
+      res.json({ success: true, data: { items: await OrdersService.shipperList(auth(req).authUser.userId, scope, origin) } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  /** Shipper: GET /shipper/orders/:id (a waiting order or one of the caller's). */
+  static async shipperOrder(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = idParamSchema.parse(req.params);
+      const { lat, lng } = shipperOrdersQuerySchema.parse(req.query);
+      const origin = lat !== undefined && lng !== undefined ? { latitude: lat, longitude: lng } : null;
+      res.json({ success: true, data: { order: await OrdersService.shipperDetail(id, auth(req).authUser.userId, origin) } });
     } catch (err) {
       next(err);
     }

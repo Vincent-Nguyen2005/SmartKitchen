@@ -41,3 +41,36 @@ export const requireShipper = (req: Request, res: Response, next: NextFunction):
   }
   next();
 };
+
+/** Shipper accounts checked recently (30 s), so a disabled account is refused quickly without asking on every call. */
+const activeCache = new Map<string, { active: boolean; at: number }>();
+const ACTIVE_TTL_MS = 30_000;
+export const clearShipperCache = (): void => activeCache.clear();
+
+/**
+ * After requireShipper: the account must still be active in auth-service (an admin may have disabled it after the
+ * token was issued). 403 SHIPPER_DISABLED when disabled; 503 when auth-service cannot answer.
+ */
+export const requireActiveShipper = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const userId = (req as ShoppingAuthRequest).authUser.userId;
+  const cached = activeCache.get(userId);
+  let active = cached && Date.now() - cached.at < ACTIVE_TTL_MS ? cached.active : null;
+  if (active === null) {
+    const key = process.env.INTERNAL_API_KEY;
+    const base = (process.env.AUTH_SERVICE_URL || (process.env.NODE_ENV === "production" ? "http://auth-service:4001" : "http://localhost:4001")).replace(/\/+$/, "");
+    try {
+      const response = await fetch(`${base}/internal/shippers/${encodeURIComponent(userId)}/status`, { headers: { "x-api-key": key ?? "" }, signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error(`auth-service answered ${response.status}`);
+      active = ((await response.json()) as { active?: unknown }).active === true;
+      activeCache.set(userId, { active, at: Date.now() });
+    } catch {
+      res.status(503).json({ success: false, code: "AUTH_UNAVAILABLE", message: "Could not check the shipper account." });
+      return;
+    }
+  }
+  if (!active) {
+    res.status(403).json({ success: false, code: "SHIPPER_DISABLED", message: "Tài khoản người giao hàng đã bị khóa." });
+    return;
+  }
+  next();
+};

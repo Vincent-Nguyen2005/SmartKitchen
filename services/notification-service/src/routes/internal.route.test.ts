@@ -7,7 +7,7 @@ import { createInternalRouter } from "./internal.route";
 import { errorHandler } from "../middleware/error-handler";
 
 const prismaMock = {
-  notification: { create: vi.fn(), count: vi.fn() },
+  notification: { create: vi.fn(), count: vi.fn(), findUnique: vi.fn() },
   promotion: { upsert: vi.fn(), updateMany: vi.fn(), findUnique: vi.fn(), deleteMany: vi.fn() },
   partnerSupermarket: { findFirst: vi.fn(), create: vi.fn() },
 };
@@ -34,6 +34,16 @@ describe("POST /internal/notifications", () => {
     const { data } = prismaMock.notification.create.mock.calls[0][0];
     expect(data).toMatchObject({ userId: "user-1", type: "SYSTEM", channel: "IN_APP", status: "SENT", data: { reportId: "r1", status: "RESOLVED" } });
     expect(data.sentAt).toBeInstanceOf(Date);
+  });
+
+  it("a dedupe key makes it idempotent: the second call answers the existing row and stores nothing", async () => {
+    const order = { ...valid, title: "Đơn hàng đã giao thành công", data: { type: "order", orderId: "o1", status: "DELIVERED" }, dedupeKey: "order:o1:DELIVERED" };
+    prismaMock.notification.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: "n1", dedupeKey: "order:o1:DELIVERED" });
+    const first = await request(buildApp()).post("/internal/notifications").set("x-api-key", "internal-test-key").send(order);
+    const second = await request(buildApp()).post("/internal/notifications").set("x-api-key", "internal-test-key").send(order);
+    expect([first.status, second.status]).toEqual([201, 200]);
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.notification.create.mock.calls[0][0].data).toMatchObject({ dedupeKey: "order:o1:DELIVERED", channel: "IN_APP", status: "SENT" });
   });
 
   it("rejects a missing or wrong API key with 401 and stores nothing", async () => {

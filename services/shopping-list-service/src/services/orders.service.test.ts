@@ -4,9 +4,11 @@ import type { NextFunction, Request, Response } from "express";
 /** In-memory orders and cart lines, enough of Prisma's API for the order flow. */
 type Order = Record<string, any> & { id: string; familyId: string; status: string };
 const db = vi.hoisted(() => ({ orders: [] as Order[], lines: [] as Array<Record<string, any>>, history: [] as unknown[] }));
-const match = (row: Record<string, any>, where: Record<string, any>) => Object.entries(where).every(([key, value]) => {
+const match = (row: Record<string, any>, where: Record<string, any>): boolean => Object.entries(where).every(([key, value]) => {
+  if (key === "OR") return (value as Array<Record<string, any>>).some((entry) => match(row, entry));
   if (value && typeof value === "object" && "not" in value) return row[key] !== value.not;
   if (value && typeof value === "object" && "in" in value) return value.in.includes(row[key]);
+  if (value && typeof value === "object" && "gte" in value) return row[key] != null && new Date(row[key]) >= value.gte;
   return (row[key] ?? null) === value;
 });
 const mocks = vi.hoisted(() => {
@@ -34,11 +36,11 @@ const mocks = vi.hoisted(() => {
     }),
     count: vi.fn(async ({ where }: { where: Record<string, any> }) => db.lines.filter((line) => match(line, where)).length),
   };
-  const shoppingList = { findFirst: vi.fn(), update: vi.fn() };
+  const shoppingList = { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(async () => [{ id: "77777777-7777-4777-8777-777777777777", status: "ACTIVE", items: db.lines }]) };
   const purchaseHistory = { upsert: vi.fn(async (args: unknown) => { db.history.push(args); return args; }) };
   const prisma = { purchase, shoppingItem, shoppingList, purchaseHistory, $transaction: vi.fn() };
   prisma.$transaction.mockImplementation(async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
-  return { prisma, axios: { post: vi.fn() } };
+  return { prisma, axios: { post: vi.fn(), get: vi.fn(async () => ({ data: { items: [] } })) } };
 });
 vi.mock("../lib/prisma", () => ({ prisma: mocks.prisma }));
 vi.mock("axios", () => ({ default: mocks.axios }));
@@ -183,11 +185,16 @@ describe("authorization", () => {
     expect(passed).toBe(true);
   });
 
-  it("the shipper list carries delivery data only (no family, buyer or prices)", async () => {
+  it("the shipper sees delivery data and a receipt only (no family, buyer or other user data)", async () => {
     await place();
     const [order] = await OrdersService.shipperList(shipper, "available");
-    expect(Object.keys(order).sort()).toEqual(["codAmount", "deliveryAddress", "id", "itemCount", "items", "latitude", "longitude", "note", "orderedAt", "paymentMethod", "receiverName", "receiverPhone", "shippingAt", "status"]);
+    expect(Object.keys(order).sort()).toEqual(["codAmount", "deliveredAt", "deliveryAddress", "distanceKm", "failReason", "failedAt", "id", "itemCount", "items", "latitude", "longitude", "note", "orderedAt", "paymentMethod", "receiverName", "receiverPhone", "shippingAt", "status"]);
     expect(order).not.toHaveProperty("familyId");
+    expect(order).not.toHaveProperty("buyerUserId");
+    // Receipt: unit price after discount, the original when discounted, line total; COD = total.
+    expect(order.items[0]).toEqual({ name: "Thịt heo", quantity: 1.5, unit: "KILOGRAM", unitLabel: null, unitPrice: 108000, originalUnitPrice: 120000, lineTotal: 162000 });
+    expect(order.items[1]).toMatchObject({ name: "Rau muống", unitPrice: 12000, originalUnitPrice: null, lineTotal: 24000 });
+    expect(order.codAmount).toBe(order.items.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0));
   });
 
   it("orders of another family: 403 from the family check, nothing read", async () => {
@@ -200,5 +207,164 @@ describe("authorization", () => {
     vi.unstubAllGlobals();
     expect(response.statusCode).toBe(403);
     expect(mocks.prisma.purchase.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("shipper phase B2", () => {
+  const noticeCalls = () => mocks.axios.post.mock.calls.filter((call) => String(call[0]).includes("/internal/notifications")).map((call) => call[1]);
+
+  it("accept race: the second shipper gets 'Đơn đã có người nhận'; the buyer gets one 'đang được giao' notice", async () => {
+    process.env.INTERNAL_API_KEY = "k".repeat(40);
+    const order = await place();
+    await OrdersService.accept(order.id, shipper);
+    await OrdersService.accept(order.id, shipper); // retry: no second notice
+    await expect(OrdersService.accept(order.id, otherShipper)).rejects.toMatchObject({ statusCode: 409, message: "Đơn đã có người nhận." });
+    const notices = noticeCalls();
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({ userId: buyer, type: "SYSTEM", title: "Đơn hàng đang được giao", data: { type: "order", orderId: order.id, status: "SHIPPING" }, dedupeKey: `order:${order.id}:SHIPPING` });
+  });
+
+  it("delivered and failed notices carry a dedupe key per order and status; a failed one names the reason", async () => {
+    process.env.INTERNAL_API_KEY = "k".repeat(40);
+    const first = await place();
+    await OrdersService.accept(first.id, shipper);
+    await OrdersService.deliver(first.id, shipper);
+    await OrdersService.deliver(first.id, shipper); // retried
+    const second = await place();
+    await OrdersService.accept(second.id, shipper);
+    await OrdersService.fail(second.id, shipper, "Sai địa chỉ");
+    const byKey = new Map(noticeCalls().map((notice) => [notice.dedupeKey, notice]));
+    expect(byKey.get(`order:${first.id}:DELIVERED`)?.title).toBe("Đơn hàng đã giao thành công");
+    expect(byKey.get(`order:${second.id}:FAILED`)?.title).toBe("Đơn hàng không giao được: Sai địa chỉ");
+    // The retried delivery re-sends the same key: notification-service keeps one row (dedupeKey unique).
+    expect(noticeCalls().filter((notice) => notice.dedupeKey === `order:${first.id}:DELIVERED`)).toHaveLength(2);
+  });
+
+  it("waiting orders nearest first when the shipper's position is known; history = mine, delivered / failed, newest first", async () => {
+    db.lines.push(cartLine("55555555-5555-4555-8555-555555555561"));
+    const far = await OrdersService.place(familyId, buyer, { ...delivery, latitude: 10.9, longitude: 106.9 }, [], new Map());
+    db.lines.push(cartLine("55555555-5555-4555-8555-555555555562"));
+    const near = await OrdersService.place(familyId, buyer, { ...delivery, latitude: 10.7701, longitude: 106.7001 }, [], new Map());
+    const origin = { latitude: 10.77, longitude: 106.7 };
+    const list = await OrdersService.shipperList(shipper, "available", origin);
+    expect(list.map((order) => order.id)).toEqual([near.id, far.id]);
+    expect(list[0].distanceKm).toBe(0);
+    expect(list[1].distanceKm).toBeGreaterThan(20);
+    await OrdersService.accept(near.id, shipper);
+    await OrdersService.deliver(near.id, shipper);
+    expect((await OrdersService.shipperList(shipper, "history")).map((order) => order.id)).toEqual([near.id]);
+    expect(await OrdersService.shipperList(otherShipper, "history")).toEqual([]);
+  });
+
+  it("a shipper can open a waiting order or their own, not another shipper's", async () => {
+    const order = await place();
+    expect((await OrdersService.shipperDetail(order.id, otherShipper)).id).toBe(order.id);
+    await OrdersService.accept(order.id, shipper);
+    expect((await OrdersService.shipperDetail(order.id, shipper)).status).toBe("SHIPPING");
+  });
+
+  it("disabling a shipper releases their deliveries back to waiting", async () => {
+    const order = await place();
+    await OrdersService.accept(order.id, shipper);
+    expect(await OrdersService.releaseShipper(shipper)).toBe(1);
+    expect(db.orders[0]).toMatchObject({ status: "PENDING", shipperId: null, shippingAt: null });
+    expect(await OrdersService.releaseShipper(shipper)).toBe(0);
+  });
+
+  it("the family sees the shipper's name and phone once the order is on its way", async () => {
+    process.env.INTERNAL_API_KEY = "k".repeat(40);
+    const order = await place();
+    mocks.axios.post.mockImplementation(async (url: string) => (String(url).includes("/profiles")
+      ? { data: { items: [{ id: shipper, name: "Anh Tài", phone: "0912345678", email: "x@example.com" }] } }
+      : { data: { success: true, data: {} } }));
+    expect((await OrdersService.list(familyId)).items[0]).toMatchObject({ shipper: null });
+    await OrdersService.accept(order.id, shipper);
+    const [shown] = (await OrdersService.list(familyId)).items;
+    expect(shown).toMatchObject({ status: "SHIPPING", shipper: { name: "Anh Tài", phone: "0912345678" } });
+    expect(shown).not.toHaveProperty("shipperId");
+    expect(JSON.stringify(shown)).not.toContain("x@example.com");
+  });
+});
+
+describe("active shipper check", () => {
+  it("a disabled account is refused (403) even with a valid SHIPPER token; answers are cached briefly", async () => {
+    const { requireActiveShipper, clearShipperCache } = await import("../middleware/auth.middleware");
+    clearShipperCache();
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ active: false }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ active: true }) });
+    vi.stubGlobal("fetch", fetchMock);
+    const run = async (userId: string) => {
+      const res = { statusCode: 200, body: undefined as unknown, status(code: number) { this.statusCode = code; return this; }, json(body: unknown) { this.body = body; return this; } };
+      let passed = false;
+      await requireActiveShipper({ authUser: { userId, token: "t", role: "SHIPPER" } } as never, res as never, (() => { passed = true; }) as never);
+      return { passed, status: res.statusCode };
+    };
+    expect(await run(shipper)).toEqual({ passed: false, status: 403 });
+    expect(await run(shipper)).toEqual({ passed: false, status: 403 }); // cached
+    expect(await run(otherShipper)).toEqual({ passed: true, status: 200 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("end to end through the API (customer + shipper)", () => {
+  it("order → shipper accepts → delivered: Kho gets expiry from the delivery day, the family sees DELIVERED, notices once per status", async () => {
+    const { createHmac } = await import("node:crypto");
+    const express = (await import("express")).default;
+    const router = (await import("../routes/shopping-list.route")).default;
+    const { requireShoppingUser, clearShipperCache } = await import("../middleware/auth.middleware");
+    clearShipperCache();
+    process.env.JWT_SECRET = "api-flow-test-secret";
+    process.env.INTERNAL_API_KEY = "k".repeat(40);
+    const sign = (sub: string, role: string) => {
+      const b64 = (value: object) => Buffer.from(JSON.stringify(value)).toString("base64url");
+      const body = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub, role, exp: Math.floor(Date.now() / 1000) + 600 })}`;
+      return `Bearer ${body}.${createHmac("sha256", "api-flow-test-secret").update(body).digest("base64url")}`;
+    };
+    const app = express();
+    app.use(express.json());
+    app.use("/api/shopping-list", requireShoppingUser, router);
+    app.use(errorHandler);
+    const server = app.listen(0, "127.0.0.1");
+    await new Promise<void>((resolve) => server.once("listening", resolve));
+    const address = server.address() as { port: number };
+    const api = (method: string, path: string, token: string, body?: unknown) =>
+      fetch(`http://127.0.0.1:${address.port}/api/shopping-list${path}`, { method, headers: { Authorization: token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    // The test client reaches the app for real; the app's own calls are stubbed: family-service (the buyer belongs to
+    // familyId, anyone else to another family) and auth-service (the shipper is active).
+    const realFetch = globalThis.fetch;
+    const stub = vi.fn(async (url: string, init?: { headers?: Record<string, string> }) => {
+      if (String(url).startsWith(`http://127.0.0.1:${address.port}`)) return realFetch(url, init as never);
+      if (String(url).includes("/internal/shippers/")) return new Response(JSON.stringify({ active: true }), { status: 200 });
+      const auth = init?.headers?.Authorization ?? "";
+      return new Response(JSON.stringify({ data: { family: { id: auth === sign(buyer, "USER") ? familyId : otherFamilyId } } }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", stub);
+    try {
+      db.lines.push(cartLine("55555555-5555-4555-8555-555555555571"));
+      const placed = await api("POST", "/checkout", sign(buyer, "USER"), { familyId, items: [{ id: "55555555-5555-4555-8555-555555555571", shelfLifeDays: 3 }], delivery });
+      expect(placed.status).toBe(201);
+      const orderId = ((await placed.json()) as { data: { order: { id: string } } }).data.order.id;
+
+      // A normal user cannot use the shipper API; another family cannot list this family's orders.
+      expect((await api("GET", "/shipper/orders", sign(buyer, "USER"))).status).toBe(403);
+      expect((await api("GET", `/orders?familyId=${familyId}`, sign("99999999-9999-4999-8999-999999999999", "USER"))).status).toBe(403);
+
+      const available = (await (await api("GET", "/shipper/orders?scope=available", sign(shipper, "SHIPPER"))).json()) as { data: { items: Array<{ id: string; items: Array<{ unitPrice: number }> }> } };
+      expect(available.data.items.map((order) => order.id)).toEqual([orderId]);
+      expect(available.data.items[0].items[0].unitPrice).toBe(108000);
+      expect((await api("POST", `/shipper/orders/${orderId}/accept`, sign(shipper, "SHIPPER"))).status).toBe(200);
+      expect((await api("POST", `/shipper/orders/${orderId}/accept`, sign(otherShipper, "SHIPPER"))).status).toBe(409);
+      expect((await api("POST", `/shipper/orders/${orderId}/deliver`, sign(shipper, "SHIPPER"))).status).toBe(200);
+
+      const deliverCall = mocks.axios.post.mock.calls.find((call) => String(call[0]).endsWith(`/deliveries/${orderId}/deliver`));
+      expect(deliverCall?.[1].lines[0].expiryDate).toBe(vnDayPlus(new Date(db.orders.find((order) => order.id === orderId)!.deliveredAt), 3));
+      const mine = (await (await api("GET", `/orders?familyId=${familyId}`, sign(buyer, "USER"))).json()) as { data: { items: Array<{ status: string }> } };
+      expect(mine.data.items[0].status).toBe("DELIVERED");
+      const keys = mocks.axios.post.mock.calls.filter((call) => String(call[0]).includes("/internal/notifications")).map((call) => call[1].dedupeKey);
+      expect(keys).toEqual([`order:${orderId}:SHIPPING`, `order:${orderId}:DELIVERED`]);
+    } finally {
+      vi.unstubAllGlobals();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
   });
 });

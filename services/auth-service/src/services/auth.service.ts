@@ -223,6 +223,7 @@ export class AuthService {
       throw new Error("INVALID_CREDENTIALS");
     }
     if (!user.isVerified) throw new Error("EMAIL_NOT_VERIFIED");
+    if (user.disabledAt) throw new Error("ACCOUNT_DISABLED");
 
     return this.issueTokens(user, requestContext);
   }
@@ -244,6 +245,7 @@ export class AuthService {
         ...(profile.avatarUrl ? { avatarUrl: profile.avatarUrl } : {}),
       },
     });
+    if (user.disabledAt) throw new Error("ACCOUNT_DISABLED");
     return this.issueTokens(user);
   }
 
@@ -264,6 +266,10 @@ export class AuthService {
     if (!storedToken.user.isVerified) {
       await this.prisma.refreshToken.deleteMany({ where: { id: storedToken.id } });
       throw new Error("EMAIL_NOT_VERIFIED");
+    }
+    if (storedToken.user.disabledAt) {
+      await this.prisma.refreshToken.deleteMany({ where: { userId: storedToken.user.id } });
+      throw new Error("ACCOUNT_DISABLED");
     }
 
     return this.prisma.$transaction(async (transaction) => {

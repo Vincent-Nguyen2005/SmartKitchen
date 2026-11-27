@@ -191,6 +191,10 @@ export class AuthController {
         res.status(403).json({ error: "Verify your email address before signing in", code: "EMAIL_NOT_VERIFIED" });
         return;
       }
+      if (error instanceof Error && error.message === "ACCOUNT_DISABLED") {
+        res.status(403).json({ error: "Tài khoản đã bị khóa. Liên hệ quản trị viên.", code: "ACCOUNT_DISABLED" });
+        return;
+      }
       this.respondUnexpected(res, error, "Unable to log in");
     }
   };
@@ -252,6 +256,10 @@ export class AuthController {
       const result = await this.authService.loginWithGoogle({ email: tokenInfo.email, fullName: tokenInfo.name, avatarUrl: tokenInfo.picture });
       this.sendAuthResult(req, res, result);
     } catch (error) {
+      if (error instanceof Error && error.message === "ACCOUNT_DISABLED") {
+        res.status(403).json({ error: "Tài khoản đã bị khóa. Liên hệ quản trị viên.", code: "ACCOUNT_DISABLED" });
+        return;
+      }
       this.respondUnexpected(res, error, "Unable to complete Google sign-in");
     }
   };
@@ -290,6 +298,11 @@ export class AuthController {
       if (error instanceof Error && error.message === "EMAIL_NOT_VERIFIED") {
         this.clearRefreshCookie(res);
         res.status(403).json({ error: "Verify your email address before signing in" });
+        return;
+      }
+      if (error instanceof Error && error.message === "ACCOUNT_DISABLED") {
+        this.clearRefreshCookie(res);
+        res.status(403).json({ error: "Tài khoản đã bị khóa. Liên hệ quản trị viên.", code: "ACCOUNT_DISABLED" });
         return;
       }
       this.respondUnexpected(res, error, "Unable to refresh session");

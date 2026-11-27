@@ -5,6 +5,7 @@ import { PrismaClient } from ".prisma/client-auth";
 import healthRouter from "./routes/health.route";
 import createAuthRouter from "./routes/auth.routes";
 import { createAdminUsersRouter } from "./routes/admin-users.routes";
+import { createShippersRouter } from "./routes/shippers.routes";
 import { isDatabaseUnavailable } from "./database-error";
 import { seedAdmin } from "./seed-admin";
 import type { ErrorRequestHandler } from "express";
@@ -33,6 +34,8 @@ const authRouter = createAuthRouter(prisma);
 app.use("/api/auth", authRouter);
 app.use("/", authRouter);
 app.use("/internal/admin/users", createAdminUsersRouter(prisma));
+// Shipper accounts (admin-service) and the shipper status check (shopping-list-service).
+app.use("/internal", createShippersRouter(prisma));
 
 const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
   console.error("[auth-service] unhandled request error", error);
