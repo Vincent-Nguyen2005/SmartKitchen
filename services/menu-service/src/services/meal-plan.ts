@@ -24,6 +24,14 @@ import { DEFAULT_DAILY_CALORIES, MEAL_SHARES, type FamilyHealth, type MealKey } 
  * Breakfast with one dish: one serving per family member, adjusted slightly (0,75–1,25 per person) towards the target.
  */
 export const RICE_SHARE = 0.35;
+/**
+ * Cơm trắng as a planned ingredient ("Gạo", raw grams): cooked rice ≈ 130 kcal / 100 g and 1 g raw rice gives about
+ * 2,5 g cooked, so raw grams = rice kcal ÷ (1,3 × 2,5) = rice kcal ÷ 3,25, rounded up to 10 g (≈ 100 g raw, 325 kcal
+ * per big bowl). It goes to "Cần mua tuần này" (catalog Gạo, kg) and leaves Kho with the meal's món mặn.
+ */
+export const RICE_INGREDIENT = "Gạo";
+export const RAW_RICE_KCAL_PER_GRAM = 1.3 * 2.5;
+export const riceGrams = (riceKcal: number): number => (riceKcal > 0 ? Math.ceil(riceKcal / RAW_RICE_KCAL_PER_GRAM / 10) * 10 : 0);
 export const MIN_SHARE = 0.9;
 export const MAX_SHARE = 1.15;
 
@@ -142,9 +150,12 @@ export function planMeal<T>(
   pick: (roles: Array<string | null>, slot: Slot) => { value: T; role: string | null; kcal: number | null } | null,
 ): MealPlan<T> {
   const chosen: Array<{ slot: Slot; value: T; kcal: number }> = [];
+  // A dish without kcal data: the meal's energy is unknown, so no extra dish is added to "reach" the target.
+  let unknownKcal = false;
   const take = (roles: Array<string | null>, slot: Slot): boolean => {
     const found = pick(roles, slot);
     if (!found) return false;
+    if (found.kcal == null) unknownKcal = true;
     chosen.push({ slot, value: found.value, kcal: Math.max(0, found.kcal ?? 0) });
     return true;
   };
@@ -157,7 +168,7 @@ export function planMeal<T>(
     dishes: chosen.map((dish, index) => ({ slot: dish.slot, pick: dish.value, kcal: dish.kcal, servings: sized.servings[index] })),
     target, riceKcal, kcal: sized.kcal,
   });
-  const reached = (kcal: number) => target <= 0 || kcal >= MIN_SHARE * target;
+  const reached = (kcal: number) => target <= 0 || unknownKcal || kcal >= MIN_SHARE * target;
 
   if (meal.toUpperCase() === "BREAKFAST") {
     if (!take(SLOT_ROLES.breakfast, "breakfast_single")) return { dishes: [], target, riceKcal: 0, kcal: 0 };

@@ -3,7 +3,7 @@ import test from "node:test";
 import { PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { generateDays, generateMenu, removeMenuItem } from "../services/menu.service";
 import { defaultMealTargets, type FamilyHealth, type MemberHealth } from "../services/family-health";
-import { allocatePortions, MAX_SHARE, mealTarget, MIN_SHARE, planMeal, replanServings, RICE_SHARE, servingBounds } from "../services/meal-plan";
+import { allocatePortions, MAX_SHARE, mealTarget, MIN_SHARE, planMeal, replanServings, RICE_SHARE, riceGrams, servingBounds } from "../services/meal-plan";
 import { dishServings } from "../services/portions";
 import { computeWeekMissing, dishesInRange } from "../services/week-missing";
 
@@ -249,4 +249,64 @@ test("a breakfast drink is chosen to add energy (milk), not a near-zero drink (g
     recipes: [recipe("chao", "sang", 250, ["breakfast"]), recipe("tra", "do_uong", 2, ["breakfast"]), recipe("sua", "do_uong", 150, ["breakfast"])],
   }, client);
   assert.deepEqual(items().map((item) => item.recipeId), ["chao", "sua"]);
+});
+
+test("rice as a planned ingredient: raw Gạo grams = rice kcal ÷ 3,25 (cooked 130 kcal / 100 g × 2,5), up to 10 g", async () => {
+  assert.equal(riceGrams(1204), 380);
+  assert.equal(riceGrams(325), 100);
+  assert.equal(riceGrams(0), 0);
+  const { client, items } = captureClient();
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: catalog, inventoryItems: [] }, client);
+  const list = items();
+  for (const meal of ["LUNCH", "DINNER"]) {
+    const dishes = list.filter((item) => item.mealType === meal);
+    const carriers = dishes.filter((item) => typeof item.details.riceGrams === "number");
+    if (dishes[0].details.role === "man") {
+      // Exactly one dish per meal carries the rice: the món mặn.
+      assert.equal(carriers.length, 1, meal);
+      assert.equal(carriers[0].details.role, "man");
+      assert.equal(carriers[0].details.riceGrams, riceGrams(carriers[0].details.riceKcal as number));
+    } else {
+      assert.equal(carriers.length, 0, meal);
+    }
+  }
+  assert.equal(list.filter((item) => item.mealType === "BREAKFAST").some((item) => item.details.riceGrams), false);
+});
+
+test("Cần mua tuần này: the meal's rice counts once as Gạo, converted to the catalog's kg", () => {
+  const recipes = [{ id: "r1", name: "Thịt kho", ingredients: [], details: [{ name: "Thịt ba chỉ", quantity: 400, unit: "GRAM" }], imageUrl: null, isActive: true, mealTypes: [], dietaryTags: [], tags: [], role: "man", servings: 4, allergens: [], contraindications: [], cuisine: null }];
+  const menus = [{ startDate: DAY, servings: 4, items: [
+    { recipeId: "r1", dayOfWeek: 2, details: { role: "man", servings: 4, riceKcal: 1204, riceGrams: 380 } },
+    { recipeId: "r1", dayOfWeek: 2, details: { role: "man", servings: 4, riceKcal: 1054, riceGrams: 330 } },
+  ] }];
+  const dishes = dishesInRange(menus, recipes, { from: "2026-11-24", to: "2026-11-30" });
+  const catalogGao = [{ id: "gao", name: "Gạo", unit: "KILOGRAM", imageUrl: null, price: 20000, discountPercent: null }];
+  const missing = computeWeekMissing({ dishes, kho: [{ name: "Gạo", quantity: 0.5, unit: "KILOGRAM", expiryDate: null }], catalog: catalogGao, today: "2026-11-24" });
+  const gao = missing.find((entry) => entry.name === "Gạo")!;
+  // 380 g + 330 g = 0,71 kg needed, 0,5 kg in Kho → 0,3 kg to buy (0,1 kg steps, rounded up).
+  assert.equal(gao.unit, "KILOGRAM");
+  assert.equal(gao.quantity, 0.3);
+});
+
+test("swapping the món mặn moves the meal's rice to the new món mặn", async () => {
+  const items = [
+    { id: "i1", recipeId: "thit-kho", dishName: "thit-kho", mealType: "LUNCH", dayOfWeek: 2, calories: 400, details: { role: "man", servings: 3, mealTarget: 3200, riceKcal: 1120, riceGrams: 350 } },
+    { id: "i2", recipeId: "canh-bi", dishName: "canh-bi", mealType: "LUNCH", dayOfWeek: 2, calories: 180, details: { role: "canh", servings: 4 } },
+  ];
+  const menu = { id: "m1", familyId: "f1", userId: "a", servings: 4, startDate: DAY, endDate: DAY, periodType: PeriodType.DAY, items };
+  const created: Array<{ data: { recipeId: string | null; details: Record<string, unknown> } }> = [];
+  const updates: Array<{ data: { details: Record<string, unknown> } }> = [];
+  const client = {
+    menu: { findFirst: async () => menu, findMany: async () => [] },
+    removedDish: { create: async () => ({}), findMany: async () => [] },
+    menuItem: { delete: (args: unknown) => args, create: (args: (typeof created)[number]) => { created.push(args); return args; }, update: (args: (typeof updates)[number]) => { updates.push(args); return args; } },
+    $transaction: async (list: unknown[]) => list,
+  } as unknown as PrismaClient;
+  await removeMenuItem({ userId: "a", owner: owner4, health: family4, menuId: "m1", itemId: "i1", now: DAY, recipes: catalog, inventoryItems: [] }, client);
+  const replacement = created[0].data;
+  assert.equal(replacement.details.role, "man");
+  assert.equal(typeof replacement.details.riceGrams, "number");
+  assert.ok((replacement.details.riceGrams as number) > 0);
+  // The soup does not get the rice.
+  assert.equal(updates.every((update) => update.data.details.riceGrams === undefined), true);
 });

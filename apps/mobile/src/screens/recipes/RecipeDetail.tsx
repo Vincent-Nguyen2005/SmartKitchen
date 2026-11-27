@@ -51,7 +51,8 @@ export default function RecipeDetail({ recipe, onClose, onStartCooking, notice, 
                   <AppIcon icon={Clock} size="sm" color={colors.primary} />
                   <Text style={local.meta}>{total !== null ? minutesText(total) : "Thời gian linh hoạt"}</Text>
                 </View>
-                {!!recipe.servings && <Text style={local.meta}>{recipe.servings} phần</Text>}
+                {recipe.portionLabel ? <Text style={local.meta}>{recipe.portionLabel}</Text> : !!recipe.servings && <Text style={local.meta}>{recipe.servings} phần</Text>}
+                {!!recipe.mealNote && <Text style={local.meta}>{recipe.mealNote}</Text>}
                 {!!recipe.description && <Text style={local.description}>{recipe.description}</Text>}
               </View>
             </View>

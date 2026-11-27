@@ -56,19 +56,22 @@ const catalog = [
 const kho = [{ name: "Trứng gà", quantity: 30, unit: "PIECE" }];
 const week = ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30"];
 const now = new Date("2026-11-24T03:00:00Z");
-const counts = { BREAKFAST: 1, LUNCH: 1, DINNER: 1 };
 
+/** The first dish of each meal per day (the main / breakfast dish), in day order. */
 function plannedByMeal(menus: MenuRow[]) {
   const byMeal = new Map<MealType, string[]>();
   for (const row of [...menus].sort((left, right) => left.startDate.getTime() - right.startDate.getTime())) {
-    for (const entry of row.items) byMeal.set(entry.mealType, [...(byMeal.get(entry.mealType) ?? []), entry.recipeId ?? ""]);
+    for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) {
+      const first = row.items.find((entry) => entry.mealType === meal);
+      if (first) byMeal.set(meal, [...(byMeal.get(meal) ?? []), first.recipeId ?? ""]);
+    }
   }
   return byMeal;
 }
 
 test("7-day generation: no dish in the same meal on consecutive days, at most twice per meal per week (even with a strong Kho favourite)", async () => {
   const { client, menus } = memoryClient();
-  await generateDays({ userId: "u1", familyId: "f1", days: week, now, recipes: catalog, inventoryItems: kho, mealCounts: counts }, client);
+  await generateDays({ userId: "u1", familyId: "f1", days: week, now, recipes: catalog, inventoryItems: kho }, client);
   assert.equal(menus.length, 7);
   for (const [meal, ids] of plannedByMeal(menus)) {
     assert.equal(ids.length, 7, meal);
@@ -87,7 +90,7 @@ test("a day generated between saved days avoids the dishes of the day before AND
     items: [{ id: `${id}-b`, recipeId, dishName: recipeId, mealType: MealType.BREAKFAST, dayOfWeek: new Date(`${day}T00:00:00Z`).getUTCDay() || 7, details: { role: "sang" } }],
   });
   const { client, menus } = memoryClient([saved("d1", "2026-11-24", "xoi"), saved("d3", "2026-11-26", "banhmitrung")]);
-  await generateDays({ userId: "u1", familyId: "f1", days: ["2026-11-25"], now, recipes: catalog, inventoryItems: kho, mealCounts: counts }, client);
+  await generateDays({ userId: "u1", familyId: "f1", days: ["2026-11-25"], now, recipes: catalog, inventoryItems: kho }, client);
   const created = menus.find((row) => row.startDate.toISOString().startsWith("2026-11-25"));
   const breakfast = created?.items.find((entry) => entry.mealType === MealType.BREAKFAST)?.recipeId;
   assert.ok(breakfast && !["xoi", "banhmitrung"].includes(breakfast), String(breakfast));

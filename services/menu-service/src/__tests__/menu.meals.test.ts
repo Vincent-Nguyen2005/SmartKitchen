@@ -3,7 +3,6 @@ import test from "node:test";
 import { MealType, PeriodType, type PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { settingsSchema } from "../controllers/menu.controller";
 import { generateMenu, isPastDay, MenuServiceError, removeMenuItem } from "../services/menu.service";
-import { roleSlots } from "../services/kho-suggest";
 import type { AiDish } from "../services/ai/gemini";
 
 const r = (id: string, role: string, mealTypes: string[], ingredients: string[] = [id]) => ({ id, name: id, role, mealTypes, ingredients, calories: 200 });
@@ -16,7 +15,6 @@ const catalog = [
   r("boxao", "xao", ["lunch", "dinner"]), r("mucxao", "xao", ["lunch", "dinner"]),
   r("chuoi", "trang_mieng", ["lunch", "dinner"]), r("duahau", "trang_mieng", ["lunch", "dinner"]),
 ];
-const counts = { BREAKFAST: 3, LUNCH: 5, DINNER: 5 };
 type Created = { recipeId: string; mealType: MealType; details: { role: string } };
 
 function createClient() {
@@ -29,31 +27,28 @@ function createClient() {
   return { created, client: { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient };
 }
 
-test("meal slots: breakfast light dishes plus a drink; lunch/dinner món mặn, canh, rau, xào, tráng miệng", () => {
-  assert.deepEqual(roleSlots("BREAKFAST", 3), ["sang", "sang", "do_uong"]);
-  assert.deepEqual(roleSlots("BREAKFAST", 1), ["sang"]);
-  assert.deepEqual(roleSlots("LUNCH", 5), ["man", "canh", "rau", "xao", "trang_mieng"]);
-  assert.deepEqual(roleSlots("DINNER", 3), ["man", "canh", "rau"]);
-  assert.deepEqual(roleSlots("LUNCH", 6), ["man", "canh", "rau", "xao", "trang_mieng", "man"]);
+test("dormant 'Số món mỗi bữa' settings still validate (kept, not used by the planner)", () => {
   assert.equal(settingsSchema.safeParse({ breakfast: 3, lunch: 5, dinner: 5 }).success, true);
   assert.equal(settingsSchema.safeParse({ breakfast: 0, lunch: 5, dinner: 5 }).success, false);
   assert.equal(settingsSchema.safeParse({ breakfast: 3, lunch: 7, dinner: 5 }).success, false);
 });
 
-test("day menu sizes: 3 / 5 / 5 dishes, family-meal roles, no dish twice in the day, Kho dishes first", async () => {
+test("day menu: calorie-based dish counts (breakfast 1–2, lunch / dinner a main + canh or rau, a side only when short), no dish twice in the day, Kho dishes first", async () => {
   const { created, client } = createClient();
   await generateMenu({
     userId: "u1", periodType: PeriodType.DAY, startDate: new Date("2026-11-24T00:00:00Z"), endDate: new Date("2026-11-24T00:00:00Z"),
     recipes: catalog, inventoryItems: [{ name: "Thịt ba chỉ", quantity: 1, unit: "KILOGRAM" }, { name: "Trứng gà", quantity: 6, unit: "PIECE" }],
-    mealCounts: counts,
   }, client);
   const items = created[0].data.items.create;
   const meal = (type: MealType) => items.filter((item) => item.mealType === type);
-  assert.equal(meal(MealType.BREAKFAST).length, 3);
-  assert.equal(meal(MealType.LUNCH).length, 5);
-  assert.equal(meal(MealType.DINNER).length, 5);
-  assert.deepEqual(meal(MealType.LUNCH).map((item) => item.details.role), ["man", "canh", "rau", "xao", "trang_mieng"]);
-  assert.equal(meal(MealType.BREAKFAST)[2].details.role, "do_uong");
+  assert.ok(meal(MealType.BREAKFAST).length >= 1 && meal(MealType.BREAKFAST).length <= 2);
+  for (const type of [MealType.LUNCH, MealType.DINNER]) {
+    const roles = meal(type).map((item) => item.details.role);
+    assert.ok(roles.length >= 2 && roles.length <= 3, roles.join());
+    assert.equal(roles[0], "man");
+    assert.ok(["canh", "rau"].includes(roles[1]), roles.join());
+    if (roles.length === 3) assert.ok(["xao", "man"].includes(roles[2]), roles.join());
+  }
   assert.equal(new Set(items.map((item) => item.recipeId)).size, items.length);
   // The dish whose ingredients are in Kho wins the first món mặn slot.
   assert.equal(meal(MealType.LUNCH)[0].recipeId, "thitkho");
@@ -64,11 +59,11 @@ test("dislike history: recently removed dishes are not picked while others fit",
   await generateMenu({
     userId: "u1", periodType: PeriodType.DAY, startDate: new Date("2026-11-24T00:00:00Z"), endDate: new Date("2026-11-24T00:00:00Z"),
     recipes: catalog, inventoryItems: [{ name: "Thịt ba chỉ", quantity: 1, unit: "KILOGRAM" }],
-    mealCounts: { BREAKFAST: 1, LUNCH: 1, DINNER: 1 }, excludeRecipeIds: ["thitkho", "xoi"],
+    excludeRecipeIds: ["thitkho", "xoi"],
   }, client);
   const ids = created[0].data.items.create.map((item) => item.recipeId);
   assert.ok(!ids.includes("thitkho") && !ids.includes("xoi"), ids.join());
-  assert.equal(ids.length, 3);
+  assert.ok(ids.length >= 5, ids.join());
 });
 
 type Item = { id: string; recipeId: string | null; dishName: string; mealType: MealType; dayOfWeek: number; details: unknown };
@@ -135,33 +130,16 @@ test("past days are never edited or regenerated", async () => {
   assert.deepEqual(writes, []);
 });
 
-test("top-up: an older single-dish menu gets only its missing dishes (keeping the old ones); newer menus and past days are untouched", async () => {
+test("top-up (older app versions): the menu comes back unchanged; past days are refused", async () => {
   const { topUpMenu } = await import("../services/menu.service");
   const legacy = (id: string, recipeId: string, mealType: MealType): Item => ({ id, recipeId, dishName: recipeId, mealType, dayOfWeek: 2, details: { reason: "Có sẵn 1/1 nguyên liệu" } });
-  const old = removeClient([legacy("a", "xoi", MealType.BREAKFAST), legacy("b", "thitkho", MealType.LUNCH), legacy("c", "cakho", MealType.DINNER)]);
-  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, old.client);
-  const byMeal = (type: MealType) => old.items.filter((entry) => entry.mealType === type);
-  assert.equal(byMeal(MealType.BREAKFAST).length, 3);
-  assert.equal(byMeal(MealType.LUNCH).length, 5);
-  assert.equal(byMeal(MealType.DINNER).length, 5);
-  assert.ok(old.items.some((entry) => entry.id === "a") && old.items.some((entry) => entry.id === "b") && old.items.some((entry) => entry.id === "c"));
-  // The older lunch dish fills the first slot (món mặn); the new ones are canh, rau, xào, tráng miệng.
-  assert.deepEqual(byMeal(MealType.LUNCH).filter((entry) => entry.id !== "b").map((entry) => (entry.details as { role: string }).role), ["canh", "rau", "xao", "trang_mieng"]);
-  assert.equal(new Set(old.items.map((entry) => entry.recipeId)).size, old.items.length);
-
-  // Second call: the menu now carries roles -> nothing more is added.
-  const before = old.items.length;
-  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, old.client);
-  assert.equal(old.items.length, before);
-
-  const newer = removeClient([item("i1", "thitkho", MealType.LUNCH, "man")]);
-  await topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, newer.client);
-  assert.deepEqual(newer.writes, []);
-
+  const old = removeClient([legacy("a", "xoi", MealType.BREAKFAST), legacy("b", "thitkho", MealType.LUNCH)]);
+  const result = await topUpMenu({ userId: "u1", menuId: "m1", now }, old.client) as unknown as { items: Item[] };
+  assert.deepEqual(result.items.map((entry) => entry.id), ["a", "b"]);
+  assert.deepEqual(old.writes, []);
   const past = removeClient([legacy("a", "xoi", MealType.BREAKFAST)], { startDate: "2026-11-20T00:00:00Z" });
-  await assert.rejects(topUpMenu({ userId: "u1", menuId: "m1", now, mealCounts: counts, recipes: catalog, inventoryItems: [] }, past.client),
+  await assert.rejects(topUpMenu({ userId: "u1", menuId: "m1", now }, past.client),
     (error: unknown) => error instanceof MenuServiceError && error.statusCode === 422);
-  assert.deepEqual(past.writes, []);
 });
 
 test("week generation: one request fills today and later days without a menu; past days and existing menus stay", async () => {
@@ -174,7 +152,7 @@ test("week generation: one request fills today and later days without a menu; pa
   };
   const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
   const week = ["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"];
-  const result = await generateDays({ userId: "u1", days: week, now, recipes: catalog, inventoryItems: [], mealCounts: counts }, client);
+  const result = await generateDays({ userId: "u1", days: week, now, recipes: catalog, inventoryItems: [] }, client);
   // 23/11 is past, 25/11 already has a menu.
   assert.deepEqual(createdDays, ["2026-11-24", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"]);
   assert.equal(result.length, 5);

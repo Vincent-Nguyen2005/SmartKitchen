@@ -43,7 +43,6 @@ export type SuggestRecipe = {
   cuisine?: string | null;
 };
 /** Meal kcal goal while picking the dishes of one meal (see caloriePenalty in family-health.ts). */
-export type MealCalorieGoal = { target: number; servings: number; planned: number };
 export type DishSuggestion = {
   recipe: SuggestRecipe;
   score: number;
@@ -235,19 +234,6 @@ export function pickDishes(
 export type MealCounts = { BREAKFAST: number; LUNCH: number; DINNER: number };
 export const DEFAULT_MEAL_COUNTS: MealCounts = { BREAKFAST: 3, LUNCH: 5, DINNER: 5 };
 
-/** Lunch / dinner like a Vietnamese family meal: món mặn, canh, rau, món xào, tráng miệng (first N), then more. */
-const FAMILY_MEAL_ROLES = ["man", "canh", "rau", "xao", "trang_mieng"];
-const EXTRA_ROLES = ["man", "xao", "canh"];
-
-/** Role wanted for each dish slot of a meal. Breakfast: light dishes, the last one a drink when there are 2+. */
-export function roleSlots(meal: string, count: number): string[] {
-  if (count <= 0) return [];
-  if (meal.toUpperCase() === "BREAKFAST") {
-    return count === 1 ? ["sang"] : [...Array.from({ length: count - 1 }, () => "sang"), "do_uong"];
-  }
-  return Array.from({ length: count }, (_, index) => FAMILY_MEAL_ROLES[index] ?? EXTRA_ROLES[(index - FAMILY_MEAL_ROLES.length) % EXTRA_ROLES.length]);
-}
-
 /** Recipe fits a slot: same role; a breakfast slot takes light dishes, one-dish meals and unclassified dishes. */
 export function fitsRole(recipeRole: string | null | undefined, slotRole: string | null): boolean {
   if (slotRole === null) return true;
@@ -314,62 +300,8 @@ export function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { tod
     .sort((left, right) => right.score - left.score)[0] ?? null;
 }
 
-/** Weight of the calorie term next to the Kho score (explained in family-health.ts). */
+/** Scale of the calorie tie-break used by the planner (menu.service.ts uses half of it). */
 export const CALORIE_WEIGHT = 20;
-/**
- * Calorie penalty (0..CALORIE_WEIGHT) of one dish against what is left of the meal's family target per remaining
- * slot: CALORIE_WEIGHT × min(1, |kcal × servings − perSlot| / perSlot). No penalty without kcal or target.
- */
-export function mealCaloriePenalty(kcal: number | null | undefined, goal: MealCalorieGoal | undefined, slotsLeft: number): number {
-  if (!goal || kcal == null || goal.target <= 0 || slotsLeft <= 0) return 0;
-  const perSlot = (goal.target - goal.planned) / slotsLeft;
-  if (perSlot <= 0) return CALORIE_WEIGHT;
-  return CALORIE_WEIGHT * Math.min(1, Math.abs(kcal * goal.servings - perSlot) / perSlot);
-}
-
-/**
- * `count` dishes for one meal, one per role slot, best Kho score first. A slot with no recipe of its role takes an
- * unclassified (or one-dish) recipe for main roles; desserts, vegetables and drinks are skipped when missing.
- * Never repeats a dish within the day (`usedIds`, updated) and skips `excludeIds` (removed in the last 7 days).
- */
-export function pickMealDishes(
-  recipes: SuggestRecipe[],
-  kho: KhoItem[],
-  meal: string,
-  count: number,
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal; foreign?: ForeignCount },
-): Array<{ role: string; suggestion: DishSuggestion }> {
-  return pickRoleDishes(recipes, kho, meal, roleSlots(meal, count), options);
-}
-
-/** Same as pickMealDishes for an explicit list of role slots (e.g. only the slots an older menu is missing). */
-export function pickRoleDishes(
-  recipes: SuggestRecipe[],
-  kho: KhoItem[],
-  meal: string,
-  roles: string[],
-  options: { today: string; day: string; recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds?: ReadonlySet<string>; history?: MealHistory; calories?: MealCalorieGoal; foreign?: ForeignCount },
-): Array<{ role: string; suggestion: DishSuggestion }> {
-  const picks: Array<{ role: string; suggestion: DishSuggestion }> = [];
-  // Foreign-dish caps: shared with the other meals of the day when the caller passes the day's counter.
-  const foreign = options.foreign ?? newForeignCount();
-  // Whole-meal calories: each slot aims at what is left of the family target (updated as dishes are picked).
-  const goal = options.calories ? { ...options.calories } : undefined;
-  roles.forEach((role, index) => {
-    const open = recipes.filter((recipe) => fitsMeal(recipe, meal) && !options.usedIds.has(recipe.id) && !options.excludeIds?.has(recipe.id) && withinForeignCap(recipe, foreign, meal));
-    let pool = open.filter((recipe) => fitsRole(recipe.role, role));
-    if (pool.length === 0 && ["man", "canh", "xao"].includes(role)) pool = open.filter((recipe) => recipe.role == null || recipe.role === "mot_mon");
-    const slotsLeft = roles.length - index;
-    const pick = best(varietyPool(pool, meal, options.day, options.history), kho, options, `${options.day}:${meal.toLowerCase()}:${index}`,
-      goal ? (recipe) => mealCaloriePenalty(recipe.calories, goal, slotsLeft) : undefined);
-    if (!pick) return;
-    options.usedIds.add(pick.recipe.id);
-    if (isForeign(pick.recipe)) addForeign(foreign, meal);
-    if (goal && pick.recipe.calories != null) goal.planned += pick.recipe.calories * goal.servings;
-    picks.push({ role, suggestion: pick });
-  });
-  return picks;
-}
 
 /**
  * One replacement for a removed dish: same meal and role (any role when the removed dish had none), best Kho score,

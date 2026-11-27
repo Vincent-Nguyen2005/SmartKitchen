@@ -15,6 +15,7 @@ import {
 } from "../menu/menuShared";
 import { AI_DISCLAIMER, AiDishDetail, type AiDish } from "./AiSuggestions";
 import { dishServings, menuPeople, scaleRecipe } from "./portions";
+import { dishRiceGrams, mealHasRice, portionLabel, RICE_NOTE, withRice } from "./mealPortions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -121,7 +122,14 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
   const people = menuPeople(menu?.servings, family?.members.length);
   /** Planned portions of a dish ("N phần"): detail, cooking mode, Kho deduction and the AI cart use these amounts. */
   const portionsOf = (item: MenuItem | null) => dishServings(item?.details, menu?.servings, family?.members.length);
-  const showRecipe = (recipe: Recipe, item: MenuItem | null = openedItem) => setDetail(scaleRecipe(recipe, portionsOf(item), people));
+  /** "Đủ cho N người" when the dish's meal has several dishes, else "N phần". */
+  const labelOf = (item: MenuItem | null) => portionLabel(items.filter((entry) => entry.mealType === item?.mealType).length, portionsOf(item), people);
+  /**
+   * The dish scaled to its portions, with its label; the món mặn of a meal with rice also lists the meal's Gạo, so
+   * "Hoàn thành" on it takes the rice out of Kho (once per meal, with the dish's ingredients).
+   */
+  const showRecipe = (recipe: Recipe, item: MenuItem | null = openedItem) =>
+    setDetail(withRice({ ...scaleRecipe(recipe, portionsOf(item), people), portionLabel: labelOf(item) }, dishRiceGrams(item)));
   const mealItems = items.filter((item) => item.mealType === meal);
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
@@ -211,6 +219,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     content = <EmptyState fill icon={CookingPot} text="Bữa này chưa có món." />;
   } else {
     content = (
+      <>
+      {mealHasRice(mealItems) && <AppText variant="bodySmall" color={colors.muted}>{RICE_NOTE}</AppText>}
       <View onLayout={cardGrid.onLayout} style={[styles.grid, { gap: cardGrid.gap }]}>
         {mealItems.map((item) => (
           <MenuDishCard
@@ -218,7 +228,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
             item={item}
             recipe={item.recipeId ? recipeById.get(item.recipeId) : undefined}
             width={cardGrid.cardWidth}
-            portions={portionsOf(item)}
+            portionLabel={labelOf(item)}
             onPress={() => openDish(item)}
             onSwap={() => void swap(item)}
             swapping={swappingId === item.id}
@@ -226,6 +236,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
           />
         ))}
       </View>
+      </>
     );
   }
 
@@ -259,6 +270,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
         mode="cook"
         people={people}
         portions={portionsOf(openedItem)}
+        portionLabel={labelOf(openedItem)}
+        riceGrams={dishRiceGrams(openedItem)}
         onClose={closeDetail}
         onStartCooking={startCooking}
       />

@@ -20,6 +20,7 @@ import { SegmentTabs } from "../../components/SegmentTabs";
 import RecipeDetail from "../recipes/RecipeDetail";
 import { AiDishDetail, type AiDish } from "../recipes/AiSuggestions";
 import { dishServings, menuPeople, scaleRecipe } from "../recipes/portions";
+import { dishRiceGrams, mealHasRice, portionLabel, RICE_NOTE, withRice } from "../recipes/mealPortions";
 import { useSession } from "../../services/session";
 import { canRebuildWeek, WEEK_REBUILD_CONFIRM, weekRebuildDays } from "./weekRebuild";
 import type { Recipe } from "../recipes/recipeTypes";
@@ -226,15 +227,20 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
   const peopleFor = (item: MenuItem | null): number => menuPeople(menuOf(item)?.servings, memberCount);
   /** Planned portions of the dish ("N phần"): what its amounts are scaled to. */
   const servingsFor = (item: MenuItem | null): number => dishServings(item?.details, menuOf(item)?.servings, memberCount);
+  /** Dishes in the same meal of the same day as `item`. */
+  const mealMates = (item: MenuItem | null) => (item ? menuOf(item)?.items.filter((entry) => entry.mealType === item.mealType && entry.dayOfWeek === item.dayOfWeek) ?? [item] : []);
+  /** "Đủ cho N người" for a meal with several dishes, else "N phần". */
+  const labelFor = (item: MenuItem | null): string => portionLabel(mealMates(item).length, servingsFor(item), peopleFor(item));
+  /** The dish's recipe scaled to its portions, with the meal's label and (món mặn) the meal's rice as Gạo. */
+  const planned = (recipe: Recipe, item: MenuItem | null): Recipe =>
+    withRice({ ...scaleRecipe(recipe, servingsFor(item), peopleFor(item)), portionLabel: labelFor(item) }, dishRiceGrams(item));
 
   /** The alternative of an unsuitable dish (view-only here, like every dish in Lịch). */
   const openRecipe = async (recipeId: string): Promise<void> => {
-    const people = peopleFor(openedItem);
-    const portions = servingsFor(openedItem);
     const known = recipes.get(recipeId);
-    if (known) { setDetail(scaleRecipe(known, portions, people)); return; }
+    if (known) { setDetail(planned(known, openedItem)); return; }
     try {
-      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`), portions, people));
+      setDetail(planned(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`), openedItem));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -246,12 +252,10 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     if (!item.recipeId) { showToast("Món này chưa có công thức."); return; }
     // Quantities for the dish's planned portions ("N phần"); the label stays the family ("cho N người").
-    const people = peopleFor(item);
-    const portions = servingsFor(item);
     const known = recipes.get(item.recipeId);
-    if (known) { setDetail(scaleRecipe(known, portions, people)); return; }
+    if (known) { setDetail(planned(known, item)); return; }
     try {
-      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`), portions, people));
+      setDetail(planned(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`), item));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -357,6 +361,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
                 <Text style={styles.mealTitle} accessibilityRole="header">{mealLabels[meal]}</Text>
                 {kcal > 0 && <Text style={styles.mealKcal}>{Math.round(kcal)} kcal</Text>}
               </View>
+              {mealHasRice(items) && <Text style={styles.muted}>{RICE_NOTE}</Text>}
               {items.length === 0 ? (
                 <Text style={styles.muted}>Chưa có món</Text>
               ) : (
@@ -368,7 +373,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
                       recipe={item.recipeId ? recipes.get(item.recipeId) : undefined}
                       width={cardGrid.cardWidth}
                       variant="minimal"
-                      portions={servingsFor(item)}
+                      portionLabel={labelFor(item)}
                       onPress={() => void openDish(item)}
                     />
                   ))}
@@ -435,7 +440,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
       </ScrollView>
       {/* Lịch shows dishes read-only; steps, cooking and "Đổi món khác" live in Nấu ăn. */}
       <RecipeDetail recipe={detail} onClose={closeDetail} mode="view" health={detailHealth(openedItem, detail?.id, (id) => void openRecipe(id))} />
-      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" people={peopleFor(openedItem)} portions={servingsFor(openedItem)} />
+      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" people={peopleFor(openedItem)} portions={servingsFor(openedItem)} portionLabel={labelFor(openedItem)} riceGrams={dishRiceGrams(openedItem)} />
       {dialog}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>

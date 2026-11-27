@@ -62,7 +62,7 @@ test("Kho matching, Có sẵn X/Y and the missing list use the family's amounts"
   const day = new Date("2026-11-24T00:00:00.000Z");
   const run = async (owner: { userId: string; familyId: string | null; memberCount?: number }) => {
     const { client, first } = captureClient();
-    await generateMenu({ userId: owner.userId, owner, periodType: PeriodType.DAY, startDate: day, endDate: day, mealCounts: { BREAKFAST: 0, LUNCH: 1, DINNER: 0 }, recipes, inventoryItems: kho }, client);
+    await generateMenu({ userId: owner.userId, owner, periodType: PeriodType.DAY, startDate: day, endDate: day, preferences: { mealTypes: ["LUNCH"] }, recipes, inventoryItems: kho }, client);
     return first();
   };
 

@@ -380,13 +380,7 @@ export async function topUpMenuController(request: Request, response: Response):
   try {
     const owner = await requestOwner(request, response);
     if (!owner) return;
-    response.json(await topUpMenu({
-      userId: owner.userId,
-      owner,
-      health: await loadFamilyContext(owner),
-      menuId: request.params.id,
-      authorization: request.header("authorization") ?? undefined,
-    }));
+    response.json(await topUpMenu({ userId: owner.userId, owner, menuId: request.params.id }));
   } catch (error) {
     handleError(error, response);
   }

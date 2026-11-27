@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { MealType, PeriodType, type PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { generateMenu, removeMenuItem } from "../services/menu.service";
-import { FOREIGN_PER_DAY, FOREIGN_PER_MEAL, pickDishes, pickRoleDishes, type SuggestRecipe } from "../services/kho-suggest";
+import { FOREIGN_PER_DAY, FOREIGN_PER_MEAL, pickDishes, type SuggestRecipe } from "../services/kho-suggest";
 
 // Vietnamese dishes for every role, plus foreign dishes (cuisine western / asian) that win on Kho score: their
 // ingredient ("Phô mai") is the only thing in Kho.
@@ -32,7 +32,7 @@ test("generation: foreign dishes appear when they score best, but at most 1 per 
   const { created, client } = createClient();
   await generateMenu({
     userId: "u1", periodType: PeriodType.WEEK, startDate: new Date("2026-11-30T00:00:00Z"), endDate: new Date("2026-12-06T00:00:00Z"),
-    recipes: catalog, inventoryItems: kho, mealCounts: { BREAKFAST: 3, LUNCH: 5, DINNER: 5 },
+    recipes: catalog, inventoryItems: kho,
   }, client);
   const items = created[0].data.items.create;
   const days = new Set(items.map((item) => item.dayOfWeek));
@@ -46,7 +46,7 @@ test("generation: foreign dishes appear when they score best, but at most 1 per 
       assert.ok(foreignItems.filter((item) => item.mealType === meal).length <= FOREIGN_PER_MEAL, `day ${day} ${meal}`);
     }
     // Meals are still complete (the caps never leave a slot empty while Vietnamese dishes fit).
-    assert.equal(dayItems.length, 13);
+    for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) assert.ok(dayItems.some((item) => item.mealType === meal), `day ${day} ${meal}`);
     foreignTotal += foreignItems.length;
   }
   // They score best, so every day uses its whole allowance.
@@ -86,9 +86,6 @@ test("swap: a day that already has 2 foreign dishes gets a Vietnamese replacemen
 test("pickers keep the per-meal cap even without a shared day counter", () => {
   const recipes: SuggestRecipe[] = catalog.map((recipe) => ({ ...recipe, imageUrl: null, tags: [], ingredients: recipe.ingredients.map((name) => ({ name, quantity: null, unit: null })) }));
   const khoItems = kho.map((entry) => ({ ...entry, expiryDate: null }));
-  const options = { today: "2026-11-30", day: "2026-11-30", recentRecipeIds: new Set<string>(), usedIds: new Set<string>() };
-  const lunch = pickRoleDishes(recipes, khoItems, "LUNCH", ["man", "canh", "rau", "man"], options);
-  assert.equal(lunch.filter((pick) => isForeignId(pick.suggestion.recipe.id)).length, 1);
   const oneEach = pickDishes(recipes, khoItems, ["BREAKFAST", "LUNCH", "DINNER"], { today: "2026-11-30", day: "2026-11-30", recentRecipeIds: new Set() });
   assert.equal(oneEach.filter((pick) => isForeignId(pick.suggestion?.recipe.id ?? null)).length, FOREIGN_PER_DAY);
 });

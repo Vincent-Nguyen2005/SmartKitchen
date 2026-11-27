@@ -2,6 +2,7 @@ import type { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { KhoItem } from "./kho-suggest";
 import { vnDay } from "./kho-suggest";
 import { dishServings, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
+import { RICE_INGREDIENT } from "./meal-plan";
 import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type RecipeCandidate } from "./menu.service";
 
 /**
@@ -12,6 +13,7 @@ import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type Reci
  *   dish; older dishes use the menu's people; quantity × portions / recipe servings; perPerson rules included) and
  *   summed per product.
  * - Seasonings (isSeasoning) and free-text amounts ("vừa ăn") are left out.
+ * - "Kèm cơm trắng": a meal with món mặn carries its rice as raw Gạo grams (details.riceGrams), counted once per meal.
  * - Product key: the admin catalog product (by productId on Kho rows; by exact normalized name, then English alias,
  *   for recipe ingredients), else the normalized name.
  * - Units: every recipe line and Kho row of a sold product is converted to the product's SALE unit measure:
@@ -232,6 +234,9 @@ export function dishesInRange(menus: MenuRow[], recipes: RecipeCandidate[], rang
       const day = itemDate(menu.startDate, item.dayOfWeek).toISOString().slice(0, 10);
       if (day < range.from || day > range.to) continue;
       const people = dishServings(item.details, menu.servings, memberCount);
+      // "Kèm cơm trắng": the meal's rice as raw Gạo (grams, already for the whole meal).
+      const rice = (item.details as { riceGrams?: unknown } | null)?.riceGrams;
+      if (typeof rice === "number" && rice > 0) dishes.push({ ingredients: [{ name: RICE_INGREDIENT, quantity: rice, unit: "GRAM" }], servings: 1, people: 1 });
       const recipe = item.recipeId ? byId.get(item.recipeId) : undefined;
       if (recipe) { dishes.push({ ingredients: recipe.details, servings: recipe.servings, people }); continue; }
       const aiDish = (item.details as { aiDish?: { ingredients?: unknown; servings?: unknown } } | null)?.aiDish;
