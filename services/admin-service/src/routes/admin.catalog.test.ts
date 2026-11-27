@@ -8,6 +8,9 @@ const prismaMock = vi.hoisted(() => ({
   $transaction: vi.fn(),
 }));
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
+// Today's automatic daily deals (lib/daily-deal-store.ts): none unless a test sets them.
+const dealsMock = vi.hoisted(() => ({ percents: new Map<string, number>() }));
+vi.mock("../lib/daily-deal-store", () => ({ todaysDealPercents: async () => dealsMock.percents }));
 
 import adminRouter from "./admin.route";
 import { addDays, vnToday } from "../lib/promotion-sync";
@@ -26,6 +29,7 @@ let rows: ReturnType<typeof row>[] = [];
 beforeEach(() => {
   vi.clearAllMocks();
   rows = [row()];
+  dealsMock.percents = new Map();
   // Array form for the catalog query, callback form for admin writes.
   prismaMock.$transaction.mockImplementation(async (arg: unknown) => (Array.isArray(arg) ? Promise.all(arg) : (arg as (tx: typeof prismaMock) => unknown)(prismaMock)));
   prismaMock.masterIngredient.findMany.mockImplementation(async (args: { distinct?: string[] }) =>
@@ -125,12 +129,35 @@ describe("GET /catalog/ingredients (signed-in users)", () => {
       isActive: true,
       nameNormalized: { contains: "ca  chua" },
       category: { equals: "rau củ", mode: "insensitive" },
-      discountPercent: { not: null },
-      AND: [
-        { OR: [{ promoStartDate: null }, { promoStartDate: { lte: day(0) } }] },
-        { OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }] },
+      // An admin discount running today, or one of today's daily deals.
+      OR: [
+        {
+          discountPercent: { not: null },
+          AND: [
+            { OR: [{ promoStartDate: null }, { promoStartDate: { lte: day(0) } }] },
+            { OR: [{ promoEndDate: null }, { promoEndDate: { gte: day(0) } }] },
+          ],
+        },
+        { id: { in: [] } },
       ],
     });
+  });
+
+  it("daily deals: priced exactly like an admin discount (same fields), on sale, and an admin discount wins", async () => {
+    dealsMock.percents = new Map([["deal", 15], ["manual", 10]]);
+    rows = [
+      row({ id: "deal", price: 40000 }),
+      row({ id: "manual", discountPercent: 20, promoEndDate: day(3) }),
+      row({ id: "plain" }),
+    ];
+    const { body } = await asUser(request(app).get("/catalog/ingredients").query({ onSale: "true" }));
+    const byId = Object.fromEntries(body.items.map((item: { id: string }) => [item.id, item]));
+    // Same shape as an admin discount ending today: the app's pill, struck price and cart snapshot use these fields.
+    expect(byId.deal).toMatchObject({ discountPercent: 15, promoEndDate: vnToday(), price: 40000 });
+    expect(Object.keys(byId.deal).sort()).toEqual(Object.keys(byId.manual).sort());
+    expect(byId.manual).toMatchObject({ discountPercent: 20, promoEndDate: addDays(vnToday(), 3) });
+    expect(byId.plain).toMatchObject({ discountPercent: null, promoEndDate: null });
+    expect(catalogCall().where.OR[1]).toEqual({ id: { in: ["deal", "manual"] } });
   });
 
   it("still accepts the older q parameter used by Kho suggestions", async () => {

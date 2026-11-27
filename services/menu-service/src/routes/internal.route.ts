@@ -3,6 +3,7 @@ import { Router, type NextFunction, type Request, type RequestHandler, type Resp
 import type { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { breakfastToday } from "../services/breakfast-today";
 import { FamilyLookupError, type MembershipLookup } from "../services/family-client";
+import { weekProductUsage } from "../services/week-product-usage";
 
 /** Service-to-service only: x-api-key = INTERNAL_API_KEY. The gateway answers 404 for /internal/*. */
 export const requireInternalKey = (req: Request, res: Response, next: NextFunction): void => {
@@ -67,10 +68,23 @@ export const breakfastTodayHandler = (client: Pick<PrismaClient, "menu">, lookup
   }
 };
 
+/**
+ * GET /internal/week-product-usage -> { week: { from, to }, items: [{ name, households }] }: anonymous counts of how
+ * many households' menus use each ingredient this week (admin-service daily deals). No ids are returned.
+ */
+export const weekProductUsageHandler = (client: Pick<PrismaClient, "menu">): RequestHandler => async (_req, res, next) => {
+  try {
+    res.json(await weekProductUsage(client));
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const createInternalRouter = (client: InternalClient): Router => {
   const router = Router();
   router.use(requireInternalKey);
   router.get("/recipes/:recipeId/usage", recipeUsageHandler(client));
   router.post("/breakfast-today", breakfastTodayHandler(client));
+  router.get("/week-product-usage", weekProductUsageHandler(client));
   return router;
 };
