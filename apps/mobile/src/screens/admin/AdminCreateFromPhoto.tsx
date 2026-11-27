@@ -88,7 +88,6 @@ export default function AdminCreateFromPhoto({ visible, onClose, onReady }: Prop
           ) : (
             <View style={local.preview}>
               <Image source={{ uri: photo.uri }} style={local.previewImage} accessibilityLabel="Ảnh vừa chọn" resizeMode="cover" />
-              <Text style={local.label}>Đây là</Text>
               <SegmentTabs options={CREATE_KIND_OPTIONS} value={kind} onChange={setKind} />
               {recognizing ? (
                 <View style={local.recognizing} accessibilityLiveRegion="polite">
@@ -123,7 +122,6 @@ const local = StyleSheet.create({
   startIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 40, height: 80, justifyContent: "center", width: 80 },
   title: { ...textStyles.subheading, textAlign: "center" },
   meta: { ...textStyles.bodySmall, color: colors.muted, textAlign: "center" },
-  label: { ...textStyles.label },
   primary: { alignItems: "center", alignSelf: "stretch", backgroundColor: colors.primary, borderRadius: radius.sm, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: 48 },
   primaryText: { ...textStyles.label, color: colors.primaryText },
   secondary: { alignItems: "center", alignSelf: "stretch", borderColor: colors.primary, borderRadius: radius.sm, borderWidth: 1, flexDirection: "row", gap: spacing.xs, justifyContent: "center", minHeight: 48 },
