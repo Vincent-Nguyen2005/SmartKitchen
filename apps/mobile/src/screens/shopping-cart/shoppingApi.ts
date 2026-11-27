@@ -121,6 +121,9 @@ export const shoppingApi = {
   /** expectedTotal: the "Tổng thanh toán" shown; a different server total → ShoppingApiError TOTAL_CHANGED with the new totals. */
   placeOrder: (token: string, familyId: string, items: CheckoutLine[], delivery: DeliveryInput, expectedTotal?: number) =>
     request<{ order: Order }>(token, "/api/shopping-list/checkout", "POST", { familyId, items, delivery: { ...delivery, paymentMethod: "COD" }, ...(expectedTotal !== undefined ? { expectedTotal } : {}) }, 30_000),
+  /** Running checkout promotions (Đi chợ tags and banner); cached in promotionStore.ts. */
+  activePromotions: (token: string) =>
+    request<{ items: import("./marketPromotions").ShopPromotion[] }>(token, "/api/shopping-list/promotions/active"),
   /** Tạm tính / Khuyến mãi / Tổng thanh toán for the active cart (the automatic promotion; computed by the server). */
   checkoutPreview: (token: string, familyId: string, items: CheckoutLine[]) =>
     request<CheckoutPreview>(token, "/api/shopping-list/checkout/preview", "POST", { familyId, items }),

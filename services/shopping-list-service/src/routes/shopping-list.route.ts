@@ -9,6 +9,8 @@ router.get("/admin/promotions", requireAdmin, ShoppingListController.adminPromot
 router.post("/admin/promotions", requireAdmin, ShoppingListController.createPromotion);
 router.put("/admin/promotions/:id", requireAdmin, ShoppingListController.updatePromotion);
 router.patch("/admin/promotions/:id/active", requireAdmin, ShoppingListController.setPromotionActive);
+// Running checkout promotions for Đi chợ (product tags, order banner); any signed-in user.
+router.get("/promotions/active", ShoppingListController.activePromotions);
 router.post("/generate", ShoppingListController.generate);
 router.get("/", ShoppingListController.list);
 router.get("/suggestions", ShoppingListController.suggestions);

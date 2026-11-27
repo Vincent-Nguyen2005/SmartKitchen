@@ -332,6 +332,8 @@ describe("end to end through the API (customer + shipper)", () => {
       const body = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub, role, exp: Math.floor(Date.now() / 1000) + 600 })}`;
       return `Bearer ${body}.${createHmac("sha256", "api-flow-test-secret").update(body).digest("base64url")}`;
     };
+    // Signed once: signing again in a later second gives another exp, i.e. a different token (was flaky).
+    const buyerToken = sign(buyer, "USER");
     const app = express();
     app.use(express.json());
     app.use("/api/shopping-list", requireShoppingUser, router);
@@ -348,17 +350,17 @@ describe("end to end through the API (customer + shipper)", () => {
       if (String(url).startsWith(`http://127.0.0.1:${address.port}`)) return realFetch(url, init as never);
       if (String(url).includes("/internal/shippers/")) return new Response(JSON.stringify({ active: true }), { status: 200 });
       const auth = init?.headers?.Authorization ?? "";
-      return new Response(JSON.stringify({ data: { family: { id: auth === sign(buyer, "USER") ? familyId : otherFamilyId } } }), { status: 200 });
+      return new Response(JSON.stringify({ data: { family: { id: auth === buyerToken ? familyId : otherFamilyId } } }), { status: 200 });
     });
     vi.stubGlobal("fetch", stub);
     try {
       db.lines.push(cartLine("55555555-5555-4555-8555-555555555571"));
-      const placed = await api("POST", "/checkout", sign(buyer, "USER"), { familyId, items: [{ id: "55555555-5555-4555-8555-555555555571", shelfLifeDays: 3 }], delivery });
+      const placed = await api("POST", "/checkout", buyerToken, { familyId, items: [{ id: "55555555-5555-4555-8555-555555555571", shelfLifeDays: 3 }], delivery });
       expect(placed.status).toBe(201);
       const orderId = ((await placed.json()) as { data: { order: { id: string } } }).data.order.id;
 
       // A normal user cannot use the shipper API; another family cannot list this family's orders.
-      expect((await api("GET", "/shipper/orders", sign(buyer, "USER"))).status).toBe(403);
+      expect((await api("GET", "/shipper/orders", buyerToken)).status).toBe(403);
       expect((await api("GET", `/orders?familyId=${familyId}`, sign("99999999-9999-4999-8999-999999999999", "USER"))).status).toBe(403);
 
       const available = (await (await api("GET", "/shipper/orders?scope=available", sign(shipper, "SHIPPER"))).json()) as { data: { items: Array<{ id: string; items: Array<{ unitPrice: number }> }> } };
@@ -370,7 +372,7 @@ describe("end to end through the API (customer + shipper)", () => {
 
       const deliverCall = mocks.axios.post.mock.calls.find((call) => String(call[0]).endsWith(`/deliveries/${orderId}/deliver`));
       expect(deliverCall?.[1].lines[0].expiryDate).toBe(vnDayPlus(new Date(db.orders.find((order) => order.id === orderId)!.deliveredAt), 3));
-      const mine = (await (await api("GET", `/orders?familyId=${familyId}`, sign(buyer, "USER"))).json()) as { data: { items: Array<{ status: string }> } };
+      const mine = (await (await api("GET", `/orders?familyId=${familyId}`, buyerToken)).json()) as { data: { items: Array<{ status: string }> } };
       expect(mine.data.items[0].status).toBe("DELIVERED");
       const keys = mocks.axios.post.mock.calls.filter((call) => String(call[0]).includes("/internal/notifications")).map((call) => call[1].dedupeKey);
       expect(keys).toEqual([`order:${orderId}`, `order:${orderId}`]);

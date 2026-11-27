@@ -107,6 +107,11 @@ export class ShoppingListController {
     }
   }
 
+  /** GET /promotions/active: running checkout promotions for Đi chợ (tags and banner); any signed-in user. */
+  static async activePromotions(_req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { items: await PromotionsService.activeForShoppers() } }); } catch (err) { next(err); }
+  }
+
   // ---- Quản trị › Chương trình khuyến mãi (ADMIN role in the verified token) ----
   static async adminPromotions(_req: Request, res: Response, next: NextFunction) {
     try { res.json({ success: true, data: { items: await PromotionsService.list() } }); } catch (err) { next(err); }

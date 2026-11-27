@@ -121,3 +121,20 @@ describe("Quản trị › Chương trình khuyến mãi", () => {
     expect(items.map((item) => [item.id, item.status])).toEqual([["running", "RUNNING"], ["upcoming", "UPCOMING"], ["ended", "ENDED"], ["off", "OFF"]]);
   });
 });
+
+describe("GET /promotions/active (Đi chợ tags and banner)", () => {
+  it("any signed-in user gets the running promotions, public fields only, ending soonest first", async () => {
+    const row = (id: string, endDate: string, extra: Record<string, unknown> = {}) => ({ ...valid, id, groups: [], productIds: [], startDate: new Date("2020-01-01T00:00:00Z"), endDate: new Date(`${endDate}T00:00:00Z`), createdBy: admin, createdAt: new Date(), updatedAt: new Date(), ...extra });
+    // The query keeps only active rows within their days (Prisma filter); the mock returns what the query would.
+    db.promotions.push(row("later", "2099-12-31"), row("sooner", "2099-06-30", { scope: "GROUP", groups: ["Rau củ"] }));
+    for (const token of [sign(user, "USER"), sign(admin, "ADMIN")]) {
+      const response = await api("GET", "/promotions/active", token);
+      expect(response.status).toBe(200);
+      const { items } = ((await response.json()) as { data: { items: Array<Record<string, unknown>> } }).data;
+      expect(items.map((item) => item.id)).toEqual(["sooner", "later"]);
+      expect(Object.keys(items[0]).sort()).toEqual(["endDate", "groups", "id", "maxDiscount", "minSubtotal", "name", "productIds", "scope", "startDate", "type", "usageLimitPerUser", "value"]);
+    }
+    expect((mocks.prisma.checkoutPromotion.findMany.mock.calls.at(-1) as unknown[] | undefined)?.[0]).toMatchObject({ where: { isActive: true } });
+    expect((await api("GET", "/promotions/active", "")).status).toBe(401);
+  });
+});

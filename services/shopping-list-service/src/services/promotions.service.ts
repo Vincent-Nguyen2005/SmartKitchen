@@ -128,6 +128,20 @@ export class PromotionsService {
     return usage;
   }
 
+  /**
+   * GET /promotions/active (any signed-in user): what Đi chợ shows while shopping (product tags for GROUP / PRODUCTS,
+   * the banner for ORDER). Public fields only; no usage, no audit, no admin data. Ending soonest first.
+   */
+  static async activeForShoppers(today: string = vnDay()) {
+    const rules = await this.runningRules(today);
+    return rules
+      .sort((first, second) => first.endDay.localeCompare(second.endDay) || first.id.localeCompare(second.id))
+      .map((rule) => ({
+        id: rule.id, name: rule.name, scope: rule.scope, groups: rule.groups, productIds: rule.productIds, type: rule.type, value: rule.value,
+        maxDiscount: rule.maxDiscount, minSubtotal: rule.minSubtotal, startDate: rule.startDay, endDate: rule.endDay, usageLimitPerUser: rule.usageLimitPerUser,
+      }));
+  }
+
   static async list() {
     const rows = await prisma.checkoutPromotion.findMany({ orderBy: [{ isActive: "desc" }, { endDate: "desc" }, { createdAt: "desc" }] });
     const today = vnDay();
