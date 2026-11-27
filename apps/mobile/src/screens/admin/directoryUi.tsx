@@ -4,6 +4,7 @@ import { ArrowLeft, ChevronRight, House } from "lucide-react-native";
 import { AppIcon, AppText, colors, IconButton, radius, spacing, touchTarget } from "../../theme";
 import { Badge } from "../notifications/ui";
 import { displayName, initial, userRoleBadge, type AdminFamilySummary, type AdminUser } from "./directoryApi";
+import { familyFacts } from "./familyView";
 
 type AvatarProps = { name: string | null; email: string | null };
 
@@ -39,12 +40,12 @@ export function UserRow({ user }: UserRowProps): React.JSX.Element {
 
 type FamilyRowProps = { family: AdminFamilySummary; onPress: () => void };
 
-/** One family: house icon, name (body 16), member count (caption 12); opens the family detail. */
+/** One family: house icon, name (body 16), "<n> thành viên · Tạo ngày dd/MM/yyyy" (caption 12); opens the detail. */
 export function FamilyRow({ family, onPress }: FamilyRowProps): React.JSX.Element {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${family.name}, ${family.memberCount} thành viên`}
+      accessibilityLabel={`${family.name}, ${familyFacts(family)}`}
       accessibilityHint="Mở chi tiết gia đình"
       onPress={onPress}
       style={({ pressed }) => [local.row, pressed && local.pressed]}
@@ -52,7 +53,7 @@ export function FamilyRow({ family, onPress }: FamilyRowProps): React.JSX.Elemen
       <AppIcon icon={House} size="md" color={colors.primary} />
       <View style={local.text}>
         <AppText variant="body" numberOfLines={1}>{family.name}</AppText>
-        <AppText variant="caption">{family.memberCount} thành viên</AppText>
+        <AppText variant="caption">{familyFacts(family)}</AppText>
       </View>
       <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
     </Pressable>

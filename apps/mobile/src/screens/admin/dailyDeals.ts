@@ -3,6 +3,7 @@
  * settings form, client validation (the same rules as admin-service), and the texts of today's list. Users see these
  * discounts exactly like admin discounts.
  */
+import { createAutoSaver, type AutoSaveState } from "../../services/autoSave";
 import { discountedPrice, formatVnd } from "../../services/format";
 import { unitWord } from "../shopping-cart/unitDisplay";
 
@@ -55,6 +56,53 @@ export function settingsErrors(form: SettingsForm): Partial<Record<SettingsField
 export const settingsPayload = (form: SettingsForm): DealSettings => ({
   enabled: form.enabled, dealsPerDay: whole(form.dealsPerDay), minPercent: whole(form.minPercent), maxPercent: whole(form.maxPercent), excludedProductIds: form.excludedProductIds,
 });
+
+/** The switch's label: what flipping it does. */
+export const switchLabel = (enabled: boolean): string => (enabled ? "Tắt để dừng ngay" : "Bật để chạy lại");
+
+/** Small status at the top of the Cài đặt card: "Đang lưu…" / "Đã lưu" (null when idle or failed; the error shows apart). */
+export const saveStatusText = (state: AutoSaveState): string | null =>
+  state.status === "pending" || state.status === "saving" ? "Đang lưu…" : state.status === "saved" ? "Đã lưu" : null;
+
+type SettingsSaverOptions = {
+  initial: DealSettings;
+  save: (settings: DealSettings) => Promise<void>;
+  onState?: (state: AutoSaveState) => void;
+  delayMs?: number;
+  timers?: Parameters<typeof createAutoSaver<DealSettings>>[0]["timers"];
+};
+
+/**
+ * Cài đặt auto-save (services/autoSave.ts): numbers are saved ~600 ms after typing stops (`type`) and at once on blur;
+ * the switch and the exclusion list are saved at once (`commit`). An invalid form is never sent: both return the inline
+ * errors and drop any pending save of an earlier value.
+ */
+export function createSettingsAutoSave(options: SettingsSaverOptions) {
+  const saver = createAutoSaver<DealSettings>({ initial: options.initial, save: options.save, delayMs: options.delayMs ?? 600, onState: options.onState, timers: options.timers });
+  const check = (form: SettingsForm): Partial<Record<SettingsField, string>> | null => {
+    const errors = settingsErrors(form);
+    if (Object.keys(errors).length === 0) return null;
+    const pending = saver.state().status === "pending";
+    saver.cancel();
+    if (pending) options.onState?.({ status: "idle", error: null, field: null });
+    return errors;
+  };
+  return {
+    type(form: SettingsForm): Partial<Record<SettingsField, string>> {
+      const errors = check(form);
+      if (errors) return errors;
+      saver.change(settingsPayload(form));
+      return {};
+    },
+    commit(form: SettingsForm): Partial<Record<SettingsField, string>> {
+      const errors = check(form);
+      if (errors) return errors;
+      void saver.saveNow(settingsPayload(form));
+      return {};
+    },
+    flush: (): Promise<boolean> => saver.flush(),
+  };
+}
 
 /** Why a deal of today's list is not applied right now (null when it is). */
 export const statusNote = (status: DealStatus): string | null => ({

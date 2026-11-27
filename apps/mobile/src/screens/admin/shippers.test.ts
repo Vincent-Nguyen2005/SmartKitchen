@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliveredText, newShipperProblem, passwordProblem } from "./shippers";
+import { deliveredText, newShipperProblem, passwordProblem, shipperActions, shipperDetailRows, toggleConfirm, vnDate, type ShipperAccount } from "./shippers";
 
 test("new shipper form: name, Vietnamese phone, email and a strong password", () => {
   const ok = { name: "Nguyễn Văn An", phone: "090 123 4567", email: "an@example.com", password: "Giaohang1" };
@@ -17,4 +17,20 @@ test("new shipper form: name, Vietnamese phone, email and a strong password", ()
 test("delivered count text", () => {
   assert.equal(deliveredText(12), "12 đơn đã giao");
   assert.equal(deliveredText(null), "—");
+});
+
+const account: ShipperAccount = { id: "s1", name: "Nguyễn Văn An", phone: "0901234567", email: "an@example.com", active: true, createdAt: "2026-11-11T18:30:00.000Z", deliveredCount: 12 };
+
+test("detail sheet: name, phone, email, status, delivered count and created date (Vietnam day)", () => {
+  assert.deepEqual(shipperDetailRows(account).map((row) => row.label), ["Họ tên", "Số điện thoại", "Email", "Trạng thái", "Đã giao", "Ngày tạo"]);
+  assert.deepEqual(shipperDetailRows(account).map((row) => row.value).slice(3), ["Đang hoạt động", "12 đơn đã giao", "12/11/2026"]);
+  assert.equal(shipperDetailRows({ ...account, active: false, name: null, phone: null }).find((row) => row.label === "Trạng thái")?.value, "Đã khóa");
+  assert.equal(vnDate("nope"), "—");
+});
+
+test("detail sheet actions: Đặt lại mật khẩu, then Khóa (active, destructive) or Mở khóa (locked); same confirms", () => {
+  assert.deepEqual(shipperActions(account).map((action) => [action.key, action.label, action.destructive]), [["reset", "Đặt lại mật khẩu", false], ["toggle", "Khóa", true]]);
+  assert.deepEqual(shipperActions({ active: false }).map((action) => action.label), ["Đặt lại mật khẩu", "Mở khóa"]);
+  assert.deepEqual(toggleConfirm(account), { title: "Khóa tài khoản Nguyễn Văn An?", message: "Người này sẽ không đăng nhập được nữa. Đơn họ đang giao sẽ quay lại danh sách chờ cho người khác nhận.", confirmLabel: "Khóa", destructive: true });
+  assert.equal(toggleConfirm({ ...account, active: false }).confirmLabel, "Mở khóa");
 });

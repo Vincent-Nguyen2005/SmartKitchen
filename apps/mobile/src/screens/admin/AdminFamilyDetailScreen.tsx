@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, RefreshControl, StyleSheet, View } from "react-native";
-import { AppText, colors, spacing } from "../../theme";
+import { RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { AppText, colors, radius, spacing } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { ScreenState, styles, useLayout } from "../notifications/ui";
-import { displayName, familyRoleText, fetchFamily, formatDate, type AdminFamilyDetail, type AdminFamilyMember } from "./directoryApi";
-import { Avatar, directoryStyles, ScreenHeader } from "./directoryUi";
+import { fetchFamily, type AdminFamilyDetail } from "./directoryApi";
+import { ScreenHeader } from "./directoryUi";
+import { familyDate } from "./familyView";
 
 export interface AdminFamilyDetailScreenProps {
   familyId: string;
@@ -14,7 +15,7 @@ export interface AdminFamilyDetailScreenProps {
   onBack: () => void;
 }
 
-/** One family: name, creation date and members (SCRUM-283). */
+/** One family: name, member count and created date only. No member names, emails or other member data. */
 export default function AdminFamilyDetailScreen({ familyId, familyName, onBack }: AdminFamilyDetailScreenProps): React.JSX.Element {
   const { api } = useGatewayApi();
   const { gutter } = useLayout();
@@ -53,52 +54,36 @@ export default function AdminFamilyDetailScreen({ familyId, familyName, onBack }
     <View style={styles.screen}>
       <View style={[local.top, { paddingHorizontal: gutter }]}>
         <ScreenHeader title={title} onBack={onBack} />
-        {family ? (
-          <AppText variant="caption">
-            Tạo ngày {formatDate(family.createdAt)} · {family.memberCount} thành viên
-            {family.ownerEmail ? ` · Chủ: ${family.ownerEmail}` : ""}
-          </AppText>
-        ) : null}
       </View>
       {loading && !family ? <ScreenState loading /> : error && !family ? (
         <ScreenState error={error} onRetry={() => { setLoading(true); void load().finally(() => setLoading(false)); }} />
-      ) : (
-        <FlatList showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}
-          data={family?.members ?? []}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <MemberRow member={item} />}
-          ItemSeparatorComponent={() => <View style={directoryStyles.separator} />}
-          ListHeaderComponent={<AppText variant="subheading" accessibilityRole="header" style={local.listTitle}>Thành viên</AppText>}
-          ListEmptyComponent={<AppText variant="caption">Chưa có thành viên</AppText>}
-          contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: gutter }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
-        />
-      )}
+      ) : family ? (
+        <ScrollView contentContainerStyle={{ paddingHorizontal: gutter, paddingBottom: gutter }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}>
+          <View style={local.card}>
+            <Fact label="Tên gia đình" value={family.name} />
+            <Fact label="Số thành viên" value={`${family.memberCount} thành viên`} divider />
+            <Fact label="Ngày tạo" value={familyDate(family.createdAt)} divider />
+          </View>
+        </ScrollView>
+      ) : null}
     </View>
   );
 }
 
-type MemberRowProps = { member: AdminFamilyMember };
-
-function MemberRow({ member }: MemberRowProps): React.JSX.Element {
-  const name = displayName(member);
-  const role = familyRoleText[member.role] ?? member.role;
-  const joined = member.joinedAt ? `Tham gia ${formatDate(member.joinedAt)}` : null;
+function Fact({ label, value, divider }: { label: string; value: string; divider?: boolean }): React.JSX.Element {
   return (
-    <View style={local.row} accessible accessibilityLabel={[name, role, joined].filter(Boolean).join(", ")}>
-      <Avatar name={member.name} email={member.email} />
-      <View style={local.flex}>
-        <AppText variant="body" numberOfLines={1}>{name}</AppText>
-        <AppText variant="caption">{role}</AppText>
-        {joined ? <AppText variant="caption">{joined}</AppText> : null}
-      </View>
+    <View style={[local.fact, divider && local.divider]} accessible accessibilityLabel={`${label}: ${value}`}>
+      <AppText variant="caption">{label}</AppText>
+      <AppText variant="body" numberOfLines={2} style={local.value}>{value}</AppText>
     </View>
   );
 }
 
 const local = StyleSheet.create({
   top: { gap: spacing.xs, paddingTop: spacing.md },
-  listTitle: { paddingVertical: spacing.sm },
-  flex: { flex: 1, minWidth: 0 },
-  row: { alignItems: "center", flexDirection: "row", gap: spacing.md, paddingVertical: spacing.sm },
+  card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, paddingHorizontal: spacing.lg },
+  fact: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.md },
+  divider: { borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth },
+  value: { flexShrink: 1, textAlign: "right" },
 });

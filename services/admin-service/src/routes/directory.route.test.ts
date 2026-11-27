@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, expect, it } from "vitest";
 import request from "supertest";
 import express from "express";
-import directoryRouter from "./directory.route";
+import directoryRouter, { familyDetailView, familyListView } from "./directory.route";
 
 const previous = {
   key: process.env.INTERNAL_API_KEY,
@@ -74,4 +74,13 @@ it("answers 502 when the upstream responds with a non-JSON body", async () => {
   } finally {
     await new Promise<void>((resolve) => upstream.close(() => resolve()));
   }
+});
+
+it("families: only id, name, member count and created date reach the admin (no owner email, no members)", () => {
+  const family = { id: "f1", name: "Nhà An", memberCount: 2, ownerEmail: "owner@example.com", createdAt: "2026-11-11T00:00:00.000Z", members: [{ id: "m1", userId: "u1", name: "An", email: "an@example.com", role: "OWNER" }] };
+  expect(familyDetailView(family)).toEqual({ id: "f1", name: "Nhà An", memberCount: 2, createdAt: "2026-11-11T00:00:00.000Z" });
+  expect(familyListView({ items: [family], total: 1, page: 1, limit: 20 })).toEqual({ items: [{ id: "f1", name: "Nhà An", memberCount: 2, createdAt: "2026-11-11T00:00:00.000Z" }], total: 1, page: 1, limit: 20 });
+  expect(familyDetailView({ id: "f2", name: "X", createdAt: "2026-01-01T00:00:00.000Z", members: [{}, {}, {}] }).memberCount).toBe(3);
+  // Error bodies are not reshaped.
+  expect(familyDetailView({ error: "NOT_FOUND" })).toEqual({ error: "NOT_FOUND" });
 });

@@ -1,5 +1,6 @@
 import { colors } from "../../theme";
 import { query, type GatewayClient, type Page } from "../notifications/gatewayApi";
+import { familyView, type AdminFamilyView } from "./familyView";
 
 /**
  * Admin directory (owner: Huy, SCRUM-283). Shapes match admin-service /users and /families,
@@ -7,7 +8,6 @@ import { query, type GatewayClient, type Page } from "../notifications/gatewayAp
  * client, which attaches the signed-in user's access token.
  */
 export type UserRole = "USER" | "ADMIN" | "SHIPPER";
-export type FamilyRole = "OWNER" | "ADMIN" | "MEMBER";
 
 export type AdminUser = {
   id: string;
@@ -18,25 +18,9 @@ export type AdminUser = {
   createdAt: string;
 };
 
-export type AdminFamilySummary = {
-  id: string;
-  name: string;
-  memberCount: number;
-  ownerEmail: string;
-  createdAt: string;
-};
-
-export type AdminFamilyMember = {
-  id: string;
-  userId: string;
-  name: string | null;
-  email: string | null;
-  role: FamilyRole;
-  /** Not returned by family-service yet; shown when present. */
-  joinedAt?: string;
-};
-
-export type AdminFamilyDetail = AdminFamilySummary & { members: AdminFamilyMember[] };
+/** A family as an admin sees it: name, member count and created date only (no member data). */
+export type AdminFamilySummary = AdminFamilyView;
+export type AdminFamilyDetail = AdminFamilyView;
 
 /** The directory endpoints accept at most 100 items per page. */
 export const MAX_PAGE_SIZE = 100;
@@ -44,22 +28,18 @@ export const MAX_PAGE_SIZE = 100;
 export const fetchUsers = (api: GatewayClient, limit: number): Promise<Page<AdminUser>> =>
   api.get<Page<AdminUser>>(`/api/admin/users${query({ limit })}`);
 
-export const fetchFamilies = (api: GatewayClient, limit: number): Promise<Page<AdminFamilySummary>> =>
-  api.get<Page<AdminFamilySummary>>(`/api/admin/families${query({ limit })}`);
+export const fetchFamilies = async (api: GatewayClient, limit: number): Promise<Page<AdminFamilySummary>> => {
+  const page = await api.get<Page<AdminFamilySummary>>(`/api/admin/families${query({ limit })}`);
+  return { ...page, items: page.items.map(familyView) };
+};
 
-export const fetchFamily = (api: GatewayClient, id: string): Promise<AdminFamilyDetail> =>
-  api.get<AdminFamilyDetail>(`/api/admin/families/${encodeURIComponent(id)}`);
+export const fetchFamily = async (api: GatewayClient, id: string): Promise<AdminFamilyDetail> =>
+  familyView(await api.get<AdminFamilyDetail>(`/api/admin/families/${encodeURIComponent(id)}`));
 
 export const userRoleBadge: Record<UserRole, { label: string; color: string; background: string }> = {
   ADMIN: { label: "Quản trị", color: colors.warning, background: colors.warningSoft },
   USER: { label: "Người dùng", color: colors.primary, background: colors.primarySoft },
   SHIPPER: { label: "Người giao hàng", color: colors.success, background: colors.successSoft },
-};
-
-export const familyRoleText: Record<FamilyRole, string> = {
-  OWNER: "Chủ gia đình",
-  ADMIN: "Quản lý",
-  MEMBER: "Thành viên",
 };
 
 export const displayName = (person: { name: string | null; email: string | null }): string =>

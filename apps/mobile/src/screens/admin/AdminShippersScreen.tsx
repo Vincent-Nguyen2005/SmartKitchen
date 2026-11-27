@@ -1,19 +1,22 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { Eye, EyeOff, KeyRound, Lock, LockOpen, Mail, Phone, Plus, Truck, UserRound } from "lucide-react-native";
+import { ChevronRight, Eye, EyeOff, KeyRound, Lock, LockOpen, Mail, Phone, Plus, Truck, UserRound } from "lucide-react-native";
 import { AppIcon, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage } from "../notifications/gatewayApi";
 import { Badge, Button, colors, Field, ScreenState, styles, useLayout } from "../notifications/ui";
-import { deliveredText, newShipperProblem, passwordProblem, type NewShipper, type ShipperAccount } from "./shippers";
+import { deliveredText, newShipperProblem, passwordProblem, shipperActions, shipperDetailRows, statusText, toggleConfirm, type NewShipper, type ShipperAccount } from "./shippers";
+import { Avatar } from "./directoryUi";
 
 const EMPTY: NewShipper = { name: "", phone: "", email: "", password: "" };
 
 /**
- * Quản trị › "Người giao hàng": shipper accounts (role SHIPPER, verified, no family). Add with a password the admin
- * types (never shown again), lock / unlock (a locked shipper cannot sign in; their deliveries go back to waiting),
- * reset password. admin-service checks the ADMIN role and writes the audit log.
+ * Quản trị › "Người giao hàng": shipper accounts (role SHIPPER, verified, no family). Cards show avatar, name, phone,
+ * status and "<n> đơn đã giao"; tapping one opens a detail sheet (name, phone, email, status, delivered count, created
+ * date) with "Đặt lại mật khẩu" and "Khóa" / "Mở khóa" (a locked shipper cannot sign in; their deliveries go back to
+ * waiting). Add with a password the admin types (never shown again). admin-service checks the ADMIN role and writes
+ * the audit log.
  */
 export default function AdminShippersScreen(): React.JSX.Element {
   const { api } = useGatewayApi();
@@ -24,6 +27,7 @@ export default function AdminShippersScreen(): React.JSX.Element {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [form, setForm] = useState<NewShipper | null>(null);
   const [resetFor, setResetFor] = useState<ShipperAccount | null>(null);
+  const [detail, setDetail] = useState<ShipperAccount | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const { confirm, dialog } = useConfirm();
 
@@ -42,9 +46,7 @@ export default function AdminShippersScreen(): React.JSX.Element {
 
   const toggle = async (account: ShipperAccount) => {
     const locking = account.active;
-    const ok = await confirm(locking
-      ? { title: `Khóa tài khoản ${account.name ?? account.email}?`, message: "Người này sẽ không đăng nhập được nữa. Đơn họ đang giao sẽ quay lại danh sách chờ cho người khác nhận.", confirmLabel: "Khóa", destructive: true }
-      : { title: `Mở khóa ${account.name ?? account.email}?`, message: "Người này sẽ đăng nhập và nhận đơn được trở lại.", confirmLabel: "Mở khóa" });
+    const ok = await confirm(toggleConfirm(account));
     if (!ok) return;
     setBusyId(account.id);
     try {
@@ -75,27 +77,68 @@ export default function AdminShippersScreen(): React.JSX.Element {
         ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
         renderItem={({ item }) => (
-          <View style={local.card}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`${item.name ?? "Chưa có tên"}, ${statusText(item)}, ${deliveredText(item.deliveredCount)}`} accessibilityHint="Mở chi tiết người giao hàng" onPress={() => { setNotice(null); setDetail(item); }} style={({ pressed }) => [local.card, pressed && local.pressed]}>
             <View style={local.cardTop}>
-              <View style={local.avatar}><AppIcon icon={Truck} color={colors.primary} /></View>
+              <Avatar name={item.name} email={item.email} />
               <View style={local.flex}>
                 <Text style={local.name} numberOfLines={1}>{item.name ?? "Chưa có tên"}</Text>
-                <Text style={local.meta} numberOfLines={1}>{item.phone ?? "—"} · {item.email}</Text>
+                <Text style={local.meta} numberOfLines={1}>{item.phone ?? "—"}</Text>
               </View>
-              <Badge label={item.active ? "Đang hoạt động" : "Đã khóa"} color={item.active ? colors.success : colors.danger} background={item.active ? colors.successSoft : colors.dangerSoft} icon={item.active ? LockOpen : Lock} />
+              {busyId === item.id ? null : <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />}
             </View>
-            <Text style={local.meta}>{deliveredText(item.deliveredCount)}</Text>
-            <View style={local.actions}>
-              <Button variant="secondary" icon={KeyRound} label="Đặt lại mật khẩu" onPress={() => { setNotice(null); setResetFor(item); }} style={local.flex} />
-              <Button variant={item.active ? "danger" : "secondary"} icon={item.active ? Lock : LockOpen} label={item.active ? "Khóa" : "Mở khóa"} busy={busyId === item.id} onPress={() => void toggle(item)} style={local.flex} />
+            <View style={local.cardBottom}>
+              <StatusBadge account={item} />
+              <Text style={local.meta}>{deliveredText(item.deliveredCount)}</Text>
             </View>
-          </View>
+          </Pressable>
         )}
+      />
+      <DetailSheet
+        account={detail}
+        busy={detail !== null && busyId === detail.id}
+        onClose={() => setDetail(null)}
+        onReset={(account) => { setDetail(null); setResetFor(account); }}
+        onToggle={(account) => { setDetail(null); void toggle(account); }}
       />
       <CreateSheet form={form} onChange={setForm} onClose={() => setForm(null)} onCreated={(account) => { setForm(null); setNotice(`Đã tạo tài khoản cho ${account.name ?? account.email}. Gửi mật khẩu cho họ trực tiếp.`); void load(); }} />
       <ResetSheet account={resetFor} onClose={() => setResetFor(null)} onDone={() => { setNotice("Đã đặt lại mật khẩu. Các phiên đăng nhập cũ đã kết thúc."); setResetFor(null); }} />
       {dialog}
     </View>
+  );
+}
+
+function StatusBadge({ account }: { account: ShipperAccount }): React.JSX.Element {
+  return <Badge label={statusText(account)} color={account.active ? colors.success : colors.danger} background={account.active ? colors.successSoft : colors.dangerSoft} icon={account.active ? LockOpen : Lock} />;
+}
+
+/** Tapping a card: the account's details and its two actions (each closes the sheet, then runs the usual flow). */
+function DetailSheet({ account, busy, onClose, onReset, onToggle }: { account: ShipperAccount | null; busy: boolean; onClose: () => void; onReset: (account: ShipperAccount) => void; onToggle: (account: ShipperAccount) => void }): React.JSX.Element {
+  return (
+    <Modal animationType="slide" transparent visible={account !== null} onRequestClose={onClose}>
+      <View style={local.backdrop}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={onClose} style={StyleSheet.absoluteFill} />
+        {account ? (
+          <View style={local.sheet}>
+            <View style={local.cardTop}>
+              <Avatar name={account.name} email={account.email} />
+              <Text style={[local.sheetTitle, local.flex]} accessibilityRole="header" numberOfLines={1}>{account.name ?? "Chưa có tên"}</Text>
+              <StatusBadge account={account} />
+            </View>
+            {shipperDetailRows(account).map((row) => (
+              <View key={row.label} style={local.detailRow}>
+                <Text style={local.meta}>{row.label}</Text>
+                <Text style={local.detailValue} numberOfLines={1} selectable>{row.value}</Text>
+              </View>
+            ))}
+            <View style={local.actions}>
+              {shipperActions(account).map((action) => action.key === "reset"
+                ? <Button key={action.key} variant="secondary" icon={KeyRound} label={action.label} onPress={() => onReset(account)} style={local.flex} />
+                : <Button key={action.key} variant={action.destructive ? "danger" : "secondary"} icon={account.active ? Lock : LockOpen} label={action.label} busy={busy} onPress={() => onToggle(account)} style={local.flex} />)}
+            </View>
+          </View>
+        ) : null}
+      </View>
+    </Modal>
   );
 }
 
@@ -201,7 +244,10 @@ const local = StyleSheet.create({
   notice: { ...textStyles.bodySmall, backgroundColor: colors.successSoft, borderRadius: radius.sm, color: colors.success, padding: spacing.md },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
   cardTop: { alignItems: "center", flexDirection: "row", gap: spacing.md },
-  avatar: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.pill, height: 40, justifyContent: "center", width: 40 },
+  cardBottom: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, justifyContent: "space-between" },
+  pressed: { opacity: 0.85 },
+  detailRow: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingVertical: spacing.sm },
+  detailValue: { ...textStyles.body, flexShrink: 1, textAlign: "right" },
   flex: { flex: 1, minWidth: 0 },
   name: { ...textStyles.label },
   meta: { ...textStyles.bodySmall, color: colors.muted },

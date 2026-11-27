@@ -1,13 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
-import { Check, RefreshCw, Repeat, Save, Search, X } from "lucide-react-native";
+import { Check, RefreshCw, Repeat, Search, X } from "lucide-react-native";
 import { AppIcon, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { SegmentTabs } from "../../components/SegmentTabs";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage } from "../notifications/gatewayApi";
 import { Button, colors, ScreenState, styles, useLayout } from "../notifications/ui";
-import { DEAL_TABS, dealPriceParts, dealTabMemory, formOf, settingsErrors, settingsPayload, statusNote, swapNotice, todayHeader, type DailyDealsResponse, type DealTab, type SettingsForm } from "./dailyDeals";
+import type { AutoSaveState } from "../../services/autoSave";
+import { createSettingsAutoSave, DEAL_TABS, dealPriceParts, dealTabMemory, formOf, saveStatusText, settingsPayload, statusNote, swapNotice, switchLabel, todayHeader, type DailyDealsResponse, type DealTab, type SettingsField, type SettingsForm } from "./dailyDeals";
 
 const BASE = "/api/admin/daily-deals";
 
@@ -16,7 +17,8 @@ const BASE = "/api/admin/daily-deals";
  * exactly like a normal discount). Two segment tabs (choice kept for the session):
  * - "Hôm nay" (default): "<Thứ>, dd/MM/yyyy · Giảm a–b%", today's list (% pill, name, "giá gốc → giá giảm / đơn vị",
  *   icon button "Đổi nguyên liệu") and "Chọn lại hôm nay" (confirm).
- * - "Cài đặt": on / off, products per day, % range, excluded products, "Lưu cài đặt".
+ * - "Cài đặt": auto-saved (no save button): the switch and exclusions at once, numbers ~600 ms after typing stops and
+ *   on blur (invalid values are not sent; the error shows under the field); "Đang lưu… / Đã lưu" at the top.
  * admin-service checks the ADMIN role and writes the audit log.
  */
 export default function DailyDealsScreen(): React.JSX.Element {
@@ -26,20 +28,36 @@ export default function DailyDealsScreen(): React.JSX.Element {
   const [form, setForm] = useState<SettingsForm | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [showErrors, setShowErrors] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<SettingsField, string>>>({});
+  const [saveState, setSaveState] = useState<AutoSaveState>({ status: "idle", error: null, field: null });
+  const formRef = useRef<SettingsForm | null>(null);
+  const saverRef = useRef<ReturnType<typeof createSettingsAutoSave> | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTabState] = useState<DealTab>(dealTabMemory.get());
-  const setTab = (next: DealTab) => { setTabState(dealTabMemory.set(next)); setNotice(null); };
+  const setTab = (next: DealTab) => { if (next !== "settings") void saverRef.current?.flush(); setTabState(dealTabMemory.set(next)); setNotice(null); };
   const { confirm, dialog } = useConfirm();
+
+  /** Today's list after a settings save; the form being typed in is left alone. */
+  const refreshData = useCallback(async () => {
+    try { setData(await api.get<DailyDealsResponse>(BASE)); } catch { /* the next load shows it */ }
+  }, [api]);
 
   const load = useCallback(async (refresh = false) => {
     if (refresh) setRefreshing(true);
     try {
+      await saverRef.current?.flush();
       const next = await api.get<DailyDealsResponse>(BASE);
       setData(next);
-      setForm(formOf(next.settings));
+      const nextForm = formOf(next.settings);
+      formRef.current = nextForm;
+      setForm(nextForm);
+      setFieldErrors({});
+      saverRef.current = createSettingsAutoSave({
+        initial: settingsPayload(nextForm),
+        save: async (settings) => { await api.put(`${BASE}/settings`, settings); void refreshData(); },
+        onState: setSaveState,
+      });
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -48,26 +66,19 @@ export default function DailyDealsScreen(): React.JSX.Element {
     }
   }, [api]);
   useEffect(() => { void load(); }, [load]);
+  // Leaving the screen saves anything still pending.
+  useEffect(() => () => { void saverRef.current?.flush(); }, []);
 
-  const errors = form && showErrors ? settingsErrors(form) : {};
-  const update = (patch: Partial<SettingsForm>) => { setNotice(null); setForm((current) => (current ? { ...current, ...patch } : current)); };
-
-  const save = async () => {
-    if (!form) return;
-    setShowErrors(true);
-    if (Object.keys(settingsErrors(form)).length > 0) return;
-    setSaving(true);
-    try {
-      await api.put(`${BASE}/settings`, settingsPayload(form));
-      setNotice("Đã lưu. Thay đổi áp dụng từ lần chọn tiếp theo (ngày mai hoặc khi bấm Chọn lại hôm nay).");
-      setShowErrors(false);
-      await load();
-    } catch (caught) {
-      setError(errorMessage(caught));
-    } finally {
-      setSaving(false);
-    }
+  /** "type": numbers while typing (debounced); "commit": switch, exclusions and blur (at once). */
+  const update = (patch: Partial<SettingsForm>, mode: "type" | "commit") => {
+    if (!formRef.current || !saverRef.current) return;
+    const next = { ...formRef.current, ...patch };
+    formRef.current = next;
+    setForm(next);
+    setNotice(null);
+    setFieldErrors(mode === "type" ? saverRef.current.type(next) : saverRef.current.commit(next));
   };
+  const commitCurrent = () => update({}, "commit");
 
   const swap = async (productId: string) => {
     const before = data?.deals ?? [];
@@ -111,20 +122,18 @@ export default function DailyDealsScreen(): React.JSX.Element {
 
         {tab === "settings" ? (
           <View style={local.section}>
+            {saveStatusText(saveState) ? <Text style={local.saveStatus} accessibilityLiveRegion="polite">{saveStatusText(saveState)}</Text> : null}
+            {saveState.status === "error" && saveState.error ? <Text style={styles.errorText} accessibilityRole="alert">{saveState.error}</Text> : null}
             <View style={local.switchRow}>
-              <View style={local.flex}>
-                <Text style={local.label}>Đang bật</Text>
-                <Text style={local.meta}>Tắt để dừng ngay (sản phẩm hôm nay trở lại giá thường).</Text>
-              </View>
-              <Switch accessibilityLabel="Bật giảm giá tự động" value={form.enabled} onValueChange={(enabled) => update({ enabled })} trackColor={{ true: colors.primary, false: colors.border }} thumbColor={colors.surface} />
+              <Text style={[local.label, local.flex]}>{switchLabel(form.enabled)}</Text>
+              <Switch accessibilityLabel="Giảm giá tự động" accessibilityHint={switchLabel(form.enabled)} value={form.enabled} onValueChange={(enabled) => update({ enabled }, "commit")} trackColor={{ true: colors.primary, false: colors.border }} thumbColor={colors.surface} />
             </View>
             <View style={local.columns}>
-              <NumberInput label="Số sản phẩm mỗi ngày" value={form.dealsPerDay} onChange={(dealsPerDay) => update({ dealsPerDay })} error={errors.dealsPerDay} />
-              <NumberInput label="Giảm thấp nhất (%)" value={form.minPercent} onChange={(minPercent) => update({ minPercent })} error={errors.minPercent} />
-              <NumberInput label="Giảm cao nhất (%)" value={form.maxPercent} onChange={(maxPercent) => update({ maxPercent })} error={errors.maxPercent} />
+              <NumberInput label="Số sản phẩm mỗi ngày" value={form.dealsPerDay} onChange={(dealsPerDay) => update({ dealsPerDay }, "type")} onBlur={commitCurrent} error={fieldErrors.dealsPerDay} />
+              <NumberInput label="Giảm thấp nhất (%)" value={form.minPercent} onChange={(minPercent) => update({ minPercent }, "type")} onBlur={commitCurrent} error={fieldErrors.minPercent} />
+              <NumberInput label="Giảm cao nhất (%)" value={form.maxPercent} onChange={(maxPercent) => update({ maxPercent }, "type")} onBlur={commitCurrent} error={fieldErrors.maxPercent} />
             </View>
-            <ExcludedPicker products={data.products} value={form.excludedProductIds} onChange={(excludedProductIds) => update({ excludedProductIds })} />
-            <Button label="Lưu cài đặt" icon={Save} busy={saving} onPress={() => void save()} />
+            <ExcludedPicker products={data.products} value={form.excludedProductIds} onChange={(excludedProductIds) => update({ excludedProductIds }, "commit")} />
           </View>
         ) : (
           <View style={local.section}>
@@ -163,11 +172,11 @@ export default function DailyDealsScreen(): React.JSX.Element {
   );
 }
 
-function NumberInput({ label, value, onChange, error }: { label: string; value: string; onChange: (value: string) => void; error?: string }): React.JSX.Element {
+function NumberInput({ label, value, onChange, onBlur, error }: { label: string; value: string; onChange: (value: string) => void; onBlur: () => void; error?: string }): React.JSX.Element {
   return (
     <View style={local.inputBlock}>
       <Text style={local.inputLabel}>{label}</Text>
-      <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} keyboardType="number-pad" maxLength={3} style={[local.input, error ? local.inputError : null]} />
+      <TextInput accessibilityLabel={label} value={value} onChangeText={onChange} onBlur={onBlur} keyboardType="number-pad" maxLength={3} style={[local.input, error ? local.inputError : null]} />
       {error ? <Text style={local.fieldError} accessibilityRole="alert">{error}</Text> : null}
     </View>
   );
@@ -212,6 +221,7 @@ function ExcludedPicker({ products, value, onChange }: { products: DailyDealsRes
 const local = StyleSheet.create({
   content: { gap: spacing.md, paddingBottom: spacing.xl, paddingTop: spacing.md },
   meta: { ...textStyles.bodySmall, color: colors.muted },
+  saveStatus: { ...textStyles.caption, color: colors.muted, textAlign: "right" },
   notice: { ...textStyles.bodySmall, backgroundColor: colors.successSoft, borderRadius: radius.sm, color: colors.success, padding: spacing.md },
   section: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
   sectionTitle: { ...textStyles.label },
