@@ -35,12 +35,13 @@ import OrdersScreen from "./OrdersScreen";
 type ScreenView = "market" | "cart";
 /** openCartKey: bump it to show Giỏ hàng (e.g. after "Thêm vào Giỏ hàng" in Thông báo). */
 /** openOrdersKey: a new value opens Đơn hàng (order notice tapped in Thông báo). */
-type Props = { onOpenFamily?: () => void; openCartKey?: number; openOrdersKey?: number };
+type Props = { onOpenFamily?: () => void; openCartKey?: number; openOrdersKey?: number; onOrdered?: () => void };
 const AUTO_REFRESH_MS = 30_000;
 /** No auto refresh while the user typed in the product search within this window. */
 export const TYPING_QUIET_MS = 5_000;
 
-export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, openOrdersKey = 0 }: Props): React.JSX.Element {
+/** onOrdered: an order was placed (Kho reloads, so its "Đang giao" rows show at once). */
+export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, openOrdersKey = 0, onOrdered }: Props): React.JSX.Element {
   const { family, accessToken, ready } = useSession();
   const { width } = useWindowDimensions();
   const isCompact = width < 360;
@@ -357,7 +358,7 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, open
             itemCount={cart.length}
             total={total}
             onClose={() => setCheckoutOpen(false)}
-            onPlaced={() => { setCheckoutOpen(false); showToast("Đã đặt hàng"); void fetchData(false); }}
+            onPlaced={() => { setCheckoutOpen(false); showToast("Đã đặt hàng"); void fetchData(false); onOrdered?.(); }}
           />
           <OrdersScreen visible={ordersOpen} familyId={family.id} accessToken={accessToken} onClose={() => setOrdersOpen(false)} />
         </>

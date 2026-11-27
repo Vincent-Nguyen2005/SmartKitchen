@@ -57,7 +57,7 @@ import ShoppingCartScreen from "./src/screens/shopping-cart/ShoppingCartScreen";
 import NutritionHome from "./src/screens/nutrition/NutritionHome";
 import { SessionProvider, useSession } from "./src/services/session";
 import NotificationsHome from "./src/screens/notifications/NotificationsHome";
-import { pushTarget, type GreetingMeal } from "./src/screens/notifications/greeting";
+import { pushTarget, type GreetingMeal } from "./src/screens/notifications/pushTarget";
 import AdminHome from "./src/screens/admin/AdminHome";
 import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
@@ -656,7 +656,7 @@ function AppContent(): React.JSX.Element {
         {!paymentUrl && activeTab === "recipes" && (
           <RecipeScreen accessToken={session.accessToken} />
         )}
-        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} openOrdersKey={ordersOpenKey} />}
+        {!paymentUrl && activeTab === "shopping" && <ShoppingCartScreen onOpenFamily={() => setTab("family")} openCartKey={cartOpenKey} openOrdersKey={ordersOpenKey} onOrdered={() => setInventoryRefreshKey((current) => current + 1)} />}
         {!paymentUrl && activeTab === "menu" && (
           <MenuScreen
             accessToken={session.accessToken}
@@ -670,7 +670,6 @@ function AppContent(): React.JSX.Element {
             onOpenInventoryItem={(itemId) => { setInventoryFocusId(itemId); setTab("inventory"); }}
             onChanged={() => void refreshNotificationBadge()}
             onOpenCart={() => { setCartOpenKey((key) => key + 1); setTab("shopping"); }}
-            onOpenMeal={openMeal}
             onOpenOrders={() => { setOrdersOpenKey((key) => key + 1); setTab("shopping"); }}
           />
         )}

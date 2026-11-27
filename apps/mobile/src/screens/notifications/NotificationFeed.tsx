@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { Clock, Inbox, Info, ShoppingCart, Tag } from "lucide-react-native";
+import { Clock, Inbox, Info, ShoppingCart, Tag, Truck } from "lucide-react-native";
+import { notificationCategory, opensOrders, type CategoryIcon } from "./notificationCategory";
 import { errorMessage, query, type Page } from "./gatewayApi";
 import { useGatewayApi } from "./useGatewayApi";
 import { AppIcon, spacing, type LucideIcon } from "../../theme";
@@ -25,18 +26,8 @@ export type AppNotification = {
 export const EXPIRY_ALERT_DAYS = 3;
 const PAGE_SIZE = 20;
 const PROMOTION_LIMIT = 50;
-const typeLabel: Record<AppNotification["type"], string> = {
-  PROMOTION: "Khuyến mãi",
-  EXPIRY_ALERT: "Sắp hết hạn",
-  SHOPPING_REMINDER: "Nhắc đi chợ",
-  SYSTEM: "Hệ thống",
-};
-const typeIcon: Record<AppNotification["type"], LucideIcon> = {
-  PROMOTION: Tag,
-  EXPIRY_ALERT: Clock,
-  SHOPPING_REMINDER: ShoppingCart,
-  SYSTEM: Info,
-};
+/** Category icons (labels and the choice in notificationCategory.ts; order notices: "Đơn hàng" + truck). */
+const CATEGORY_ICONS: Record<CategoryIcon, LucideIcon> = { tag: Tag, clock: Clock, cart: ShoppingCart, info: Info, truck: Truck };
 
 const pad = (value: number) => String(value).padStart(2, "0");
 /** dd/mm/yyyy in the device's calendar. */
@@ -174,7 +165,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
 
   const openNotification = (item: AppNotification) => {
     void markRead(item);
-    if (item.data?.type === "order") { onOpenOrders?.(); return; }
+    if (opensOrders(item)) { onOpenOrders?.(); return; }
     const promotion = item.data?.promotionId ? promotions.find((entry) => entry.id === item.data?.promotionId) : undefined;
     if (promotion) setSelected(promotion);
   };
@@ -218,10 +209,11 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
     }
     const item = entry.item;
     const unread = item.status !== "READ";
+    const category = notificationCategory(item);
     return (
       <FeedCard
-        icon={<AppIcon icon={typeIcon[item.type]} color={colors.primary} />}
-        meta={`${typeLabel[item.type]} · ${new Date(item.createdAt).toLocaleString("vi-VN")}`}
+        icon={<AppIcon icon={CATEGORY_ICONS[category.icon]} color={colors.primary} />}
+        meta={`${category.label} · ${new Date(item.createdAt).toLocaleString("vi-VN")}`}
         title={item.title}
         body={item.body}
         unread={unread}

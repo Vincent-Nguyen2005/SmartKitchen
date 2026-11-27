@@ -50,6 +50,8 @@ shopping-list-service calls these internal endpoints (header `x-internal-api-key
 - `POST /api/inventory/internal/deliveries/:orderId/deliver` `{ familyId, createdByUserId, lines (with expiryDate) }`: each line goes through the normal purchase path (merge rules, expiry from the delivery day), then the pending rows are removed.
 - `POST /api/inventory/internal/deliveries/:orderId/cancel` `{ familyId }`: the pending rows are removed (cancelled or failed order).
 
+Rows without an expiry (every "Đang giao" row, bought products without shelf-life days) are never hidden by the "expired bought rows leave Kho after 3 days" rule (`hiddenPurchaseFilter` checks `expiryDate IS NOT NULL`; without it SQL NULL logic dropped them).
+
 While a row has `deliveryOrderId` it is listed (the app shows it dimmed with "Đang giao") but it can't be edited, used, merged into ("Cộng thêm") or deleted (409 `DELIVERY_PENDING`), has no photo, and is left out of cooking, the duplicate prompt, purchase merges and expiry alerts. menu-service leaves it out of cooking suggestions but counts it as covered in "Cần mua tuần này".
 
 ## One product, no accidental duplicates

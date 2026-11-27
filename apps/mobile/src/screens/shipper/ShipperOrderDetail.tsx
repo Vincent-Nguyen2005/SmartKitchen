@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { WebView } from "react-native-webview";
-import { Banknote, MapPin, Navigation, Phone, StickyNote, User, X } from "lucide-react-native";
+import { Banknote, MapPin, Maximize2, Navigation, Phone, StickyNote, User, X } from "lucide-react-native";
+import MapFrame from "./MapFrame";
+import ShipperRouteMap from "./ShipperRouteMap";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { formatVnd } from "../../services/format";
@@ -34,6 +35,7 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
   const [failOpen, setFailOpen] = useState(false);
   const [reason, setReason] = useState<FailReason | null>(null);
   const [otherReason, setOtherReason] = useState("");
+  const [routeOpen, setRouteOpen] = useState(false);
   const { confirm, dialog } = useConfirm();
 
   const load = useCallback(async (id: string) => {
@@ -107,9 +109,14 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
           <>
             <ScrollView contentContainerStyle={local.content} showsVerticalScrollIndicator={false}>
               {hasPoint ? (
-                <View style={local.map} pointerEvents="none">
-                  <WebView originWhitelist={["*"]} source={{ html: mapViewHtml(order.latitude as number, order.longitude as number) }} scrollEnabled={false} />
-                </View>
+                // Tap: full-screen map with the shipper's position and the route (web: iframe, phones: WebView).
+                <Pressable accessibilityRole="button" accessibilityLabel="Mở bản đồ đường đi" onPress={() => setRouteOpen(true)} style={local.mapWrap}>
+                  <MapFrame html={mapViewHtml(order.latitude as number, order.longitude as number)} interactive={false} style={local.map} accessibilityLabel="Vị trí giao hàng" />
+                  <View style={local.mapHint} pointerEvents="none">
+                    <AppIcon icon={Maximize2} size="sm" color={colors.primary} />
+                    <Text style={local.mapHintText}>Xem đường đi</Text>
+                  </View>
+                </Pressable>
               ) : null}
               <View style={local.card}>
                 <View style={local.row}>
@@ -213,6 +220,12 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
             </View>
           </View>
         ) : null}
+        <ShipperRouteMap
+          customer={routeOpen && order && hasPoint ? { latitude: order.latitude as number, longitude: order.longitude as number } : null}
+          address={order?.deliveryAddress ?? null}
+          onClose={() => setRouteOpen(false)}
+          onDirections={() => void directions()}
+        />
         {dialog}
       </SafeAreaView>
     </Modal>
@@ -227,7 +240,10 @@ const local = StyleSheet.create({
   center: { alignItems: "center", flex: 1, gap: spacing.md, justifyContent: "center", padding: spacing.xl },
   content: { alignSelf: "center", gap: spacing.md, maxWidth: 720, padding: spacing.lg, width: "100%" },
   flex: { flex: 1, minWidth: 0 },
-  map: { borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, height: 180, overflow: "hidden" },
+  mapWrap: { borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, height: 180, overflow: "hidden" },
+  map: { flex: 1 },
+  mapHint: { alignItems: "center", backgroundColor: colors.surface, borderRadius: radius.pill, bottom: spacing.sm, flexDirection: "row", gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, position: "absolute", right: spacing.sm },
+  mapHintText: { ...textStyles.caption, color: colors.primary, fontWeight: "700" },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
   row: { alignItems: "center", flexDirection: "row", gap: spacing.sm },
   address: { ...textStyles.label, flex: 1 },

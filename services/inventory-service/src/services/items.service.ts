@@ -74,7 +74,10 @@ export function hiddenPurchaseFilter(now: Date = new Date()) {
   const vnToday = new Date(now.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
   const cutoff = new Date(`${vnToday}T00:00:00.000Z`);
   cutoff.setUTCDate(cutoff.getUTCDate() - PURCHASE_HIDE_AFTER_EXPIRY_DAYS);
-  return { NOT: { origin: "PURCHASE" as const, expiryDate: { lt: cutoff } } };
+  // `not: null` matters: in SQL, NOT (origin = 'PURCHASE' AND "expiryDate" < cutoff) is NULL for a row without an
+  // expiry, and NULL rows are dropped, so every bought row without an expiry (all "Đang giao" rows, products without
+  // shelf-life days) would disappear from Kho and cooking. With IS NOT NULL the inner condition is FALSE for them.
+  return { NOT: { origin: "PURCHASE" as const, expiryDate: { not: null, lt: cutoff } } };
 }
 
 export type DuplicateMatch = {
