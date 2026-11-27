@@ -23,8 +23,9 @@ import { cartLines, findCatalogProduct, unitPriceOf } from "./cart";
 import { cartTotal, lineTotal, unitPriceText } from "./pricing";
 import { formatQuantity, quantityRuleFor, stepQuantity } from "./quantityRule";
 import { unitWord } from "./unitDisplay";
-import { type CheckoutLine, type ShoppingItem, type ShoppingList, shoppingApi } from "./shoppingApi";
+import { type CheckoutLine, type ShoppingItem, type ShoppingList, shoppingApi, type CheckoutPreview } from "./shoppingApi";
 import CheckoutSheet from "./CheckoutSheet";
+import { cartPromotionLine } from "./checkoutSummary";
 import OrdersScreen from "./OrdersScreen";
 
 /**
@@ -198,6 +199,25 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, open
     }
   };
 
+  // The automatic promotion for this cart (server preview, the same the checkout charges), shown under "Tổng".
+  // Asked again 500 ms after the cart's total or lines change; an older answer never replaces a newer one.
+  const [cartPreview, setCartPreview] = useState<CheckoutPreview | null>(null);
+  const previewRequest = useRef(0);
+  const cartKey = cart.map((item) => `${item.id}:${item.quantity}`).join(",");
+  useEffect(() => {
+    if (!family?.id || !accessToken || cart.length === 0) { setCartPreview(null); return undefined; }
+    const id = ++previewRequest.current;
+    const timer = setTimeout(() => {
+      shoppingApi.checkoutPreview(accessToken, family.id, [])
+        .then((result) => { if (id === previewRequest.current) setCartPreview(result); })
+        .catch(() => { if (id === previewRequest.current) setCartPreview(null); });
+    }, 500);
+    return () => clearTimeout(timer);
+    // cartKey covers the lines and quantities; total covers catalog prices arriving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [family?.id, accessToken, cartKey, total]);
+  const promotionLine = cartPromotionLine(cartPreview);
+
   /** Catalog details per cart line for the order: group (Kho category) and shelf life (expiry on delivery). */
   const checkoutLines: CheckoutLine[] = cart.map((item) => {
     const product = catalogFor(item);
@@ -332,7 +352,12 @@ export default function ShoppingCartScreen({ onOpenFamily, openCartKey = 0, open
           )}
           {family && cart.length > 0 && (
             <View style={[styles.totalBar, isWide && styles.wideContent]}>
-              <Text style={styles.totalText} accessibilityLiveRegion="polite">Tổng: {formatVnd(total)}</Text>
+              <View style={styles.totalBlock}>
+                <Text style={styles.totalText} accessibilityLiveRegion="polite">Tổng: {formatVnd(total)}</Text>
+                {promotionLine ? (
+                  <Text style={[styles.promotionLine, promotionLine.tone === "success" ? styles.promotionSuccess : styles.promotionHint]} numberOfLines={2} accessibilityLiveRegion="polite">{promotionLine.text}</Text>
+                ) : null}
+              </View>
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Mua ${cart.length} món, đặt hàng giao tận nơi`}
@@ -399,6 +424,10 @@ const styles = StyleSheet.create({
   lineTotal: { ...textStyles.label, color: colors.primary },
   totalBar: { alignItems: "center", backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", gap: spacing.md, justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   totalText: { ...textStyles.subheading, flexShrink: 1 },
+  totalBlock: { flexShrink: 1, gap: 2, minWidth: 0 },
+  promotionLine: { ...textStyles.caption },
+  promotionSuccess: { color: colors.success, fontWeight: "700" },
+  promotionHint: { color: colors.primary },
   buyButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, minWidth: 120, paddingHorizontal: spacing.xl },
   primaryButton: { alignItems: "center", backgroundColor: colors.primary, borderRadius: radius.sm, justifyContent: "center", minHeight: touchTarget, paddingHorizontal: spacing.lg },
   primaryButtonText: { ...textStyles.label, color: colors.primaryText },

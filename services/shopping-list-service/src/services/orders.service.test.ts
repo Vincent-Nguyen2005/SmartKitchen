@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from "express";
 
 /** In-memory orders and cart lines, enough of Prisma's API for the order flow. */
 type Order = Record<string, any> & { id: string; familyId: string; status: string };
-const db = vi.hoisted(() => ({ orders: [] as Order[], lines: [] as Array<Record<string, any>>, history: [] as unknown[] }));
+const db = vi.hoisted(() => ({ orders: [] as Order[], lines: [] as Array<Record<string, any>>, history: [] as unknown[], promotions: [] as Array<Record<string, any>> }));
 const match = (row: Record<string, any>, where: Record<string, any>): boolean => Object.entries(where).every(([key, value]) => {
   if (key === "OR") return (value as Array<Record<string, any>>).some((entry) => match(row, entry));
   if (value && typeof value === "object" && "not" in value) return row[key] !== value.not;
@@ -38,7 +38,9 @@ const mocks = vi.hoisted(() => {
   };
   const shoppingList = { findFirst: vi.fn(), update: vi.fn(), findMany: vi.fn(async () => [{ id: "77777777-7777-4777-8777-777777777777", status: "ACTIVE", items: db.lines }]) };
   const purchaseHistory = { upsert: vi.fn(async (args: unknown) => { db.history.push(args); return args; }) };
-  const prisma = { purchase, shoppingItem, shoppingList, purchaseHistory, $transaction: vi.fn() };
+  // Running checkout promotions (the service filters by date in the query; tests store only running ones).
+  const checkoutPromotion = { findMany: vi.fn(async () => db.promotions) };
+  const prisma = { purchase, shoppingItem, shoppingList, purchaseHistory, checkoutPromotion, $transaction: vi.fn() };
   prisma.$transaction.mockImplementation(async (run: (tx: typeof prisma) => Promise<unknown>) => run(prisma));
   return { prisma, axios: { post: vi.fn(), get: vi.fn(async () => ({ data: { items: [] } })) } };
 });
@@ -66,7 +68,7 @@ const inventoryCalls = () => mocks.axios.post.mock.calls.map((call) => [String(c
 
 beforeEach(() => {
   vi.clearAllMocks();
-  db.orders.length = 0; db.lines.length = 0; db.history.length = 0;
+  db.orders.length = 0; db.lines.length = 0; db.history.length = 0; db.promotions.length = 0;
   mocks.prisma.$transaction.mockImplementation(async (run: (tx: typeof mocks.prisma) => Promise<unknown>) => run(mocks.prisma));
   mocks.prisma.shoppingList.findFirst.mockResolvedValue({ id: listId, familyId, status: "ACTIVE" });
   mocks.axios.post.mockResolvedValue({ data: { success: true, data: {} } });
@@ -196,7 +198,7 @@ describe("authorization", () => {
   it("the shipper sees delivery data and a receipt only (no family, buyer or other user data)", async () => {
     await place();
     const [order] = await OrdersService.shipperList(shipper, "available");
-    expect(Object.keys(order).sort()).toEqual(["codAmount", "deliveredAt", "deliveryAddress", "distanceKm", "failReason", "failedAt", "id", "itemCount", "items", "latitude", "longitude", "note", "orderedAt", "paymentMethod", "receiverName", "receiverPhone", "shippingAt", "status"]);
+    expect(Object.keys(order).sort()).toEqual(["codAmount", "deliveredAt", "deliveryAddress", "discountAmount", "distanceKm", "failReason", "failedAt", "id", "itemCount", "items", "latitude", "longitude", "note", "orderedAt", "paymentMethod", "promotionName", "receiverName", "receiverPhone", "shippingAt", "status", "subtotal"]);
     expect(order).not.toHaveProperty("familyId");
     expect(order).not.toHaveProperty("buyerUserId");
     // Receipt: unit price after discount, the original when discounted, line total; COD = total.
@@ -376,5 +378,63 @@ describe("end to end through the API (customer + shipper)", () => {
       vi.unstubAllGlobals();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+});
+
+describe("automatic checkout promotion", () => {
+  const promo = (overrides: Record<string, unknown> = {}) => ({
+    id: "99999999-9999-4999-8999-999999999991", name: "Giảm 10% đơn từ 150.000 đ", scope: "ORDER", groups: [], productIds: [], type: "PERCENT", value: 10,
+    maxDiscount: 15_000, minSubtotal: 150_000, startDate: new Date("2000-01-01T00:00:00Z"), endDate: new Date("2999-12-31T00:00:00Z"),
+    usageLimitPerUser: null, isActive: true, createdAt: new Date("2026-12-01T00:00:00Z"), ...overrides,
+  });
+
+  it("the order stores subtotal, promotion, discount and total; COD = discounted total; lines carry their share", async () => {
+    db.promotions.push(promo(), promo({ id: "99999999-9999-4999-8999-999999999992", name: "Thịt giảm 5.000 đ", scope: "GROUP", groups: ["thịt"], type: "AMOUNT", value: 5_000, maxDiscount: null, minSubtotal: null }));
+    const order = await place();
+    // Subtotal 162 000 + 24 000 = 186 000; 10% = 18 600, capped at 15 000 (beats the 5 000 group promotion).
+    expect(order).toMatchObject({ subtotal: 186_000, promotionId: "99999999-9999-4999-8999-999999999991", promotionName: "Giảm 10% đơn từ 150.000 đ", discountAmount: 15_000, total: 171_000, codAmount: 171_000 });
+    const shares = db.lines.map((line) => line.discountShare);
+    expect(shares.reduce((sum, part) => sum + part, 0)).toBe(15_000);
+    expect(shares).toEqual([13_065, 1_935]); // 15 000 × 162/186 and × 24/186, largest remainder
+  });
+
+  it("preview returns exactly what Đặt hàng charges", async () => {
+    db.promotions.push(promo());
+    db.lines.push(cartLine("55555555-5555-4555-8555-555555555551"), cartLine("55555555-5555-4555-8555-555555555552", { name: "Rau muống", unit: "PACK", quantity: 2, productId: null, unitPrice: 12000, discountPercent: null }));
+    const preview = await OrdersService.preview(familyId, buyer, [], new Map([["p-pork", { group: "Thịt" }]]));
+    expect(preview).toEqual({ subtotal: 186_000, promotion: { id: "99999999-9999-4999-8999-999999999991", name: "Giảm 10% đơn từ 150.000 đ", discount: 15_000 }, discount: 15_000, total: 171_000, hint: null });
+    const order = await OrdersService.place(familyId, buyer, delivery, [], new Map([["p-pork", { group: "Thịt" }]]), { expectedTotal: preview.total });
+    expect(order.codAmount).toBe(preview.total);
+  });
+
+  it("re-validation: a different total than the app showed writes nothing and answers the new totals", async () => {
+    db.promotions.push(promo());
+    db.lines.push(cartLine("55555555-5555-4555-8555-555555555551"), cartLine("55555555-5555-4555-8555-555555555552", { name: "Rau muống", unit: "PACK", quantity: 2, productId: null, unitPrice: 12000, discountPercent: null }));
+    // The app still showed the total without the promotion (it started meanwhile).
+    await expect(OrdersService.place(familyId, buyer, delivery, [], new Map(), { expectedTotal: 186_000 }))
+      .rejects.toMatchObject({ statusCode: 409, code: "TOTAL_CHANGED", data: { subtotal: 186_000, discount: 15_000, total: 171_000 } });
+    expect(db.orders).toHaveLength(0);
+    expect(inventoryCalls()).toHaveLength(0);
+    expect(db.lines.every((line) => line.purchaseId === null)).toBe(true);
+  });
+
+  it("usage limit: orders on the way and delivered ones count; cancelled and failed ones do not", async () => {
+    db.promotions.push(promo({ usageLimitPerUser: 1 }));
+    const first = await place();
+    expect(first.discountAmount).toBe(15_000);
+    // The first order is still PENDING: it reserves the only use.
+    const second = await place();
+    expect(second.discountAmount).toBe(0);
+    expect(second.total).toBe(186_000);
+    // Cancelled: the use is released.
+    db.orders.find((order) => order.id === first.id)!.status = "CANCELLED";
+    db.orders.find((order) => order.id === second.id)!.status = "FAILED";
+    expect((await place()).discountAmount).toBe(15_000);
+  });
+
+  it("an order without a promotion: subtotal = total = COD, no shares", async () => {
+    const order = await place();
+    expect(order).toMatchObject({ subtotal: 186_000, total: 186_000, codAmount: 186_000, promotionId: null, discountAmount: 0 });
+    expect(db.lines.every((line) => line.discountShare === 0)).toBe(true);
   });
 });

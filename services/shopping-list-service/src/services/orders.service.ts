@@ -5,12 +5,15 @@ import { AppError } from "../lib/app-error";
 import { LIST_STATUS } from "../lib/constants";
 import { normalizedName } from "./shopping-list.service";
 import { lineTotalOf, paidUnitPrice, type CatalogInfo } from "./spending.service";
+import { applyPromotions, type PromotionResult } from "./checkout-promotion";
+import { PromotionsService } from "./promotions.service";
 
 /**
  * Đi chợ delivery orders, paid cash on delivery (COD).
- * - place (customer, "Đặt hàng"): the cart lines become one PENDING order (price snapshots, total = sum of rounded
- *   line totals = COD amount); Kho gets "Đang giao" rows for them first (inventory-service), so a failed Kho call
- *   leaves the cart untouched. The lines leave the cart (they are linked to the order).
+ * - place (customer, "Đặt hàng"): the cart lines become one PENDING order (price snapshots, subtotal = sum of rounded
+ *   line totals, the automatic checkout promotion (checkout-promotion.ts), total = subtotal − discount = COD amount);
+ *   Kho gets "Đang giao" rows for them first (inventory-service), so a failed Kho call leaves the cart untouched. The
+ *   lines leave the cart (they are linked to the order). preview: the same computation without writing anything.
  * - cancel (any member of the family, only while PENDING) → CANCELLED; Kho's "Đang giao" rows are removed.
  * - accept (SHIPPER, PENDING → SHIPPING, assigns the shipper), deliver (that shipper, SHIPPING → DELIVERED: the lines
  *   become normal Kho rows with expiry = delivery day + shelf life), fail (that shipper, SHIPPING → FAILED with a
@@ -101,6 +104,7 @@ const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: strin
 
 type ShipperLine = { name: string; quantity: number; unit: string; unitLabel: string | null; paidUnitPrice: number | null; unitPrice: number | null; discountPercent: number | null; lineTotal: number | null };
 type ShipperOrderRow = {
+  subtotal?: number; promotionName?: string | null; discountAmount?: number;
   id: string; status: string; purchasedAt: Date; shippingAt: Date | null; deliveredAt: Date | null; failedAt: Date | null; failReason: string | null; shipperId: string | null;
   deliveryAddress: string | null; latitude: number | null; longitude: number | null; receiverName: string | null; receiverPhone: string | null; note: string | null;
   paymentMethod: string; codAmount: number; itemCount: number; items: ShipperLine[];
@@ -117,6 +121,8 @@ export const shipperOrderView = (order: ShipperOrderRow, origin?: { latitude: nu
   distanceKm: origin && order.latitude !== null && order.longitude !== null ? Math.round(distanceKm(origin, { latitude: order.latitude, longitude: order.longitude }) * 10) / 10 : null,
   receiverName: order.receiverName, receiverPhone: order.receiverPhone, note: order.note,
   paymentMethod: order.paymentMethod, codAmount: order.codAmount, itemCount: order.itemCount,
+  // Receipt: "Khuyến mãi" row before "Tổng tiền cần thu" when the order had a promotion.
+  subtotal: order.subtotal ?? order.codAmount, promotionName: order.promotionName ?? null, discountAmount: order.discountAmount ?? 0,
   items: order.items.map((line) => ({
     name: line.name, quantity: line.quantity, unit: line.unit, unitLabel: line.unitLabel,
     unitPrice: line.paidUnitPrice,
@@ -140,9 +146,18 @@ const LINE_SELECT = { id: true, name: true, quantity: true, unit: true, productI
 /** Order as the family sees it (lines included). */
 const ORDER_INCLUDE = { items: { orderBy: { createdAt: "asc" as const }, select: LINE_SELECT } };
 
+/** What the checkout sheet and Giỏ hàng show (and what "Đặt hàng" re-checks). */
+export const previewView = (result: PromotionResult) => ({
+  subtotal: result.subtotal,
+  promotion: result.promotion ? { id: result.promotion.id, name: result.promotion.name, discount: result.promotion.discount } : null,
+  discount: result.promotion?.discount ?? 0,
+  total: result.total,
+  hint: result.hint ? { name: result.hint.name, missing: result.hint.missing, text: result.hint.text } : null,
+});
+
 export class OrdersService {
-  static async place(familyId: string, buyerUserId: string, delivery: DeliveryInput, extras: OrderLineExtras[], catalog: Map<string, CatalogInfo & { shelfLifeDays?: number }>) {
-    if (!buyerUserId) throw new AppError(400, "BUYER_REQUIRED", "An order needs the buyer.");
+  /** The cart priced like an order (lines + the automatic promotion for this buyer). */
+  private static async priceCart(familyId: string, buyerUserId: string, extras: OrderLineExtras[], catalog: Map<string, CatalogInfo & { shelfLifeDays?: number }>) {
     const list = await prisma.shoppingList.findFirst({ where: { activeFamilyId: familyId }, orderBy: { createdAt: "desc" } });
     const cart = list ? await prisma.shoppingItem.findMany({
       where: { shoppingListId: list.id, inventoryAppliedAt: null, purchaseId: null },
@@ -164,7 +179,30 @@ export class OrdersService {
         shelfLifeDays: info?.shelfLifeDays ?? extra?.shelfLifeDays ?? null,
       };
     });
-    const total = lines.reduce((sum, line) => sum + (line.lineTotal ?? 0), 0);
+    const rules = await PromotionsService.runningRules();
+    const usage = await PromotionsService.usage(buyerUserId, rules.map((rule) => rule.id));
+    const result = applyPromotions(lines.map((line) => ({ id: line.item.id, lineTotal: line.lineTotal, productId: line.item.productId, group: line.groupName })), rules, usage);
+    return { list, lines, result };
+  }
+
+  /** POST /checkout/preview: Tạm tính, Khuyến mãi, Tổng thanh toán and the "Mua thêm" hint (nothing is written). */
+  static async preview(familyId: string, buyerUserId: string, extras: OrderLineExtras[], catalog: Map<string, CatalogInfo & { shelfLifeDays?: number }>) {
+    const { result } = await this.priceCart(familyId, buyerUserId, extras, catalog);
+    return previewView(result);
+  }
+
+  /**
+   * expectedTotal: the "Tổng thanh toán" the app showed. When the server's total differs (a promotion started, ended or
+   * was used up, a price changed), nothing is written: 409 TOTAL_CHANGED with the new totals, for the app to show
+   * before the user confirms again.
+   */
+  static async place(familyId: string, buyerUserId: string, delivery: DeliveryInput, extras: OrderLineExtras[], catalog: Map<string, CatalogInfo & { shelfLifeDays?: number }>, options: { expectedTotal?: number } = {}) {
+    if (!buyerUserId) throw new AppError(400, "BUYER_REQUIRED", "An order needs the buyer.");
+    const { list, lines, result } = await this.priceCart(familyId, buyerUserId, extras, catalog);
+    if (options.expectedTotal !== undefined && options.expectedTotal !== result.total) {
+      throw new AppError(409, "TOTAL_CHANGED", "Tổng tiền đã thay đổi. Kiểm tra lại rồi bấm Đặt hàng.", previewView(result));
+    }
+    const { subtotal, total } = result;
     const orderId = randomUUID();
     // Kho first ("Đang giao" rows, idempotent): if it fails nothing else was written and the cart stays.
     await inventory("/deliveries/pending", {
@@ -176,6 +214,7 @@ export class OrdersService {
         await transaction.purchase.create({
           data: {
             id: orderId, familyId, buyerUserId, purchasedAt: new Date(), total, codAmount: total, itemCount: lines.length, status: "PENDING", paymentMethod: "COD",
+            subtotal, promotionId: result.promotion?.id ?? null, promotionName: result.promotion?.name ?? null, discountAmount: result.promotion?.discount ?? 0,
             deliveryAddress: delivery.address, latitude: delivery.latitude ?? null, longitude: delivery.longitude ?? null,
             receiverName: delivery.receiverName, receiverPhone: normalizePhone(delivery.receiverPhone), note: delivery.note || null,
           },
@@ -186,6 +225,7 @@ export class OrdersService {
             data: {
               purchaseId: orderId, unitPrice: line.unitPrice, discountPercent: line.discountPercent, paidUnitPrice: line.paid,
               lineTotal: line.lineTotal, groupName: line.groupName, unitLabel: line.unitLabel, shelfLifeDays: line.shelfLifeDays, generatedKey: null,
+              discountShare: result.shares.get(line.item.id) ?? 0,
             },
           });
           if (updated.count !== 1) throw new AppError(409, "CART_CHANGED", "The cart changed meanwhile; try again.");

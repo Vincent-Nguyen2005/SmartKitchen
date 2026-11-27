@@ -7,6 +7,7 @@ import ShipperRouteMap from "./ShipperRouteMap";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { formatVnd } from "../../services/format";
+import { discountText } from "../shopping-cart/checkoutSummary";
 import {
   deliverConfirmTitle, directionsUrls, distanceText, FAIL_REASONS, failReasonText, itemCountText, lineQuantity, mapViewHtml, placedText, telUrl,
   type FailReason, type ShipperOrder, type ShipperScope,
@@ -163,6 +164,18 @@ export default function ShipperOrderDetail({ orderId, origin, accessToken, onClo
                     <Text style={line.lineTotal !== null ? local.lineTotal : local.lineMeta}>{line.lineTotal !== null ? formatVnd(line.lineTotal) : "Chưa có giá"}</Text>
                   </View>
                 ))}
+                {order.discountAmount && order.promotionName ? (
+                  <>
+                    <View style={[local.line, local.lineDivider]} accessible accessibilityLabel={`Tạm tính ${formatVnd(order.subtotal ?? order.codAmount).replace("đ", " đồng")}`}>
+                      <Text style={[local.lineMeta, local.flex]}>Tạm tính</Text>
+                      <Text style={local.lineTotal}>{formatVnd(order.subtotal ?? order.codAmount)}</Text>
+                    </View>
+                    <View style={local.line} accessible accessibilityLabel={`Khuyến mãi ${order.promotionName}, trừ ${formatVnd(order.discountAmount).replace("đ", " đồng")}`}>
+                      <Text style={[local.lineMeta, local.flex]} numberOfLines={2}>Khuyến mãi: {order.promotionName}</Text>
+                      <Text style={[local.lineTotal, local.discount]}>{discountText(order.discountAmount)}</Text>
+                    </View>
+                  </>
+                ) : null}
                 <View style={local.totalRow} accessible accessibilityLabel={`Tổng tiền cần thu ${formatVnd(order.codAmount).replace("đ", " đồng")}`}>
                   <View style={local.row}><AppIcon icon={Banknote} size="sm" color={colors.text} /><Text style={local.totalLabel}>Tổng tiền cần thu</Text></View>
                   <Text style={local.totalValue}>{formatVnd(order.codAmount)}</Text>
@@ -259,6 +272,7 @@ const local = StyleSheet.create({
   lineMeta: { ...textStyles.caption, marginTop: 2 },
   struck: { ...textStyles.caption, textDecorationLine: "line-through" },
   lineTotal: { ...textStyles.labelSmall, textAlign: "right" },
+  discount: { color: colors.success },
   totalRow: { alignItems: "center", borderTopColor: colors.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingTop: spacing.md },
   totalLabel: { ...textStyles.label },
   totalValue: { ...textStyles.heading, color: colors.primary },

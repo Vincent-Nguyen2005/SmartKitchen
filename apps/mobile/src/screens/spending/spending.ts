@@ -19,7 +19,13 @@ export type SpendingLine = {
   lineTotal: number | null;
   group: string;
 };
-export type SpendingPurchase = { id: string; purchasedAt: string; buyerUserId: string | null; itemCount: number; total: number; lines: SpendingLine[] };
+export type SpendingPurchase = {
+  id: string; purchasedAt: string; buyerUserId: string | null; itemCount: number;
+  /** Paid (after the checkout promotion). */
+  total: number;
+  subtotal?: number; promotionName?: string | null; discountAmount?: number;
+  lines: SpendingLine[];
+};
 export type SpendingGroup = { name: string; amount: number; percent: number };
 export type MonthSpending = {
   month: string;

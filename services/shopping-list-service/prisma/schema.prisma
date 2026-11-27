@@ -49,6 +49,9 @@ model ShoppingItem {
   unitLabel          String?
   /// Catalog shelf-life days at order time: expiry in Kho = delivery day (Vietnam) + these days.
   shelfLifeDays      Int?
+  /// This line's part of the order's checkout promotion (whole VND, largest-remainder split over the eligible lines,
+  /// so the parts add up to Purchase.discountAmount); 0 without a promotion. "Chi tiêu" groups count lineTotal − this.
+  discountShare      Int       @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -79,7 +82,14 @@ model Purchase {
   familyId        String         @db.Uuid
   buyerUserId     String?        @db.Uuid
   purchasedAt     DateTime       @default(now())
+  /// What the family pays: subtotal − discountAmount (= codAmount for delivery orders).
   total           Int            @default(0)
+  /// Sum of the rounded line totals (after per-product discounts), before the checkout promotion.
+  subtotal        Int            @default(0)
+  /// The automatic checkout promotion applied (at most one), with its name as shown at order time.
+  promotionId     String?        @db.Uuid
+  promotionName   String?
+  discountAmount  Int            @default(0)
   itemCount       Int            @default(0)
   status          OrderStatus    @default(PENDING)
   /// Only "COD" (thanh toán khi nhận hàng) for now.
@@ -106,6 +116,60 @@ model Purchase {
   @@index([familyId, deliveredAt])
   @@index([status, purchasedAt])
   @@index([shipperId])
+  @@index([promotionId, buyerUserId])
+}
+
+enum PromotionScope {
+  ORDER
+  GROUP
+  PRODUCTS
+}
+
+enum PromotionType {
+  PERCENT
+  AMOUNT
+}
+
+/// Quản trị › "Chương trình khuyến mãi": applied automatically at checkout (no code), at most one per order (the one
+/// with the largest discount). Days are Vietnam calendar days: running from startDate 00:00 through endDate 23:59:59
+/// (Asia/Ho_Chi_Minh). Owned here because checkout prices orders here (one transaction, no sync).
+model CheckoutPromotion {
+  id                 String         @id @default(uuid()) @db.Uuid
+  /// Shown to users ("Khuyến mãi: <name>").
+  name               String
+  scope              PromotionScope
+  /// GROUP: catalog group names (case-insensitive match); PRODUCTS: catalog product ids.
+  groups             String[]
+  productIds         String[]
+  type               PromotionType
+  /// PERCENT: 1-100; AMOUNT: whole VND.
+  value              Int
+  /// PERCENT only: the most it can take off (whole VND); null = no cap.
+  maxDiscount        Int?
+  /// Order subtotal needed (whole VND); null = none.
+  minSubtotal        Int?
+  startDate          DateTime       @db.Date
+  endDate            DateTime       @db.Date
+  /// Times one user may get it (delivered orders, plus orders still on the way); null = unlimited.
+  usageLimitPerUser  Int?
+  isActive           Boolean        @default(true)
+  createdBy          String         @db.Uuid
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([isActive, startDate, endDate])
+}
+
+/// Admin changes to checkout promotions (who, what, before / after).
+model PromotionAuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  adminUserId String   @db.Uuid
+  action      String
+  promotionId String   @db.Uuid
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  @@index([promotionId, createdAt])
 }
 
 model PurchaseHistory {

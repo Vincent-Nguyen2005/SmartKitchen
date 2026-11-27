@@ -72,6 +72,18 @@ describe("amounts", () => {
     expect(rows.at(-1)?.amount).toBe(94 + 93); // G + H
     expect(rows.reduce((sum, row) => sum + row.amount, 0)).toBe(many.reduce((sum, line) => sum + line.lineTotal, 0));
   });
+
+  it("checkout promotion: groups count lineTotal − discountShare, so they still add up to the discounted total", () => {
+    // Order: subtotal 200 000, "Rau củ" promotion 9 999 split 5 624 / 4 375 (checkout-promotion.ts) → total 190 001.
+    const lines = [
+      { lineTotal: 120_000, groupName: "Thịt", discountShare: 0 },
+      { lineTotal: 45_000, groupName: "Rau củ", discountShare: 5_624 },
+      { lineTotal: 35_000, groupName: "Rau củ", discountShare: 4_375 },
+    ];
+    const groups = groupTotals(lines);
+    expect(groups).toEqual([{ name: "Thịt", amount: 120_000, percent: 63 }, { name: "Rau củ", amount: 70_001, percent: 37 }]);
+    expect(groups.reduce((sum, group) => sum + group.amount, 0)).toBe(190_001);
+  });
 });
 
 describe("recordPurchase", () => {
@@ -88,7 +100,7 @@ describe("recordPurchase", () => {
     // Only completed lines (in Kho, not yet in a purchase) of this family are read.
     expect(mocks.prisma.shoppingItem.findMany.mock.calls[0][0].where).toEqual({ id: { in: ["i1", "i2", "i3"] }, purchaseId: null, isPurchased: true, inventoryAppliedAt: { not: null }, shoppingList: { familyId } });
     // A direct purchase is an order that is already delivered.
-    expect(mocks.prisma.purchase.create).toHaveBeenCalledWith({ data: { familyId, buyerUserId: userId, purchasedAt: now, total: 45250, codAmount: 45250, itemCount: 3, status: "DELIVERED", deliveredAt: now } });
+    expect(mocks.prisma.purchase.create).toHaveBeenCalledWith({ data: { familyId, buyerUserId: userId, purchasedAt: now, total: 45250, subtotal: 45250, codAmount: 45250, itemCount: 3, status: "DELIVERED", deliveredAt: now } });
     const updates = mocks.prisma.shoppingItem.update.mock.calls.map((call) => call[0].data);
     expect(updates[0]).toMatchObject({ purchaseId: "pur-1", paidUnitPrice: 25500, lineTotal: 38250, groupName: "Thịt" });
     expect(updates[1]).toMatchObject({ unitPrice: 3500, paidUnitPrice: 3500, lineTotal: 7000, groupName: "Trứng & sữa", unitLabel: "quả" });
@@ -129,7 +141,7 @@ describe("monthSpending", () => {
     expect(result).toMatchObject({ month: "2026-11", previousMonth: "2026-10", total: 1_120_000, previousTotal: 1_000_000, changePercent: 12, purchaseCount: 2 });
     expect(result.groups).toEqual([{ name: "Thịt", amount: 800_000, percent: 71 }, { name: "Rau củ", amount: 320_000, percent: 29 }]);
     expect(result.purchases.items[0]).toEqual({
-      id: "pur-1", purchasedAt: "2026-11-26T11:05:00.000Z", buyerUserId: userId, itemCount: 1, total: 38250,
+      id: "pur-1", purchasedAt: "2026-11-26T11:05:00.000Z", buyerUserId: userId, itemCount: 1, total: 38250, subtotal: 38250, promotionName: null, discountAmount: 0,
       lines: [{ id: "i1", name: "Thịt heo", quantity: 1.5, unit: "KILOGRAM", unitLabel: null, unitPrice: 25500, originalUnitPrice: 30000, discountPercent: 15, lineTotal: 38250, group: "Thịt" }],
     });
     // Delivered orders only, by delivery day (Vietnam month), the newest delivery first; purchasedAt shows the delivery time.

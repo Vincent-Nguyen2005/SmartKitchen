@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { ActivityIndicator, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Banknote, Crosshair, Map as MapIcon, MapPin, X } from "lucide-react-native";
+import { Banknote, Crosshair, Map as MapIcon, MapPin, Tag, X } from "lucide-react-native";
 import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useSession } from "../../services/session";
 import { formatVnd } from "../../services/format";
@@ -10,7 +10,8 @@ import { deliveryProblem } from "./orders";
 import { reverseGeocode } from "./geocode";
 import { askToEnableLocation, positionOnce } from "../../services/location";
 import LocationOffBanner from "../../components/LocationOffBanner";
-import { shoppingApi, type CheckoutLine, type Order } from "./shoppingApi";
+import { ShoppingApiError, shoppingApi, type CheckoutLine, type CheckoutPreview, type Order } from "./shoppingApi";
+import { previewTotals, summaryRows, totalChangedText } from "./checkoutSummary";
 
 type Props = {
   visible: boolean;
@@ -19,7 +20,7 @@ type Props = {
   /** Cart lines with catalog details (group, shelf life) for the order. */
   lines: CheckoutLine[];
   itemCount: number;
-  /** Cart total with the cart's rounding (sum of rounded line totals). */
+  /** Cart total with the cart's rounding (sum of rounded line totals), before the automatic promotion. */
   total: number;
   onClose: () => void;
   onPlaced: (order: Order) => void;
@@ -31,6 +32,9 @@ type Point = { latitude: number; longitude: number };
  * for now and reverse geocoded to a Vietnamese address; always editable, map picker and "Dùng vị trí hiện tại"),
  * receiver name and phone (required, Vietnamese phone), note, payment "Thanh toán khi nhận hàng" (the only option),
  * summary and "Đặt hàng". Location denied: the address is typed by hand.
+ * Summary: Tạm tính, "Khuyến mãi: <tên> −<số tiền>" and Tổng thanh toán from the server's preview (automatic promotion,
+ * no code), plus "Mua thêm … để được …" when a promotion is close. "Đặt hàng" sends the total shown; if the server's
+ * total changed meanwhile, the new totals are shown and nothing is ordered until the user taps again.
  */
 export default function CheckoutSheet({ visible, familyId, accessToken, lines, itemCount, total, onClose, onPlaced }: Props): React.JSX.Element {
   const { user } = useSession();
@@ -46,7 +50,19 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
   const [mapOpen, setMapOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<CheckoutPreview | null>(null);
+  const [changedNotice, setChangedNotice] = useState<string | null>(null);
   const touched = useRef(false);
+
+  const loadPreview = async () => {
+    try {
+      setPreview(await shoppingApi.checkoutPreview(accessToken, familyId, lines));
+    } catch {
+      setPreview(null); // the cart total is shown; "Đặt hàng" still re-checks on the server
+    }
+  };
+  // What "Đặt hàng" charges: the server's preview, else the cart total.
+  const shown = preview ?? { subtotal: total, discount: 0, total, promotion: null, hint: null };
 
   const locate = async (): Promise<void> => {
     setLocating(true);
@@ -73,6 +89,9 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
   const prefill = async () => {
     touched.current = false;
     setError(null);
+    setChangedNotice(null);
+    setPreview(null);
+    void loadPreview();
     setLocationNote(null);
     setNote("");
     setReceiverName(user?.fullName?.trim() ?? "");
@@ -96,13 +115,21 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
     if (problem) { setError(problem); return; }
     setSubmitting(true);
     setError(null);
+    setChangedNotice(null);
     try {
       const { order } = await shoppingApi.placeOrder(accessToken, familyId, lines, {
         address: address.trim(), latitude: point?.latitude ?? null, longitude: point?.longitude ?? null,
         receiverName: receiverName.trim(), receiverPhone: receiverPhone.trim(), note: note.trim() || null,
-      });
+      }, shown.total);
       onPlaced(order);
     } catch (caught) {
+      if (caught instanceof ShoppingApiError && caught.code === "TOTAL_CHANGED" && caught.data) {
+        // A promotion started / ended / was used up: show the new totals; the next tap orders at that total.
+        const next = caught.data as CheckoutPreview;
+        setChangedNotice(totalChangedText(shown.total, next.total));
+        setPreview(next);
+        return;
+      }
       setError(caught instanceof Error ? caught.message : "Chưa đặt được hàng. Hãy thử lại.");
     } finally {
       setSubmitting(false);
@@ -161,13 +188,25 @@ export default function CheckoutSheet({ visible, familyId, accessToken, lines, i
             </View>
 
             <View style={local.card}>
-              <View style={local.summaryRow}><Text style={local.summaryLabel}>{itemCount} món</Text><Text style={local.summaryValue}>{formatVnd(total)}</Text></View>
-              <View style={[local.summaryRow, local.totalRow]}><Text style={local.totalLabel}>Tổng thanh toán</Text><Text style={local.totalValue}>{formatVnd(total)}</Text></View>
+              <Text style={local.cardTitle}>{itemCount} món</Text>
+              {summaryRows(previewTotals(shown), { alwaysSubtotal: true }).map((row) => (
+                <View key={row.key} style={[local.summaryRow, row.strong && local.totalRow]} accessible accessibilityLabel={`${row.label}: ${row.value.replace("−", "trừ ").replace("đ", " đồng")}`}>
+                  <Text style={row.strong ? local.totalLabel : local.summaryLabel} numberOfLines={2}>{row.label}</Text>
+                  <Text style={row.strong ? local.totalValue : [local.summaryValue, row.tone === "success" && local.success]}>{row.value}</Text>
+                </View>
+              ))}
+              {shown.hint ? (
+                <View style={local.hint} accessibilityLiveRegion="polite">
+                  <AppIcon icon={Tag} size="sm" color={colors.primary} />
+                  <Text style={local.hintText}>{shown.hint.text}</Text>
+                </View>
+              ) : null}
             </View>
+            {changedNotice ? <Text style={local.changed} accessibilityRole="alert">{changedNotice}</Text> : null}
             {error ? <Text style={local.error} accessibilityRole="alert">{error}</Text> : null}
           </ScrollView>
           <View style={local.footer}>
-            <Pressable accessibilityRole="button" accessibilityLabel={`Đặt hàng, ${formatVnd(total)}, thanh toán khi nhận hàng`} disabled={submitting} onPress={() => void submit()} style={[local.submit, submitting && local.disabled]}>
+            <Pressable accessibilityRole="button" accessibilityLabel={`Đặt hàng, ${formatVnd(shown.total)}, thanh toán khi nhận hàng`} disabled={submitting} onPress={() => void submit()} style={[local.submit, submitting && local.disabled]}>
               {submitting ? <ActivityIndicator color={colors.primaryText} /> : <Text style={local.submitText}>Đặt hàng</Text>}
             </Pressable>
           </View>
@@ -202,11 +241,15 @@ const local = StyleSheet.create({
   radio: { alignItems: "center", borderColor: colors.primary, borderRadius: 10, borderWidth: 2, height: 20, justifyContent: "center", width: 20 },
   radioDot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 },
   paymentText: { ...textStyles.body },
-  summaryRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  summaryLabel: { ...textStyles.bodySmall, color: colors.muted },
-  summaryValue: { ...textStyles.bodySmall },
+  summaryRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between" },
+  summaryLabel: { ...textStyles.bodySmall, color: colors.muted, flex: 1, minWidth: 0 },
+  summaryValue: { ...textStyles.bodySmall, textAlign: "right" },
+  success: { color: colors.success, fontWeight: "700" },
+  hint: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: radius.sm, flexDirection: "row", gap: spacing.xs, padding: spacing.sm },
+  hintText: { ...textStyles.bodySmall, color: colors.primary, flex: 1 },
+  changed: { ...textStyles.bodySmall, backgroundColor: colors.warningSoft, borderRadius: radius.sm, color: colors.warning, padding: spacing.md },
   totalRow: { borderTopColor: colors.border, borderTopWidth: 1, paddingTop: spacing.sm },
-  totalLabel: { ...textStyles.label },
+  totalLabel: { ...textStyles.label, flex: 1 },
   totalValue: { ...textStyles.subheading },
   error: { ...textStyles.bodySmall, backgroundColor: colors.dangerSoft, borderRadius: radius.sm, color: colors.danger, padding: spacing.md },
   footer: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1, padding: spacing.lg },

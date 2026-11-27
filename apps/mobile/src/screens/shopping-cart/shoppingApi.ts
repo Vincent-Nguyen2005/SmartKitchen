@@ -35,7 +35,12 @@ export type Order = {
   status: OrderStatus;
   purchasedAt: string;
   buyerUserId: string | null;
+  /** What the family pays (= codAmount): subtotal − discountAmount. */
   total: number;
+  /** Before the automatic checkout promotion (older orders: = total). */
+  subtotal?: number;
+  promotionName?: string | null;
+  discountAmount?: number;
   codAmount: number;
   itemCount: number;
   paymentMethod: "COD";
@@ -68,12 +73,30 @@ export type ShoppingSuggestion = {
 
 type ApiPayload<T> = { success?: boolean; data?: T; lists?: T; message?: string; code?: string; error?: string };
 
+/** Checkout totals from the server (POST /checkout/preview, and the data of a TOTAL_CHANGED answer). */
+export type CheckoutPreview = {
+  subtotal: number;
+  promotion: { id: string; name: string; discount: number } | null;
+  discount: number;
+  total: number;
+  /** "Mua thêm 30.000 đ để được <tên>". */
+  hint: { name: string; missing: number; text: string } | null;
+};
+
+/** A refused request with the server's code (e.g. TOTAL_CHANGED) and data (the new totals). */
+export class ShoppingApiError extends Error {
+  constructor(message: string, readonly code: string | null, readonly data: unknown) {
+    super(message);
+    this.name = "ShoppingApiError";
+  }
+}
+
 async function request<T>(accessToken: string, path: string, method: RequestInit["method"] = "GET", body?: unknown, timeoutMs?: number): Promise<T> {
   // Shared gateway transport: ngrok header, Bearer token, timeout and the network error message.
   const response = await gatewayFetch(path, { method, accessToken, timeoutMs, body: body === undefined ? undefined : JSON.stringify(body) });
   const payload = await response.json().catch(() => ({})) as ApiPayload<T>;
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.message || payload.code || payload.error || `Yêu cầu thất bại (${response.status})`);
+    throw new ShoppingApiError(payload.message || payload.code || payload.error || `Yêu cầu thất bại (${response.status})`, payload.code ?? null, payload.data ?? null);
   }
   if (payload.data !== undefined) return payload.data;
   if (payload.lists !== undefined) return payload.lists as T;
@@ -95,8 +118,12 @@ export const shoppingApi = {
     request<ShoppingItem>(token, "/api/shopping-list/items", "POST", input),
   /** "Mua": every cart line goes into Kho; failed lines stay in the cart and are listed in `failed`. */
   /** "Đặt hàng": the cart becomes a delivery order paid on delivery; its lines show "Đang giao" in Kho. */
-  placeOrder: (token: string, familyId: string, items: CheckoutLine[], delivery: DeliveryInput) =>
-    request<{ order: Order }>(token, "/api/shopping-list/checkout", "POST", { familyId, items, delivery: { ...delivery, paymentMethod: "COD" } }, 30_000),
+  /** expectedTotal: the "Tổng thanh toán" shown; a different server total → ShoppingApiError TOTAL_CHANGED with the new totals. */
+  placeOrder: (token: string, familyId: string, items: CheckoutLine[], delivery: DeliveryInput, expectedTotal?: number) =>
+    request<{ order: Order }>(token, "/api/shopping-list/checkout", "POST", { familyId, items, delivery: { ...delivery, paymentMethod: "COD" }, ...(expectedTotal !== undefined ? { expectedTotal } : {}) }, 30_000),
+  /** Tạm tính / Khuyến mãi / Tổng thanh toán for the active cart (the automatic promotion; computed by the server). */
+  checkoutPreview: (token: string, familyId: string, items: CheckoutLine[]) =>
+    request<CheckoutPreview>(token, "/api/shopping-list/checkout/preview", "POST", { familyId, items }),
   /** The family's orders, newest first. */
   orders: (token: string, familyId: string) =>
     request<{ items: Order[]; total: number }>(token, `/api/shopping-list/orders${familyQuery(familyId)}&limit=50`),

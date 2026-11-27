@@ -6,6 +6,7 @@ import { AppIcon, colors, IconButton, radius, spacing, textStyles, touchTarget, 
 import { useConfirm } from "../../components/ConfirmDialog";
 import { formatVnd } from "../../services/format";
 import { amountText } from "./unitDisplay";
+import { discountText } from "./checkoutSummary";
 import { canCancel, ORDER_STATUS, orderTime, type StatusTone } from "./orders";
 import { shoppingApi, type Order } from "./shoppingApi";
 
@@ -132,6 +133,15 @@ const OrderCard = memo(function OrderCard({ order, busy, onCancel, highlighted =
         </View>
       ) : null}
       {order.status === "FAILED" && order.failReason ? <Text style={local.failReason}>Lý do: {order.failReason}</Text> : null}
+      {order.discountAmount && order.promotionName ? (
+        <View style={local.promoRows}>
+          <View style={local.promoRow}><Text style={local.promoLabel}>Tạm tính</Text><Text style={local.promoAmount}>{formatVnd(order.subtotal ?? order.total)}</Text></View>
+          <View style={local.promoRow}>
+            <Text style={local.promoLabel} numberOfLines={2}>Khuyến mãi: {order.promotionName}</Text>
+            <Text style={[local.promoAmount, local.promoDiscount]}>{discountText(order.discountAmount)}</Text>
+          </View>
+        </View>
+      ) : null}
       <View style={local.cardFooter}>
         <View>
           <Text style={local.total}>{formatVnd(order.total)}</Text>
@@ -165,6 +175,11 @@ const local = StyleSheet.create({
   center: { alignItems: "center", flex: 1, justifyContent: "center" },
   content: { alignSelf: "center", gap: spacing.md, maxWidth: 720, padding: spacing.lg, width: "100%" },
   card: { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md, borderWidth: 1, gap: spacing.sm, padding: spacing.lg },
+  promoRows: { gap: 2 },
+  promoRow: { alignItems: "center", flexDirection: "row", gap: spacing.md, justifyContent: "space-between" },
+  promoLabel: { ...textStyles.bodySmall, color: colors.muted, flex: 1, minWidth: 0 },
+  promoAmount: { ...textStyles.bodySmall, textAlign: "right" },
+  promoDiscount: { color: colors.success, fontWeight: "700" },
   // The order a tapped notice is about.
   cardHighlighted: { backgroundColor: colors.primarySoft, borderColor: colors.primary, borderWidth: 2, margin: -1 },
   cardHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
