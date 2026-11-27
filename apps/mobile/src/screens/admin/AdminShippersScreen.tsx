@@ -1,12 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, View } from "react-native";
-import { ChevronRight, Eye, EyeOff, KeyRound, Lock, LockOpen, Mail, Phone, Plus, Truck, UserRound } from "lucide-react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { FlatList, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
+import { ChevronRight, Eye, EyeOff, KeyRound, Lock, LockOpen, Mail, Phone, Truck, UserRound } from "lucide-react-native";
 import { AppIcon, radius, spacing, textStyles, touchTarget } from "../../theme";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { errorMessage } from "../notifications/gatewayApi";
 import { Badge, Button, colors, Field, ScreenState, styles, useLayout } from "../notifications/ui";
-import { deliveredText, newShipperProblem, passwordProblem, shipperActions, shipperDetailRows, statusText, toggleConfirm, type NewShipper, type ShipperAccount } from "./shippers";
+import { deliveredText, filterShippers, NO_SHIPPER_MATCH, newShipperFieldsProblem, passwordFieldError, shipperActions, shipperDetailRows, statusText, toggleConfirm, type NewShipper, type ShipperAccount } from "./shippers";
+import { AdminListHeader } from "./AdminListHeader";
 import { Avatar } from "./directoryUi";
 
 const EMPTY: NewShipper = { name: "", phone: "", email: "", password: "" };
@@ -28,6 +29,9 @@ export default function AdminShippersScreen(): React.JSX.Element {
   const [form, setForm] = useState<NewShipper | null>(null);
   const [resetFor, setResetFor] = useState<ShipperAccount | null>(null);
   const [detail, setDetail] = useState<ShipperAccount | null>(null);
+  const [search, setSearch] = useState("");
+  // On the loaded list: no request while typing.
+  const visible = useMemo(() => filterShippers(items ?? [], search), [items, search]);
   const [notice, setNotice] = useState<string | null>(null);
   const { confirm, dialog } = useConfirm();
 
@@ -63,17 +67,18 @@ export default function AdminShippersScreen(): React.JSX.Element {
   return (
     <View style={styles.screen}>
       <FlatList
-        data={items ?? []}
+        data={visible}
         keyExtractor={(item) => item.id}
         contentContainerStyle={[local.content, { paddingHorizontal: gutter }]}
         ListHeaderComponent={
           <View style={local.headerBlock}>
-            <Button label="Thêm người giao hàng" icon={Plus} onPress={() => { setNotice(null); setForm({ ...EMPTY }); }} />
+            <AdminListHeader placeholder="Tìm tên hoặc số điện thoại" searchLabel="Tìm người giao hàng" search={search} onSearch={setSearch}
+              addLabel="Thêm người giao hàng" onAdd={() => { setNotice(null); setForm({ ...EMPTY }); }} />
             {notice ? <Text style={local.notice} accessibilityLiveRegion="polite">{notice}</Text> : null}
             {error && items ? <Text style={styles.errorText}>{error}</Text> : null}
           </View>
         }
-        ListEmptyComponent={<ScreenState loading={items === null && !error} error={items === null ? error : null} empty={items !== null} emptyText="Chưa có người giao hàng" emptyIcon={Truck} onRetry={() => void load()} />}
+        ListEmptyComponent={<ScreenState loading={items === null && !error} error={items === null ? error : null} empty={items !== null} emptyText={items && items.length > 0 && search.trim() ? NO_SHIPPER_MATCH : "Chưa có người giao hàng"} emptyIcon={Truck} onRetry={() => void load()} />}
         ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void load(true)} tintColor={colors.primary} />}
         renderItem={({ item }) => (
@@ -142,14 +147,33 @@ function DetailSheet({ account, busy, onClose, onReset, onToggle }: { account: S
   );
 }
 
-function PasswordField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }): React.JSX.Element {
+const PASSWORD_PAUSE_MS = 600;
+
+/**
+ * Password input without a visible label: the placeholder names it, the eye shows / hides it, and the rule appears
+ * only as an inline error under the field when the value is invalid (after typing stops, or on submit).
+ */
+function PasswordField({ placeholder, value, onChange, submitted }: { placeholder: string; value: string; onChange: (value: string) => void; submitted: boolean }): React.JSX.Element {
   const [visible, setVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const now = passwordFieldError(value, submitted);
+    // A valid value (or a submit) updates at once; an invalid one waits for the typing pause.
+    if (now === null || submitted) { setError(now); return undefined; }
+    const timer = setTimeout(() => setError(now), PASSWORD_PAUSE_MS);
+    return () => clearTimeout(timer);
+  }, [value, submitted]);
   return (
-    <View>
-      <Field label={label} icon={KeyRound} value={value} onChangeText={onChange} secureTextEntry={!visible} autoCapitalize="none" autoCorrect={false} textContentType="newPassword" placeholder="Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số" />
-      <Pressable accessibilityRole="button" accessibilityLabel={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"} onPress={() => setVisible((current) => !current)} style={local.eye}>
-        <AppIcon icon={visible ? EyeOff : Eye} size="sm" color={colors.muted} />
-      </Pressable>
+    <View style={local.passwordBlock}>
+      <View style={[styles.input, styles.inputWithIcon, error ? local.inputError : null]}>
+        <AppIcon icon={KeyRound} size="sm" color={colors.muted} />
+        <TextInput accessibilityLabel={placeholder} placeholder={placeholder} placeholderTextColor={colors.muted} value={value} onChangeText={onChange}
+          secureTextEntry={!visible} autoCapitalize="none" autoCorrect={false} textContentType="newPassword" style={[styles.inputBare, local.passwordInput]} />
+        <Pressable accessibilityRole="button" accessibilityLabel={visible ? "Ẩn mật khẩu" : "Hiện mật khẩu"} onPress={() => setVisible((current) => !current)} style={local.eye}>
+          <AppIcon icon={visible ? EyeOff : Eye} size="sm" color={colors.muted} />
+        </Pressable>
+      </View>
+      {error ? <Text style={local.fieldError} accessibilityRole="alert">{error}</Text> : null}
     </View>
   );
 }
@@ -158,11 +182,15 @@ function CreateSheet({ form, onChange, onClose, onCreated }: { form: NewShipper 
   const { api } = useGatewayApi();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { if (form === null) setError(null); }, [form]);
+  const [submitted, setSubmitted] = useState(false);
+  const open = form !== null;
+  useEffect(() => { if (!open) { setError(null); setSubmitted(false); } }, [open]);
   const submit = async () => {
     if (!form) return;
-    const problem = newShipperProblem(form);
-    if (problem) { setError(problem); return; }
+    setSubmitted(true);
+    const problem = newShipperFieldsProblem(form);
+    setError(problem);
+    if (problem || passwordFieldError(form.password, true)) return;
     setBusy(true);
     try {
       const { shipper } = await api.post<{ shipper: ShipperAccount }>("/api/admin/shippers", { ...form, email: form.email.trim() });
@@ -183,7 +211,7 @@ function CreateSheet({ form, onChange, onClose, onCreated }: { form: NewShipper 
             <Field label="Họ tên" icon={UserRound} value={form.name} onChangeText={(name) => onChange({ ...form, name })} />
             <Field label="Số điện thoại" icon={Phone} value={form.phone} onChangeText={(phone) => onChange({ ...form, phone })} keyboardType="phone-pad" />
             <Field label="Email đăng nhập" icon={Mail} value={form.email} onChangeText={(email) => onChange({ ...form, email })} keyboardType="email-address" autoCapitalize="none" autoCorrect={false} />
-            <PasswordField label="Mật khẩu ban đầu" value={form.password} onChange={(password) => onChange({ ...form, password })} />
+            <PasswordField placeholder="Mật khẩu ban đầu" value={form.password} onChange={(password) => onChange({ ...form, password })} submitted={submitted} />
             {error ? <Text style={styles.errorText} accessibilityRole="alert">{error}</Text> : null}
             <View style={local.actions}>
               <Button variant="secondary" label="Hủy" onPress={onClose} style={local.flex} />
@@ -201,11 +229,13 @@ function ResetSheet({ account, onClose, onDone }: { account: ShipperAccount | nu
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setPassword(""); setError(null); }, [account]);
+  const [submitted, setSubmitted] = useState(false);
+  useEffect(() => { setPassword(""); setError(null); setSubmitted(false); }, [account]);
   const submit = async () => {
     if (!account) return;
-    const problem = passwordProblem(password);
-    if (problem) { setError(problem); return; }
+    setSubmitted(true);
+    setError(null);
+    if (passwordFieldError(password, true)) return;
     setBusy(true);
     try {
       await api.post(`/api/admin/shippers/${encodeURIComponent(account.id)}/password`, { password });
@@ -224,8 +254,7 @@ function ResetSheet({ account, onClose, onDone }: { account: ShipperAccount | nu
         {account ? (
           <View style={local.sheet}>
             <Text style={local.sheetTitle} accessibilityRole="header">Đặt lại mật khẩu</Text>
-            <Text style={local.meta}>{account.name ?? account.email}. Các phiên đăng nhập hiện tại sẽ kết thúc.</Text>
-            <PasswordField label="Mật khẩu mới" value={password} onChange={setPassword} />
+            <PasswordField placeholder="Mật khẩu mới" value={password} onChange={setPassword} submitted={submitted} />
             {error ? <Text style={styles.errorText} accessibilityRole="alert">{error}</Text> : null}
             <View style={local.actions}>
               <Button variant="secondary" label="Hủy" onPress={onClose} style={local.flex} />
@@ -255,5 +284,9 @@ const local = StyleSheet.create({
   backdrop: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
   sheet: { alignSelf: "center", backgroundColor: colors.surface, borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, gap: spacing.sm, maxWidth: 720, padding: spacing.lg, width: "100%" },
   sheetTitle: { ...textStyles.subheading },
-  eye: { alignItems: "center", bottom: 0, justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget, position: "absolute", right: 0 },
+  eye: { alignItems: "center", justifyContent: "center", minHeight: touchTarget, minWidth: touchTarget },
+  passwordBlock: { gap: spacing.xs },
+  passwordInput: { flex: 1 },
+  inputError: { borderColor: colors.danger },
+  fieldError: { ...textStyles.caption, color: colors.danger },
 });

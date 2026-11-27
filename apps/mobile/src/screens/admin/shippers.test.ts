@@ -1,7 +1,7 @@
 /// <reference types="node" />
 import assert from "node:assert/strict";
 import test from "node:test";
-import { deliveredText, newShipperProblem, passwordProblem, shipperActions, shipperDetailRows, toggleConfirm, vnDate, type ShipperAccount } from "./shippers";
+import { deliveredText, filterShippers, newShipperProblem, PASSWORD_RULE, passwordFieldError, passwordProblem, shipperActions, shipperDetailRows, toggleConfirm, vnDate, type ShipperAccount } from "./shippers";
 
 test("new shipper form: name, Vietnamese phone, email and a strong password", () => {
   const ok = { name: "Nguyễn Văn An", phone: "090 123 4567", email: "an@example.com", password: "Giaohang1" };
@@ -9,9 +9,32 @@ test("new shipper form: name, Vietnamese phone, email and a strong password", ()
   assert.equal(newShipperProblem({ ...ok, name: " " }), "Nhập tên");
   assert.equal(newShipperProblem({ ...ok, phone: "12345" }), "Số điện thoại không hợp lệ");
   assert.equal(newShipperProblem({ ...ok, email: "an@" }), "Email không hợp lệ");
-  assert.equal(passwordProblem("Short1"), "Mật khẩu tối thiểu 8 ký tự");
-  assert.equal(passwordProblem("alllower1"), "Mật khẩu cần có chữ hoa, chữ thường và số");
+  assert.equal(passwordProblem("Short1"), PASSWORD_RULE);
+  assert.equal(passwordProblem("alllower1"), PASSWORD_RULE);
   assert.equal(passwordProblem("Giaohang1"), null);
+  assert.equal(newShipperProblem({ ...ok, password: "weak" }), PASSWORD_RULE);
+});
+
+test("password field: the rule shows only as an inline error when the value is invalid", () => {
+  assert.equal(PASSWORD_RULE, "Tối thiểu 8 ký tự, có chữ hoa, chữ thường và số");
+  // After typing stops: empty is not an error yet; an invalid value is; a valid one clears it.
+  assert.equal(passwordFieldError("", false), null);
+  assert.equal(passwordFieldError("abc", false), PASSWORD_RULE);
+  assert.equal(passwordFieldError("Giaohang1", false), null);
+  // On submit an empty field is an error too.
+  assert.equal(passwordFieldError("", true), PASSWORD_RULE);
+  assert.equal(passwordFieldError("Giaohang1", true), null);
+});
+
+test("search: name accent-insensitive, phone by digits; nothing found → empty list", () => {
+  const list = [{ name: "Nguyễn Văn An", phone: "0901234567" }, { name: "Trần Thị Bình", phone: "0987 654 321" }, { name: null, phone: null }];
+  assert.equal(filterShippers(list, "").length, 3);
+  assert.deepEqual(filterShippers(list, "nguyen an").map((item) => item.name), []);
+  assert.deepEqual(filterShippers(list, "van an").map((item) => item.name), ["Nguyễn Văn An"]);
+  assert.deepEqual(filterShippers(list, "BINH").map((item) => item.name), ["Trần Thị Bình"]);
+  assert.deepEqual(filterShippers(list, "987 654").map((item) => item.name), ["Trần Thị Bình"]);
+  assert.deepEqual(filterShippers(list, "0901").map((item) => item.name), ["Nguyễn Văn An"]);
+  assert.deepEqual(filterShippers(list, "xyz"), []);
 });
 
 test("delivered count text", () => {
