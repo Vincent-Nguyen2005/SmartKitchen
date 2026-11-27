@@ -103,7 +103,7 @@ export function selectDeals(input: { day: string; products: DealProduct[]; setti
   ];
 }
 
-/** "Đổi món": another eligible product (not in today's list), seeded by the day and the replaced product. */
+/** "Đổi nguyên liệu": another eligible product (not in today's list), seeded by the day and the replaced product. */
 export function pickReplacement(input: { day: string; replacedId: string; todayIds: ReadonlySet<string>; products: DealProduct[]; settings: DealSettings; recentProductIds: ReadonlySet<string>; attempt?: number }): PickedDeal | null {
   const random = seededRandom(hashSeed(`daily-deals:${input.day}:swap:${input.replacedId}:${input.attempt ?? 0}`));
   const candidates = eligibleProducts(input.products, input.settings, input.day, input.recentProductIds)

@@ -1,10 +1,31 @@
 /**
- * Quản trị › "Giảm giá tự động" (pure; covered by dailyDeals.test.ts): settings form, client validation (the same
- * rules as admin-service), and the texts of today's list. Users see these discounts exactly like admin discounts.
+ * Quản trị › "Khuyến mãi" (Giảm giá tự động; pure, covered by dailyDeals.test.ts): the "Hôm nay" / "Cài đặt" tabs,
+ * settings form, client validation (the same rules as admin-service), and the texts of today's list. Users see these
+ * discounts exactly like admin discounts.
  */
+import { discountedPrice, formatVnd } from "../../services/format";
+import { unitWord } from "../shopping-cart/unitDisplay";
+
 export type DealSettings = { enabled: boolean; dealsPerDay: number; minPercent: number; maxPercent: number; excludedProductIds: string[] };
 export type DealStatus = "APPLIED" | "EXCLUDED" | "MANUAL_DISCOUNT" | "INACTIVE" | "OFF";
-export type TodayDeal = { productId: string; name: string; group: string | null; price: number | null; percent: number; source: "MENU" | "RANDOM" | "SWAP"; status: DealStatus };
+export type TodayDeal = {
+  productId: string; name: string; group: string | null; price: number | null; percent: number; source: "MENU" | "RANDOM" | "SWAP"; status: DealStatus;
+  /** Sale unit code and specific word (older servers may omit them). */
+  unit?: string | null; unitLabel?: string | null;
+};
+
+/** Segment tabs: "Hôm nay" (default) and "Cài đặt". */
+export type DealTab = "today" | "settings";
+export const DEAL_TABS: ReadonlyArray<{ value: DealTab; label: string }> = [
+  { value: "today", label: "Hôm nay" },
+  { value: "settings", label: "Cài đặt" },
+];
+/** The chosen tab, remembered while the admin session lasts (like adminSectionMemory). */
+let lastTab: DealTab = "today";
+export const dealTabMemory = {
+  get: (): DealTab => lastTab,
+  set: (value: unknown): DealTab => { lastTab = value === "settings" ? "settings" : "today"; return lastTab; },
+};
 export type DealProductOption = { id: string; name: string; group: string };
 export type DailyDealsResponse = { day: string; settings: DealSettings & { updatedAt: string | null }; deals: TodayDeal[]; products: DealProductOption[] };
 
@@ -44,8 +65,6 @@ export const statusNote = (status: DealStatus): string | null => ({
   OFF: "Đang tắt giảm giá tự động",
 }[status]);
 
-/** "Món hay dùng" (popular in this week's menus) / "Ngẫu nhiên" / "Đã đổi". */
-export const sourceLabel = (source: TodayDeal["source"]): string => ({ MENU: "Món hay dùng", RANDOM: "Ngẫu nhiên", SWAP: "Đã đổi" }[source]);
 
 /** "Thứ Sáu, 27/11/2026" for the list header. */
 export function dayLabel(day: string): string {
@@ -54,6 +73,26 @@ export function dayLabel(day: string): string {
   return `${names[date.getUTCDay()]}, ${day.slice(8, 10)}/${day.slice(5, 7)}/${day.slice(0, 4)}`;
 }
 
-/** "Giảm 5–20% · 10 sản phẩm mỗi ngày". */
-export const settingsSummary = (settings: Pick<DealSettings, "minPercent" | "maxPercent" | "dealsPerDay">): string =>
-  `Giảm ${settings.minPercent === settings.maxPercent ? settings.minPercent : `${settings.minPercent}–${settings.maxPercent}`}% · ${settings.dealsPerDay} sản phẩm mỗi ngày`;
+/** "Giảm 5–20%" ("Giảm 10%" when both ends are equal). */
+export const percentRangeText = (settings: Pick<DealSettings, "minPercent" | "maxPercent">): string =>
+  `Giảm ${settings.minPercent === settings.maxPercent ? settings.minPercent : `${settings.minPercent}–${settings.maxPercent}`}%`;
+
+/** "Hôm nay" header: "Thứ Bảy, 28/11/2026 · Giảm 5–20%". */
+export const todayHeader = (day: string, settings: Pick<DealSettings, "minPercent" | "maxPercent">): string => `${dayLabel(day)} · ${percentRangeText(settings)}`;
+
+/**
+ * A row's second line, in parts so the original price can be struck through: "12.000đ" → "11.500đ / gói" (the same
+ * rounding and unit words as Đi chợ). null when the product has no price.
+ */
+export function dealPriceParts(deal: Pick<TodayDeal, "price" | "percent" | "unit" | "unitLabel">): { original: string; discounted: string } | null {
+  if (deal.price === null) return null;
+  const unit = deal.unit ? ` / ${unitWord(deal.unit, deal.unitLabel)}` : "";
+  return { original: formatVnd(deal.price), discounted: `${formatVnd(discountedPrice(deal.price, deal.percent))}${unit}` };
+}
+
+/** "Đổi nguyên liệu" toast: "Đã đổi sang <tên>" (the product that came in), or a generic text when it is unknown. */
+export function swapNotice(before: ReadonlyArray<Pick<TodayDeal, "productId">>, after: ReadonlyArray<Pick<TodayDeal, "productId" | "name">>): string {
+  const known = new Set(before.map((deal) => deal.productId));
+  const added = after.find((deal) => !known.has(deal.productId));
+  return added ? `Đã đổi sang ${added.name}` : "Đã đổi nguyên liệu";
+}
