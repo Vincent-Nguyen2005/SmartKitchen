@@ -189,3 +189,13 @@ model DailyDealDay {
 
   @@map("daily_deal_days")
 }
+
+/// Dish images uploaded by admins (stored with the catalog images on the admin-uploads volume, served at
+/// /api/admin/recipe-images/<fileName>). One current file per recipe; recipe-service keeps the URL in Recipe.imageUrl.
+model RecipeImage {
+  fileName  String   @id
+  recipeId  String   @unique
+  createdAt DateTime @default(now())
+
+  @@map("recipe_images")
+}

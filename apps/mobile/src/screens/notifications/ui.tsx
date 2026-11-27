@@ -18,6 +18,9 @@ import {
 } from "react-native";
 import { Check, ChevronDown, CircleExclamationPoint, ImageOff, Inbox, RefreshCw, Square, SquareCheck } from "lucide-react-native";
 import { AppIcon, breakpoints, colors, radius, spacing, textStyles, touchTarget, typography, type LucideIcon } from "../../theme";
+import AuthImage from "../../components/AuthImage";
+import { isGatewayImage } from "../../services/authImage";
+import { useSession } from "../../services/session";
 
 /** Shared UI for the notification and admin screens (owner: Huy). Tokens live in src/theme. */
 export { colors };
@@ -374,6 +377,18 @@ type RemoteImageProps = {
 };
 
 /** Image from a pasted https link, or a neutral placeholder when there is none or it fails to load. */
+/** RemoteImage for gateway paths (uploaded catalog images): fetched with the session token, placeholder meanwhile. */
+function GatewayImage({ uri, size, accessibilityLabel, placeholderIcon = ImageOff }: { uri: string; size: number; accessibilityLabel?: string; placeholderIcon?: LucideIcon }): React.JSX.Element {
+  const { accessToken } = useSession();
+  const box = { width: size, height: size };
+  const placeholder = (
+    <View style={[styles.imagePlaceholder, box]}>
+      <AppIcon icon={placeholderIcon} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
+    </View>
+  );
+  return <AuthImage url={uri} accessToken={accessToken} accessibilityLabel={accessibilityLabel ?? ""} style={[styles.image, box]} fallback={placeholder} />;
+}
+
 export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad, placeholderIcon = ImageOff }: RemoteImageProps): React.JSX.Element {
   const [failedUri, setFailedUri] = useState<string | null>(null);
   const box = { width: size, height: size };
@@ -383,6 +398,10 @@ export function RemoteImage({ uri, size, accessibilityLabel, onLoadError, onLoad
         <AppIcon icon={placeholderIcon} size={size >= 64 ? "lg" : "md"} color={colors.muted} />
       </View>
     );
+  }
+  // An image uploaded by an admin is served by the gateway to signed-in users: fetched with the token (AuthImage).
+  if (isGatewayImage(uri)) {
+    return <GatewayImage uri={uri} size={size} accessibilityLabel={accessibilityLabel} placeholderIcon={placeholderIcon} />;
   }
   return (
     <Image

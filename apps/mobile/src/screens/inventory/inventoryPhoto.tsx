@@ -161,6 +161,27 @@ export async function pickAvatarPhoto(source: "camera" | "library"): Promise<Pho
   }
 }
 
+/** Catalog images set by an admin (Quản trị › Chụp ảnh): at most this many px per side, JPEG. */
+export const CATALOG_UPLOAD_EDGE = 1024;
+
+/**
+ * Quản trị › "Chụp ảnh": the back camera or the photo library, cropped square on phones (cards show square images) and
+ * resized to CATALOG_UPLOAD_EDGE (JPEG, EXIF dropped; the server re-encodes again). Web: the file input.
+ */
+export async function pickCatalogPhoto(source: "camera" | "library"): Promise<PhotoPickResult> {
+  if (Platform.OS === "web") return captureOnWeb(source === "camera" ? "environment" : null, CATALOG_UPLOAD_EDGE);
+  try {
+    const permission = source === "camera" ? await ImagePicker.requestCameraPermissionsAsync() : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return { status: "denied" };
+    const options: ImagePicker.ImagePickerOptions = { mediaTypes: ["images"], quality: 0.85, exif: false, allowsEditing: true, aspect: [1, 1] };
+    const result = source === "camera" ? await ImagePicker.launchCameraAsync(options) : await ImagePicker.launchImageLibraryAsync(options);
+    if (result.canceled || !result.assets[0]) return { status: "cancelled" };
+    return { status: "picked", photo: await prepareUploadPhoto(result.assets[0], CATALOG_UPLOAD_EDGE) };
+  } catch (error) {
+    return { status: "error", message: error instanceof PhotoPrepareError ? error.message : "Không mở được ảnh. Hãy thử lại." };
+  }
+}
+
 type PhotoProps = {
   imageUrl?: string | null;
   /** Shown only when the item has no photo of its own (the matching catalog product image); display only. */

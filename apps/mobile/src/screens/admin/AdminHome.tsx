@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
-import { BadgePercent, Carrot, CookingPot, LayoutDashboard, LogOut, ShieldExclamationPoint, Truck } from "lucide-react-native";
+import { BadgePercent, Camera, Carrot, ChartColumn, CookingPot, LayoutDashboard, LogOut, PackageCheck, ShieldExclamationPoint, Truck } from "lucide-react-native";
 import { AppIcon, IconButton, breakpoints, spacing, type LucideIcon } from "../../theme";
 import { TopTabButton, topTabStyles } from "../../components/TopTab";
 import { useGatewayApi } from "../notifications/useGatewayApi";
@@ -14,6 +14,13 @@ import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
 import PromotionsHome from "./PromotionsHome";
 import { ADMIN_SECTIONS, adminSectionMemory, type AdminSection } from "./adminSections";
+import { CaptureBar } from "../../components/CaptureBar";
+import { ADMIN_BAR_ACTIONS, overlayFor, type AdminBarAction, type AdminOverlay } from "./adminBar";
+import AdminCreateFromPhoto, { type CreateRequest } from "./AdminCreateFromPhoto";
+import AdminOrdersScreen from "./AdminOrdersScreen";
+import AdminRevenueScreen from "./AdminRevenueScreen";
+
+const BAR_ICONS: Record<AdminBarAction, LucideIcon> = { photo: Camera, orders: PackageCheck, revenue: ChartColumn };
 
 // "Trọng số" is hidden: no service reads the recommendation weights yet (WeightsScreen.tsx and the admin-service
 // routes/tables are kept). "Hệ thống" is not a tab either (SystemHealthScreen.tsx kept, not rendered).
@@ -39,13 +46,18 @@ type Props = {
  * Admin area. App.tsx shows it (and only it) when useSession().user.role === "ADMIN"; this check is a UI guard only
  * — admin-service enforces the role on every request. One top tab bar in the app's tab style (icon above label,
  * underline on the active tab): Tổng quan, Nguyên liệu, Món ăn, Khuyến mãi, Giao hàng, then Đăng xuất. The
- * five tabs share the row equally (one row on any phone, like the member bar); content starts right under it.
+ * five tabs share the row equally (one row on any phone, like the member bar); content starts right under it. At the
+ * bottom the capture-bar look with admin actions: Chụp ảnh (catalog image) · Đơn hàng (centre) · Doanh thu.
  */
 export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
   const { isAdmin } = useGatewayApi();
   const { width } = useLayout();
   const [section, setSectionState] = useState<AdminSection>(adminSectionMemory.get());
   const [stack, setStack] = useState<AdminRoute[]>([]);
+  // Bottom bar: the Chụp ảnh sheet, or the Đơn hàng / Doanh thu full-screen page (one at a time).
+  const [overlay, setOverlay] = useState<AdminOverlay>(null);
+  // "Chụp ảnh" → the create form of Nguyên liệu or Món ăn, prefilled (CreateRequest.key: one form per request).
+  const [createRequest, setCreateRequest] = useState<CreateRequest | null>(null);
   const route = stack[stack.length - 1];
   const setSection = (next: AdminSection) => { setSectionState(adminSectionMemory.set(next)); setStack([]); };
   const push = (next: AdminRoute) => setStack((current) => [...current, next]);
@@ -91,6 +103,7 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
         </View>
         <IconButton icon={LogOut} size="md" color={colors.muted} accessibilityLabel="Đăng xuất" onPress={onSignOut} />
       </View>
+      {/* The content takes the space above the bottom bar (never behind it). */}
       <View style={local.content}>
         {route?.name === "users" ? <AdminUsersScreen onBack={back} />
           : route?.name === "families" ? <AdminFamiliesScreen onBack={back} onOpenFamily={openFamily} />
@@ -105,13 +118,28 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
                       onOpenFamily={openFamily}
                     />
                   )}
-                  {section === "ingredients" && <IngredientsScreen />}
-                  {section === "recipes" && <RecipesScreen />}
+                  {section === "ingredients" && <IngredientsScreen createRequest={createRequest?.kind === "ingredient" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
+                  {section === "recipes" && <RecipesScreen createRequest={createRequest?.kind === "recipe" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
                   {section === "promotions" && <PromotionsHome />}
                   {section === "shippers" && <AdminShippersScreen />}
                 </>
               )}
       </View>
+      <CaptureBar
+        actions={ADMIN_BAR_ACTIONS.map((action) => ({ ...action, icon: BAR_ICONS[action.key], active: overlay === action.key }))}
+        onPress={(key) => setOverlay(overlayFor(key))}
+      />
+      <AdminCreateFromPhoto
+        visible={overlay === "photo"}
+        onClose={() => setOverlay(null)}
+        onReady={(request) => {
+          setOverlay(null);
+          setSection(request.kind === "ingredient" ? "ingredients" : "recipes");
+          setCreateRequest({ ...request, key: Date.now() });
+        }}
+      />
+      <AdminOrdersScreen visible={overlay === "orders"} onClose={() => setOverlay(null)} />
+      <AdminRevenueScreen visible={overlay === "revenue"} onClose={() => setOverlay(null)} />
     </View>
   );
 }

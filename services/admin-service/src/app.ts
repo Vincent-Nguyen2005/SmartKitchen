@@ -4,6 +4,9 @@ import cors from "cors";
 import healthRouter from "./routes/health.route";
 import adminRouter from "./routes/admin.route";
 import dailyDealsRouter from "./routes/daily-deals.route";
+import catalogImageRouter from "./routes/catalog-image.route";
+import recipeImageRouter from "./routes/recipe-image.route";
+import aiSuggestRouter from "./routes/ai-suggest.route";
 import directoryRouter from "./routes/directory.route";
 import { createShippersRouter } from "./routes/shippers.route";
 import { createHealthMonitorRouter } from "./routes/health-monitor.route";
@@ -49,6 +52,9 @@ export const createApp = (deps: AppDeps = {}): express.Express => {
   }));
   // adminRouter serves public routes first, then enforces ADMIN before directory routes.
   app.use(dailyDealsRouter);
+  app.use(catalogImageRouter);
+  app.use(recipeImageRouter);
+  app.use(aiSuggestRouter);
   app.use(adminRouter);
   app.use(directoryRouter);
   // Quản trị › Người giao hàng (ADMIN only).

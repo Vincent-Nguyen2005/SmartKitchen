@@ -95,6 +95,19 @@ export const shipperOrdersQuerySchema = z.object({
   lat: z.coerce.number().min(-90).max(90).optional(),
   lng: z.coerce.number().min(-180).max(180).optional(),
 });
+/** Quản trị › Đơn hàng: status filter, search (receiver name / phone / address), paging. */
+export const adminOrdersQuerySchema = z.object({
+  status: z.enum(["PENDING", "SHIPPING", "DELIVERED", "CANCELLED", "FAILED"]).optional(),
+  q: z.string().trim().max(100).optional(),
+  page: z.coerce.number().int().min(1).max(1000).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+});
+/** Quản trị › Doanh thu: today / 7 days / this month, `offset` periods back (0 = current). */
+export const revenueQuerySchema = z.object({
+  period: z.enum(["today", "7d", "month"]).default("today"),
+  offset: z.coerce.number().int().min(-120).max(0).default(0),
+});
+
 export const failOrderBodySchema = z.object({ reason: z.string().trim().min(1, "Nhập lý do").max(300) });
 
 /** GET /spending ("Chi tiêu"): a Vietnam month (default: the current one) of the family's purchases. */

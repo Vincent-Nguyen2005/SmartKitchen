@@ -25,7 +25,7 @@ export interface AdminDashboardScreenProps {
   onOpenFamily: (family: AdminFamilySummary) => void;
 }
 
-type Card = { key: OverviewCardKey; label: string; value: string; icon: LucideIcon; error: string | null };
+type Card = { key: OverviewCardKey; label: string; spoken: string; value: string; icon: LucideIcon; error: string | null };
 const CARD_ICONS: Record<OverviewCardKey, LucideIcon> = { users: Users, families: House, newUsers: UserPlus };
 
 /**
@@ -85,9 +85,9 @@ export default function AdminDashboardScreen({ onOpenUsers, onOpenFamilies, onOp
       contentContainerStyle={[local.content, { padding: gutter }]}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void refresh()} tintColor={colors.primary} />}
     >
-      {/* One row, equal widths and heights (labels may take two lines, never cut). */}
-      <View style={local.cardRow}>
-        {cards.map((card) => <StatCard key={card.key} card={card} />)}
+      {/* One card, three equal columns with thin dividers: short label (one line), large number. */}
+      <View style={[styles.card, local.statsCard]}>
+        {cards.map((card, index) => <StatColumn key={card.key} card={card} divider={index > 0} />)}
       </View>
 
       <View style={[styles.wrapRow, local.lists, { gap: listGrid.gap }]} onLayout={listGrid.onLayout}>
@@ -136,13 +136,15 @@ function SectionHeader({ title, linkLabel, onOpen }: { title: string; linkLabel:
   );
 }
 
-/** Icon, label (up to two lines), number. */
-function StatCard({ card }: { card: Card }): React.JSX.Element {
+/** One column of the overview card: icon and short label on one line, the number large below. */
+function StatColumn({ card, divider }: { card: Card; divider: boolean }): React.JSX.Element {
   const color = card.error ? colors.muted : colors.primary;
   return (
-    <View style={[styles.card, local.card]} accessible accessibilityLabel={card.error ? `${card.label}: không tải được` : `${card.label}: ${card.value}`}>
-      <AppIcon icon={card.icon} size="sm" color={color} />
-      <AppText variant="caption" numberOfLines={2} style={local.cardLabel}>{card.label}</AppText>
+    <View style={[local.column, divider && local.columnDivider]} accessible accessibilityLabel={card.error ? `${card.spoken}: không tải được` : `${card.spoken}: ${card.value}`}>
+      <View style={local.columnLabel}>
+        <AppIcon icon={card.icon} size="sm" color={color} />
+        <AppText variant="caption" numberOfLines={1} style={local.flexShrink}>{card.label}</AppText>
+      </View>
       <AppText variant="heading" color={color} numberOfLines={1}>{card.error ? "–" : card.value}</AppText>
     </View>
   );
@@ -150,10 +152,11 @@ function StatCard({ card }: { card: Card }): React.JSX.Element {
 
 const local = StyleSheet.create({
   content: { gap: spacing.md },
-  cardRow: { flexDirection: "row", gap: spacing.sm },
-  card: { flex: 1, gap: spacing.xs, minWidth: 0 },
-  // Two lines reserved, so the three cards keep the same height whatever the label length.
-  cardLabel: { minHeight: 32 },
+  statsCard: { flexDirection: "row", paddingHorizontal: 0 },
+  column: { alignItems: "center", flex: 1, gap: spacing.xs, minWidth: 0, paddingHorizontal: spacing.sm },
+  columnDivider: { borderLeftColor: colors.border, borderLeftWidth: StyleSheet.hairlineWidth },
+  columnLabel: { alignItems: "center", flexDirection: "row", gap: 4, maxWidth: "100%" },
+  flexShrink: { flexShrink: 1 },
   flex: { flex: 1, minWidth: 0 },
   lists: { alignItems: "flex-start" },
   listCard: { gap: spacing.sm },

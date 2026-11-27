@@ -7,9 +7,11 @@ import {
   familyQuerySchema,
   generateBodySchema,
   idParamSchema,
-  updateItemBodySchema, checkoutBodySchema, checkoutPreviewBodySchema, spendingQuerySchema, ordersQuerySchema, shipperOrdersQuerySchema, failOrderBodySchema } from "../validators/shopping-list.validator";
+  updateItemBodySchema, checkoutBodySchema, checkoutPreviewBodySchema, spendingQuerySchema, adminOrdersQuerySchema, revenueQuerySchema, ordersQuerySchema, shipperOrdersQuerySchema, failOrderBodySchema } from "../validators/shopping-list.validator";
 import { OrdersService } from "../services/orders.service";
 import { PromotionsService, promotionInputSchema } from "../services/promotions.service";
+import { AdminOrdersService } from "../services/admin-orders.service";
+import { RevenueService } from "../services/revenue.service";
 import { monthSpending, recordPurchase, vnMonth } from "../services/spending.service";
 import { catalogDetails } from "../services/shopping-list.service";
 import { ShoppingAuthRequest } from "../middleware/auth.middleware";
@@ -110,6 +112,30 @@ export class ShoppingListController {
   /** GET /promotions/active: running checkout promotions for Đi chợ (tags and banner); any signed-in user. */
   static async activePromotions(_req: Request, res: Response, next: NextFunction) {
     try { res.json({ success: true, data: { items: await PromotionsService.activeForShoppers() } }); } catch (err) { next(err); }
+  }
+
+  // ---- Quản trị › Đơn hàng / Doanh thu (ADMIN role in the verified token) ----
+  static async adminOrders(req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: await AdminOrdersService.list(adminOrdersQuerySchema.parse(req.query)) }); } catch (err) { next(err); }
+  }
+
+  static async adminOrder(req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { order: await AdminOrdersService.detail(idParamSchema.parse(req.params).id) } }); } catch (err) { next(err); }
+  }
+
+  static async adminCancelOrder(req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { order: await AdminOrdersService.cancel(auth(req).authUser.userId, idParamSchema.parse(req.params).id) } }); } catch (err) { next(err); }
+  }
+
+  static async adminUnassignOrder(req: Request, res: Response, next: NextFunction) {
+    try { res.json({ success: true, data: { order: await AdminOrdersService.unassign(auth(req).authUser.userId, idParamSchema.parse(req.params).id) } }); } catch (err) { next(err); }
+  }
+
+  static async adminRevenue(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { period, offset } = revenueQuerySchema.parse(req.query);
+      res.json({ success: true, data: await RevenueService.report(period, offset) });
+    } catch (err) { next(err); }
   }
 
   // ---- Quản trị › Chương trình khuyến mãi (ADMIN role in the verified token) ----

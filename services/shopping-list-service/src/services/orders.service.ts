@@ -40,7 +40,7 @@ export const vnDayPlus = (date: Date, days: number): string => {
   return shifted.toISOString().slice(0, 10);
 };
 
-const inventory = async (path: string, body: unknown): Promise<void> => {
+export const inventory = async (path: string, body: unknown): Promise<void> => {
   try {
     const response = await axios.post(`${INVENTORY_API_URL}/api/inventory/internal${path}`, body, { headers: { "x-internal-api-key": PURCHASE_SYNC_API_KEY }, timeout: 10_000 });
     if (response.data?.success !== true) throw new Error("rejected");
@@ -63,6 +63,8 @@ export const distanceKm = (from: { latitude: number; longitude: number }, to: { 
 
 /** Thông báo feed rows for the buyer when the order moves (in-app only, no push); one per order and status. */
 export const ORDER_NOTICES: Partial<Record<OrderStatus, (reason: string | null) => { title: string; body: string }>> = {
+  // Only after an admin's "Gỡ người giao" (placing an order sends no notice): the order waits for another shipper.
+  PENDING: () => ({ title: "Đơn hàng đang chờ người giao khác", body: "Người giao trước không tiếp tục được; đơn đã quay lại hàng chờ và sẽ sớm có người nhận." }),
   SHIPPING: () => ({ title: "Đơn hàng đang được giao", body: "Người giao hàng đã nhận đơn và đang trên đường giao." }),
   DELIVERED: () => ({ title: "Đơn hàng đã giao thành công", body: "Các món đã được thêm vào Kho của gia đình." }),
   FAILED: (reason) => ({ title: `Đơn hàng không giao được: ${reason ?? "không rõ lý do"}`, body: "Các món \"Đang giao\" đã được bỏ khỏi Kho. Bạn có thể đặt lại." }),
@@ -70,7 +72,7 @@ export const ORDER_NOTICES: Partial<Record<OrderStatus, (reason: string | null) 
 };
 /** One Thông báo row per order: every status change replaces it (latest status, unread again, moved to the top). */
 export const orderNoticeKey = (orderId: string): string => `order:${orderId}`;
-const notifyBuyer = async (order: { id: string; buyerUserId: string | null; status: string; failReason: string | null }): Promise<void> => {
+export const notifyBuyer = async (order: { id: string; buyerUserId: string | null; status: string; failReason: string | null }): Promise<void> => {
   const notice = ORDER_NOTICES[order.status as OrderStatus];
   const key = process.env.INTERNAL_API_KEY;
   if (!notice || !order.buyerUserId || !key) return;
@@ -89,13 +91,13 @@ const notifyBuyer = async (order: { id: string; buyerUserId: string | null; stat
 };
 
 /** Shipper name and phone (auth-service), for the family once an order is on its way. */
-const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: string | null; phone: string | null }>> => {
-  const profiles = new Map<string, { name: string | null; phone: string | null }>();
+export const shipperProfiles = async (ids: string[]): Promise<Map<string, { name: string | null; phone: string | null; avatarUrl: string | null }>> => {
+  const profiles = new Map<string, { name: string | null; phone: string | null; avatarUrl: string | null }>();
   const key = process.env.INTERNAL_API_KEY;
   if (ids.length === 0 || !key) return profiles;
   try {
     const response = await axios.post(`${AUTH_SERVICE_URL()}/internal/admin/users/profiles`, { ids: [...new Set(ids)] }, { headers: { "x-api-key": key }, timeout: 5000 });
-    for (const item of (response.data?.items ?? []) as Array<{ id: string; name: string | null; phone?: string | null }>) profiles.set(item.id, { name: item.name, phone: item.phone ?? null });
+    for (const item of (response.data?.items ?? []) as Array<{ id: string; name: string | null; phone?: string | null; avatarUrl?: string | null }>) profiles.set(item.id, { name: item.name, phone: item.phone ?? null, avatarUrl: item.avatarUrl ?? null });
   } catch {
     // The list still shows, only without the shipper's name and phone.
   }
@@ -144,7 +146,7 @@ const inventoryLine = (line: LineRow) => ({
 const LINE_SELECT = { id: true, name: true, quantity: true, unit: true, productId: true, groupName: true, unitLabel: true, shelfLifeDays: true, unitPrice: true, discountPercent: true, paidUnitPrice: true, lineTotal: true } as const;
 
 /** Order as the family sees it (lines included). */
-const ORDER_INCLUDE = { items: { orderBy: { createdAt: "asc" as const }, select: LINE_SELECT } };
+export const ORDER_INCLUDE = { items: { orderBy: { createdAt: "asc" as const }, select: LINE_SELECT } };
 
 /** What the checkout sheet and Giỏ hàng show (and what "Đặt hàng" re-checks). */
 export const previewView = (result: PromotionResult) => ({

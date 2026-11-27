@@ -13,6 +13,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import AuthImage from "../../components/AuthImage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
@@ -592,7 +593,8 @@ export default function InventoryCapturePanel({ familyId, accessToken, onSaved, 
             <View style={styles.section}>
               {mode === "photo" && photoUri && (
                 <Pressable accessibilityRole="button" accessibilityLabel="Ảnh sản phẩm. Chạm để chụp lại" disabled={busy} onPress={() => void startPhotoCamera()}>
-                  <Image source={{ uri: catalogMatch?.imageUrl ?? photoUri }} style={styles.photoPreview} resizeMode="contain" />
+                  {/* AuthImage: a catalog image uploaded by an admin is a gateway path (needs the token); local photos show directly. */}
+                  <AuthImage url={catalogMatch?.imageUrl ?? photoUri} accessToken={accessToken} accessibilityLabel={catalogMatch ? catalogMatch.name : "Ảnh vừa chụp"} style={styles.photoPreview} resizeMode="contain" fallback={<Image source={{ uri: photoUri }} style={styles.photoPreview} resizeMode="contain" />} />
                   <Text style={styles.retakeHint}>{catalogMatch ? `Dùng ảnh ${catalogMatch.name} trong danh mục · chạm để chụp lại` : "Chạm ảnh để chụp lại"}</Text>
                 </Pressable>
               )}

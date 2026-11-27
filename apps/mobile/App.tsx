@@ -78,6 +78,7 @@ import ProfileHeader from "./src/screens/profile/ProfileHeader";
 import { CAPTURE_ACTIONS, captureBarVisible, type CaptureActionKey } from "./src/navigation/captureBar";
 import { SelectionBar } from "./src/components/SelectionBar";
 import { topTabStyles } from "./src/components/TopTab";
+import { CaptureBar } from "./src/components/CaptureBar";
 import { marketSelectionBar, useMarketSelectionBar } from "./src/screens/shopping-cart/selectionBar";
 
 type Tab =
@@ -133,7 +134,7 @@ const memberTabs = tabs.filter(({ key }) => memberNavigationKeys.has(key));
 const menuTabs = (["recipes", "nutrition", "menu"] as const).map((key) => tabs.find((tab) => tab.key === key)!);
 /** Capture bar: Chụp ảnh · QR gia đình · Chi tiêu (labels and order in navigation/captureBar.ts). */
 const CAPTURE_ICONS: Record<CaptureActionKey, LucideIcon> = { photo: Camera, familyQr: QrCode, spending: Wallet };
-const captureActions = CAPTURE_ACTIONS.map((action) => ({ ...action, icon: CAPTURE_ICONS[action.key] }));
+const captureActions = CAPTURE_ACTIONS.map((action) => ({ ...action, icon: CAPTURE_ICONS[action.key], primary: action.key === "familyQr" }));
 
 // Logic lấy API và User ID của Hùng
 function NoticeBanner({ message }: { message: string }): React.JSX.Element {
@@ -675,17 +676,7 @@ function AppContent(): React.JSX.Element {
         )}
       </View>
       {showCaptureBar && (
-        <View style={styles.captureBar}>
-          {captureActions.map(({ key, label, icon: Icon }) => (
-            <TouchableOpacity key={key} accessibilityLabel={label} accessibilityRole="button"
-              onPress={() => startCapture(key)} style={styles.captureAction}>
-              <View style={[styles.captureActionIcon, key === "familyQr" && styles.captureActionIconPrimary]}>
-                <AppIcon icon={Icon} size="md" color={key === "familyQr" ? colors.surface : colors.primary} />
-              </View>
-              <Text numberOfLines={2} style={styles.captureActionLabel}>{label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <CaptureBar actions={captureActions} onPress={startCapture} />
       )}
       {showSelectionBar && <SelectionBar state={marketSelection} onExit={marketSelectionBar.exit} onAdd={marketSelectionBar.add} />}
       {showNotificationSelectionBar && <SelectionBar state={notificationSelection} onExit={notificationSelectionBar.exit} onAdd={notificationSelectionBar.add} actionLabel="Xóa" actionIcon={Trash2} destructive />}
@@ -782,19 +773,6 @@ const styles = StyleSheet.create({
   profileLabel: { ...textStyles.caption, marginTop: spacing.sm },
   profileValue: { ...textStyles.body, marginBottom: spacing.xs },
   content: { flex: 1 },
-  captureBar: {
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderTopColor: colors.border,
-    borderTopWidth: 1,
-    flexDirection: "row",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-  },
-  captureAction: { alignItems: "center", flex: 1, gap: spacing.xs, justifyContent: "center", minHeight: 72, paddingHorizontal: spacing.xs },
-  captureActionIcon: { alignItems: "center", backgroundColor: colors.primarySoft, borderRadius: 24, height: 40, justifyContent: "center", width: 40 },
-  captureActionIconPrimary: { backgroundColor: colors.primary, height: 48, width: 48 },
-  captureActionLabel: { ...textStyles.labelSmall, color: colors.text, fontSize: 12, lineHeight: 15, textAlign: "center" },
   captureOverlay: { backgroundColor: colors.overlay, flex: 1, justifyContent: "flex-end" },
   captureSheet: { alignSelf: "center", backgroundColor: colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: "86%", maxWidth: 760, width: "100%" },
   captureHeader: { alignItems: "center", borderBottomColor: colors.border, borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", paddingHorizontal: spacing.lg, paddingTop: spacing.sm },

@@ -13,6 +13,13 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { AdminListHeader } from "./AdminListHeader";
 import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
+import { useSession } from "../../services/session";
+import { isGatewayImage } from "../../services/authImage";
+import type { UploadPhoto } from "../inventory/inventoryApi";
+import { AdminPhotoField } from "./AdminPhotoField";
+import { uploadIngredientImage } from "./adminMedia";
+import type { CreateRequest } from "./AdminCreateFromPhoto";
+import { confidenceText, duplicateDialog, findDuplicate, ingredientValuesFrom, isAiValue, replacePhotoDialog, type IngredientAiValues } from "./photoCreate";
 
 type Ingredient = {
   id: string;
@@ -21,6 +28,9 @@ type Ingredient = {
   defaultUnit: string;
   shelfLifeDays: number | null;
   caloriesPer100g: number | null;
+  proteinPer100g?: number | null;
+  carbsPer100g?: number | null;
+  fatPer100g?: number | null;
   allergenTags: string[];
   isActive: boolean;
   imageUrl: string | null;
@@ -68,7 +78,7 @@ const sameTag = (a: string, b: string) => a.trim().toLowerCase() === b.trim().to
 const SHOW_ALLERGENS = false;
 
 /** credit: the stored image's credit (shown while the link is unchanged). */
-type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoStartDate: string; promoEndDate: string; price: string; packGrams: string; pieceGrams: string; unitLabel: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
+type Draft = { id?: string; name: string; category: string; defaultUnit: string; shelfLifeDays: string; caloriesPer100g: string; proteinPer100g: string; carbsPer100g: string; fatPer100g: string; allergenTags: string[]; otherAllergen: string; imageUrl: string; discountPercent: string; promoStartDate: string; promoEndDate: string; price: string; packGrams: string; pieceGrams: string; unitLabel: string; englishName: string; credit?: { url: string; source: string | null; author: string; license: string } | null; isActive?: boolean };
 /** Promotion dates start filled: from today, for DEFAULT_PROMO_DAYS (sent only when there is a % giảm giá). */
 /** Units whose weight per unit is worth storing (recipes in grams -> packs in "Cần mua tuần này"). */
 const hasPackWeight = (unit: string): boolean => unit === "PACK" || isPieceUnit(unit);
@@ -81,10 +91,11 @@ const unitWordOptions = (unit: string): { value: string; label: string }[] => [
   { value: "", label: `Mặc định (${unitWord(unit)})` },
   ...UNIT_WORDS.map((word) => ({ value: word, label: word })),
 ];
-const newDraft = (): Draft => ({ name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoStartDate: dayFromToday(0), promoEndDate: dayFromToday(DEFAULT_PROMO_DAYS), price: "", packGrams: "", pieceGrams: "", unitLabel: "", englishName: "" });
+const newDraft = (): Draft => ({ name: "", category: "", defaultUnit: DEFAULT_UNIT, shelfLifeDays: "", caloriesPer100g: "", proteinPer100g: "", carbsPer100g: "", fatPer100g: "", allergenTags: [], otherAllergen: "", imageUrl: "", discountPercent: "", promoStartDate: dayFromToday(0), promoEndDate: dayFromToday(DEFAULT_PROMO_DAYS), price: "", packGrams: "", pieceGrams: "", unitLabel: "", englishName: "" });
 const toDraft = (item: Ingredient): Draft => ({
   id: item.id, name: item.name, category: item.category, defaultUnit: item.defaultUnit,
-  shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
+  shelfLifeDays: item.shelfLifeDays?.toString() ?? "", caloriesPer100g: item.caloriesPer100g?.toString() ?? "",
+  proteinPer100g: item.proteinPer100g?.toString() ?? "", carbsPer100g: item.carbsPer100g?.toString() ?? "", fatPer100g: item.fatPer100g?.toString() ?? "", allergenTags: [...item.allergenTags], otherAllergen: "",
   imageUrl: item.imageUrl ?? "", discountPercent: item.discountPercent?.toString() ?? "",
   promoStartDate: item.promoStartDate?.slice(0, 10) ?? dayFromToday(0), promoEndDate: item.promoEndDate?.slice(0, 10) ?? dayFromToday(DEFAULT_PROMO_DAYS),
   price: item.price?.toString() ?? "", packGrams: item.packGrams?.toString() ?? "", pieceGrams: item.pieceGrams?.toString() ?? "", unitLabel: item.unitLabel ?? "", isActive: item.isActive, englishName: item.englishName ?? "",
@@ -123,15 +134,23 @@ const withTag = (tags: string[], tag: string): string[] => {
   const cleaned = tags.map((entry) => entry.trim()).filter(Boolean);
   return !tag.trim() || cleaned.some((entry) => sameTag(entry, tag)) ? cleaned : [...cleaned, tag.trim()];
 };
+// An image uploaded with "Chụp / chọn ảnh" is a gateway path ("/api/admin/catalog/images/…"), kept as is.
 const imageUrlError = (text: string): string | null =>
-  !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https:// và là địa chỉ công khai.";
+  !text.trim() || looksLikeImageUrl(text) || isGatewayImage(text) ? null : "Link phải bắt đầu bằng https:// và là địa chỉ công khai.";
 const PAGE_SIZE = 10;
 /** Rows per request when loading the whole catalog (admin-service caps limit at 100). */
 const LOAD_PAGE_SIZE = 100;
 const optionalNumber = (value: string): number | null => (value.trim() === "" ? null : Number(value.replace(",", ".")));
 
-export default function IngredientsScreen(): React.JSX.Element {
+type ScreenProps = {
+  /** "Chụp ảnh" (bottom bar): open the create form prefilled with the AI suggestion and the photo attached. */
+  createRequest?: CreateRequest | null;
+  onCreateHandled?: () => void;
+};
+
+export default function IngredientsScreen({ createRequest = null, onCreateHandled }: ScreenProps = {}): React.JSX.Element {
   const { api } = useGatewayApi();
+  const { accessToken } = useSession();
   const { columns, gutter, isWide } = useLayout();
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
@@ -148,9 +167,53 @@ export default function IngredientsScreen(): React.JSX.Element {
   const [notice, setNotice] = useState<string | null>(null);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const { confirm, dialog } = useConfirm();
+  const { confirm, choose, dialog } = useConfirm();
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Ingredient>>(null);
+  // Photo chosen for a NEW ingredient (uploaded after "Lưu"); AI values ("Gợi ý AI" until edited) and notes.
+  const [pendingPhoto, setPendingPhoto] = useState<UploadPhoto | null>(null);
+  const [aiValues, setAiValues] = useState<IngredientAiValues>({});
+  const [aiInfo, setAiInfo] = useState<{ note: string | null; confidence: string | null; notes: string | null; allergens: string[] } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const drafting = draft !== null;
+  useEffect(() => { if (!drafting) { setPendingPhoto(null); setAiValues({}); setAiInfo(null); } }, [drafting]);
+  /** Label with a subtle "Gợi ý AI" while the field still holds the AI's value. */
+  const aiLabel = (label: string, field: keyof IngredientAiValues, current: string) => (isAiValue(field, current, aiValues) ? `${label} · Gợi ý AI` : label);
+
+  // "Chụp ảnh" from the bottom bar: the create form, prefilled (nothing is saved until the admin taps Lưu).
+  useEffect(() => {
+    if (!createRequest) return;
+    const values = ingredientValuesFrom(createRequest.ingredient);
+    setFormError(null);
+    setDraft({ ...newDraft(), ...values });
+    setTimeout(() => {
+      setPendingPhoto(createRequest.photo);
+      setAiValues(values);
+      const suggestion = createRequest.ingredient;
+      setAiInfo({ note: createRequest.note, confidence: confidenceText(suggestion?.confidence ?? null), notes: suggestion?.notes ?? null, allergens: suggestion?.allergens ?? [] });
+    }, 0);
+    onCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequest?.key]);
+
+  /** "Chụp / chọn ảnh": a new ingredient keeps the photo for "Lưu"; an existing one is updated now (replacing asks). */
+  const pickPhoto = async (photo: UploadPhoto) => {
+    if (!draft) return;
+    if (!draft.id) { setPendingPhoto(photo); return; }
+    if (draft.imageUrl.trim() && !(await confirm(replacePhotoDialog(draft.name || "nguyên liệu")))) return;
+    if (!accessToken) return;
+    setPhotoBusy(true); setFormError(null);
+    try {
+      await uploadIngredientImage(accessToken, draft.id, photo);
+      setNotice(`Đã cập nhật ảnh của ${draft.name}.`);
+      setDraft(null);
+      void load(true);
+    } catch (caught) {
+      setFormError(errorMessage(caught));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   // Every row once (pages of 100, the endpoint maximum): again only on pull-to-refresh, retry and after an edit.
   // Typing in the search box or switching the filter sends no request.
@@ -185,6 +248,8 @@ export default function IngredientsScreen(): React.JSX.Element {
     if (!draft) return;
     const calories = optionalNumber(draft.caloriesPer100g);
     const shelfLife = optionalNumber(draft.shelfLifeDays);
+    const macros = { proteinPer100g: optionalNumber(draft.proteinPer100g), carbsPer100g: optionalNumber(draft.carbsPer100g), fatPer100g: optionalNumber(draft.fatPer100g) };
+    if (Object.values(macros).some((value) => value !== null && (Number.isNaN(value) || value < 0 || value > 100))) return setFormError("Đạm, tinh bột, béo là số gam từ 0 đến 100 trên 100 g.");
     if (!draft.name.trim() || !draft.category.trim() || !draft.defaultUnit.trim()) return setFormError("Tên, nhóm và đơn vị là bắt buộc.");
     if (calories !== null && (Number.isNaN(calories) || calories < 0)) return setFormError("Calo phải là số không âm.");
     if (shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 1 || shelfLife > 3650)) return setFormError("Hạn dùng là số ngày nguyên từ 1 đến 3650.");
@@ -207,7 +272,7 @@ export default function IngredientsScreen(): React.JSX.Element {
     const discount = draft.discountPercent.trim() ? Number(draft.discountPercent.trim()) : null;
     const body = {
       name: draft.name.trim(), category: draft.category.trim(), defaultUnit: draft.defaultUnit.trim(),
-      caloriesPer100g: calories, shelfLifeDays: shelfLife, price, packGrams, pieceGrams, unitLabel: unitLabelValue,
+      caloriesPer100g: calories, ...macros, shelfLifeDays: shelfLife, price, packGrams, pieceGrams, unitLabel: unitLabelValue,
       // "" clears the alias (the server stores null).
       englishName: draft.englishName.trim() || null,
       // While the field is hidden, allergenTags is not sent: an edit leaves stored allergens untouched
@@ -219,13 +284,23 @@ export default function IngredientsScreen(): React.JSX.Element {
       promoStartDate: discount !== null && draft.promoStartDate.trim() ? draft.promoStartDate.trim() : null,
       promoEndDate: discount !== null && draft.promoEndDate.trim() ? draft.promoEndDate.trim() : null,
     };
+    // A new ingredient whose name is already in the catalog: open that one, or still create a new one.
+    const duplicate = draft.id ? null : findDuplicate(draft.name, all);
+    if (duplicate) {
+      const choice = await choose(duplicateDialog(duplicate.name));
+      if (choice === "cancel") { setFormError(null); setDraft(toDraft(duplicate)); return; }
+      if (choice !== "confirm") return;
+    }
     setSaving(true); setFormError(null);
     try {
       const saved = draft.id
         ? await api.put<SavedIngredient>(`/api/admin/ingredients/${encodeURIComponent(draft.id)}`, body)
         : await api.post<SavedIngredient>("/api/admin/ingredients", body);
+      // The photo of a new ingredient is uploaded once it exists (admin-service stores it as the product image).
+      let photoFailed = false;
+      if (!draft.id && pendingPhoto && accessToken) await uploadIngredientImage(accessToken, saved.id, pendingPhoto).catch(() => { photoFailed = true; });
       // The ingredient is saved even when the promotion could not be created; tell the admin to retry.
-      setNotice(saved.promotionSync === "failed" ? PROMOTION_SYNC_FAILED : null);
+      setNotice(photoFailed ? "Đã lưu nguyên liệu, nhưng chưa tải được ảnh. Mở lại để chọn ảnh." : saved.promotionSync === "failed" ? PROMOTION_SYNC_FAILED : null);
       setDraft(null);
       void load(true);
     } catch (caught) {
@@ -360,29 +435,41 @@ export default function IngredientsScreen(): React.JSX.Element {
             </View>
             {draft ? (
               <>
-                <Field label="Tên *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} />
-                <Field label="Nhóm *" placeholder="rau củ, thịt, ..." value={draft.category} onChangeText={(category) => setDraft({ ...draft, category })} />
-                <Field label="Tên tiếng Anh (nhận diện ảnh)" placeholder="Ví dụ: carrot" value={draft.englishName} onChangeText={(englishName) => setDraft({ ...draft, englishName })} autoCapitalize="none" autoCorrect={false} />
+                {aiInfo ? (
+                  <View style={local.aiBox} accessibilityLiveRegion="polite">
+                    {aiInfo.note ? <AppText variant="bodySmall" color={colors.warning}>{aiInfo.note}</AppText> : <AppText variant="bodySmall" color={colors.primary}>Đã điền gợi ý AI. Kiểm tra và sửa trước khi lưu.{aiInfo.confidence ? ` ${aiInfo.confidence}.` : ""}</AppText>}
+                    {aiInfo.notes ? <AppText variant="caption">{aiInfo.notes}</AppText> : null}
+                    {aiInfo.allergens.length > 0 ? <AppText variant="caption">Có thể chứa: {aiInfo.allergens.join(", ")} (mục dị ứng đang ẩn, không lưu)</AppText> : null}
+                  </View>
+                ) : null}
+                <Field label={aiLabel("Tên *", "name", draft.name)} value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} />
+                <Field label={aiLabel("Nhóm *", "category", draft.category)} placeholder="rau củ, thịt, ..." value={draft.category} onChangeText={(category) => setDraft({ ...draft, category })} />
+                <Field label={aiLabel("Tên tiếng Anh (nhận diện ảnh)", "englishName", draft.englishName)} placeholder="Ví dụ: carrot" value={draft.englishName} onChangeText={(englishName) => setDraft({ ...draft, englishName })} autoCapitalize="none" autoCorrect={false} />
                 <View style={local.formBlock}>
-                  <AppText variant="bodySmall" color={colors.muted}>Đơn vị mặc định *</AppText>
+                  <AppText variant="bodySmall" color={colors.muted}>{aiLabel("Đơn vị mặc định *", "defaultUnit", draft.defaultUnit)}</AppText>
                   <View style={styles.row}>
                     <Dropdown<string> label="Đơn vị" value={draft.defaultUnit} options={unitOptionsFor(draft.defaultUnit)} onChange={(defaultUnit) => setDraft({ ...draft, defaultUnit })} />
                   </View>
                 </View>
-                <Field label={`Giá (đ / ${unitLabel(draft.defaultUnit)})`} keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
+                <Field label={aiLabel(`Giá (đ / ${unitLabel(draft.defaultUnit)})`, "price", draft.price)} keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 25000" value={draft.price} onChangeText={(price) => setDraft({ ...draft, price: price.replace(/[^0-9]/g, "") })} />
                 {isPieceUnit(draft.defaultUnit) ? (
                   <View style={styles.row}>
                     <Dropdown<string> label="Gọi 1 đơn vị là" value={draft.unitLabel} options={unitWordOptions(draft.defaultUnit)} onChange={(unitLabel) => setDraft({ ...draft, unitLabel })} />
                   </View>
                 ) : null}
                 {hasPackWeight(draft.defaultUnit) ? (
-                  <Field label={packWeightLabel(draft.defaultUnit)} keyboardType="number-pad" placeholder={draft.defaultUnit === "PACK" ? "Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" : "Không bắt buộc, ví dụ 1 quả bưởi ≈ 1200"} value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
+                  <Field label={aiLabel(packWeightLabel(draft.defaultUnit), "packGrams", draft.packGrams)} keyboardType="number-pad" placeholder={draft.defaultUnit === "PACK" ? "Không bắt buộc, ví dụ 1 bó hành lá ≈ 100" : "Không bắt buộc, ví dụ 1 quả bưởi ≈ 1200"} value={draft.packGrams} onChangeText={(packGrams) => setDraft({ ...draft, packGrams: packGrams.replace(/[^0-9]/g, "") })} />
                 ) : null}
                 {hasPieceWeight(draft.defaultUnit) ? (
-                  <Field label="Khối lượng 1 quả / củ (g)" keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 1 quả cà chua ≈ 100" value={draft.pieceGrams} onChangeText={(pieceGrams) => setDraft({ ...draft, pieceGrams: pieceGrams.replace(/[^0-9]/g, "") })} />
+                  <Field label={aiLabel("Khối lượng 1 quả / củ (g)", "pieceGrams", draft.pieceGrams)} keyboardType="number-pad" placeholder="Không bắt buộc, ví dụ 1 quả cà chua ≈ 100" value={draft.pieceGrams} onChangeText={(pieceGrams) => setDraft({ ...draft, pieceGrams: pieceGrams.replace(/[^0-9]/g, "") })} />
                 ) : null}
-                <Field label="Calo / 100g" keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
-                <Field label="Hạn dùng (ngày)" keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
+                <Field label={aiLabel("Calo / 100g", "caloriesPer100g", draft.caloriesPer100g)} keyboardType="decimal-pad" value={draft.caloriesPer100g} onChangeText={(caloriesPer100g) => setDraft({ ...draft, caloriesPer100g })} />
+                <View style={styles.wrapRow}>
+                  <View style={local.macro}><Field label={aiLabel("Đạm (g/100g)", "proteinPer100g", draft.proteinPer100g)} keyboardType="decimal-pad" value={draft.proteinPer100g} onChangeText={(proteinPer100g) => setDraft({ ...draft, proteinPer100g })} /></View>
+                  <View style={local.macro}><Field label={aiLabel("Tinh bột (g/100g)", "carbsPer100g", draft.carbsPer100g)} keyboardType="decimal-pad" value={draft.carbsPer100g} onChangeText={(carbsPer100g) => setDraft({ ...draft, carbsPer100g })} /></View>
+                  <View style={local.macro}><Field label={aiLabel("Béo (g/100g)", "fatPer100g", draft.fatPer100g)} keyboardType="decimal-pad" value={draft.fatPer100g} onChangeText={(fatPer100g) => setDraft({ ...draft, fatPer100g })} /></View>
+                </View>
+                <Field label={aiLabel("Hạn dùng (ngày)", "shelfLifeDays", draft.shelfLifeDays)} keyboardType="number-pad" placeholder="1 - 3650, để trống nếu không rõ" value={draft.shelfLifeDays} onChangeText={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays: shelfLifeDays.replace(/[^0-9]/g, "") })} />
                 <Segmented<string> label="Chọn nhanh số ngày" value={draft.shelfLifeDays} onChange={(shelfLifeDays) => setDraft({ ...draft, shelfLifeDays })}
                   options={SHELF_LIFE_PICKS.map((days) => ({ value: days, label: `${days} ngày` }))} />
                 {SHOW_ALLERGENS ? (
@@ -394,8 +481,15 @@ export default function IngredientsScreen(): React.JSX.Element {
                   />
                 ) : null}
 
+                <AdminPhotoField
+                  imageUrl={draft.imageUrl.trim() || null}
+                  pending={pendingPhoto}
+                  busy={photoBusy}
+                  onPicked={(photo) => void pickPhoto(photo)}
+                  hint={!draft.id && pendingPhoto ? "Ảnh sẽ được tải lên khi bấm Lưu." : null}
+                />
                 <Field
-                  label="Dán link ảnh (https://...)"
+                  label="Hoặc dán link ảnh (https://...)"
                   value={draft.imageUrl}
                   onChangeText={(imageUrl) => { setImageLoadFailed(false); setDraft({ ...draft, imageUrl }); }}
                   autoCapitalize="none"
@@ -403,7 +497,7 @@ export default function IngredientsScreen(): React.JSX.Element {
                   keyboardType="url"
                   placeholder="https://..."
                 />
-                {draft.imageUrl.trim() ? (
+                {draft.imageUrl.trim() && !isGatewayImage(draft.imageUrl) ? (
                   looksLikeImageUrl(draft.imageUrl) ? (
                     <View style={[styles.row, local.preview]}>
                       <RemoteImage uri={draft.imageUrl.trim()} size={72} accessibilityLabel="Xem trước ảnh" onLoadError={() => setImageLoadFailed(true)} onLoad={() => setImageLoadFailed(false)} />
@@ -510,6 +604,8 @@ function AllergenPicker({ value, other, onChange, onOtherChange }: AllergenPicke
 }
 
 const local = StyleSheet.create({
+  aiBox: { backgroundColor: colors.primarySoft, borderRadius: 8, gap: 4, marginBottom: 10, padding: 12 },
+  macro: { flexBasis: 120, flexGrow: 1 },
   creditRow: { gap: 2 },
   formBlock: { gap: 4, marginBottom: 10 },
   otherRow: { alignItems: "flex-end" },

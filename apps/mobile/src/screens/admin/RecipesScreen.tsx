@@ -15,6 +15,29 @@ import { AdminListHeader } from "./AdminListHeader";
 import { DEFAULT_PER_PERSON, savedIngredient } from "./recipeIngredients";
 import { StepIngredientTags } from "./StepIngredientTags";
 import { recipeIngredientNames } from "./stepIngredients";
+import { useSession } from "../../services/session";
+import { isGatewayImage } from "../../services/authImage";
+import type { UploadPhoto } from "../inventory/inventoryApi";
+import { AdminPhotoField } from "./AdminPhotoField";
+import { uploadRecipeImage } from "./adminMedia";
+import type { CreateRequest } from "./AdminCreateFromPhoto";
+import { confidenceText, duplicateDialog, findDuplicate, isAiValue, recipeValuesFrom, replacePhotoDialog, type RecipeAiValues, type RecipeSuggestion } from "./photoCreate";
+
+/** AI suggestion → a new dish draft (name, cuisine, servings, kcal, catalog-mapped lines, draft steps). */
+const draftFromSuggestion = (suggestion: RecipeSuggestion | null): Draft => {
+  const base = emptyDraft();
+  if (!suggestion) return base;
+  const values = recipeValuesFrom(suggestion);
+  return {
+    ...base,
+    name: values.name ?? "",
+    cuisine: values.cuisine ?? base.cuisine,
+    servings: values.servings ?? "",
+    calories: values.calories ?? "",
+    ingredients: suggestion.ingredients.length > 0 ? suggestion.ingredients.map((line) => newIngredient({ name: line.name, quantity: line.quantity, unit: line.unit })) : base.ingredients,
+    steps: suggestion.steps.map((instruction, index) => newStep({ order: index + 1, instruction, durationSeconds: null, ingredients: [] })),
+  };
+};
 
 type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 type Recipe = {
@@ -114,12 +137,19 @@ const toDraft = (recipe: Recipe): Draft => ({
   isActive: recipe.isActive,
 });
 const imageUrlError = (text: string): string | null =>
-  !text.trim() || looksLikeImageUrl(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
+  !text.trim() || looksLikeImageUrl(text) || isGatewayImage(text) ? null : "Link phải bắt đầu bằng https://, là địa chỉ công khai và tối đa 2048 ký tự.";
 const optionalNumber = (value: string): number | null => (value.trim() === "" ? null : Number(value.replace(",", ".")));
 
 /** Quản trị > Món ăn: recipe catalog (recipe-service, admin-guarded routes). Hiding sets isActive=false. */
-export default function RecipesScreen(): React.JSX.Element {
+type ScreenProps = {
+  /** "Chụp ảnh" (bottom bar): open the create form prefilled with the AI suggestion and the photo attached. */
+  createRequest?: CreateRequest | null;
+  onCreateHandled?: () => void;
+};
+
+export default function RecipesScreen({ createRequest = null, onCreateHandled }: ScreenProps = {}): React.JSX.Element {
   const { api } = useGatewayApi();
+  const { accessToken } = useSession();
   const { columns, gutter, isWide } = useLayout();
   const grid = useGridCell(columns);
   const [search, setSearch] = useState("");
@@ -135,9 +165,52 @@ export default function RecipesScreen(): React.JSX.Element {
   const [saving, setSaving] = useState(false);
   const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const { confirm, dialog } = useConfirm();
+  const { confirm, choose, dialog } = useConfirm();
   const requestId = useRef(0);
   const listRef = useRef<FlatList<Recipe>>(null);
+  // Photo chosen for a NEW dish (uploaded after "Lưu"); AI values ("Gợi ý AI" until edited) and notes.
+  const [pendingPhoto, setPendingPhoto] = useState<UploadPhoto | null>(null);
+  const [aiValues, setAiValues] = useState<RecipeAiValues>({});
+  const [aiInfo, setAiInfo] = useState<{ note: string | null; confidence: string | null; notes: string | null; unmatched: string[]; aiLines: boolean } | null>(null);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const drafting = draft !== null;
+  useEffect(() => { if (!drafting) { setPendingPhoto(null); setAiValues({}); setAiInfo(null); } }, [drafting]);
+  const aiLabel = (label: string, field: keyof RecipeAiValues, current: string) => (isAiValue(field, current, aiValues) ? `${label} · Gợi ý AI` : label);
+
+  // "Chụp ảnh" from the bottom bar: the create form, prefilled (nothing is saved until the admin taps Lưu).
+  useEffect(() => {
+    if (!createRequest) return;
+    const suggestion = createRequest.recipe;
+    setFormError(null);
+    setDraft(draftFromSuggestion(suggestion));
+    setTimeout(() => {
+      setPendingPhoto(createRequest.photo);
+      setAiValues(recipeValuesFrom(suggestion));
+      setAiInfo({ note: createRequest.note, confidence: confidenceText(suggestion?.confidence ?? null), notes: suggestion?.notes ?? null, unmatched: suggestion?.unmatched ?? [], aiLines: Boolean(suggestion && (suggestion.ingredients.length > 0 || suggestion.steps.length > 0)) });
+    }, 0);
+    onCreateHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createRequest?.key]);
+
+  /** "Chụp / chọn ảnh": a new dish keeps the photo for "Lưu"; an existing one is updated now (replacing asks). */
+  const pickPhoto = async (photo: UploadPhoto) => {
+    if (!draft) return;
+    if (!draft.id) { setPendingPhoto(photo); return; }
+    if (draft.imageUrl.trim() && !(await confirm(replacePhotoDialog(draft.name || "món ăn")))) return;
+    if (!accessToken) return;
+    setPhotoBusy(true); setFormError(null);
+    try {
+      await uploadRecipeImage(accessToken, draft.id, photo);
+      setNotice(`Đã cập nhật ảnh của ${draft.name}.`);
+      setDraft(null);
+      void load(true);
+    } catch (caught) {
+      setFormError(errorMessage(caught));
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   // recipe-service returns the whole (small) catalog in one request: loaded once (and on pull-to-refresh, retry and
   // after an edit). Typing in the search box or switching the filter sends no request; pages of 10 are cut here.
@@ -213,10 +286,20 @@ export default function RecipesScreen(): React.JSX.Element {
       // Untouched dishes without steps keep steps = null, so recipe-service can still add the starter steps.
       ...(stepBodies.length > 0 || draft.hadSteps ? { steps: stepBodies } : {}),
     };
+    // A new dish whose name is already in the catalog: open that one, or still create a new one.
+    const duplicate = draft.id ? null : findDuplicate(draft.name, allRecipes);
+    if (duplicate) {
+      const choice = await choose(duplicateDialog(duplicate.name));
+      if (choice === "cancel") { setFormError(null); setImageLoadFailed(false); setDraft(toDraft(duplicate)); return; }
+      if (choice !== "confirm") return;
+    }
     setSaving(true); setFormError(null);
     try {
-      if (draft.id) await api.put<Recipe>(`/api/recipes/${encodeURIComponent(draft.id)}`, body);
-      else await api.post<Recipe>("/api/recipes", body);
+      const saved = draft.id ? await api.put<Recipe>(`/api/recipes/${encodeURIComponent(draft.id)}`, body) : await api.post<Recipe>("/api/recipes", body);
+      // The photo of a new dish is uploaded once it exists (admin-service stores it, recipe-service keeps the link).
+      let photoFailed = false;
+      if (!draft.id && pendingPhoto && accessToken) await uploadRecipeImage(accessToken, saved.id, pendingPhoto).catch(() => { photoFailed = true; });
+      setNotice(photoFailed ? "Đã lưu món, nhưng chưa tải được ảnh. Mở lại để chọn ảnh." : null);
       setDraft(null);
       void load();
     } catch (caught) {
@@ -291,6 +374,7 @@ export default function RecipesScreen(): React.JSX.Element {
     <View>
       <AdminListHeader placeholder="Nhập tên món..." searchLabel="Tìm món ăn" search={search} onSearch={setSearch}
         addLabel="Thêm món" onAdd={() => { setFormError(null); setImageLoadFailed(false); setDraft(emptyDraft()); }} />
+      {notice ? <View style={local.notice} accessibilityLiveRegion="polite"><AppText variant="bodySmall" color={colors.success}>{notice}</AppText></View> : null}
       {error && !showState ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
@@ -350,8 +434,23 @@ export default function RecipesScreen(): React.JSX.Element {
             </View>
             {draft ? (
               <>
+                {aiInfo ? (
+                  <View style={local.aiBox} accessibilityLiveRegion="polite">
+                    {aiInfo.note ? <AppText variant="bodySmall" color={colors.warning}>{aiInfo.note}</AppText> : <AppText variant="bodySmall" color={colors.primary}>Đã điền gợi ý AI. Kiểm tra và sửa trước khi lưu.{aiInfo.confidence ? ` ${aiInfo.confidence}.` : ""}</AppText>}
+                    {aiInfo.aiLines ? <AppText variant="caption">Nguyên liệu và các bước nấu là gợi ý AI.</AppText> : null}
+                    {aiInfo.unmatched.length > 0 ? <AppText variant="caption">Chưa có trong danh mục (chưa thêm): {aiInfo.unmatched.join(", ")}</AppText> : null}
+                    {aiInfo.notes ? <AppText variant="caption">{aiInfo.notes}</AppText> : null}
+                  </View>
+                ) : null}
+                <AdminPhotoField
+                  imageUrl={draft.imageUrl.trim() || null}
+                  pending={pendingPhoto}
+                  busy={photoBusy}
+                  onPicked={(photo) => void pickPhoto(photo)}
+                  hint={!draft.id && pendingPhoto ? "Ảnh sẽ được tải lên khi bấm Lưu." : null}
+                />
                 <Field
-                  label="Dán link ảnh (https://...)"
+                  label="Hoặc dán link ảnh (https://...)"
                   value={draft.imageUrl}
                   onChangeText={(imageUrl) => { setImageLoadFailed(false); setDraft({ ...draft, imageUrl }); }}
                   autoCapitalize="none"
@@ -360,7 +459,7 @@ export default function RecipesScreen(): React.JSX.Element {
                   placeholder="https://..."
                   maxLength={2048}
                 />
-                {draft.imageUrl.trim() ? (
+                {draft.imageUrl.trim() && !isGatewayImage(draft.imageUrl) ? (
                   looksLikeImageUrl(draft.imageUrl) ? (
                     <View style={[styles.row, local.preview]}>
                       <RemoteImage uri={draft.imageUrl.trim()} size={72} accessibilityLabel="Xem trước ảnh" onLoadError={() => setImageLoadFailed(true)} onLoad={() => setImageLoadFailed(false)} />
@@ -368,7 +467,7 @@ export default function RecipesScreen(): React.JSX.Element {
                     </View>
                   ) : <AppText variant="caption" color={colors.danger}>{imageUrlError(draft.imageUrl)}</AppText>
                 ) : null}
-                <Field label="Tên món *" value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} maxLength={160} />
+                <Field label={aiLabel("Tên món *", "name", draft.name)} value={draft.name} onChangeText={(name) => setDraft({ ...draft, name })} maxLength={160} />
                 <Field label="Mô tả" value={draft.description} onChangeText={(description) => setDraft({ ...draft, description })} multiline maxLength={2000} />
                 <View style={local.formBlock}>
                   <AppText variant="bodySmall" color={colors.muted}>Bữa ăn</AppText>
@@ -386,11 +485,11 @@ export default function RecipesScreen(): React.JSX.Element {
                 </View>
                 <View style={[styles.wrapRow, local.formBlock]}>
                   <Dropdown<string> label="Loại món" value={draft.role} options={ROLE_OPTIONS} onChange={(role) => setDraft({ ...draft, role })} />
-                  <Dropdown<string> label="Ẩm thực" value={draft.cuisine} options={CUISINE_OPTIONS} onChange={(cuisine) => setDraft({ ...draft, cuisine })} />
+                  <Dropdown<string> label={aiLabel("Ẩm thực", "cuisine", draft.cuisine)} value={draft.cuisine} options={CUISINE_OPTIONS} onChange={(cuisine) => setDraft({ ...draft, cuisine })} />
                 </View>
                 <View style={styles.wrapRow}>
-                  <View style={local.third}><Field label="Calo / phần" keyboardType="decimal-pad" value={draft.calories} onChangeText={(calories) => setDraft({ ...draft, calories })} /></View>
-                  <View style={local.third}><Field label="Số phần" keyboardType="number-pad" value={draft.servings} onChangeText={(servings) => setDraft({ ...draft, servings: servings.replace(/[^0-9]/g, "") })} /></View>
+                  <View style={local.third}><Field label={aiLabel("Calo / phần", "calories", draft.calories)} keyboardType="decimal-pad" value={draft.calories} onChangeText={(calories) => setDraft({ ...draft, calories })} /></View>
+                  <View style={local.third}><Field label={aiLabel("Số phần", "servings", draft.servings)} keyboardType="number-pad" value={draft.servings} onChangeText={(servings) => setDraft({ ...draft, servings: servings.replace(/[^0-9]/g, "") })} /></View>
                   <View style={local.third}><Field label="Chuẩn bị (phút)" keyboardType="number-pad" value={draft.preparationMinutes} onChangeText={(preparationMinutes) => setDraft({ ...draft, preparationMinutes: preparationMinutes.replace(/[^0-9]/g, "") })} /></View>
                 </View>
                 <View style={local.formBlock}>
@@ -479,6 +578,8 @@ const local = StyleSheet.create({
   unitPill: { marginBottom: 10 },
   stepCard: { gap: 6 },
   modalBackdrop: { flex: 1, justifyContent: "center" },
+  aiBox: { backgroundColor: colors.primarySoft, borderRadius: 8, gap: 4, marginBottom: 10, padding: 12 },
+  notice: { backgroundColor: colors.successSoft, borderRadius: 8, marginBottom: 8, padding: 12 },
   modalCard: { alignSelf: "center", backgroundColor: colors.background, gap: 4, maxWidth: 640, padding: 20, width: "100%" },
   modalHeader: { marginBottom: 8 },
   modalActions: { justifyContent: "flex-end", marginTop: 12 },

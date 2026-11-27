@@ -9,6 +9,9 @@ import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../compon
 import { discountedPrice, formatVnd } from "../../services/format";
 import { type CatalogIngredient } from "../inventory/inventoryApi";
 import { marketCatalog } from "../inventory/marketCatalog";
+import AuthImage from "../../components/AuthImage";
+import { isGatewayImage } from "../../services/authImage";
+import { useSession } from "../../services/session";
 import { filterByName } from "../../services/localSearch";
 import { addToCart, shoppingUnitFor } from "./cart";
 import { lineTotal, unitPriceAfterDiscount, unitPriceText } from "./pricing";
@@ -58,12 +61,19 @@ const unitText = (product: CatalogIngredient): string => unitLine(product);
 /** Word for the product's sale unit in the quantity stepper ("kg", "gói", "quả"). */
 const saleWord = (product: CatalogIngredient): string => unitWord(shoppingUnitFor(product), product.unitLabel);
 
-/** Image link set by the admin, or a neutral placeholder when there is none or it fails to load. */
+/**
+ * Image set by the admin (a pasted https link, or an uploaded image served by the gateway, loaded with the token
+ * through AuthImage), or a neutral placeholder when there is none or it fails to load.
+ */
 export function ProductImage({ uri, style }: { uri: string | null | undefined; style: object }): React.JSX.Element {
+  const { accessToken } = useSession();
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [uri]);
   if (!uri || failed) {
     return <ImagePlaceholder style={style} />;
+  }
+  if (isGatewayImage(uri)) {
+    return <AuthImage url={uri} accessToken={accessToken} accessibilityLabel="" style={[local.image, style] as never} fallback={<ImagePlaceholder style={style} />} />;
   }
   return <Image source={{ uri }} onError={() => setFailed(true)} resizeMode="cover" style={[local.image, style]} accessibilityIgnoresInvertColors />;
 }

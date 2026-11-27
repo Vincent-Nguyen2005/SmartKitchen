@@ -1,17 +1,17 @@
 /**
- * Quản trị › "Tổng quan" numbers (pure; covered by overviewStats.test.ts): three cards — Tổng người dùng, Tổng gia
- * đình, Người dùng mới (7 ngày) — then the newest users and families. (System status, services with a problem and
+ * Quản trị › "Tổng quan" numbers (pure; covered by overviewStats.test.ts): one card with three columns — Người dùng,
+ * Gia đình, Mới (7 ngày) — then the newest users and families. (System status, services with a problem and
  * pending reports were removed from the overview.)
  */
 export const NEW_USER_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type OverviewCardKey = "users" | "families" | "newUsers";
-/** The overview cards, left to right. */
-export const OVERVIEW_CARDS: ReadonlyArray<{ key: OverviewCardKey; label: string }> = [
-  { key: "users", label: "Tổng người dùng" },
-  { key: "families", label: "Tổng gia đình" },
-  { key: "newUsers", label: `Người dùng mới (${NEW_USER_DAYS} ngày)` },
+/** The overview card's columns, left to right: short labels (one line each) and a spoken name for screen readers. */
+export const OVERVIEW_CARDS: ReadonlyArray<{ key: OverviewCardKey; label: string; spoken: string }> = [
+  { key: "users", label: "Người dùng", spoken: "Tổng người dùng" },
+  { key: "families", label: "Gia đình", spoken: "Tổng gia đình" },
+  { key: "newUsers", label: `Mới (${NEW_USER_DAYS} ngày)`, spoken: `Người dùng mới trong ${NEW_USER_DAYS} ngày` },
 ];
 
 /**
