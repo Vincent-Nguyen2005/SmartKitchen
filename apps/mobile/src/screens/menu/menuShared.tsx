@@ -111,27 +111,25 @@ type CardProps = {
   swapping?: boolean;
   /** Nấu ăn: already counted in today's nutrition ("Đã ăn"). */
   eaten?: boolean;
-  /** Planned portions text ("Đủ cho 4 người" / "4 phần", mealPortions.ts), shown next to the kcal. */
-  portionLabel?: string;
 };
 
 /**
  * A planned dish in the shared card style: image, name, kcal, total time; AI dishes carry the "AI" pill and dishes
  * unsuitable for a family member a small warning pill (details in the dish detail).
  */
-export function MenuDishCard({ item, recipe, width, onPress, variant = "full", onSwap, swapping = false, eaten = false, portionLabel }: CardProps): React.JSX.Element {
+export function MenuDishCard({ item, recipe, width, onPress, variant = "full", onSwap, swapping = false, eaten = false }: CardProps): React.JSX.Element {
   const aiDish = item.details?.ai ? item.details.aiDish : undefined;
   const minutes = recipe ? totalMinutes(recipe) : aiDish ? aiDish.totalMinutes : null;
   const kcal = item.calories == null ? "-- kcal" : `${Math.round(item.calories)} kcal`;
   return (
     <ProductCard
       width={width}
-      accessibilityLabel={`${mealLabels[item.mealType]}: ${item.dishName}, ${kcal}${portionLabel ? `, ${portionLabel}` : ""}${minutes !== null ? `, ${minutesText(minutes)}` : ""}${aiDish ? ", món AI gợi ý" : ""}${hasWarnings(item) ? ", có lưu ý sức khỏe" : ""}. Mở công thức`}
+      accessibilityLabel={`${mealLabels[item.mealType]}: ${item.dishName}, ${kcal}${minutes !== null ? `, ${minutesText(minutes)}` : ""}${aiDish ? ", món AI gợi ý" : ""}${hasWarnings(item) ? ", có lưu ý sức khỏe" : ""}. Mở công thức`}
       onPress={onPress}
       image={aiDish ? <ImagePlaceholder /> : <ProductImage uri={recipe?.imageUrl ?? item.details?.imageUrl ?? null} style={cardImageStyle} />}
       pill={aiDish ? { label: "AI", tone: "ai" } : hasWarnings(item) ? { label: "Lưu ý", tone: "warning", icon: TriangleAlert } : null}
       name={item.dishName}
-      subtitle={variant === "full" ? (portionLabel ? `${kcal} · ${portionLabel}` : kcal) : portionLabel}
+      subtitle={variant === "full" ? kcal : undefined}
       footer={variant === "full" && minutes !== null ? <CardCaption text={minutesText(minutes)} /> : undefined}
       cornerAction={onSwap ? { icon: Shuffle, label: "Đổi món khác", onPress: onSwap, busy: swapping } : undefined}
       marker={eaten ? "Đã ăn" : undefined}

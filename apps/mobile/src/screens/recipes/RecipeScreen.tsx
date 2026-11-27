@@ -228,7 +228,6 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
             item={item}
             recipe={item.recipeId ? recipeById.get(item.recipeId) : undefined}
             width={cardGrid.cardWidth}
-            portionLabel={labelOf(item)}
             onPress={() => openDish(item)}
             onSwap={() => void swap(item)}
             swapping={swappingId === item.id}

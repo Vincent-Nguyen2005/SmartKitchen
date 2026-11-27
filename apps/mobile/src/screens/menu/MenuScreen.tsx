@@ -373,7 +373,6 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
                       recipe={item.recipeId ? recipes.get(item.recipeId) : undefined}
                       width={cardGrid.cardWidth}
                       variant="minimal"
-                      portionLabel={labelFor(item)}
                       onPress={() => void openDish(item)}
                     />
                   ))}
