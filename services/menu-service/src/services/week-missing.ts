@@ -1,15 +1,16 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { KhoItem } from "./kho-suggest";
 import { vnDay } from "./kho-suggest";
-import { menuPeople, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
+import { dishServings, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
 import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type RecipeCandidate } from "./menu.service";
 
 /**
  * "Tuần này còn thiếu": ingredients the family's menus need from today through Sunday (Vietnam days) that usable
  * Kho stock does not cover. Computed on read (no stored notification, so no duplicates and nothing to invalidate).
  *
- * - Amounts are scaled ONCE to each menu's people with portions.ts (quantity × people / recipe servings; perPerson
- *   rules included) and summed per product.
+ * - Amounts are scaled ONCE to each dish's planned portions with portions.ts (calorie-based menus store them per
+ *   dish; older dishes use the menu's people; quantity × portions / recipe servings; perPerson rules included) and
+ *   summed per product.
  * - Seasonings (isSeasoning) and free-text amounts ("vừa ăn") are left out.
  * - Product key: the admin catalog product (by productId on Kho rows; by exact normalized name, then English alias,
  *   for recipe ingredients), else the normalized name.
@@ -227,10 +228,10 @@ export function dishesInRange(menus: MenuRow[], recipes: RecipeCandidate[], rang
   const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const dishes: WeekDish[] = [];
   for (const menu of menus) {
-    const people = menuPeople(menu.servings, memberCount);
     for (const item of menu.items) {
       const day = itemDate(menu.startDate, item.dayOfWeek).toISOString().slice(0, 10);
       if (day < range.from || day > range.to) continue;
+      const people = dishServings(item.details, menu.servings, memberCount);
       const recipe = item.recipeId ? byId.get(item.recipeId) : undefined;
       if (recipe) { dishes.push({ ingredients: recipe.details, servings: recipe.servings, people }); continue; }
       const aiDish = (item.details as { aiDish?: { ingredients?: unknown; servings?: unknown } } | null)?.aiDish;

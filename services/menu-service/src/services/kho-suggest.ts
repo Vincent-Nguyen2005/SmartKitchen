@@ -132,6 +132,8 @@ export function evaluateRecipe(recipe: SuggestRecipe, kho: KhoItem[], today: str
   const availableIngredients: string[] = [];
   const missingIngredients: DishIngredient[] = [];
   const expiringIngredients: string[] = [];
+  // Earliest expiry first: each expiring ingredient adds up to 3 more points the sooner it expires (0 days left = 3).
+  let urgency = 0;
   for (const ingredient of recipe.ingredients) {
     const matches = kho.filter((item) => sameIngredient(item.name, ingredient.name));
     if (matches.length === 0) {
@@ -152,7 +154,7 @@ export function evaluateRecipe(recipe: SuggestRecipe, kho: KhoItem[], today: str
     }
     availableIngredients.push(ingredient.name);
     const soonest = Math.min(...matches.map((item) => daysLeft(item.expiryDate, today) ?? Number.POSITIVE_INFINITY));
-    if (soonest >= 0 && soonest <= EXPIRING_WITHIN_DAYS) expiringIngredients.push(ingredient.name);
+    if (soonest >= 0 && soonest <= EXPIRING_WITHIN_DAYS) { expiringIngredients.push(ingredient.name); urgency += EXPIRING_WITHIN_DAYS - soonest; }
   }
 
   const totalCount = recipe.ingredients.length;
@@ -167,6 +169,7 @@ export function evaluateRecipe(recipe: SuggestRecipe, kho: KhoItem[], today: str
   } else {
     score = (totalCount > 0 ? (availableCount / totalCount) * 100 : 0)
       + Math.min(expiringIngredients.length, MAX_EXPIRING_COUNTED) * EXPIRING_BONUS
+      + Math.min(urgency, MAX_EXPIRING_COUNTED * EXPIRING_WITHIN_DAYS)
       - (repeated ? REPEAT_PENALTY : 0)
       + tieBreak;
     const parts: string[] = [];
@@ -201,7 +204,7 @@ export function addForeign(count: ForeignCount, meal: string): void {
 /** A foreign dish may still be added to this meal. */
 export const foreignAllowed = (count: ForeignCount, meal: string): boolean =>
   count.day < FOREIGN_PER_DAY && (count.meals[meal.toUpperCase()] ?? 0) < FOREIGN_PER_MEAL;
-const withinForeignCap = (recipe: SuggestRecipe, count: ForeignCount, meal: string): boolean => !isForeign(recipe) || foreignAllowed(count, meal);
+export const withinForeignCap = (recipe: SuggestRecipe, count: ForeignCount, meal: string): boolean => !isForeign(recipe) || foreignAllowed(count, meal);
 
 /**
  * One dish per meal for `day`, best score first, never the same dish twice in a day.
@@ -252,7 +255,7 @@ export function fitsRole(recipeRole: string | null | undefined, slotRole: string
   return recipeRole === slotRole;
 }
 
-const fitsMeal = (recipe: SuggestRecipe, meal: string) => recipe.mealTypes.length === 0 || recipe.mealTypes.includes(meal.toLowerCase());
+export const fitsMeal = (recipe: SuggestRecipe, meal: string) => recipe.mealTypes.length === 0 || recipe.mealTypes.includes(meal.toLowerCase());
 
 /**
  * Dishes already planned per meal on other days: key `${YYYY-MM-DD}|${MEAL}` -> recipe ids. Built from the saved
@@ -302,7 +305,7 @@ export function varietyPool(pool: SuggestRecipe[], meal: string, day: string, hi
 }
 
 /** `penalty` (calories) is subtracted from each Kho score before ranking. */
-function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string, penalty?: (recipe: SuggestRecipe) => number): DishSuggestion | null {
+export function best(candidates: SuggestRecipe[], kho: KhoItem[], options: { today: string; recentRecipeIds: ReadonlySet<string> }, seed: string, penalty?: (recipe: SuggestRecipe) => number): DishSuggestion | null {
   return candidates
     .map((recipe) => {
       const suggestion = evaluateRecipe(recipe, kho, options.today, options.recentRecipeIds, seed);

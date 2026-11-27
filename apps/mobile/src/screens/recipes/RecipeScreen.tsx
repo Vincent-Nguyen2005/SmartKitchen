@@ -14,7 +14,7 @@ import {
   type MenuItem, type MenuRecord,
 } from "../menu/menuShared";
 import { AI_DISCLAIMER, AiDishDetail, type AiDish } from "./AiSuggestions";
-import { menuPeople, scaleRecipe } from "./portions";
+import { dishServings, menuPeople, scaleRecipe } from "./portions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -117,9 +117,11 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
 
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const items = menu ? sortItems(menu.items) : [];
-  /** People today's dishes are cooked for: the menu's servings, else the family size (detail, cooking, AI cart). */
+  /** People today's dishes are cooked for ("cho N người"): the menu's servings, else the family size. */
   const people = menuPeople(menu?.servings, family?.members.length);
-  const showRecipe = (recipe: Recipe) => setDetail(scaleRecipe(recipe, people));
+  /** Planned portions of a dish ("N phần"): detail, cooking mode, Kho deduction and the AI cart use these amounts. */
+  const portionsOf = (item: MenuItem | null) => dishServings(item?.details, menu?.servings, family?.members.length);
+  const showRecipe = (recipe: Recipe, item: MenuItem | null = openedItem) => setDetail(scaleRecipe(recipe, portionsOf(item), people));
   const mealItems = items.filter((item) => item.mealType === meal);
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
@@ -166,8 +168,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     const recipe = item.recipeId ? recipeById.get(item.recipeId) : undefined;
-    if (recipe) { showRecipe(recipe); return; }
-    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
+    if (recipe) { showRecipe(recipe, item); return; }
+    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then((loaded) => showRecipe(loaded, item)).catch((requestError) => setError(errorMessage(requestError)));
   };
 
   /**
@@ -216,6 +218,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
             item={item}
             recipe={item.recipeId ? recipeById.get(item.recipeId) : undefined}
             width={cardGrid.cardWidth}
+            portions={portionsOf(item)}
             onPress={() => openDish(item)}
             onSwap={() => void swap(item)}
             swapping={swappingId === item.id}
@@ -248,13 +251,14 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
           // The alternative opens in the same detail and can be cooked (same meal for nutrition logging).
           const known = recipeById.get(id);
           if (known) { showRecipe(known); return; }
-          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
+          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then((loaded) => showRecipe(loaded)).catch((requestError) => setError(errorMessage(requestError)));
         })}
       />
       <AiDishDetail
         dish={aiDetail}
         mode="cook"
         people={people}
+        portions={portionsOf(openedItem)}
         onClose={closeDetail}
         onStartCooking={startCooking}
       />

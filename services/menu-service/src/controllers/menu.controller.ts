@@ -113,8 +113,8 @@ export async function generateMenuController(request: Request, response: Respons
       return;
     }
     // Members' allergies, conditions and meal targets (defaults when unavailable; never fails the request).
-    const [mealCounts, removed, health] = await Promise.all([
-      getMenuSettings(owner).catch(() => undefined),
+    // Dishes and portions come from the family's kcal targets ("Số món mỗi bữa" is no longer used).
+    const [removed, health] = await Promise.all([
       recentlyRemoved(owner).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
       loadFamilyContext(owner),
     ]);
@@ -125,7 +125,6 @@ export async function generateMenuController(request: Request, response: Respons
       owner,
       health,
       authorization: request.header("authorization") ?? undefined,
-      mealCounts: periodType === PeriodType.DAY ? mealCounts : undefined,
       excludeRecipeIds: [...removed.recipeIds],
     }));
   } catch (error) {
@@ -339,17 +338,25 @@ export async function removeMenuItemController(request: Request, response: Respo
 export const generateDaysSchema = z.object({
   days: z.array(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)).min(1).max(14),
   familyId: z.string().uuid().optional(),
+  /** "Tạo lại tuần": regenerate today's and later days even when they have a menu (family OWNER only). */
+  replace: z.boolean().optional(),
 });
 
-/** POST /generate-days { days, familyId }: Theo tuần fills today and later days that have no menu (past days untouched). */
+/**
+ * POST /generate-days { days, familyId, replace? }: Theo tuần fills today and later days that have no menu (past days
+ * untouched). With replace (the family owner, or a user without a family) those days are generated again.
+ */
 export async function generateDaysController(request: Request, response: Response): Promise<void> {
   try {
     if (!authenticatedUserId(request, response)) return;
     const input = generateDaysSchema.parse(request.body);
     const owner = await requestOwner(request, response, input.familyId);
     if (!owner) return;
-    const [mealCounts, removed, health] = await Promise.all([
-      getMenuSettings(owner, settingsClient),
+    if (input.replace && owner.familyId && owner.role !== "OWNER") {
+      response.status(403).json({ error: "Chỉ chủ gia đình có thể tạo lại thực đơn cả tuần." });
+      return;
+    }
+    const [removed, health] = await Promise.all([
       recentlyRemoved(owner, settingsClient).catch(() => ({ recipeIds: new Set<string>(), names: new Set<string>() })),
       loadFamilyContext(owner),
     ]);
@@ -360,7 +367,7 @@ export async function generateDaysController(request: Request, response: Respons
       days: input.days,
       familyId: owner.familyId ?? input.familyId,
       authorization: request.header("authorization") ?? undefined,
-      mealCounts,
+      replace: input.replace === true,
       excludeRecipeIds: [...removed.recipeIds],
     }));
   } catch (error) {
@@ -368,7 +375,7 @@ export async function generateDaysController(request: Request, response: Respons
   }
 }
 
-/** POST /:id/top-up: an older single-dish menu gets its missing dishes (once); anything else is returned unchanged. */
+/** POST /:id/top-up: kept for older app versions; calorie-based menus return the menu unchanged. */
 export async function topUpMenuController(request: Request, response: Response): Promise<void> {
   try {
     const owner = await requestOwner(request, response);
@@ -379,7 +386,6 @@ export async function topUpMenuController(request: Request, response: Response):
       health: await loadFamilyContext(owner),
       menuId: request.params.id,
       authorization: request.header("authorization") ?? undefined,
-      mealCounts: await getMenuSettings(owner, settingsClient),
     }));
   } catch (error) {
     handleError(error, response);

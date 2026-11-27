@@ -22,7 +22,15 @@ import {
   type ForeignCount,
   isForeign,
   newForeignCount,
+  addForeign,
+  best,
+  CALORIE_WEIGHT,
+  evaluateRecipe,
+  fitsMeal,
+  varietyPool,
+  withinForeignCap,
 } from "./kho-suggest";
+import { mealTarget, planMeal, replanServings, RICE_SHARE, SLOT_WEIGHTS, type Slot } from "./meal-plan";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
 import { menuPeople, scaleIngredients } from "./portions";
 import { conditionWarnings, familyAllergic, familyMealTarget, hasAllergen, type FamilyHealth, type HealthWarning } from "./family-health";
@@ -69,7 +77,10 @@ interface GenerateMenuInput {
   authorization?: string;
   /** Kho items supplied directly (tests); otherwise read from inventory-service. */
   inventoryItems?: unknown[];
-  /** Dishes per meal ("Số món mỗi bữa"); without it, one dish per meal (older behaviour). */
+  /**
+   * @deprecated Fixed dishes per meal (the old "Số món mỗi bữa"). The app no longer sends it and the controllers no
+   * longer pass it: without it the calorie-based planner (meal-plan.ts) decides dishes and portions.
+   */
   mealCounts?: MealCounts;
   /** Recipes the user removed in the last 7 days: not picked (unless nothing else fits a meal). */
   excludeRecipeIds?: string[];
@@ -410,8 +421,16 @@ function openRoles(roles: string[], picks: Array<{ role: string }>): string[] {
 }
 
 /** Suggestion details stored on a menu item (Kho match, role and, for an unsuitable dish, warnings and an alternative). */
-function itemDetails(suggestion: DishSuggestion, role: string | null, health?: { warnings: HealthWarning[]; alternative: DishSuggestion | null }): Prisma.InputJsonValue {
+function itemDetails(
+  suggestion: DishSuggestion,
+  role: string | null,
+  health?: { warnings: HealthWarning[]; alternative: DishSuggestion | null },
+  portion?: { servings: number; mealTarget?: number; riceKcal?: number },
+): Prisma.InputJsonValue {
   return {
+    // Planned portions ("phần") of this dish: Lịch / Nấu ăn, cooking and "Cần mua tuần này" scale by them.
+    ...(portion ? { servings: portion.servings } : {}),
+    ...(portion?.mealTarget !== undefined ? { mealTarget: portion.mealTarget, riceKcal: portion.riceKcal ?? 0 } : {}),
     imageUrl: suggestion.recipe.imageUrl,
     availableIngredients: suggestion.availableIngredients,
     missingIngredients: suggestion.missingIngredients,
@@ -528,6 +547,67 @@ function selectedMealTypes(preferences: JsonRecord): MealType[] {
   ];
 }
 
+const FIT_WEIGHT = CALORIE_WEIGHT / 2;
+const PLANNED_MEALS = ["BREAKFAST", "LUNCH", "DINNER"];
+/** Times a recipe is planned in any meal within `distance` days before or after `day` (the day itself excluded). */
+function usesAnyMeal(history: MealHistory, day: string, recipeId: string, distance: number): number {
+  let count = 0;
+  const start = Date.parse(`${day}T00:00:00Z`);
+  for (let offset = -distance; offset <= distance; offset += 1) {
+    if (offset === 0) continue;
+    const other = new Date(start + offset * 86_400_000).toISOString().slice(0, 10);
+    for (const meal of PLANNED_MEALS) if (history.get(`${other}|${meal}`)?.has(recipeId)) count += 1;
+  }
+  return count;
+}
+
+/** Rough kcal a slot is meant to carry (for the "natural portion" tie-break below). */
+function slotShare(slot: Slot, goal: number): number {
+  const dishes = goal * (slot === "main" || slot === "veg" || slot === "side" ? 1 - RICE_SHARE : 1);
+  if (slot === "main") return dishes * (SLOT_WEIGHTS.main / (SLOT_WEIGHTS.main + SLOT_WEIGHTS.veg));
+  if (slot === "veg") return dishes * (SLOT_WEIGHTS.veg / (SLOT_WEIGHTS.main + SLOT_WEIGHTS.veg));
+  if (slot === "side") return dishes * SLOT_WEIGHTS.side;
+  if (slot === "drink") return dishes * SLOT_WEIGHTS.drink;
+  return dishes;
+}
+
+/**
+ * One dish for a planner slot: recipes of the slot's roles that fit the meal, not already in the day, within the
+ * cuisine caps; variety first, then the Kho score (coverage, expiring items), with a small tie-break for dishes whose
+ * natural portion is about one serving per person. Recently removed dishes are skipped unless nothing else fits; then
+ * dishes unsuitable for a member (they carry warnings); allergens are never in the pools.
+ */
+function pickForSlot(input: {
+  meal: string; roles: Array<string | null>; slot: Slot; goal: number; people: number;
+  pool: SuggestRecipe[]; fallbackPool: SuggestRecipe[]; kho: KhoItem[]; today: string; day: string;
+  recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds: ReadonlySet<string>; history: MealHistory; foreign: ForeignCount;
+}): DishSuggestion | null {
+  const share = slotShare(input.slot, input.goal);
+  // Half the old calorie weight: Kho and variety decide, the natural portion only breaks close calls.
+  const penalty = (recipe: SuggestRecipe): number => {
+    if (share <= 0) return 0;
+    // A dish with (almost) no energy cannot carry a slot meant to add kcal (green tea as the breakfast drink).
+    if (!recipe.calories || recipe.calories < 10) return FIT_WEIGHT;
+    return FIT_WEIGHT * Math.min(1, Math.abs(share / recipe.calories / input.people - 1));
+  };
+  const choose = (source: SuggestRecipe[], exclude: ReadonlySet<string>): DishSuggestion | null => {
+    const open = source.filter((recipe) => fitsMeal(recipe, input.meal) && !input.usedIds.has(recipe.id) && !exclude.has(recipe.id)
+      && withinForeignCap(recipe, input.foreign, input.meal) && input.roles.includes(recipe.role ?? null));
+    const varied = varietyPool(open, input.meal, input.day, input.history);
+    // Fewer dishes per meal → variety across the whole week too: prefer dishes not planned in ANY meal within 2 days
+    // and planned at most once more in the week (falls back to the per-meal rule when nothing else fits).
+    const weekVaried = varied.filter((recipe) => usesAnyMeal(input.history, input.day, recipe.id, 2) === 0 && usesAnyMeal(input.history, input.day, recipe.id, 6) < 2);
+    return best(weekVaried.length > 0 ? weekVaried : varied, input.kho, { today: input.today, recentRecipeIds: input.recentRecipeIds },
+      `${input.day}:${input.meal.toLowerCase()}:${input.slot}`, penalty);
+  };
+  const none = new Set<string>();
+  const pick = choose(input.pool, input.excludeIds) ?? choose(input.pool, none) ?? choose(input.fallbackPool, input.excludeIds) ?? choose(input.fallbackPool, none);
+  if (!pick) return null;
+  input.usedIds.add(pick.recipe.id);
+  if (isForeign(pick.recipe)) addForeign(input.foreign, input.meal);
+  return pick;
+}
+
 export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaClient = prisma) {
   const ownerFamily = rawInput.owner?.familyId ?? null;
   // A family menu always uses the family's own Kho.
@@ -571,6 +651,9 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
   if (pool.length === 0 && fallbackPool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
   // Calories per meal: the dishes of a meal aim at the family target (sum of members' meal targets) for everyone.
   const servingsForTarget = input.health && input.health.members.length > 0 ? input.health.members.length : 1;
+  // People eating (portions start from one per person): the family's member count, else the known members, else 1.
+  const eaters = people ?? Math.max(1, input.health?.members.length ?? 1);
+  const candidateById = new Map(constrained.map((recipe) => [recipe.id, recipe]));
 
   const history = await recentDishes(client, { userId: input.userId, familyId: input.familyId }, startDate);
   // Variety: the same meal on the days before and after (saved menus), plus the days generated in this request.
@@ -614,10 +697,7 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
         }
         return mealPicks.map((pick) => ({ meal, role: pick.role, suggestion: pick.suggestion }));
       })
-      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday }).map((pick) => {
-        const fallback = !pick.suggestion && fallbackPool.length > 0 ? pickDishes(fallbackPool, kho, [pick.meal], { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday })[0] : pick;
-        return { ...fallback, role: fallback.suggestion?.recipe.role ?? null };
-      });
+      : [];
     for (const { meal, role, suggestion } of picks) {
       if (!suggestion) continue;
       chosenToday.add(suggestion.recipe.id);
@@ -631,6 +711,33 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
         details: itemDetails(suggestion, role ?? suggestion.recipe.role ?? null,
           healthNote(suggestion, meal, { health: input.health, suitable: pool, kho, today, day: dayKey(date), usedIds: chosenToday })),
       });
+    }
+    // Calorie-based planner (meal-plan.ts): dishes per meal and their portions from the family's kcal target.
+    if (!input.mealCounts) {
+      for (const meal of mealTypes) {
+        const goal = mealTarget(input.health, meal, eaters);
+        const plan = planMeal(meal, eaters, goal, (roles, slot) => {
+          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday });
+          return pick ? { value: pick, role: pick.recipe.role ?? null, kcal: pick.recipe.calories } : null;
+        });
+        plan.dishes.forEach((dish, index) => {
+          const recipe = candidateById.get(dish.pick.recipe.id);
+          // Stored Kho match and missing list for the planned portions (not the whole family's default amounts).
+          const scaled = recipe ? evaluateRecipe(toSuggestRecipe(recipe, dish.servings), kho, today, recentRecipeIds, `${dayKey(date)}:${meal.toLowerCase()}`) : dish.pick;
+          const suggestion = { ...scaled, reason: scaled.reason };
+          addToHistory(variety, dayKey(date), meal, dish.pick.recipe.id);
+          items.push({
+            recipeId: dish.pick.recipe.id,
+            dishName: dish.pick.recipe.name,
+            mealType: meal as MealType,
+            dayOfWeek,
+            calories: dish.pick.recipe.calories,
+            details: itemDetails(suggestion, dish.pick.recipe.role ?? null,
+              healthNote(dish.pick, meal, { health: input.health, suitable: pool, kho, today, day: dayKey(date), usedIds: chosenToday }),
+              { servings: dish.servings, ...(index === 0 ? { mealTarget: plan.target, riceKcal: plan.riceKcal } : {}) }),
+          });
+        });
+      }
     }
     // Later days of the same request also avoid repeating these.
     history.set(dayKey(date), chosenToday);
@@ -921,9 +1028,28 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
     }
   }
 
+  // Calorie-based menus: the meal's portions are sized again for its dishes now (the same kcal target; an AI dish too).
+  const sameMeal = others.filter((entry) => entry.mealType === item.mealType && entry.dayOfWeek === item.dayOfWeek);
+  const portionUpdates: Array<ReturnType<typeof client.menuItem.update>> = [];
+  if (typeof details.servings === "number" || sameMeal.some((entry) => typeof asRecord(entry.details).servings === "number")) {
+    const eaters = menuPeople(menu.servings, input.owner?.memberCount ?? null);
+    const goal = mealTarget(input.health, item.mealType, eaters);
+    const dishes = [
+      ...sameMeal.map((entry) => ({ role: (asRecord(entry.details).role as string | null | undefined) ?? null, kcal: entry.calories })),
+      ...(replacement ? [{ role, kcal: replacement.calories ?? null }] : []),
+    ];
+    const { servings } = replanServings(item.mealType, dishes, eaters, goal);
+    sameMeal.forEach((entry, index) => {
+      if (asRecord(entry.details).servings === servings[index]) return;
+      portionUpdates.push(client.menuItem.update({ where: { id: entry.id }, data: { details: { ...asRecord(entry.details), servings: servings[index] } as Prisma.InputJsonValue } }));
+    });
+    if (replacement) replacement.details = { ...asRecord(replacement.details), servings: servings[servings.length - 1] } as Prisma.InputJsonValue;
+  }
+
   await client.$transaction([
     client.menuItem.delete({ where: { id: item.id } }),
     ...(replacement ? [client.menuItem.create({ data: replacement })] : []),
+    ...portionUpdates,
   ]);
   return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
 }
@@ -932,11 +1058,13 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MEALS = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER] as const;
 
-type DaysInput = Omit<GenerateMenuInput, "periodType" | "startDate" | "endDate" | "preloaded"> & { days: string[]; now?: Date };
+type DaysInput = Omit<GenerateMenuInput, "periodType" | "startDate" | "endDate" | "preloaded"> & { days: string[]; now?: Date; replace?: boolean };
 
 /**
  * Theo tuần: generates a DAY menu for each given day that is today or later and has no menu yet (one request,
  * same rules as a single day; Kho and recipes loaded once). Existing menus and past days are left as they are.
+ * `replace` ("Tạo lại tuần", the family owner): today's and later days are generated again even when they have a
+ * menu (each new day replaces the old one); past days still never change.
  */
 export async function generateDays(input: DaysInput, client: PrismaClient = prisma) {
   const today = vnDay(input.now ?? new Date());
@@ -946,7 +1074,7 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
     where: { ...menuScope(input.owner ?? input.userId), periodType: PeriodType.DAY, startDate: { in: days.map((day) => new Date(`${day}T00:00:00.000Z`)) } },
     select: { startDate: true },
   });
-  const taken = new Set(existing.map((menu) => dayKey(menu.startDate)));
+  const taken = new Set(input.replace ? [] : existing.map((menu) => dayKey(menu.startDate)));
   const missing = days.filter((day) => !taken.has(day));
   if (missing.length === 0) return [];
   const khoFamily = input.owner?.familyId ?? input.familyId;
@@ -964,12 +1092,13 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
   return created;
 }
 
-type TopUpInput = { userId: string; owner?: MenuOwner; health?: FamilyHealth; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
+type TopUpInput = { userId: string; owner?: MenuOwner; health?: FamilyHealth; menuId: string; authorization?: string; now?: Date; mealCounts?: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
 
 /**
  * Upgrades a day menu made before multi-dish menus (its dishes carry no role): adds only the missing dishes of each
- * meal up to "Số món mỗi bữa", keeping the existing ones. Runs once (the new dishes carry roles); newer menus,
- * full meals and past days are left unchanged.
+ * meal up to `mealCounts`, keeping the existing ones. Runs once (the new dishes carry roles); newer menus,
+ * full meals and past days are left unchanged. Without `mealCounts` (calorie-based menus: the app no longer sends
+ * "Số món mỗi bữa") the menu is returned unchanged — older menus keep working as they are.
  */
 export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma) {
   const now = input.now ?? new Date();
@@ -977,9 +1106,11 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   const menu = await client.menu.findFirst({ where: { id: input.menuId, ...menuScope(owner) }, include: { items: true } });
   if (!menu) throw new MenuServiceError("Menu not found", 404);
   if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
+  if (!input.mealCounts) return menu;
   const legacy = menu.periodType === PeriodType.DAY && !menu.items.some((item) => typeof asRecord(item.details).role === "string");
   if (!legacy) return menu;
-  const short = DAY_MEALS.filter((meal) => menu.items.filter((item) => item.mealType === meal).length < input.mealCounts[meal]);
+  const counts = input.mealCounts;
+  const short = DAY_MEALS.filter((meal) => menu.items.filter((item) => item.mealType === meal).length < counts[meal]);
   if (short.length === 0) return menu;
 
   const [recipes, khoItems, removed] = await Promise.all([
@@ -1003,7 +1134,7 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   for (const meal of short) {
     const have = menu.items.filter((item) => item.mealType === meal).length;
     // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
-    const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
+    const roles = roleSlots(meal, counts[meal]).slice(have);
     const options = { today, day, recentRecipeIds: new Set<string>(), usedIds, excludeIds: removed.recipeIds, history, foreign };
     let picks = pickRoleDishes(pool, kho, meal, roles, options);
     if (picks.length < roles.length && fallbackPool.length > 0) {

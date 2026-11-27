@@ -19,8 +19,9 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import { SegmentTabs } from "../../components/SegmentTabs";
 import RecipeDetail from "../recipes/RecipeDetail";
 import { AiDishDetail, type AiDish } from "../recipes/AiSuggestions";
-import { menuPeople, scaleRecipe } from "../recipes/portions";
+import { dishServings, menuPeople, scaleRecipe } from "../recipes/portions";
 import { useSession } from "../../services/session";
+import { canRebuildWeek, WEEK_REBUILD_CONFIRM, weekRebuildDays } from "./weekRebuild";
 import type { Recipe } from "../recipes/recipeTypes";
 import { addDays, dayKey, keyToDate, monthGridDays, MonthCalendar, startOfWeek, weekday, WeekTimetable, type MealType } from "./MenuCalendar";
 import {
@@ -47,8 +48,7 @@ const stepLabels: Record<PeriodType, { back: string; next: string; backA11y: str
 };
 const DAY_MEALS: MealType[] = ["BREAKFAST", "LUNCH", "DINNER"];
 
-/** Older single-dish menus already topped up / weeks already filled in this app session (one try each). */
-const toppedUp = new Set<string>();
+/** Weeks already filled in this app session (one try each). */
 const weeksFilled = new Set<string>();
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -107,7 +107,8 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
   const [aiDetail, setAiDetail] = useState<AiDish | null>(null);
   /** The planned dish whose detail is open (its health warnings and alternative). */
   const [openedItem, setOpenedItem] = useState<MenuItem | null>(null);
-  const memberCount = useSession().family?.members.length;
+  const sessionFamily = useSession().family;
+  const memberCount = sessionFamily?.members.length;
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { confirm, dialog } = useConfirm();
   const loadId = useRef(0);
@@ -220,17 +221,20 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
 
   const closeDetail = () => { setDetail(null); setAiDetail(null); setOpenedItem(null); };
 
-  /** People a planned dish is cooked for: its menu's servings, else the current family size, else 1. */
-  const peopleFor = (item: MenuItem | null): number =>
-    menuPeople(menus.find((menu) => menu.items.some((entry) => entry.id === item?.id))?.servings, memberCount);
+  const menuOf = (item: MenuItem | null) => menus.find((menu) => menu.items.some((entry) => entry.id === item?.id));
+  /** People a planned dish is cooked for ("cho N người"): its menu's servings, else the current family size, else 1. */
+  const peopleFor = (item: MenuItem | null): number => menuPeople(menuOf(item)?.servings, memberCount);
+  /** Planned portions of the dish ("N phần"): what its amounts are scaled to. */
+  const servingsFor = (item: MenuItem | null): number => dishServings(item?.details, menuOf(item)?.servings, memberCount);
 
   /** The alternative of an unsuitable dish (view-only here, like every dish in Lịch). */
   const openRecipe = async (recipeId: string): Promise<void> => {
     const people = peopleFor(openedItem);
+    const portions = servingsFor(openedItem);
     const known = recipes.get(recipeId);
-    if (known) { setDetail(scaleRecipe(known, people)); return; }
+    if (known) { setDetail(scaleRecipe(known, portions, people)); return; }
     try {
-      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`), people));
+      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(recipeId)}`), portions, people));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -241,12 +245,13 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
     setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     if (!item.recipeId) { showToast("Món này chưa có công thức."); return; }
-    // Quantities for the people eating ("Nguyên liệu (cho N người)").
+    // Quantities for the dish's planned portions ("N phần"); the label stays the family ("cho N người").
     const people = peopleFor(item);
+    const portions = servingsFor(item);
     const known = recipes.get(item.recipeId);
-    if (known) { setDetail(scaleRecipe(known, people)); return; }
+    if (known) { setDetail(scaleRecipe(known, portions, people)); return; }
     try {
-      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`), people));
+      setDetail(scaleRecipe(await api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`), portions, people));
     } catch (requestError) {
       showToast(errorMessage(requestError));
     }
@@ -270,15 +275,23 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
     void generate(false);
   }, [period, isPast, loading, loadFailed, busy, dayItems.length, accessToken, familyId, selectedKey]);
 
-  // A saved day from before multi-dish menus (no dish has a role): top up only its missing dishes, once.
-  useEffect(() => {
-    if (period !== "DAY" || isPast || !dayMenu || busy || !accessToken || toppedUp.has(dayMenu.id)) return;
-    if (dayMenu.items.some((item) => typeof item.details?.role === "string")) return;
-    toppedUp.add(dayMenu.id);
-    api.post<MenuRecord>(`/api/menu/${encodeURIComponent(dayMenu.id)}/top-up`, {})
-      .then((result) => { if (result.items.length !== dayMenu.items.length) replaceMenu(result); })
-      .catch(() => undefined);
-  }, [period, isPast, dayMenu?.id, busy, accessToken]);
+  /** "Tạo lại tuần" (family owner): today and the later days of the shown week, with the calorie-based planner. */
+  const rebuildDays = weekRebuildDays(from, todayKey);
+  const rebuildWeek = async () => {
+    if (!accessToken || busy || rebuildDays.length === 0 || !(await confirm({ ...WEEK_REBUILD_CONFIRM }))) return;
+    setBusy(true);
+    setError("");
+    try {
+      const created = await api.post<MenuRecord[]>("/api/menu/generate-days", { days: rebuildDays, replace: true, ...(familyId ? { familyId } : {}) });
+      const replaced = new Set(created.map((menu) => menu.startDate.slice(0, 10)));
+      setMenus((current) => [...created, ...current.filter((menu) => !(menu.periodType === "DAY" && replaced.has(menu.startDate.slice(0, 10))))]);
+      showToast("Đã tạo lại thực đơn cả tuần");
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // Theo tuần: today and the later days of the shown week that have no menu are generated in one request.
   useEffect(() => {
@@ -355,6 +368,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
                       recipe={item.recipeId ? recipes.get(item.recipeId) : undefined}
                       width={cardGrid.cardWidth}
                       variant="minimal"
+                      portions={servingsFor(item)}
                       onPress={() => void openDish(item)}
                     />
                   ))}
@@ -399,6 +413,18 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
               {busy ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={RefreshCw} size="sm" color={colors.primary} />}
             </Pressable>
           )}
+          {period === "WEEK" && rebuildDays.length > 0 && canRebuildWeek(sessionFamily) && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Tạo lại tuần: gợi ý lại thực đơn từ hôm nay đến hết tuần"
+              accessibilityState={{ busy, disabled: !accessToken || busy }}
+              disabled={!accessToken || busy}
+              onPress={() => void rebuildWeek()}
+              style={[styles.refreshButton, (!accessToken || busy) && styles.disabled]}
+            >
+              {busy ? <ActivityIndicator color={colors.primary} /> : <AppIcon icon={RefreshCw} size="sm" color={colors.primary} />}
+            </Pressable>
+          )}
         </View>
 
         {!!error && <AppText accessibilityRole="alert" variant="bodySmall" color={colors.danger} style={styles.message}>{error}</AppText>}
@@ -409,7 +435,7 @@ export default function MenuScreen({ accessToken, familyId, focusMeal }: Props):
       </ScrollView>
       {/* Lịch shows dishes read-only; steps, cooking and "Đổi món khác" live in Nấu ăn. */}
       <RecipeDetail recipe={detail} onClose={closeDetail} mode="view" health={detailHealth(openedItem, detail?.id, (id) => void openRecipe(id))} />
-      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" people={peopleFor(openedItem)} />
+      <AiDishDetail dish={aiDetail} onClose={closeDetail} mode="view" people={peopleFor(openedItem)} portions={servingsFor(openedItem)} />
       {dialog}
       {toast && (
         <View pointerEvents="none" style={styles.toastWrap}>

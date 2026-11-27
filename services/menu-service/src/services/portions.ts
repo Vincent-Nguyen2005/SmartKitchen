@@ -52,3 +52,12 @@ export function scaleIngredients<T extends PortionIngredient>(ingredients: T[], 
 /** People a menu is cooked for: its servings, else the current family member count, else 1. */
 export const menuPeople = (menuServings: number | null | undefined, memberCount?: number | null): number =>
   recipeServings(menuServings ?? memberCount ?? 1);
+
+/**
+ * Planned portions ("phần") of one menu dish: calorie-based menus store them per dish (details.servings); older
+ * dishes are cooked for the menu's people. Quantities scale by these portions (one portion = one person's share).
+ */
+export const dishServings = (details: unknown, menuServings: number | null | undefined, memberCount?: number | null): number => {
+  const planned = typeof details === "object" && details !== null ? (details as { servings?: unknown }).servings : undefined;
+  return typeof planned === "number" && Number.isFinite(planned) && planned > 0 ? planned : menuPeople(menuServings, memberCount);
+};

@@ -61,9 +61,7 @@ Menus belong to the family: every member sees and changes the same menu. Users w
   - Generating again replaces the family's menu ("Làm mới theo kho").
   - If two members generate at the same moment, the index lets one win, and the other request returns that menu. No duplicates.
 - **Menu fields:** `servings` is the family's member count when the menu was generated (1 for personal menus, null for older menus). `userId` is the member who generated it.
-- **"Số món mỗi bữa":** `FamilyMenuSettings` holds one value per family.
-  - `GET /settings` returns it with `canEdit`.
-  - Only the family OWNER can `PUT` it (403 for other members). Users without a family use their personal `MenuSettings`.
+- **"Số món mỗi bữa" (dormant):** `FamilyMenuSettings` / `MenuSettings` and `GET/PUT /settings` are kept, but the app no longer shows the setting and the planner ignores it (dishes and portions now come from the family's kcal targets, see "Calorie-based day menus").
 - **Dislike history:** `RemovedDish.familyId` is set for family removals. Dishes removed by any member are skipped for the whole family for 7 days.
 
 ### Family health rules and calories
@@ -81,21 +79,18 @@ Every path that picks dishes (generate, `generate-days`, `top-up`, `auto-refresh
 - **Health conditions:** dishes whose contraindication tags equal a member's condition are used only when a slot can't be filled with a dish suitable for everyone.
   - Such a dish stores `details.warnings: [{ memberUserId, memberName, condition }]`, visible to every family member.
   - It also stores `details.alternative: { recipeId, dishName, imageUrl }`: the best Kho-scored suitable dish for the same meal that isn't already in the day.
-- **Calories:** the family target of a meal is the sum of the members' meal targets (Bữa sáng 25 %, trưa 40 %, tối 35 % of each TDEE).
-  - The dishes of a meal are picked slot by slot. Each candidate loses up to 20 points: `20 × min(1, |kcal per serving × members − remaining target per open slot| / remaining target per open slot)`.
-  - The Kho score (100 × share of ingredients in Kho, +15 per expiring item, −10 repeat) and the variety rules still come first; calories decide between close candidates.
-  - Dishes without kcal get no penalty. Menus that aren't DAY menus (one dish per meal) only get the allergy and condition rules.
+- **Calories:** the family target of a meal is the sum of the members' meal targets (each member: Mifflin-St Jeor TDEE × 1.375; Bữa sáng 25 %, trưa 40 %, tối 35 %). A member without a health profile counts as 2000 kcal a day; with no health data at all, every member counts as 2000 kcal. The planner (`src/services/meal-plan.ts`) chooses the number of dishes and their portions from this target (see "Calorie-based day menus").
 
 ### Portions (quantities for the people eating)
 
 `src/services/portions.ts` holds the one scaling rule. The app has an identical copy in `apps/mobile/src/screens/recipes/portions.ts`.
 
-- **People:** the menu's `servings` (the family's member count when generated; personal menus 1). Older menus without servings use the current member count. Recipe servings null or 0 count as 1.
+- **People / portions:** each planned dish stores its portions in `details.servings` (calorie-based menus); quantities scale to those portions (`dishServings`). Older dishes use the menu's `servings` (the family's member count when generated; personal menus 1), or the current member count. Recipe servings null or 0 count as 1.
 - **Normal ingredient:** quantity × people / recipe servings, unchanged when they're equal.
 - **`perPerson` ingredient:** each person's amount (quantity / servings) is rounded up first, then multiplied by the people.
 - **Seasonings** scale the same way; free-text amounts ("vừa ăn") stay as text.
 - **Rounding:** pieces (cái/quả, gói/bó, chai, lon, hộp) round up to whole numbers; g and ml round to the nearest 5 (at least 5); kg, lít and other units keep 2 decimals.
-- **Where it's used:** Kho matching and the score, "Có sẵn X/Y" and the stored missing list (what goes to the cart) all use the scaled amounts, on every path that picks dishes (generate, generate-days, top-up, swap).
+- **Where it's used:** Kho matching and the score, "Có sẵn X/Y" and the stored missing list (what goes to the cart), "Cần mua tuần này" (week-missing) and, in the app, Lịch / Nấu ăn, cooking mode and the Kho deduction all use the amounts scaled to the dish's portions.
 
 ### Family backfill (startup, idempotent)
 
@@ -110,23 +105,31 @@ After `prisma migrate deploy`, the service runs a data step in the background. I
 
 Log line: `[menu-service] family backfill: N menus assigned to families, N archived, N removed dishes merged, N family settings created`.
 
-## Day menus: several dishes per meal, saved, one-dish replacement
+## Calorie-based day menus, saved, one-dish replacement
 
-- **Meal sizes:** `POST /generate` for a DAY uses the family's (or the personal user's) "Số món mỗi bữa" (`GET/PUT /settings`, 1–6 each; defaults are 3 breakfast, 5 lunch, 5 dinner).
-  - **Lunch and dinner** are built like a family meal from recipe roles: món mặn, canh, rau, món xào, tráng miệng (the first N roles), then more mặn, xào and canh.
-  - **Breakfast** gets light dishes, with a drink as the last dish when there are 2 or more.
-  - Each slot takes the best Kho-scored recipe of its role. A dish is never repeated within the day, and dishes the user removed in the last 7 days are skipped while others fit.
+`src/services/meal-plan.ts` (pure, tested in `menu.calories.test.ts`) replaces the fixed "Số món mỗi bữa":
+
+- **Target per meal:** the family's meal target (see "Calories" above).
+- **Dishes per meal:**
+  - **Bữa sáng:** 1 dish (roles sang / mot_mon); a drink (do_uong) is added only when the dish cannot reach 90 % of the target.
+  - **Bữa trưa / tối:** a main (món mặn) + a vegetable or soup (rau / canh); a side (món xào, or a second món mặn) only when the meal stays under 90 %. A one-dish main (bún, phở, cơm chiên: mot_mon) is a meal on its own.
+  - **Cơm trắng:** the catalog has no plain rice dish, so 35 % of a lunch / dinner with món mặn is counted as rice (about 1,5 bát per adult; stored as `details.riceKcal` on the meal's first dish) and the dishes cover the rest.
+- **Portions:** the dishes' share is split by role (main 50 %, vegetable / soup 30 %, side 20 %, renormalised over the dishes present; breakfast dish 75 % / drink 25 %), then servings = share ÷ kcal per serving, whole numbers, within per-person bounds (main 0,5–2, vegetable / soup / side 0,5–1,5, one-dish meal 0,75–2, drink 0,5–1,25), and single servings are moved to get as close to the target as the bounds allow. A meal never aims above the target; it only passes 115 % when even the minimum portions do (then portions shrink towards 1 each). Breakfast with one dish: one serving per family member, adjusted by at most ±25 % towards the target. Each dish stores `details.servings`; the meal's first dish also `details.mealTarget`.
+- **Choosing the dish for a slot:** recipes of the slot's roles that fit the meal, not already in the day, within the cuisine caps. Variety first: the same meal ±2 days and at most twice a week, and (because meals have fewer dishes) not in ANY meal within 2 days and at most twice a week overall, when possible. Then the Kho score: 100 × share of ingredients usable in Kho, +15 per expiring item (≤ 3 days, at most 2) and up to +3 per item the sooner it expires, −10 repeat. A small tie-break (≤ 10 points) prefers dishes whose natural portion is about one serving per person, and a near-zero-kcal dish never fills a slot meant to add energy. Recently removed dishes are skipped unless nothing else fits; then dishes unsuitable for a member (with warnings); allergens never.
+- **Stored Kho match:** each chosen dish is scored again at its planned portions, so "Có sẵn X/Y" and the missing list match what is cooked.
 - **Variety across days:** every path (a day, the week, top-up and swap) looks at the same meal on the saved days up to a week before AND after.
   - First choice: the best Kho-scored dish not used in that meal in the 2 days before or after, and planned at most once more in that meal within the week, so a dish appears at most twice in 7 days.
   - Next: any dish that isn't on the previous or next day.
   - Only when nothing else fits may a dish repeat. Saved menus are never regenerated for this.
 - **Saved menus:** menus are generated once (the app does it the first time a day is opened, today or later) and never change by themselves. `khoHash` is still stored, but nothing regenerates from it. Generating a past day is refused (422).
 - **Week view:** `POST /generate-days { days, familyId }` generates DAY menus in one request for days that are today or later and have no menu. Past days and existing menus are left alone.
-- **Older menus:** `POST /:menuId/top-up` upgrades a day menu made before multi-dish menus (its dishes have no role). It adds only the missing dishes per meal up to "Số món mỗi bữa" and keeps the existing ones. It runs once, because the new dishes carry roles, and past days are refused (422).
+  - **"Tạo lại tuần":** with `replace: true` (the family OWNER, or a user without a family; 403 for other members) today's and later days are generated again with the planner, replacing their menus. Past days never change.
+- **Older menus:** saved menus keep working as they are (dishes without `details.servings` are cooked for the menu's people). `POST /:menuId/top-up` is kept for older app versions and now returns the menu unchanged; the app no longer calls it.
 - **Removing one dish:** `POST /:menuId/items/:itemId/remove`
   - The removal is stored in the dislike history (`RemovedDish`; per family when the caller has one).
   - The server adds ONE replacement with the same meal and role, ranked by Kho score. It excludes dishes already in that day, dishes removed in the last 7 days and hidden dishes.
   - If no catalog dish fits, a stored AI suggestion for that meal fills the slot. This uses the same AI limits, and starts a background generation when the Kho changed. Otherwise the slot stays empty.
+  - Calorie-based menus: the meal's portions are sized again for its dishes (catalog or AI dish, same kcal target and rules).
   - Past days can't be edited (422).
 
 ## Listing menus

@@ -18,7 +18,6 @@ import {
   Settings,
   Trash2,
   ShoppingBasket,
-  Utensils,
   Users,
   X,
 } from "lucide-react-native";
@@ -66,7 +65,6 @@ import MenuScreen from "./src/screens/menu/MenuScreen";
 import RecipeScreen from "./src/screens/recipes/RecipeScreen";
 import PaymentScreen, { type PaymentResult } from "./src/screens/payment/PaymentScreen";
 import { createGatewayClient } from "./src/screens/notifications/gatewayApi";
-import MealSizeSettings from "./src/screens/menu/MealSizeSettings";
 import NutritionProfileScreen, { type NutritionProfileHandle } from "./src/screens/nutrition/NutritionProfileScreen";
 import OnboardingWizard from "./src/screens/nutrition/OnboardingWizard";
 import ShipperHome from "./src/screens/shipper/ShipperHome";
@@ -75,6 +73,7 @@ import { EXPIRY_ALERT_DAYS } from "./src/screens/notifications/NotificationFeed"
 import { inventoryApi } from "./src/screens/inventory/inventoryApi";
 import { registerDeviceToken } from "./src/screens/notifications/registerDeviceToken";
 import ProfileHeader from "./src/screens/profile/ProfileHeader";
+import { closeProfileSub, openProfileSub, PROFILE_CLOSED, profileBack, type ProfileNav } from "./src/screens/profile/profileNav";
 import { CAPTURE_ACTIONS, captureBarVisible, type CaptureActionKey } from "./src/navigation/captureBar";
 import { SelectionBar } from "./src/components/SelectionBar";
 import { topTabStyles } from "./src/components/TopTab";
@@ -181,13 +180,15 @@ function AppContent(): React.JSX.Element {
     clearSessionNotice();
   }, [sessionNotice, clearSessionNotice]);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [profileOpen, setProfileOpen] = useState(false);
-  // Hồ sơ > "Số món mỗi bữa" (dishes per meal for new menus, stored in menu-service).
-  const [mealSizeOpen, setMealSizeOpen] = useState(false);
-  // Hồ sơ > "Thông tin sức khỏe" (the nutrition profile form, moved out of Dinh dưỡng); closing it reloads targets.
-  const [healthProfileOpen, setHealthProfileOpen] = useState(false);
+  // Hồ sơ sheet and its sub-screen ("Thông tin sức khỏe", the nutrition profile form): the sub-screen opens over the
+  // sheet and closing it (✕ / Quay lại / Android back) returns to the sheet as it was (profileNav.ts).
+  const [profileNav, setProfileNav] = useState<ProfileNav>(PROFILE_CLOSED);
+  const profileOpen = profileNav.sheetOpen;
+  const setProfileOpen = (open: boolean) => setProfileNav(open ? { sheetOpen: true, sub: null } : PROFILE_CLOSED);
+  const healthProfileOpen = profileNav.sub === "health";
   const [nutritionRefreshKey, setNutritionRefreshKey] = useState(0);
-  const closeHealthProfile = () => { setHealthProfileOpen(false); setNutritionRefreshKey((key) => key + 1); };
+  // Closing it reloads the nutrition targets.
+  const closeHealthProfile = () => { setProfileNav(closeProfileSub); setNutritionRefreshKey((key) => key + 1); };
   /** Back arrow, Android back or close: the health form saves itself first (or asks / stays). */
   const healthProfileRef = useRef<NutritionProfileHandle>(null);
   const leaveHealthProfile = async () => {
@@ -242,7 +243,7 @@ function AppContent(): React.JSX.Element {
   // Hidden on Thông báo and in Hồ sơ with its own screens (cài đặt thông báo, sức khỏe, số món).
   // Đi chợ selection mode: its one-line bar takes the capture bar's place (same height) until selection ends.
   const marketSelection = useMarketSelectionBar();
-  const overlayOpen = profileOpen || healthProfileOpen || mealSizeOpen || spendingOpen;
+  const overlayOpen = profileOpen || healthProfileOpen || spendingOpen;
   const showSelectionBar = marketSelection.active && activeTab === "shopping" && !isAdmin && !overlayOpen && !paymentUrl;
   const showCaptureBar = captureBarVisible({ tab: activeTab, isAdmin, profileOpen: overlayOpen, paymentOpen: !!paymentUrl, selecting: showSelectionBar });
   // Thông báo selection mode: "✕ · N đã chọn · Xóa" at the bottom (Thông báo has no capture bar).
@@ -531,7 +532,7 @@ function AppContent(): React.JSX.Element {
         </View>
       )}
 
-      <Modal transparent animationType="fade" visible={profileOpen && !isAdmin} onRequestClose={() => setProfileOpen(false)}>
+      <Modal transparent animationType="fade" visible={profileOpen && !isAdmin} onRequestClose={() => setProfileNav(profileBack)}>
         <View style={styles.sheetOverlay}>
           <Pressable accessibilityLabel="Đóng hồ sơ" accessibilityRole="button" onPress={() => setProfileOpen(false)} style={StyleSheet.absoluteFill} />
           <View accessibilityViewIsModal style={styles.sheetPanel}>
@@ -548,15 +549,9 @@ function AppContent(): React.JSX.Element {
               <Text style={styles.profileLabel}>Vai trò trong gia đình</Text>
               <Text style={styles.profileValue}>{session.family?.currentUserRole ? familyRoleLabel(session.family.currentUserRole) : "Chưa tham gia gia đình"}</Text>
               <TouchableOpacity accessibilityLabel="Thông tin sức khỏe" accessibilityRole="button"
-                onPress={() => { setProfileOpen(false); setHealthProfileOpen(true); }} style={styles.sheetItem}>
+                onPress={() => setProfileNav((nav) => openProfileSub(nav, "health"))} style={styles.sheetItem}>
                 <AppIcon icon={HeartPulse} size="md" color={colors.primary} />
                 <Text style={styles.sheetItemText}>Thông tin sức khỏe</Text>
-                <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
-              </TouchableOpacity>
-              <TouchableOpacity accessibilityLabel="Số món mỗi bữa" accessibilityRole="button"
-                onPress={() => { setProfileOpen(false); setMealSizeOpen(true); }} style={styles.sheetItem}>
-                <AppIcon icon={Utensils} size="md" color={colors.primary} />
-                <Text style={styles.sheetItemText}>Số món mỗi bữa</Text>
                 <AppIcon icon={ChevronRight} size="sm" color={colors.muted} />
               </TouchableOpacity>
               <TouchableOpacity accessibilityLabel="Đăng xuất" accessibilityRole="button"
@@ -566,32 +561,21 @@ function AppContent(): React.JSX.Element {
               </TouchableOpacity>
             </ScrollView>
           </View>
+        {/* Nested in the Hồ sơ modal: it opens over the sheet, which stays mounted (state and scroll kept). */}
+        <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={() => void leaveHealthProfile()}>
+          <SafeAreaView style={styles.settingsScreen}>
+            <View style={styles.settingsHeader}>
+              <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => void leaveHealthProfile()} />
+              <Text style={styles.settingsTitle}>Thông tin sức khỏe</Text>
+            </View>
+            <View style={styles.healthBody}>
+              <NutritionProfileScreen ref={healthProfileRef} />
+            </View>
+          </SafeAreaView>
+        </Modal>
         </View>
       </Modal>
 
-      <Modal animationType="slide" visible={healthProfileOpen && !isAdmin} onRequestClose={() => void leaveHealthProfile()}>
-        <SafeAreaView style={styles.settingsScreen}>
-          <View style={styles.settingsHeader}>
-            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => void leaveHealthProfile()} />
-            <Text style={styles.settingsTitle}>Thông tin sức khỏe</Text>
-          </View>
-          <View style={styles.healthBody}>
-            <NutritionProfileScreen ref={healthProfileRef} />
-          </View>
-        </SafeAreaView>
-      </Modal>
-
-      <Modal animationType="slide" visible={mealSizeOpen && !isAdmin} onRequestClose={() => setMealSizeOpen(false)}>
-        <SafeAreaView style={styles.settingsScreen}>
-          <View style={styles.settingsHeader}>
-            <IconButton icon={ChevronLeft} accessibilityLabel="Quay lại" color={colors.text} onPress={() => setMealSizeOpen(false)} />
-            <Text style={styles.settingsTitle}>Số món mỗi bữa</Text>
-          </View>
-          <View style={styles.settingsBody}>
-            <MealSizeSettings />
-          </View>
-        </SafeAreaView>
-      </Modal>
 
       <FamilyQrSheet visible={familyQr === "show" && !isAdmin} onClose={() => setFamilyQr(null)} />
       <FamilyQrScanner
