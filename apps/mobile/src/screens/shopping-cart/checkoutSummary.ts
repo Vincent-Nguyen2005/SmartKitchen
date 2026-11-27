@@ -34,12 +34,17 @@ export const previewTotals = (preview: { subtotal: number; discount: number; tot
   subtotal: preview.subtotal, discount: preview.discount, promotionName: preview.promotion?.name ?? null, total: preview.total,
 });
 
-/** The one line under the Giỏ hàng total: "Khuyến mãi: <tên> −<số tiền>", else the hint, else nothing. */
-export function cartPromotionLine(preview: { discount: number; promotion: { name: string } | null; hint: { text: string } | null } | null): { text: string; tone: "success" | "hint" } | null {
-  if (!preview) return null;
-  if (preview.promotion && preview.discount > 0) return { text: `Khuyến mãi: ${preview.promotion.name} ${discountText(preview.discount)}`, tone: "success" };
-  if (preview.hint) return { text: preview.hint.text, tone: "hint" };
-  return null;
+/**
+ * Giỏ hàng summary, the same rows as the checkout sheet: "Tạm tính", "Khuyến mãi: <tên> −X" (only when a promotion
+ * applies) and "Tổng thanh toán" (the discounted total, bold), plus the "Mua thêm … để được …" hint. Until the
+ * server's preview arrives (or when it fails), the cart's own total: Tạm tính = Tổng thanh toán, no promotion.
+ */
+export function cartSummary(
+  preview: { subtotal: number; discount: number; total: number; promotion: { name: string } | null; hint: { text: string } | null } | null,
+  cartTotal: number,
+): { rows: SummaryRow[]; hint: string | null } {
+  const shown = preview ?? { subtotal: cartTotal, discount: 0, total: cartTotal, promotion: null, hint: null };
+  return { rows: summaryRows(previewTotals(shown), { alwaysSubtotal: true }), hint: shown.hint?.text ?? null };
 }
 
 /** The checkout sheet notice when "Đặt hàng" found a different total. */
