@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BackHandler, Text, View } from "react-native";
-import { BadgePercent, Carrot, Percent, ChartColumn, CookingPot, Flag, LayoutDashboard, ShieldExclamationPoint, Truck } from "lucide-react-native";
+import { BadgePercent, Carrot, CookingPot, Flag, LayoutDashboard, ShieldExclamationPoint, Truck } from "lucide-react-native";
 import { AppIcon } from "../../theme";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { colors, PageTitle, Segmented, styles, useLayout } from "../notifications/ui";
@@ -9,17 +9,16 @@ import AdminFamiliesScreen from "./AdminFamiliesScreen";
 import AdminFamilyDetailScreen from "./AdminFamilyDetailScreen";
 import AdminUsersScreen from "./AdminUsersScreen";
 import AdminShippersScreen from "./AdminShippersScreen";
-import DashboardScreen from "./DashboardScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
 import ReportsScreen from "./ReportsScreen";
-import PromotionsScreen from "./PromotionsScreen";
-import DailyDealsScreen from "./DailyDealsScreen";
+import PromotionsHome from "./PromotionsHome";
 
 // "Hệ thống" was removed from the tabs; SystemHealthScreen.tsx is kept but no longer rendered.
 // "Trọng số" is hidden: no service reads the recommendation weights yet (WeightsScreen.tsx and the
 // admin-service routes/tables are kept). Show it again once a consumer exists.
-type Section = "dashboard" | "overview" | "ingredients" | "recipes" | "reports" | "shippers" | "promotions" | "dailyDeals";
+// "Thống kê" was merged into "Tổng quan"; checkout promotions and daily deals share "Khuyến mãi" (two segment tabs).
+type Section = "dashboard" | "ingredients" | "recipes" | "reports" | "shippers" | "promotions";
 
 /**
  * Screens pushed over the sectioned home (the empty stack). Back pops one level, so a family opened
@@ -80,12 +79,10 @@ export default function AdminHome(): React.JSX.Element {
           onChange={setSection}
           options={[
             { value: "dashboard", label: "Tổng quan", icon: LayoutDashboard },
-            { value: "overview", label: "Thống kê", icon: ChartColumn },
             { value: "reports", label: "Báo cáo", icon: Flag },
             { value: "ingredients", label: "Nguyên liệu", icon: Carrot },
             { value: "recipes", label: "Món ăn", icon: CookingPot },
             { value: "promotions", label: "Khuyến mãi", icon: BadgePercent },
-            { value: "dailyDeals", label: "Giảm giá tự động", icon: Percent },
             { value: "shippers", label: "Người giao hàng", icon: Truck },
           ]}
         />
@@ -96,18 +93,15 @@ export default function AdminHome(): React.JSX.Element {
             onOpenUsers={() => push({ name: "users" })}
             onOpenFamilies={() => push({ name: "families" })}
             onOpenFamily={openFamily}
+            // Báo cáo mounts fresh on the "Mới" filter, so this shows pending reports.
+            onOpenReports={() => setSection("reports")}
           />
-        )}
-        {section === "overview" && (
-          // Báo cáo mounts fresh on the "Mới" filter, so opening it from here shows pending reports.
-          <DashboardScreen onOpenReports={() => setSection("reports")} />
         )}
         {section === "reports" && <ReportsScreen />}
         {section === "ingredients" && <IngredientsScreen />}
         {section === "recipes" && <RecipesScreen />}
         {section === "shippers" && <AdminShippersScreen />}
-        {section === "promotions" && <PromotionsScreen />}
-        {section === "dailyDeals" && <DailyDealsScreen />}
+        {section === "promotions" && <PromotionsHome />}
       </View>
     </View>
   );

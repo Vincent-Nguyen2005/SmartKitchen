@@ -224,9 +224,7 @@ export default function CookingMode({ recipe, onClose, onComplete }: Props): Rea
                     <ControlButton icon={Plus} label="+30 giây" onPress={addThirty} secondary />
                   </View>
                 </View>
-              ) : (
-                <Text style={local.noTimer}>Làm xong thì bấm Bước sau</Text>
-              )}
+              ) : null}
             </>
           ) : (
             <Text style={local.noTimer}>Món này chưa có các bước nấu.</Text>
