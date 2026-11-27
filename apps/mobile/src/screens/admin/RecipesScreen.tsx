@@ -6,12 +6,13 @@ import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
 import { filterByName } from "../../services/localSearch";
-import { Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Button, colors, Dropdown, Field, looksLikeImageUrl, RemoteImage, ScreenState, styles, useGridCell, useLayout } from "../notifications/ui";
 import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { AdminListHeader } from "./AdminListHeader";
+import { AdminPager } from "./AdminPager";
 import { DEFAULT_PER_PERSON, savedIngredient } from "./recipeIngredients";
 import { StepIngredientTags } from "./StepIngredientTags";
 import { recipeIngredientNames } from "./stepIngredients";
@@ -396,7 +397,7 @@ export default function RecipesScreen({ createRequest = null, onCreateHandled }:
         ListFooterComponent={showState || recipes.length === 0 ? undefined : (
           <View style={local.footer}>
             <AppText variant="caption" style={local.pageInfo}>Trang {shownPage} / {totalPages} · {recipes.length} món</AppText>
-            <Pagination page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+            <AdminPager page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
           </View>
         )}
         ListEmptyComponent={showState

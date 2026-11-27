@@ -59,3 +59,18 @@ test("search: accent-insensitive; users by name or email, families by name; plac
   assert.equal(overviewEmptyText("users", true), "Không tìm thấy người dùng");
   assert.equal(overviewEmptyText("families", false), "Chưa có gia đình");
 });
+
+test("Người dùng: ADMIN pinned at the top, then every other account (shipper, users) newest first", () => {
+  const accounts = [
+    { id: "u1", name: "Người dùng cũ", email: "old@example.com", createdAt: "2026-01-01T00:00:00Z", role: "USER" },
+    { id: "a1", name: "Quản trị", email: "admin@example.com", createdAt: "2025-06-01T00:00:00Z", role: "ADMIN" },
+    { id: "s1", name: "Người giao", email: "ship@example.com", createdAt: "2026-11-25T00:00:00Z", role: "SHIPPER" },
+    { id: "u2", name: "Người dùng mới", email: "new@example.com", createdAt: "2026-11-27T00:00:00Z", role: "USER" },
+  ];
+  const list = overviewList("users", accounts, [], "", NOW).items;
+  assert.deepEqual(list.map((item) => item.id), ["a1", "u2", "s1", "u1"]);
+  assert.equal(list.length, accounts.length);
+  // Searching keeps the order; the 7-day list is newest first only (no pinning).
+  assert.deepEqual(overviewList("users", accounts, [], "nguoi", NOW).items.map((item) => item.id), ["u2", "s1", "u1"]);
+  assert.deepEqual(overviewList("newUsers", accounts, [], "", NOW).items.map((item) => item.id), ["u2", "s1"]);
+});

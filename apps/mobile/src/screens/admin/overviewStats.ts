@@ -41,10 +41,19 @@ const newestFirst = <T extends { createdAt: string }>(items: readonly T[]): T[] 
 /** Search placeholder per cell. */
 export const searchPlaceholder = (card: OverviewCardKey): string => (card === "families" ? "Tìm tên gia đình" : "Tìm tên hoặc email");
 
-type UserLike = { name: string | null; email: string; createdAt: string };
+type UserLike = { name: string | null; email: string; createdAt: string; role?: string };
+
+/** Người dùng: ADMIN account(s) pinned at the top, then everyone else (shippers, users) newest first. */
+export const adminsFirst = <T extends UserLike>(items: readonly T[]): T[] => {
+  const sorted = newestFirst(items);
+  return [...sorted.filter((user) => user.role === "ADMIN"), ...sorted.filter((user) => user.role !== "ADMIN")];
+};
 type FamilyLike = { name: string; createdAt: string };
 
-/** The list under the card: all users / all families / users new in the last 7 Vietnam days, newest first, searched on the device. */
+/**
+ * The list under the card, searched on the device: all accounts (ADMIN pinned first, then newest first) / all families /
+ * users new in the last 7 Vietnam days (newest first).
+ */
 export function overviewList<U extends UserLike, F extends FamilyLike>(card: OverviewCardKey, users: readonly U[], families: readonly F[], search: string, now: number):
   { kind: "users"; items: U[] } | { kind: "families"; items: F[] } {
   const term = normalizeVi(search.trim());
@@ -52,7 +61,8 @@ export function overviewList<U extends UserLike, F extends FamilyLike>(card: Ove
     return { kind: "families", items: newestFirst(families).filter((family) => !term || normalizeVi(family.name).includes(term)) };
   }
   const base = card === "newUsers" ? users.filter((user) => isNewUser(user.createdAt, now)) : users;
-  return { kind: "users", items: newestFirst(base).filter((user) => !term || normalizeVi(user.name ?? "").includes(term) || normalizeVi(user.email).includes(term)) };
+  const ordered = card === "users" ? adminsFirst(base) : newestFirst(base);
+  return { kind: "users", items: ordered.filter((user) => !term || normalizeVi(user.name ?? "").includes(term) || normalizeVi(user.email).includes(term)) };
 }
 
 /** The three numbers. */

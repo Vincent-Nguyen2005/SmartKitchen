@@ -5,13 +5,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { AppIcon, AppText, IconButton } from "../../theme";
 import { errorMessage, GatewayApiError, query, type Page } from "../notifications/gatewayApi";
 import { useGatewayApi } from "../notifications/useGatewayApi";
-import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, Pagination, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
+import { Badge, Button, colors, Dropdown, Field, looksLikeImageUrl, RemoteImage, ScreenState, Segmented, styles, useGridCell, useLayout } from "../notifications/ui";
 import { DateField, toDisplayDate } from "./DateField";
 import { formatVnd } from "../../services/format";
 import { filterByName, loadAllPages } from "../../services/localSearch";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
 import { AdminListHeader } from "./AdminListHeader";
+import { AdminPager } from "./AdminPager";
 import { isPieceUnit, UNIT_WORDS, unitWord } from "../shopping-cart/unitDisplay";
 import { useSession } from "../../services/session";
 import { isGatewayImage } from "../../services/authImage";
@@ -388,7 +389,7 @@ export default function IngredientsScreen({ createRequest = null, onCreateHandle
         ListFooterComponent={showState || total === 0 ? undefined : (
           <View style={local.footer}>
             <AppText variant="caption" style={local.pageInfo}>Trang {shownPage} / {totalPages} · {total} nguyên liệu</AppText>
-            <Pagination page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
+            <AdminPager page={shownPage} totalPages={totalPages} onChange={goToPage} disabled={loading} />
           </View>
         )}
         ListEmptyComponent={showState
