@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { BackHandler, StyleSheet, Text, View } from "react-native";
-import { BadgePercent, Carrot, CookingPot, Flag, LayoutDashboard, LogOut, ShieldExclamationPoint, Truck } from "lucide-react-native";
+import { BadgePercent, Carrot, CookingPot, LayoutDashboard, LogOut, ShieldExclamationPoint, Truck } from "lucide-react-native";
 import { AppIcon, IconButton, breakpoints, spacing, type LucideIcon } from "../../theme";
 import { TopTabButton, topTabStyles } from "../../components/TopTab";
 import { useGatewayApi } from "../notifications/useGatewayApi";
@@ -12,14 +12,13 @@ import AdminUsersScreen from "./AdminUsersScreen";
 import AdminShippersScreen from "./AdminShippersScreen";
 import IngredientsScreen from "./IngredientsScreen";
 import RecipesScreen from "./RecipesScreen";
-import ReportsScreen from "./ReportsScreen";
 import PromotionsHome from "./PromotionsHome";
 import { ADMIN_SECTIONS, adminSectionMemory, type AdminSection } from "./adminSections";
 
 // "Trọng số" is hidden: no service reads the recommendation weights yet (WeightsScreen.tsx and the admin-service
 // routes/tables are kept). "Hệ thống" is not a tab either (SystemHealthScreen.tsx kept, not rendered).
 const SECTION_ICONS: Record<AdminSection, LucideIcon> = {
-  dashboard: LayoutDashboard, reports: Flag, ingredients: Carrot, recipes: CookingPot, promotions: BadgePercent, shippers: Truck,
+  dashboard: LayoutDashboard, ingredients: Carrot, recipes: CookingPot, promotions: BadgePercent, shippers: Truck,
 };
 
 /**
@@ -39,8 +38,8 @@ type Props = {
 /**
  * Admin area. App.tsx shows it (and only it) when useSession().user.role === "ADMIN"; this check is a UI guard only
  * — admin-service enforces the role on every request. One top tab bar in the app's tab style (icon above label,
- * underline on the active tab): Tổng quan, Báo cáo, Nguyên liệu, Món ăn, Khuyến mãi, Giao hàng, then Đăng xuất. The
- * six tabs share the row equally (one row on any phone, like the member bar); content starts right under it.
+ * underline on the active tab): Tổng quan, Nguyên liệu, Món ăn, Khuyến mãi, Giao hàng, then Đăng xuất. The
+ * five tabs share the row equally (one row on any phone, like the member bar); content starts right under it.
  */
 export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
   const { isAdmin } = useGatewayApi();
@@ -104,11 +103,8 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
                       onOpenUsers={() => push({ name: "users" })}
                       onOpenFamilies={() => push({ name: "families" })}
                       onOpenFamily={openFamily}
-                      // Báo cáo mounts fresh on the "Mới" filter, so this shows pending reports.
-                      onOpenReports={() => setSection("reports")}
                     />
                   )}
-                  {section === "reports" && <ReportsScreen />}
                   {section === "ingredients" && <IngredientsScreen />}
                   {section === "recipes" && <RecipesScreen />}
                   {section === "promotions" && <PromotionsHome />}

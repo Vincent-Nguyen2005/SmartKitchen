@@ -11,6 +11,8 @@ import { INVENTORY_UNITS, UNIT_LABELS } from "../inventory/catalogSuggest";
 import type { InventoryUnit } from "../inventory/inventoryApi";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { safeDelete } from "./safeDelete";
+import { StepIngredientTags } from "./StepIngredientTags";
+import { recipeIngredientNames } from "./stepIngredients";
 
 type IngredientDetail = { name: string; quantity: number | null; unit: string | null; note?: string | null; isSeasoning?: boolean; perPerson?: boolean };
 type Recipe = {
@@ -428,7 +430,7 @@ export default function RecipesScreen(): React.JSX.Element {
                 <View style={local.formBlock}>
                   <AppText variant="bodySmall" color={colors.muted}>Các bước nấu ({draft.steps.length}/{MAX_STEPS})</AppText>
                   {draft.steps.map((step, index) => {
-                    const dishIngredients = [...new Set(draft.ingredients.map((row) => row.name.trim()).filter(Boolean))];
+                    const dishIngredients = recipeIngredientNames(draft.ingredients);
                     return (
                       <View key={step.key} style={[styles.card, local.stepCard]}>
                         <View style={styles.spaceBetween}>
@@ -445,20 +447,8 @@ export default function RecipesScreen(): React.JSX.Element {
                           <View style={local.third}><Field label="Giây" keyboardType="number-pad" placeholder="0" value={step.seconds} onChangeText={(seconds) => updateStep(step.key, { seconds: seconds.replace(/[^0-9]/g, "") })} /></View>
                         </View>
                         <AppText variant="caption">Để trống thời gian nếu bước này không cần hẹn giờ.</AppText>
-                        {dishIngredients.length > 0 && (
-                          <View style={styles.wrapRow} accessibilityLabel={`Nguyên liệu dùng ở bước ${index + 1}`}>
-                            {dishIngredients.map((name) => {
-                              const selected = step.ingredients.includes(name);
-                              return (
-                                <Pressable key={name} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={name}
-                                  onPress={() => updateStep(step.key, { ingredients: selected ? step.ingredients.filter((entry) => entry !== name) : [...step.ingredients, name] })}
-                                  style={({ pressed }) => [styles.segment, selected && styles.segmentSelected, pressed && !selected && styles.segmentPressed]}>
-                                  <Text style={[styles.segmentText, selected && styles.segmentTextSelected]}>{name}</Text>
-                                </Pressable>
-                              );
-                            })}
-                          </View>
-                        )}
+                        {/* Only this step's ingredients, as tags; "+ Thêm nguyên liệu" picks from the rest of the recipe. */}
+                        <StepIngredientTags stepNumber={index + 1} recipeNames={dishIngredients} value={step.ingredients} onChange={(ingredients) => updateStep(step.key, { ingredients })} />
                       </View>
                     );
                   })}
