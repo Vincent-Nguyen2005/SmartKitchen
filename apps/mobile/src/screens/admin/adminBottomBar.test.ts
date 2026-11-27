@@ -3,30 +3,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ADMIN_BAR_ACTIONS, overlayFor } from "./adminBar";
 import { canCancel, canUnassign, cancelConfirm, orderCardLabel, shortAddress, statusLabel, tabLabel, ADMIN_STATUS_TABS } from "./adminOrders";
-import { missingImageCount, missingImageText, photoPickerOrder, uploadConfirm, type CatalogProduct } from "./catalogPhoto";
 import { canGoForward, deliveredText, ordersText, periodTitle, shipperTitle } from "./revenue";
 import { isGatewayImage } from "../../services/authImage";
 
-test("bottom bar: Chụp ảnh · Đơn hàng (centre, primary) · Doanh thu; each opens its own overlay", () => {
+test("bottom bar: Chụp ảnh (create from photo) · Đơn hàng (centre, primary) · Doanh thu; each opens its own overlay", () => {
   assert.deepEqual(ADMIN_BAR_ACTIONS.map((action) => [action.label, action.primary ?? false]), [["Chụp ảnh", false], ["Đơn hàng", true], ["Doanh thu", false]]);
   assert.deepEqual(ADMIN_BAR_ACTIONS.map((action) => overlayFor(action.key)), ["photo", "orders", "revenue"]);
-});
-
-test("Chụp ảnh picker: products without an image first (alphabetical), searchable without accents; count and confirm texts", () => {
-  const products: CatalogProduct[] = [
-    { id: "1", name: "Tôm", category: "Hải sản", imageUrl: "https://cdn.example.com/tom.jpg", isActive: true },
-    { id: "2", name: "Cà rốt", category: "Rau củ", imageUrl: null, isActive: true },
-    { id: "3", name: "Bắp cải", category: "Rau củ", imageUrl: "  ", isActive: true },
-    { id: "4", name: "Ba chỉ", category: "Thịt", imageUrl: "/api/admin/catalog/images/" + "a".repeat(32) + ".jpg", isActive: true },
-  ];
-  assert.deepEqual(photoPickerOrder(products).map((product) => product.name), ["Bắp cải", "Cà rốt", "Ba chỉ", "Tôm"]);
-  assert.deepEqual(photoPickerOrder(products, "ca rot").map((product) => product.name), ["Cà rốt"]);
-  assert.equal(missingImageCount(products), 2);
-  assert.equal(missingImageText(2), "Còn 2 nguyên liệu chưa có ảnh");
-  assert.equal(missingImageText(0), "Tất cả nguyên liệu đã có ảnh");
-  assert.deepEqual(uploadConfirm(products[1]), { title: "Đặt ảnh cho Cà rốt?", message: "Ảnh sẽ hiện cho mọi người dùng trong Đi chợ và Kho.", confirmLabel: "Đặt ảnh", destructive: false });
-  assert.equal(uploadConfirm(products[0]).title, "Thay ảnh của Tôm?");
-  assert.equal(uploadConfirm(products[0]).destructive, true);
 });
 
 test("Đơn hàng: tabs with counts, short address, actions per status, card label", () => {

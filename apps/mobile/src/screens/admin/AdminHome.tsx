@@ -16,7 +16,7 @@ import PromotionsHome from "./PromotionsHome";
 import { ADMIN_SECTIONS, adminSectionMemory, type AdminSection } from "./adminSections";
 import { CaptureBar } from "../../components/CaptureBar";
 import { ADMIN_BAR_ACTIONS, overlayFor, type AdminBarAction, type AdminOverlay } from "./adminBar";
-import AdminCatalogPhoto from "./AdminCatalogPhoto";
+import AdminCreateFromPhoto, { type CreateRequest } from "./AdminCreateFromPhoto";
 import AdminOrdersScreen from "./AdminOrdersScreen";
 import AdminRevenueScreen from "./AdminRevenueScreen";
 
@@ -56,6 +56,8 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
   const [stack, setStack] = useState<AdminRoute[]>([]);
   // Bottom bar: the Chụp ảnh sheet, or the Đơn hàng / Doanh thu full-screen page (one at a time).
   const [overlay, setOverlay] = useState<AdminOverlay>(null);
+  // "Chụp ảnh" → the create form of Nguyên liệu or Món ăn, prefilled (CreateRequest.key: one form per request).
+  const [createRequest, setCreateRequest] = useState<CreateRequest | null>(null);
   const route = stack[stack.length - 1];
   const setSection = (next: AdminSection) => { setSectionState(adminSectionMemory.set(next)); setStack([]); };
   const push = (next: AdminRoute) => setStack((current) => [...current, next]);
@@ -116,8 +118,8 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
                       onOpenFamily={openFamily}
                     />
                   )}
-                  {section === "ingredients" && <IngredientsScreen />}
-                  {section === "recipes" && <RecipesScreen />}
+                  {section === "ingredients" && <IngredientsScreen createRequest={createRequest?.kind === "ingredient" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
+                  {section === "recipes" && <RecipesScreen createRequest={createRequest?.kind === "recipe" ? createRequest : null} onCreateHandled={() => setCreateRequest(null)} />}
                   {section === "promotions" && <PromotionsHome />}
                   {section === "shippers" && <AdminShippersScreen />}
                 </>
@@ -127,7 +129,15 @@ export default function AdminHome({ onSignOut }: Props): React.JSX.Element {
         actions={ADMIN_BAR_ACTIONS.map((action) => ({ ...action, icon: BAR_ICONS[action.key], active: overlay === action.key }))}
         onPress={(key) => setOverlay(overlayFor(key))}
       />
-      <AdminCatalogPhoto visible={overlay === "photo"} onClose={() => setOverlay(null)} />
+      <AdminCreateFromPhoto
+        visible={overlay === "photo"}
+        onClose={() => setOverlay(null)}
+        onReady={(request) => {
+          setOverlay(null);
+          setSection(request.kind === "ingredient" ? "ingredients" : "recipes");
+          setCreateRequest({ ...request, key: Date.now() });
+        }}
+      />
       <AdminOrdersScreen visible={overlay === "orders"} onClose={() => setOverlay(null)} />
       <AdminRevenueScreen visible={overlay === "revenue"} onClose={() => setOverlay(null)} />
     </View>

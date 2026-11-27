@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { FlatList, Image, StyleSheet, Text, View } from "react-native";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { ProductImage } from "../shopping-cart/MarketProducts";
 import { ChevronLeft, CircleCheck, ShoppingCart } from "lucide-react-native";
 import { IconButton, spacing } from "../../theme";
 import { useSession } from "../../services/session";
@@ -94,7 +95,7 @@ export default function WeekShoppingScreen({ onBack, onOpenCart }: Props): React
             return (
               <ProductCard
                 width={cardGrid.cardWidth}
-                image={item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={cardImageStyle} resizeMode="cover" /> : <ImagePlaceholder />}
+                image={item.imageUrl ? <ProductImage uri={item.imageUrl} style={cardImageStyle} /> : <ImagePlaceholder />}
                 name={item.name}
                 subtitle={missingLine(item)}
                 footer={note ? <CardCaption text={note.text} warning={note.warning} /> : undefined}

@@ -2,6 +2,9 @@ import { Prisma, type PrismaClient } from "../../node_modules/.prisma/client-rec
 import { z } from "zod";
 import { prisma } from "../lib/prisma";
 import { imageUrlProblem, MAX_IMAGE_URL_LENGTH } from "../lib/image-url";
+
+/** Path of a dish image uploaded in Quản trị (admin-service /recipe-images, random 128-bit file name). */
+export const ADMIN_RECIPE_IMAGE = /^\/api\/admin\/recipe-images\/[a-f0-9]{32}\.jpg$/;
 import { menuUsageCheck, type RecipeUsageCheck } from "../lib/menu-usage";
 import { seedRecipes } from "../seed/recipes.data";
 
@@ -61,6 +64,8 @@ const recipeFields = z.object({
   servings: z.number().int().positive().max(100).nullable().optional(),
   /** Pasted https link to a public image; stored as text only, never fetched by the server. */
   imageUrl: z.string().trim().max(MAX_IMAGE_URL_LENGTH).superRefine((value, context) => {
+    // A dish image uploaded by an admin, stored and served by admin-service through the gateway.
+    if (ADMIN_RECIPE_IMAGE.test(value)) return;
     const problem = imageUrlProblem(value);
     if (problem) context.addIssue({ code: z.ZodIssueCode.custom, message: problem });
   }).nullable().optional(),

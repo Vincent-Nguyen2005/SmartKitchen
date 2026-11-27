@@ -106,3 +106,12 @@ test("image links: https public addresses only, at most 2048 characters, updates
   }
   assert.deepEqual(updateRecipeSchema.parse({ isActive: false }), { isActive: false });
 });
+
+test("dish images uploaded in Quản trị: only admin-service's /api/admin/recipe-images/<32 hex>.jpg path is accepted", async () => {
+  const { updateRecipeSchema } = await import("../services/recipe.service");
+  const uploaded = `/api/admin/recipe-images/${"a1".repeat(16)}.jpg`;
+  assert.deepEqual(updateRecipeSchema.parse({ imageUrl: uploaded }), { imageUrl: uploaded });
+  for (const bad of ["/api/admin/recipe-images/../secret.jpg", "/api/admin/recipe-images/abc.jpg", "/api/inventory/items/x/photo/a.jpg", `/api/admin/catalog/images/${"a1".repeat(16)}.jpg`]) {
+    assert.equal(updateRecipeSchema.safeParse({ imageUrl: bad }).success, false, bad);
+  }
+});

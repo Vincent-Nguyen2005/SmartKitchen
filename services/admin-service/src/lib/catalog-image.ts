@@ -39,12 +39,25 @@ let processor: ImageProcessor = sharpProcessor;
 /** Tests replace the processor (no native sharp needed). */
 export const setImageProcessor = (next: ImageProcessor | null): void => { processor = next ?? sharpProcessor; };
 
+/** The same re-encoding (≤ 1024 px JPEG, EXIF dropped) without storing: the AI suggestion step sends this to Gemini. */
+export const reencodeImage = async (input: Buffer): Promise<Buffer> => {
+  try {
+    return await processor(input);
+  } catch {
+    throw new CatalogImageError(400, "PHOTO_UNREADABLE", "The image could not be read.");
+  }
+};
+
 export const catalogImageDir = (): string => path.resolve(process.env.ADMIN_UPLOAD_DIR || path.join(process.cwd(), "uploads", "admin"));
 const FILE_NAME = /^[a-f0-9]{32}\.jpg$/;
 const URL_PREFIX = "/api/admin/catalog/images/";
 const MANAGED_URL = /^\/api\/admin\/catalog\/images\/([a-f0-9]{32}\.jpg)$/;
 
 export const isCatalogImageFileName = (value: string): boolean => FILE_NAME.test(value);
+/** Dish images live in the same folder, served at their own path (RecipeImage says which recipe uses which file). */
+const RECIPE_URL = /^\/api\/admin\/recipe-images\/([a-f0-9]{32}\.jpg)$/;
+export const recipeImageUrl = (fileName: string): string => `/api/admin/recipe-images/${fileName}`;
+export const managedRecipeImage = (imageUrl: string | null | undefined): string | null => imageUrl?.match(RECIPE_URL)?.[1] ?? null;
 export const catalogImageUrl = (fileName: string): string => `${URL_PREFIX}${fileName}`;
 /** The file name of an image stored here, or null for pasted https links. */
 export const managedCatalogImage = (imageUrl: string | null | undefined): string | null => imageUrl?.match(MANAGED_URL)?.[1] ?? null;
