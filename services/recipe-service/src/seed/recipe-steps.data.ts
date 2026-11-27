@@ -397,12 +397,12 @@ const STEPS: Record<string, StepRow[]> = {
     ["Trộn mì với sốt, rắc phô mai bào lên trên", null, ["Phô mai"]],
   ],
   "Cà ri gà kiểu Nhật": [
-    ["Chặt gà miếng vừa ăn, ướp muối và tiêu", 900, ["Thịt gà"]],
+    ["Vo gạo nấu cơm; trong lúc chờ, chặt gà miếng vừa ăn, ướp muối và tiêu", 1800, ["Gạo", "Thịt gà"]],
     ["Gọt, cắt khoai tây, cà rốt và hành tây miếng vừa", null, ["Khoai tây", "Cà rốt", "Hành tây"]],
     ["Phi hành tây với dầu, cho gà vào xào săn", 300, []],
     ["Đổ nước ngập, cho khoai tây và cà rốt vào, hầm lửa nhỏ đến khi gà chín mềm", 1500, []],
     ["Đun chảy bơ, xào bột mì với bột cà ri cho thơm, hòa với nước hầm rồi đổ vào nồi, nêm vừa ăn", 180, ["Bơ lạt", "Bột mì", "Bột cà ri"]],
-    ["Nấu thêm đến khi sốt sánh, ăn với cơm", 300, []],
+    ["Nấu thêm đến khi sốt sánh, chan cà ri lên cơm", 300, []],
   ],
   "Kimbap": [
     ["Nấu cơm, trộn với dầu mè, chút muối và mè, để nguội bớt", 1800, ["Gạo", "Mè"]],

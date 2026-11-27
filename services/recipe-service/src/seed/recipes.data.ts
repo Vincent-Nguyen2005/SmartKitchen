@@ -363,9 +363,10 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 45, calories: 710, protein: 38, carbs: 78, fat: 27, allergens: ["gluten", "sữa"], contraindications: [],
   },
   {
-    name: "Cà ri gà kiểu Nhật", description: "Gà hầm khoai tây, cà rốt trong sốt cà ri sánh, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
-    ingredients: [g("Thịt gà", 600), pc("Khoai tây", 2), pc("Cà rốt", 1), pc("Hành tây", 1), g("Bột cà ri", 20), g("Bột mì", 30), g("Bơ lạt", 20)],
-    servings: 4, preparationMinutes: 60, calories: 410, protein: 22, carbs: 28, fat: 23, allergens: ["gluten", "sữa"], contraindications: [],
+    name: "Cà ri gà kiểu Nhật", description: "Gà hầm khoai tây, cà rốt trong sốt cà ri sánh, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "asian",
+    // A one-plate curry rice: its rice is part of the dish (75 g raw per serving, +245 kcal, +58 g carbs).
+    ingredients: [g("Thịt gà", 600), pc("Khoai tây", 2), pc("Cà rốt", 1), pc("Hành tây", 1), g("Bột cà ri", 20), g("Bột mì", 30), g("Bơ lạt", 20), g("Gạo", 300)],
+    servings: 4, preparationMinutes: 60, calories: 655, protein: 22, carbs: 86, fat: 23, allergens: ["gluten", "sữa"], contraindications: [],
   },
   {
     name: "Kimbap", description: "Cơm cuộn rong biển với trứng, cà rốt, dưa leo và xúc xích.", mealTypes: ["breakfast", "lunch"], role: "sang", cuisine: "asian",
@@ -373,7 +374,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 60, calories: 590, protein: 17, carbs: 84, fat: 20, allergens: ["trứng", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
   },
   {
-    name: "Cá hồi áp chảo", description: "Cá hồi áp chảo bơ tỏi, ăn kèm bông cải xanh.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    name: "Cá hồi áp chảo", description: "Cá hồi áp chảo bơ tỏi, ăn kèm bông cải xanh.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "western",
     ingredients: [g("Cá hồi", 300), g("Bơ lạt", 20), g("Tỏi", 10), pc("Chanh", 1), g("Bông cải xanh", 200)],
     servings: 2, preparationMinutes: 25, calories: 480, protein: 33, carbs: 9, fat: 34, allergens: ["cá", "sữa"], contraindications: [],
   },
@@ -413,7 +414,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 25, calories: 670, protein: 18, carbs: 82, fat: 29, allergens: ["trứng", "đậu nành", "gluten", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
   },
   {
-    name: "Bò bít tết", description: "Thịt bò áp chảo bơ tỏi, ăn kèm khoai tây và salad.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    name: "Bò bít tết", description: "Thịt bò áp chảo bơ tỏi, ăn kèm khoai tây và salad.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "western",
     ingredients: [g("Thịt bò", 400), pc("Khoai tây", 1), g("Bơ lạt", 20), g("Tỏi", 10), g("Xà lách", 50), pc("Cà chua", 1)],
     servings: 2, preparationMinutes: 40, calories: 600, protein: 53, carbs: 18, fat: 35, allergens: ["sữa"], contraindications: [],
   },

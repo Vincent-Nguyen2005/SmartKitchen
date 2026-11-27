@@ -138,25 +138,38 @@ export function allocatePortions(dishes: PortionDish[], target: number, people: 
 export type PlannedDish<T> = { slot: Slot; pick: T; kcal: number; servings: number };
 export type MealPlan<T> = { dishes: Array<PlannedDish<T>>; target: number; riceKcal: number; kcal: number };
 
+/** Cuisine as the pairing rules see it (missing = Vietnamese). */
+export const cuisineOf = (cuisine: string | null | undefined): string => (cuisine && cuisine.trim() ? cuisine : "vietnam");
+/** A light side for a one-plate dish: kcal per serving at most this. */
+export const LIGHT_SIDE_KCAL = 250;
+export type PickConstraint = { cuisine?: string; maxKcal?: number };
+export type Picked<T> = { value: T; role: string | null; kcal: number | null; cuisine?: string | null };
+
 /**
- * One meal: asks `pick` for a dish per slot (with the recipe roles that slot accepts) and sizes the portions.
- * `pick` returns the chosen dish (with its role and kcal per serving) or null; it is responsible for Kho score,
- * variety, caps and health rules, and must not return a dish twice.
+ * One meal: asks `pick` for a dish per slot (the recipe roles that slot accepts, plus a cuisine / kcal constraint) and
+ * sizes the portions. `pick` is responsible for Kho score, variety, caps and health rules, and must not return a dish
+ * twice. Sensible combinations (lunch / dinner):
+ * - Vietnamese món mặn: + a Vietnamese canh or rau, eaten with rice ("Kèm cơm trắng"); a Vietnamese side (xào / mặn)
+ *   only when still under 90 %.
+ * - Foreign món mặn (western / asian): never with a Vietnamese canh / rau and never with rice; one side of the SAME
+ *   cuisine only when under 90 % (or none).
+ * - One-plate dish (mot_mon: phở, bún, mì, cơm chiên, Bò bít tết with fries…): alone, no canh, no rice; one light
+ *   (≤ 250 kcal / serving) rau or canh of the same cuisine only when under 90 %.
  */
 export function planMeal<T>(
   meal: string,
   people: number,
   target: number,
-  pick: (roles: Array<string | null>, slot: Slot) => { value: T; role: string | null; kcal: number | null } | null,
+  pick: (roles: Array<string | null>, slot: Slot, constraint: PickConstraint) => Picked<T> | null,
 ): MealPlan<T> {
-  const chosen: Array<{ slot: Slot; value: T; kcal: number }> = [];
+  const chosen: Array<{ slot: Slot; value: T; kcal: number; role: string | null; cuisine: string }> = [];
   // A dish without kcal data: the meal's energy is unknown, so no extra dish is added to "reach" the target.
   let unknownKcal = false;
-  const take = (roles: Array<string | null>, slot: Slot): boolean => {
-    const found = pick(roles, slot);
+  const take = (roles: Array<string | null>, slot: Slot, constraint: PickConstraint = {}): boolean => {
+    const found = pick(roles, slot, constraint);
     if (!found) return false;
     if (found.kcal == null) unknownKcal = true;
-    chosen.push({ slot, value: found.value, kcal: Math.max(0, found.kcal ?? 0) });
+    chosen.push({ slot, value: found.value, kcal: Math.max(0, found.kcal ?? 0), role: found.role, cuisine: cuisineOf(found.cuisine) });
     return true;
   };
   const size = (riceKcal: number) => {
@@ -180,35 +193,41 @@ export function planMeal<T>(
     return finish(0, sized);
   }
 
-  // Lunch / dinner: a main with rice, else a one-dish meal.
-  let rice = 0;
-  if (take(SLOT_ROLES.main, "main")) {
-    rice = Math.round(RICE_SHARE * target);
-    take(SLOT_ROLES.veg, "veg");
-  } else if (!take(SLOT_ROLES.one_dish, "one_dish")) {
-    return { dishes: [], target, riceKcal: 0, kcal: 0 };
+  // Lunch / dinner: the main decides the shape of the meal.
+  if (!take(["man", "mot_mon"], "main") && !take(SLOT_ROLES.one_dish, "one_dish")) return { dishes: [], target, riceKcal: 0, kcal: 0 };
+  const main = chosen[0];
+  if (main.role === "mot_mon" || main.role == null) {
+    main.slot = "one_dish";
+    let sized = size(0);
+    if (!reached(sized.kcal) && take(["rau", "canh"], "side", { cuisine: main.cuisine, maxKcal: LIGHT_SIDE_KCAL })) sized = size(0);
+    return finish(0, sized);
   }
+  if (main.cuisine !== "vietnam") {
+    let sized = size(0);
+    if (!reached(sized.kcal) && take(["canh", "rau", "xao", "man"], "side", { cuisine: main.cuisine })) sized = size(0);
+    return finish(0, sized);
+  }
+  const rice = Math.round(RICE_SHARE * target);
+  take(SLOT_ROLES.veg, "veg", { cuisine: "vietnam" });
   let sized = size(rice);
-  if (!reached(sized.kcal)) {
-    const added = chosen[0].slot === "one_dish" ? take(["rau", "canh", "xao"], "side") : take(SLOT_ROLES.side, "side");
-    if (added) sized = size(rice);
-  }
+  if (!reached(sized.kcal) && take(SLOT_ROLES.side, "side", { cuisine: "vietnam" })) sized = size(rice);
   return finish(rice, sized);
 }
 
 /**
  * Portions for the dishes already in a meal (a dish was swapped, or an AI dish filled a slot): slots from the roles,
- * the same allocation and rice rule as planMeal.
+ * the same allocation, pairing and rice rule as planMeal (rice only for a Vietnamese món mặn meal).
  */
-export function replanServings(meal: string, dishes: Array<{ role: string | null; kcal: number | null }>, people: number, target: number): { servings: number[]; riceKcal: number } {
+export function replanServings(meal: string, dishes: Array<{ role: string | null; kcal: number | null; cuisine?: string | null }>, people: number, target: number): { servings: number[]; riceKcal: number } {
   const isBreakfast = meal.toUpperCase() === "BREAKFAST";
   const slots: Slot[] = dishes.map((dish, index) => {
     if (isBreakfast) return dish.role === "do_uong" ? "drink" : dishes.length === 1 ? "breakfast_single" : "breakfast";
-    if (dish.role === "mot_mon" || dish.role == null) return index === 0 ? "one_dish" : "side";
-    if (dish.role === "canh" || dish.role === "rau") return "veg";
+    if (dish.role === "mot_mon" || dish.role == null) return index === 0 || !dishes.some((other) => other.role === "man") ? "one_dish" : "side";
+    if (dish.role === "canh" || dish.role === "rau") return dishes.some((other) => other.role === "man") ? "veg" : "side";
     if (dish.role === "man") return dishes.slice(0, index).some((other) => other.role === "man") ? "side" : "main";
     return "side";
   });
-  const riceKcal = !isBreakfast && slots.includes("main") ? Math.round(RICE_SHARE * target) : 0;
+  const mainIndex = slots.indexOf("main");
+  const riceKcal = !isBreakfast && mainIndex >= 0 && cuisineOf(dishes[mainIndex].cuisine) === "vietnam" ? Math.round(RICE_SHARE * target) : 0;
   return { servings: allocatePortions(dishes.map((dish, index) => ({ kcal: Math.max(0, dish.kcal ?? 0), slot: slots[index] })), Math.max(0, target - riceKcal), people), riceKcal };
 }

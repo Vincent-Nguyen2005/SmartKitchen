@@ -310,3 +310,42 @@ test("swapping the món mặn moves the meal's rice to the new món mặn", asyn
   // The soup does not get the rice.
   assert.equal(updates.every((update) => update.data.details.riceGrams === undefined), true);
 });
+
+test("sensible combinations: foreign main without Vietnamese canh / rau or rice; one-plate dishes alone; rice only with a Vietnamese món mặn", () => {
+  type Dish = { id: string; role: string; kcal: number; cuisine: string };
+  const pickFrom = (dishes: Dish[]) => {
+    const used = new Set<string>();
+    return (roles: Array<string | null>, _slot: unknown, constraint: { cuisine?: string; maxKcal?: number }) => {
+      const found = dishes.find((dish) => !used.has(dish.id) && roles.includes(dish.role)
+        && (constraint.cuisine === undefined || dish.cuisine === constraint.cuisine) && (constraint.maxKcal === undefined || dish.kcal <= constraint.maxKcal));
+      if (!found) return null;
+      used.add(found.id);
+      return { value: found.id, role: found.role, kcal: found.kcal, cuisine: found.cuisine };
+    };
+  };
+  const vnSides: Dish[] = [{ id: "canh-chua", role: "canh", kcal: 150, cuisine: "vietnam" }, { id: "rau-muong", role: "rau", kcal: 40, cuisine: "vietnam" }, { id: "dau-xao", role: "xao", kcal: 200, cuisine: "vietnam" }];
+  // Foreign main (Korean chicken): no Vietnamese canh, no rice; a Korean side only when short.
+  const korean = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "ga-han", role: "man", kcal: 400, cuisine: "asian" }, ...vnSides, { id: "canh-kimchi", role: "canh", kcal: 190, cuisine: "asian" }]));
+  assert.equal(korean.riceKcal, 0);
+  assert.ok(korean.dishes.every((dish) => !["canh-chua", "rau-muong", "dau-xao"].includes(dish.pick)), korean.dishes.map((dish) => dish.pick).join());
+  // 400 × 8 (2 per person) = 3200: enough, so no side.
+  assert.deepEqual(korean.dishes.map((dish) => dish.pick), ["ga-han"]);
+  const lightKorean = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "trung-cuon", role: "man", kcal: 190, cuisine: "asian" }, ...vnSides, { id: "canh-kimchi", role: "canh", kcal: 190, cuisine: "asian" }]));
+  assert.deepEqual(lightKorean.dishes.map((dish) => dish.pick), ["trung-cuon", "canh-kimchi"]);
+  // One-plate (Bò bít tết with fries): alone, no rice; a light western side only when short, never a Vietnamese one.
+  const steak = planMeal("DINNER", 4, 2800, pickFrom([{ id: "bo-bit-tet", role: "mot_mon", kcal: 600, cuisine: "western" }, ...vnSides, { id: "salad", role: "rau", kcal: 125, cuisine: "western" }]));
+  assert.equal(steak.riceKcal, 0);
+  assert.deepEqual(steak.dishes.map((dish) => dish.pick), ["bo-bit-tet"]);
+  const pho = planMeal("DINNER", 4, 2800, pickFrom([{ id: "bun-moc", role: "mot_mon", kcal: 300, cuisine: "vietnam" }, { id: "che", role: "canh", kcal: 400, cuisine: "vietnam" }, ...vnSides]));
+  // Short (300 × 8 = 2400 < 90 %): one LIGHT Vietnamese side (≤ 250 kcal), not the 400 kcal one; still no rice.
+  assert.equal(pho.riceKcal, 0);
+  assert.deepEqual(pho.dishes.map((dish) => dish.pick), ["bun-moc", "canh-chua"]);
+  // Vietnamese món mặn: a Vietnamese canh / rau and rice.
+  const vn = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "thit-kho", role: "man", kcal: 400, cuisine: "vietnam" }, { id: "salad", role: "rau", kcal: 125, cuisine: "western" }, ...vnSides]));
+  assert.ok(vn.riceKcal > 0);
+  assert.deepEqual(vn.dishes.map((dish) => dish.pick).slice(0, 2), ["thit-kho", "canh-chua"]);
+  // After a swap: rice only when the meal's món mặn is Vietnamese.
+  assert.equal(replanServings("LUNCH", [{ role: "man", kcal: 400, cuisine: "asian" }, { role: "canh", kcal: 190, cuisine: "asian" }], 4, 3200).riceKcal, 0);
+  assert.ok(replanServings("LUNCH", [{ role: "man", kcal: 400, cuisine: "vietnam" }, { role: "canh", kcal: 150, cuisine: "vietnam" }], 4, 3200).riceKcal > 0);
+  assert.equal(replanServings("LUNCH", [{ role: "mot_mon", kcal: 600, cuisine: "western" }], 4, 3200).riceKcal, 0);
+});

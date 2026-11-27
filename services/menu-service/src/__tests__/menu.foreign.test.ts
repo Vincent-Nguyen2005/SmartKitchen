@@ -28,29 +28,38 @@ function createClient() {
   return { created, client: { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient };
 }
 
-test("generation: foreign dishes appear when they score best, but at most 1 per meal and 2 per day (every day of a week)", async () => {
+test("generation: foreign dishes appear when they score best, within the caps, and always as sensible meals", async () => {
   const { created, client } = createClient();
   await generateMenu({
     userId: "u1", periodType: PeriodType.WEEK, startDate: new Date("2026-11-30T00:00:00Z"), endDate: new Date("2026-12-06T00:00:00Z"),
     recipes: catalog, inventoryItems: kho,
   }, client);
   const items = created[0].data.items.create;
+  const cuisine = (id: string) => catalog.find((recipe) => recipe.id === id)?.cuisine ?? "vietnam";
   const days = new Set(items.map((item) => item.dayOfWeek));
   assert.equal(days.size, 7);
-  let foreignTotal = 0;
+  let weekForeignMeals = 0;
   for (const day of days) {
     const dayItems = items.filter((item) => item.dayOfWeek === day);
-    const foreignItems = dayItems.filter((item) => isForeignId(item.recipeId));
-    assert.ok(foreignItems.length <= FOREIGN_PER_DAY, `day ${day}: ${foreignItems.length}`);
+    let foreignMeals = 0;
     for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) {
-      assert.ok(foreignItems.filter((item) => item.mealType === meal).length <= FOREIGN_PER_MEAL, `day ${day} ${meal}`);
+      const mealItems = dayItems.filter((item) => item.mealType === meal);
+      assert.ok(mealItems.length > 0, `day ${day} ${meal}: complete`);
+      // One cuisine per lunch / dinner: a foreign main is never paired with a Vietnamese canh / rau (or the other way
+      // round). Breakfast may add any drink.
+      if (meal !== MealType.BREAKFAST) assert.equal(new Set(mealItems.map((item) => cuisine(item.recipeId))).size, 1, `day ${day} ${meal}: ${mealItems.map((item) => item.recipeId).join()}`);
+      if (mealItems.some((item) => isForeignId(item.recipeId))) foreignMeals += 1;
     }
-    // Meals are still complete (the caps never leave a slot empty while Vietnamese dishes fit).
-    for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) assert.ok(dayItems.some((item) => item.mealType === meal), `day ${day} ${meal}`);
-    foreignTotal += foreignItems.length;
+    // At most FOREIGN_PER_DAY foreign meals a day (a foreign main and its same-cuisine side are one foreign meal).
+    assert.ok(foreignMeals <= FOREIGN_PER_DAY, `day ${day}: ${foreignMeals}`);
+    weekForeignMeals += foreignMeals;
+    for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) {
+      const mains = dayItems.filter((item) => item.mealType === meal && isForeignId(item.recipeId) && ["man", "sang"].includes(item.details.role));
+      assert.ok(mains.length <= FOREIGN_PER_MEAL, `day ${day} ${meal}`);
+    }
   }
-  // They score best, so every day uses its whole allowance.
-  assert.equal(foreignTotal, 7 * FOREIGN_PER_DAY);
+  // They score best, so they do appear (week-wide variety spreads the few foreign dishes over the week).
+  assert.ok(weekForeignMeals >= 5, String(weekForeignMeals));
 });
 
 type Item = { id: string; recipeId: string | null; dishName: string; mealType: MealType; dayOfWeek: number; details: unknown };
@@ -70,17 +79,21 @@ function removeClient(items: Item[]) {
 const item = (id: string, recipeId: string, mealType: MealType, role: string): Item => ({ id, recipeId, dishName: recipeId, mealType, dayOfWeek: 1, details: { role } });
 const now = new Date("2026-11-30T01:00:00Z");
 
-test("swap: a day that already has 2 foreign dishes gets a Vietnamese replacement; removing a foreign dish frees its place", async () => {
-  const day = [item("b1", "pho", MealType.BREAKFAST, "sang"), item("l1", "steak", MealType.LUNCH, "man"), item("l2", "canhchua", MealType.LUNCH, "canh"),
-    item("d1", "supbi", MealType.DINNER, "canh"), item("d2", "thitkho", MealType.DINNER, "man")];
-  const full = removeClient(day);
-  await removeMenuItem({ userId: "u1", menuId: "m1", itemId: "d2", now, recipes: catalog, inventoryItems: kho }, full.client);
-  assert.equal(full.writes.length, 1);
-  assert.equal(isForeignId(full.writes[0]), false, full.writes[0]);
-
-  const freed = removeClient(day);
-  await removeMenuItem({ userId: "u1", menuId: "m1", itemId: "l1", now, recipes: catalog, inventoryItems: kho }, freed.client);
-  assert.equal(isForeignId(freed.writes[0]), true, freed.writes[0]);
+test("swap keeps sensible meals: a Vietnamese partner next to Vietnamese dishes, the same cuisine next to a foreign dish", async () => {
+  const day = [item("b1", "pho", MealType.BREAKFAST, "sang"), item("l1", "steak", MealType.LUNCH, "man"), item("l2", "supbi", MealType.LUNCH, "canh"),
+    item("d1", "canhchua", MealType.DINNER, "canh"), item("d2", "thitkho", MealType.DINNER, "man")];
+  // Dinner is Vietnamese: the new món mặn is Vietnamese even though foreign dishes score best.
+  const dinner = removeClient(day);
+  await removeMenuItem({ userId: "u1", menuId: "m1", itemId: "d2", now, recipes: catalog, inventoryItems: kho }, dinner.client);
+  assert.equal(dinner.writes.length, 1);
+  assert.equal(isForeignId(dinner.writes[0]), false, dinner.writes[0]);
+  // Lunch is western: the steak's replacement is a western main (not the asian one), the soup's a western soup.
+  const main = removeClient(day);
+  await removeMenuItem({ userId: "u1", menuId: "m1", itemId: "l1", now, recipes: catalog, inventoryItems: kho }, main.client);
+  assert.equal(main.writes[0], "salmon");
+  const soup = removeClient(day);
+  await removeMenuItem({ userId: "u1", menuId: "m1", itemId: "l2", now, recipes: catalog, inventoryItems: kho }, soup.client);
+  assert.equal(soup.writes[0], "supnam");
 });
 
 test("pickers keep the per-meal cap even without a shared day counter", () => {

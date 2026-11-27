@@ -26,7 +26,7 @@ import {
   varietyPool,
   withinForeignCap,
 } from "./kho-suggest";
-import { mealTarget, planMeal, replanServings, RICE_SHARE, riceGrams, SLOT_WEIGHTS, type Slot } from "./meal-plan";
+import { cuisineOf, mealTarget, planMeal, replanServings, RICE_SHARE, riceGrams, SLOT_WEIGHTS, type PickConstraint, type Slot } from "./meal-plan";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
 import { menuPeople, scaleIngredients } from "./portions";
 import { conditionWarnings, familyAllergic, familyMealTarget, hasAllergen, type FamilyHealth, type HealthWarning } from "./family-health";
@@ -570,22 +570,31 @@ function slotShare(slot: Slot, goal: number): number {
  * natural portion is about one serving per person. Recently removed dishes are skipped unless nothing else fits; then
  * dishes unsuitable for a member (they carry warnings); allergens are never in the pools.
  */
+/** At lunch / dinner a one-plate dish competes with món mặn, a little behind, so rice meals stay the norm. */
+const ONE_PLATE_MAIN_PENALTY = 8;
+
 function pickForSlot(input: {
-  meal: string; roles: Array<string | null>; slot: Slot; goal: number; people: number;
+  meal: string; roles: Array<string | null>; slot: Slot; goal: number; people: number; constraint?: PickConstraint;
   pool: SuggestRecipe[]; fallbackPool: SuggestRecipe[]; kho: KhoItem[]; today: string; day: string;
   recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds: ReadonlySet<string>; history: MealHistory; foreign: ForeignCount;
 }): DishSuggestion | null {
-  const share = slotShare(input.slot, input.goal);
+  const constraint = input.constraint ?? {};
+  // A side that accompanies a foreign main is part of that one foreign meal: it does not count against the caps.
+  const accompaniesForeign = constraint.cuisine !== undefined && constraint.cuisine !== "vietnam";
   // Half the old calorie weight: Kho and variety decide, the natural portion only breaks close calls.
   const penalty = (recipe: SuggestRecipe): number => {
-    if (share <= 0) return 0;
+    const onePlate = input.slot === "main" && recipe.role === "mot_mon";
+    const share = onePlate ? input.goal : slotShare(input.slot, input.goal);
+    if (share <= 0) return onePlate ? ONE_PLATE_MAIN_PENALTY : 0;
     // A dish with (almost) no energy cannot carry a slot meant to add kcal (green tea as the breakfast drink).
     if (!recipe.calories || recipe.calories < 10) return FIT_WEIGHT;
-    return FIT_WEIGHT * Math.min(1, Math.abs(share / recipe.calories / input.people - 1));
+    return FIT_WEIGHT * Math.min(1, Math.abs(share / recipe.calories / input.people - 1)) + (onePlate ? ONE_PLATE_MAIN_PENALTY : 0);
   };
   const choose = (source: SuggestRecipe[], exclude: ReadonlySet<string>): DishSuggestion | null => {
     const open = source.filter((recipe) => fitsMeal(recipe, input.meal) && !input.usedIds.has(recipe.id) && !exclude.has(recipe.id)
-      && withinForeignCap(recipe, input.foreign, input.meal) && input.roles.includes(recipe.role ?? null));
+      && (accompaniesForeign || withinForeignCap(recipe, input.foreign, input.meal)) && input.roles.includes(recipe.role ?? null)
+      && (constraint.cuisine === undefined || cuisineOf(recipe.cuisine) === constraint.cuisine)
+      && (constraint.maxKcal === undefined || (recipe.calories ?? 0) <= constraint.maxKcal));
     const varied = varietyPool(open, input.meal, input.day, input.history);
     // Fewer dishes per meal → variety across the whole week too: prefer dishes not planned in ANY meal within 2 days
     // and planned at most once more in the week (falls back to the per-meal rule when nothing else fits).
@@ -600,7 +609,7 @@ function pickForSlot(input: {
     ?? (optional ? null : choose(input.fallbackPool, input.excludeIds) ?? choose(input.fallbackPool, none));
   if (!pick) return null;
   input.usedIds.add(pick.recipe.id);
-  if (isForeign(pick.recipe)) addForeign(input.foreign, input.meal);
+  if (isForeign(pick.recipe) && !accompaniesForeign) addForeign(input.foreign, input.meal);
   return pick;
 }
 
@@ -677,9 +686,9 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
     {
       for (const meal of mealTypes) {
         const goal = mealTarget(input.health, meal, eaters);
-        const plan = planMeal(meal, eaters, goal, (roles, slot) => {
-          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday });
-          return pick ? { value: pick, role: pick.recipe.role ?? null, kcal: pick.recipe.calories } : null;
+        const plan = planMeal(meal, eaters, goal, (roles, slot, constraint) => {
+          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, constraint, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday });
+          return pick ? { value: pick, role: pick.recipe.role ?? null, kcal: pick.recipe.calories, cuisine: pick.recipe.cuisine } : null;
         });
         plan.dishes.forEach((dish, index) => {
           const recipe = candidateById.get(dish.pick.recipe.id);
@@ -950,12 +959,22 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
   const split = splitCandidates(recipes, input.health);
   // The menu's people (older menus: the current member count).
   const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
-  const suitable = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
+  // Sensible combinations: the replacement matches the cuisine of the dishes left in the meal (a foreign main keeps
+  // its same-cuisine side; a Vietnamese canh / rau / mặn keeps a Vietnamese partner). Nothing left: any cuisine.
+  const cuisineById = new Map(recipes.map((recipe) => [recipe.id, cuisineOf(recipe.cuisine)]));
+  const mealLeft = others.filter((entry) => entry.mealType === item.mealType && entry.dayOfWeek === item.dayOfWeek);
+  const leftCuisines = mealLeft.map((entry) => (entry.recipeId ? cuisineById.get(entry.recipeId) ?? "vietnam" : "vietnam"));
+  const requiredCuisine = leftCuisines.find((cuisine) => cuisine !== "vietnam") ?? (leftCuisines.length > 0 ? "vietnam" : undefined);
+  const matches = (recipe: RecipeCandidate) => requiredCuisine === undefined || cuisineOf(recipe.cuisine) === requiredCuisine;
+  const suitable = split.suitable.filter(matches).map((recipe) => toSuggestRecipe(recipe, people));
   // Foreign-dish caps: the other dishes of the same day (week menus: same weekday) count, the removed one does not.
-  const foreign = foreignInItems(others.filter((entry) => entry.dayOfWeek === item.dayOfWeek), recipes);
+  // A meal that is already a foreign meal (its other dish is foreign) is not counted again for its partner.
+  const foreign = requiredCuisine !== undefined && requiredCuisine !== "vietnam"
+    ? newForeignCount()
+    : foreignInItems(others.filter((entry) => entry.dayOfWeek === item.dayOfWeek), recipes);
   // Suitable for everyone first; else a dish unsuitable for some member (with warnings); allergens never.
   const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history, foreign })
-    ?? pickReplacement(split.fallback.map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history, foreign });
+    ?? pickReplacement(split.fallback.filter(matches).map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history, foreign });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -996,8 +1015,8 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
     const eaters = menuPeople(menu.servings, input.owner?.memberCount ?? null);
     const goal = mealTarget(input.health, item.mealType, eaters);
     const dishes = [
-      ...sameMeal.map((entry) => ({ role: (asRecord(entry.details).role as string | null | undefined) ?? null, kcal: entry.calories })),
-      ...(replacement ? [{ role, kcal: replacement.calories ?? null }] : []),
+      ...sameMeal.map((entry) => ({ role: (asRecord(entry.details).role as string | null | undefined) ?? null, kcal: entry.calories, cuisine: entry.recipeId ? cuisineById.get(entry.recipeId) ?? null : null })),
+      ...(replacement ? [{ role, kcal: replacement.calories ?? null, cuisine: replacement.recipeId ? cuisineById.get(replacement.recipeId) ?? null : null }] : []),
     ];
     const { servings, riceKcal } = replanServings(item.mealType, dishes, eaters, goal);
     // The meal's rice (and target) sits on its first món mặn; any other dish drops those keys.
