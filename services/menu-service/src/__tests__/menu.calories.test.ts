@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
-import { dishFamily, generateDays, generateMenu, removeMenuItem, variedCandidates } from "../services/menu.service";
+import { dishFamily, generateDays, generateMenu, isForeignMeal, removeMenuItem, rollingMealCount, variedCandidates } from "../services/menu.service";
 import { defaultMealTargets, type FamilyHealth, type MemberHealth } from "../services/family-health";
 import { allocatePortions, MAX_SHARE, mealTarget, MIN_SHARE, planMeal, replanServings, RICE_SHARE, riceGrams, servingBounds } from "../services/meal-plan";
 import { dishServings } from "../services/portions";
@@ -427,4 +427,84 @@ test("portion caps: main ≤ 1,5 / person, canh / rau ≤ 1,5, side ≤ 1, one-d
   const two = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "man", role: "man", kcal: 120 }, { id: "rau", role: "rau", kcal: 30 }, { id: "xao1", role: "xao", kcal: 60 }, { id: "xao2", role: "xao", kcal: 120 }, { id: "xao3", role: "xao", kcal: 200 }]));
   assert.deepEqual(two.dishes.map((dish) => dish.pick), ["man", "rau", "xao1", "xao2"]);
   for (const dish of two.dishes) assert.ok(dish.servings <= servingBounds(dish.slot, 4)[1], `${dish.pick} ${dish.servings}`);
+});
+
+const savedDays = (rows: Array<[number, string, string]>) => {
+  const weekdayOf = (date: Date) => ((date.getUTCDay() + 6) % 7) + 1;
+  return rows.map(([offset, mealType, recipeId]) => {
+    const date = new Date(DAY.getTime() + offset * 86_400_000);
+    return { startDate: date, endDate: date, items: [{ recipeId, mealType, dayOfWeek: weekdayOf(date), details: {} }] };
+  });
+};
+const withHistory = (history: unknown[]) => {
+  const { client, items } = captureClient();
+  const patched = { ...(client as unknown as Record<string, unknown>), menu: { ...(client as unknown as { menu: Record<string, unknown> }).menu, findMany: async () => history } } as unknown as PrismaClient;
+  return { client: patched, items };
+};
+// One-plate dishes win on Kho (their ingredient is in Kho); món mặn are plain.
+const capCatalog = [
+  recipe("pho-1", "mot_mon", 500, ["lunch", "dinner"], { ingredientDetails: [{ name: "Bánh phở", quantity: 400, unit: "GRAM" }] }),
+  recipe("pho-2", "mot_mon", 500, ["lunch", "dinner"], { ingredientDetails: [{ name: "Bánh phở", quantity: 400, unit: "GRAM" }] }),
+  recipe("pho-3", "mot_mon", 500, ["lunch", "dinner"], { ingredientDetails: [{ name: "Bánh phở", quantity: 400, unit: "GRAM" }] }),
+  recipe("man-1", "man", 400, ["lunch", "dinner"]), recipe("man-2", "man", 400, ["lunch", "dinner"]),
+  recipe("canh-1", "canh", 180, ["lunch", "dinner"]), recipe("canh-2", "canh", 180, ["lunch", "dinner"]),
+];
+const phoKho = [{ name: "Bánh phở", quantity: 10, unit: "KILOGRAM" }];
+const lunchDinner = { preferences: { mealTypes: ["LUNCH", "DINNER"] } };
+
+test("một món ranks below rice meals: a món mặn that fits the variety rules wins even when the một món scores better on Kho", async () => {
+  const { client, items } = withHistory([]);
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: capCatalog, inventoryItems: phoKho, ...lunchDinner }, client);
+  const mains = items().filter((item) => ["man", "mot_mon"].includes(item.details.role as string)).map((item) => item.recipeId);
+  assert.deepEqual(mains.sort(), ["man-1", "man-2"]);
+});
+
+test("one-plate caps: at most 1 a day and 3 in any 7 days (saved days before and after counted)", async () => {
+  // Only one món mặn left after the variety window: the other slot must be a một món — unless the caps forbid it.
+  const twoMansUsed = (extra: Array<[number, string, string]>) => withHistory(savedDays([[-1, "LUNCH", "man-2"], ...extra]));
+  // No one-plate around: the second main may be a một món (1 a day).
+  const free = twoMansUsed([]);
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: capCatalog, inventoryItems: phoKho, ...lunchDinner }, free.client);
+  const freeMains = free.items().filter((item) => ["man", "mot_mon"].includes(item.details.role as string));
+  assert.equal(freeMains.filter((item) => item.details.role === "mot_mon").length, 1, freeMains.map((item) => item.recipeId).join());
+  // Three one-plate meals already in the window (2 days before, 1 and 3 days after): no một món today; the món mặn
+  // repeats instead (relaxed variety) — the weekly cap holds while a món mặn exists.
+  const full = twoMansUsed([[-2, "LUNCH", "pho-1"], [1, "DINNER", "pho-2"], [3, "LUNCH", "pho-3"]]);
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: capCatalog, inventoryItems: phoKho, ...lunchDinner }, full.client);
+  assert.equal(full.items().some((item) => item.details.role === "mot_mon"), false, full.items().map((item) => item.recipeId).join());
+});
+
+test("foreign meals: at most 3 in any 7 days (saved neighbouring days counted), on top of the per-meal / per-day caps", async () => {
+  const catalog = [
+    recipe("steak", "mot_mon", 600, ["lunch", "dinner"], { cuisine: "western", ingredientDetails: [{ name: "Phô mai", quantity: 100, unit: "GRAM" }] }),
+    recipe("ga-han", "man", 400, ["lunch", "dinner"], { cuisine: "asian", ingredientDetails: [{ name: "Phô mai", quantity: 100, unit: "GRAM" }] }),
+    recipe("canh-kimchi", "canh", 190, ["lunch", "dinner"], { cuisine: "asian" }),
+    recipe("thit-kho", "man", 400, ["lunch", "dinner"]), recipe("ca-kho", "man", 300, ["lunch", "dinner"]), recipe("canh", "canh", 180, ["lunch", "dinner"]), recipe("rau", "rau", 40, ["lunch", "dinner"]),
+    { ...recipe("sandwich", "sang", 450, ["breakfast"], { cuisine: "western", ingredientDetails: [{ name: "Phô mai", quantity: 100, unit: "GRAM" }] }), name: "Sandwich" },
+    { ...recipe("xoi", "sang", 500, ["breakfast"]), name: "Xôi gà" },
+  ];
+  const kho = [{ name: "Phô mai", quantity: 5, unit: "KILOGRAM" }];
+  // Nothing around: foreign dishes score best and are used (one per meal, two per day).
+  const open = withHistory([]);
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: catalog, inventoryItems: kho }, open.client);
+  assert.ok(open.items().some((item) => ["steak", "ga-han", "sandwich"].includes(item.recipeId ?? "")));
+  // Three foreign meals in the window (saved, before and after): today stays Vietnamese, breakfast included.
+  const full = withHistory(savedDays([[-3, "DINNER", "steak"], [-1, "LUNCH", "ga-han"], [2, "BREAKFAST", "sandwich"]]));
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes: catalog, inventoryItems: kho }, full.client);
+  assert.equal(full.items().some((item) => ["steak", "ga-han", "canh-kimchi", "sandwich"].includes(item.recipeId ?? "")), false, full.items().map((item) => item.recipeId).join());
+  assert.equal(rollingMealCount(new Map([["2026-11-21|DINNER", new Set(["steak"])], ["2026-11-23|LUNCH", new Set(["ga-han"])], ["2026-11-26|BREAKFAST", new Set(["sandwich"])]]), "2026-11-24",
+    (meal, ids) => isForeignMeal(meal, ids, (id) => ({ steak: { role: "mot_mon", cuisine: "western" }, "ga-han": { role: "man", cuisine: "asian" }, sandwich: { role: "sang", cuisine: "western" } } as Record<string, { role: string; cuisine: string }>)[id])), 3);
+});
+
+test("caps relax only when the catalog can't satisfy them: only một món dishes → still one per meal (allergens never)", async () => {
+  const onlyPlates = [
+    recipe("pho-1", "mot_mon", 500, ["lunch", "dinner"]), recipe("pho-2", "mot_mon", 500, ["lunch", "dinner"]),
+    recipe("bun-tom", "mot_mon", 500, ["lunch", "dinner"], { ingredientDetails: [{ name: "Tôm", quantity: 300, unit: "GRAM" }] }),
+  ];
+  const health: FamilyHealth = { members: [member("a", {}, { allergies: ["Tôm"] }), member("b"), member("c"), member("d")] };
+  const { client, items } = withHistory(savedDays([[-2, "LUNCH", "pho-1"], [1, "DINNER", "pho-2"], [2, "LUNCH", "pho-1"]]));
+  await generateMenu({ ...dayInput, owner: owner4, health, recipes: onlyPlates, inventoryItems: [], ...lunchDinner }, client);
+  const mains = items().map((item) => item.recipeId);
+  assert.equal(mains.length >= 2, true, mains.join());
+  assert.equal(mains.includes("bun-tom"), false);
 });

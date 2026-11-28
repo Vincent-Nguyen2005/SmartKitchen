@@ -112,8 +112,9 @@ Log line: `[menu-service] family backfill: N menus assigned to families, N archi
 - **Target per meal:** the family's meal target (see "Calories" above).
 - **Dishes per meal:**
   - **Bữa sáng:** 1 dish (roles sang / mot_mon); a drink (do_uong) is added only when the dish cannot reach 90 % of the target.
-  - **Bữa trưa / tối:** the main (món mặn, or a one-plate dish a little behind so rice meals stay the norm) decides the shape:
-    - **Vietnamese món mặn:** + a Vietnamese canh or rau, with rice ("Kèm cơm trắng"); a Vietnamese side (xào / mặn) only when the meal stays under 90 %.
+  - **Bữa trưa / tối:** the main decides the shape. A món mặn (rice meal) that fits the variety rules always wins over a one-plate dish.
+    - **Weekly caps** (rolling: every 7-day window containing the day, saved days before and after counted): one-plate lunch / dinner meals at most 1 a day and 3 a week; foreign meals (main or breakfast dish western / asian) at most 3 a week, next to 1 per meal / 2 per day. Order when the catalog can't satisfy everything: (1) món mặn, all variety rules, foreign cap kept → (2) một món within its caps and the foreign cap, all variety rules → (3) món mặn, relaxed variety → (4) một món within its caps, relaxed variety → (5) món mặn over the weekly foreign cap → (6) một món over the weekly caps (still 1 a day) → (7) một món over every cap. Breakfast: dishes within the weekly foreign cap first, then any. Allergens are never in any pool, so no step breaks an allergy rule.
+    - **Vietnamese món mặn:** + a Vietnamese canh or rau, with rice ("Kèm cơm trắng"); a Vietnamese side (xào / khai vị / mặn) only when the meal stays under 90 %.
     - **Foreign món mặn** (western / asian): never with a Vietnamese canh / rau and never with rice; one side of the same cuisine only when under 90 % (or none). That side belongs to the same foreign meal, so it does not count against the cuisine caps (the caps count foreign meals).
     - **One-plate dish** (role mot_mon: phở, bún, mì, cơm chiên, Bò bít tết with fries, Cá hồi áp chảo with broccoli, Cà ri gà kiểu Nhật with rice): alone, no canh, no rice; one light (≤ 250 kcal / serving) rau or canh of the same cuisine only when under 90 %.
     - Swaps keep this: the replacement has the cuisine of the dish left in the meal.

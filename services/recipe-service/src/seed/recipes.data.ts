@@ -7,7 +7,7 @@
 export type SeedUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type SeedIngredient = { name: string; quantity: number; unit: SeedUnit };
 /** Role in a Vietnamese family meal (see recipe-service README). */
-export type SeedRole = "man" | "xao" | "canh" | "rau" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
+export type SeedRole = "man" | "xao" | "canh" | "rau" | "khai_vi" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
 /** Internal cuisine; not set = vietnam. */
 export type SeedCuisine = "vietnam" | "western" | "asian";
 export type SeedRecipe = {
@@ -389,7 +389,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 4, preparationMinutes: 20, calories: 125, protein: 4, carbs: 6, fat: 9, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
   },
   {
-    name: "Trứng cuộn kiểu Hàn", description: "Trứng cuộn nhiều lớp với cà rốt và hành lá.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
+    name: "Trứng cuộn kiểu Hàn", description: "Trứng cuộn nhiều lớp với cà rốt và hành lá.", mealTypes: ["lunch", "dinner"], role: "khai_vi", cuisine: "asian",
     ingredients: [pc("Trứng gà", 6), g("Cà rốt", 50), g("Hành lá", 20)],
     servings: 3, preparationMinutes: 15, calories: 190, protein: 13, carbs: 3, fat: 14, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
   },
@@ -440,7 +440,7 @@ const STARTER_ROLES: Record<string, SeedRole> = {
   "Bò kho": "man", "Thịt kho trứng": "man", "Cá kho tộ": "man", "Canh chua cá": "canh", "Rau muống xào tỏi": "xao",
   "Canh bí đỏ thịt bằm": "canh", "Gà kho gừng": "man", "Đậu phụ sốt cà chua": "man", "Trứng xào cà chua": "man",
   "Bò xào bông cải xanh": "xao", "Canh rau ngót thịt bằm": "canh", "Sườn xào chua ngọt": "man", "Tôm rim": "man",
-  "Cơm chiên dương châu": "mot_mon", "Bún chả": "mot_mon", "Gỏi cuốn tôm thịt": "man", "Mực xào cần tây": "xao",
+  "Cơm chiên dương châu": "mot_mon", "Bún chả": "mot_mon", "Gỏi cuốn tôm thịt": "khai_vi", "Mực xào cần tây": "xao",
   "Canh khổ qua nhồi thịt": "canh",
 };
 

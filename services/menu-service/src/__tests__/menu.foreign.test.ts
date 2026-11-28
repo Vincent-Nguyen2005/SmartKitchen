@@ -58,8 +58,8 @@ test("generation: foreign dishes appear when they score best, within the caps, a
       assert.ok(mains.length <= FOREIGN_PER_MEAL, `day ${day} ${meal}`);
     }
   }
-  // They score best, so they do appear (week-wide variety spreads the few foreign dishes over the week).
-  assert.ok(weekForeignMeals >= 5, String(weekForeignMeals));
+  // They score best, so the weekly cap is used exactly: 3 foreign meals in the 7 days (FOREIGN_MEALS_PER_WEEK).
+  assert.equal(weekForeignMeals, 3);
 });
 
 type Item = { id: string; recipeId: string | null; dishName: string; mealType: MealType; dayOfWeek: number; details: unknown };

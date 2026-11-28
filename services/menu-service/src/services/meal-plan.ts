@@ -63,7 +63,7 @@ export const SLOT_ROLES: Record<"main" | "one_dish" | "veg" | "side" | "breakfas
   main: ["man"],
   one_dish: ["mot_mon", null],
   veg: ["canh", "rau"],
-  side: ["xao", "man"],
+  side: ["xao", "khai_vi", "man"],
   breakfast: ["sang", "mot_mon", null],
   drink: ["do_uong"],
 };
@@ -216,7 +216,7 @@ export function planMeal<T>(
   if (main.role === "mot_mon" || main.role == null) {
     main.slot = "one_dish";
     let sized = size(0);
-    if (!reached(sized.kcal) && take(["rau", "canh"], "side", { cuisine: main.cuisine, maxKcal: LIGHT_SIDE_KCAL })) sized = size(0);
+    if (!reached(sized.kcal) && take(["rau", "canh", "khai_vi"], "side", { cuisine: main.cuisine, maxKcal: LIGHT_SIDE_KCAL })) sized = size(0);
     return finish(0, sized);
   }
   // Sides (same pairing rules): one below 90 %, a second one only below the 85 % floor.
@@ -226,7 +226,7 @@ export function planMeal<T>(
     if (target > 0 && !unknownKcal && sized.kcal < FLOOR_SHARE * target && take(roles, "side", constraint)) sized = size(rice);
     return sized;
   };
-  if (main.cuisine !== "vietnam") return finish(0, addSides(["canh", "rau", "xao", "man"], { cuisine: main.cuisine }, 0));
+  if (main.cuisine !== "vietnam") return finish(0, addSides(["canh", "rau", "xao", "khai_vi", "man"], { cuisine: main.cuisine }, 0));
   const rice = Math.round(RICE_SHARE * target);
   take(SLOT_ROLES.veg, "veg", { cuisine: "vietnam" });
   return finish(rice, addSides(SLOT_ROLES.side, { cuisine: "vietnam" }, rice));

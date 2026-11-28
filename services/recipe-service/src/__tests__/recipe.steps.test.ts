@@ -119,3 +119,11 @@ test("roles: validated on input; every starter dish has one; enough variety per 
   assert.deepEqual(rows.map((row) => row.role), ["mot_mon", "canh", null]);
   assert.equal(await fillMissingRoles(client), 0);
 });
+
+test("khai vị: appetizers / rolls are a side role (never a rice meal's main) and the API accepts it", () => {
+  const byName = (name: string) => seedRecipes.find((recipe) => recipe.name === name)!;
+  assert.equal(seedRole(byName("Gỏi cuốn tôm thịt")), "khai_vi");
+  assert.equal(seedRole(byName("Trứng cuộn kiểu Hàn")), "khai_vi");
+  assert.equal(createRecipeSchema.safeParse({ name: "Chả giò", ingredients: ["Thịt heo"], role: "khai_vi" }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ name: "Chả giò", ingredients: ["Thịt heo"], role: "appetizer" }).success, false);
+});
