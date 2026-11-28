@@ -72,6 +72,7 @@ const ROLE_OPTIONS = [
   { value: "xao", label: "Món xào" },
   { value: "canh", label: "Canh" },
   { value: "rau", label: "Rau" },
+  { value: "khai_vi", label: "Khai vị (gỏi cuốn, món cuốn...)" },
   { value: "trang_mieng", label: "Tráng miệng" },
   { value: "sang", label: "Món sáng" },
   { value: "mot_mon", label: "Món một đĩa (phở, bún...)" },

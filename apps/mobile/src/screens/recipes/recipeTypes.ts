@@ -34,8 +34,15 @@ export type Recipe = {
   protein?: number | null;
   carbs?: number | null;
   fat?: number | null;
+  /** recipe-service dish role (man, canh, rau, mot_mon…) and cuisine (vietnam, western, asian); used for the meal's rice. */
+  role?: string | null;
+  cuisine?: string | null;
   /** Set by scaleRecipe: quantities are for this many people (detail / cooking mode from Lịch and Nấu ăn). */
   portionPeople?: number;
+  /** Planned-servings text for a menu dish: "Đủ cho 4 người" (meal with several dishes) or "4 phần" (mealPortions.ts). */
+  portionLabel?: string;
+  /** Meal note under the header, e.g. "Kèm cơm trắng" (the món mặn of a meal with rice). */
+  mealNote?: string;
 };
 
 /** Structured ingredients, or the plain names without quantities for older recipes. */

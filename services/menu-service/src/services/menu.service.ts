@@ -7,11 +7,7 @@ import {
   DEFAULT_MEAL_COUNTS,
   type KhoItem,
   type MealCounts,
-  pickDishes,
-  pickMealDishes,
   pickReplacement,
-  pickRoleDishes,
-  roleSlots,
   addToHistory,
   type MealHistory,
   REPEAT_WINDOW_DAYS,
@@ -22,7 +18,15 @@ import {
   type ForeignCount,
   isForeign,
   newForeignCount,
+  addForeign,
+  best,
+  CALORIE_WEIGHT,
+  evaluateRecipe,
+  fitsMeal,
+  varietyPool,
+  withinForeignCap,
 } from "./kho-suggest";
+import { cuisineOf, mealTarget, planMeal, replanServings, RICE_SHARE, riceGrams, SLOT_WEIGHTS, type PickConstraint, type Slot } from "./meal-plan";
 import { khoSnapshot, snapshotHash } from "./ai/ai-suggestions.service";
 import { menuPeople, scaleIngredients } from "./portions";
 import { conditionWarnings, familyAllergic, familyMealTarget, hasAllergen, type FamilyHealth, type HealthWarning } from "./family-health";
@@ -69,8 +73,6 @@ interface GenerateMenuInput {
   authorization?: string;
   /** Kho items supplied directly (tests); otherwise read from inventory-service. */
   inventoryItems?: unknown[];
-  /** Dishes per meal ("Số món mỗi bữa"); without it, one dish per meal (older behaviour). */
-  mealCounts?: MealCounts;
   /** Recipes the user removed in the last 7 days: not picked (unless nothing else fits a meal). */
   excludeRecipeIds?: string[];
   /** Already loaded recipes / Kho (several days generated in one request load them once). */
@@ -410,8 +412,18 @@ function openRoles(roles: string[], picks: Array<{ role: string }>): string[] {
 }
 
 /** Suggestion details stored on a menu item (Kho match, role and, for an unsuitable dish, warnings and an alternative). */
-function itemDetails(suggestion: DishSuggestion, role: string | null, health?: { warnings: HealthWarning[]; alternative: DishSuggestion | null }): Prisma.InputJsonValue {
+function itemDetails(
+  suggestion: DishSuggestion,
+  role: string | null,
+  health?: { warnings: HealthWarning[]; alternative: DishSuggestion | null },
+  portion?: { servings: number; mealTarget?: number; riceKcal?: number },
+): Prisma.InputJsonValue {
   return {
+    // Planned portions ("phần") of this dish: Lịch / Nấu ăn, cooking and "Cần mua tuần này" scale by them.
+    ...(portion ? { servings: portion.servings } : {}),
+    ...(portion?.mealTarget !== undefined ? { mealTarget: portion.mealTarget, riceKcal: portion.riceKcal ?? 0 } : {}),
+    // "Kèm cơm trắng": the meal's rice as raw Gạo (only on the dish that carries the meal's rice: its món mặn).
+    ...(portion?.riceKcal ? { riceGrams: riceGrams(portion.riceKcal) } : {}),
     imageUrl: suggestion.recipe.imageUrl,
     availableIngredients: suggestion.availableIngredients,
     missingIngredients: suggestion.missingIngredients,
@@ -528,6 +540,213 @@ function selectedMealTypes(preferences: JsonRecord): MealType[] {
   ];
 }
 
+const FIT_WEIGHT = CALORIE_WEIGHT / 2;
+
+/**
+ * Variety windows (days before AND after `day`, any meal; the saved days around and the days generated earlier in
+ * the same request are in `history`):
+ * - a main (món mặn / một món, lunch or dinner): not planned within ±6 days (no repeat in 7 days),
+ * - a canh / rau / side: not within ±2 days (no repeat in 3 days),
+ * - a breakfast dish: not within ±3 days (4 days), and not the same family (bánh mì, bún, phở, xôi, cháo, mì…) on
+ *   the day before or after.
+ * Relaxed only when the catalog cannot satisfy them, in this order: (1) all rules, (2) without the breakfast family
+ * rule, (3) half the window, (4) only not on the day before / after, (5) anything not already in the day.
+ */
+export const VARIETY_WINDOWS = { main: 6, side: 2, breakfast: 3 } as const;
+const FAMILY_PREFIXES = ["banh mi", "banh cuon", "banh canh", "hu tieu", "bun", "pho", "xoi", "chao", "mi", "com"];
+/** "Bánh mì chảo" / "Bánh mì trứng ốp la" → "banh mi"; dishes outside the known families are their own family. */
+export function dishFamily(name: string): string {
+  const key = name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
+  return FAMILY_PREFIXES.find((prefix) => key === prefix || key.startsWith(`${prefix} `)) ?? key;
+}
+
+export function variedCandidates(
+  open: SuggestRecipe[],
+  context: { meal: string; slot: Slot; day: string; history: MealHistory; familyOf?: (recipeId: string) => string },
+): SuggestRecipe[] {
+  return variedTier(open, context).list;
+}
+
+/** variedCandidates with the tier that held (0 = every variety rule; higher = relaxed; 4 = nothing held). */
+export function variedTier(
+  open: SuggestRecipe[],
+  context: { meal: string; slot: Slot; day: string; history: MealHistory; familyOf?: (recipeId: string) => string },
+): { list: SuggestRecipe[]; tier: number } {
+  const breakfast = context.meal.toUpperCase() === "BREAKFAST";
+  const window = breakfast ? VARIETY_WINDOWS.breakfast : context.slot === "main" || context.slot === "one_dish" ? VARIETY_WINDOWS.main : VARIETY_WINDOWS.side;
+  const familyOf = context.familyOf ?? ((id: string) => id);
+  const nearFamilies = new Set<string>();
+  if (breakfast) {
+    const start = Date.parse(`${context.day}T00:00:00Z`);
+    for (const offset of [-1, 1]) {
+      const other = new Date(start + offset * 86_400_000).toISOString().slice(0, 10);
+      context.history.get(`${other}|BREAKFAST`)?.forEach((id) => nearFamilies.add(familyOf(id)));
+    }
+  }
+  const tiers: Array<{ window: number; family: boolean }> = [
+    { window, family: breakfast },
+    { window, family: false },
+    { window: Math.ceil(window / 2), family: false },
+    { window: 1, family: false },
+  ];
+  // Relaxed tiers spread the unavoidable repeats: only the dishes used least often in the surrounding week stay.
+  const leastUsed = (list: SuggestRecipe[]) => {
+    const uses = list.map((recipe) => usesAnyMeal(context.history, context.day, recipe.id, VARIETY_WINDOWS.main));
+    const fewest = Math.min(...uses);
+    return list.filter((_, index) => uses[index] === fewest);
+  };
+  for (const [index, tier] of tiers.entries()) {
+    const fits = open.filter((recipe) => usesAnyMeal(context.history, context.day, recipe.id, tier.window) === 0
+      && (!tier.family || !nearFamilies.has(familyOf(recipe.id))));
+    if (fits.length > 0) return { list: index === 0 ? fits : leastUsed(fits), tier: index };
+  }
+  return { list: open.length > 0 ? leastUsed(open) : open, tier: tiers.length };
+}
+
+/**
+ * Weekly balance caps (rolling: every 7-day window that contains the day, saved days before and after included):
+ * - one-plate meals (lunch / dinner whose dish is một món): at most ONE_PLATE_PER_DAY a day and ONE_PLATE_PER_WEEK
+ *   in any 7 days; breakfast is not counted;
+ * - foreign meals (a meal whose main or breakfast dish is western / asian): at most FOREIGN_MEALS_PER_WEEK in any 7
+ *   days, next to the 1 per meal / 2 per day caps.
+ */
+export const ONE_PLATE_PER_DAY = 1;
+export const ONE_PLATE_PER_WEEK = 3;
+export const FOREIGN_MEALS_PER_WEEK = 3;
+export type RecipeInfo = (recipeId: string) => { role: string | null; cuisine: string } | undefined;
+const MAIN_ROLES = new Set(["man", "mot_mon", "sang"]);
+export const isOnePlateMeal = (meal: string, ids: Iterable<string>, info: RecipeInfo): boolean =>
+  meal !== "BREAKFAST" && [...ids].some((id) => info(id)?.role === "mot_mon");
+export const isForeignMeal = (meal: string, ids: Iterable<string>, info: RecipeInfo): boolean =>
+  [...ids].some((id) => { const recipe = info(id); return !!recipe && MAIN_ROLES.has(recipe.role ?? "") && recipe.cuisine !== "vietnam"; });
+
+/** Meals passing `test` per day, for the days −6 … +6 around `day` (index 6 = the day itself). */
+function mealCounts(history: MealHistory, day: string, test: (meal: string, ids: Set<string>) => boolean): number[] {
+  const start = Date.parse(`${day}T00:00:00Z`);
+  return Array.from({ length: 13 }, (_, index) => {
+    const other = new Date(start + (index - 6) * 86_400_000).toISOString().slice(0, 10);
+    return PLANNED_MEALS.filter((meal) => { const ids = history.get(`${other}|${meal}`); return !!ids && ids.size > 0 && test(meal, ids); }).length;
+  });
+}
+/** The busiest 7-day window that contains `day` (its meals passing `test`). */
+export function rollingMealCount(history: MealHistory, day: string, test: (meal: string, ids: Set<string>) => boolean): number {
+  const counts = mealCounts(history, day, test);
+  let max = 0;
+  for (let first = 0; first <= 6; first += 1) max = Math.max(max, counts.slice(first, first + 7).reduce((sum, value) => sum + value, 0));
+  return max;
+}
+export const canAddOnePlate = (history: MealHistory, day: string, info: RecipeInfo, weekly = true): boolean => {
+  const test = (meal: string, ids: Set<string>) => isOnePlateMeal(meal, ids, info);
+  return mealCounts(history, day, test)[6] < ONE_PLATE_PER_DAY && (!weekly || rollingMealCount(history, day, test) < ONE_PLATE_PER_WEEK);
+};
+export const canAddForeignMeal = (history: MealHistory, day: string, info: RecipeInfo): boolean =>
+  rollingMealCount(history, day, (meal, ids) => isForeignMeal(meal, ids, info)) < FOREIGN_MEALS_PER_WEEK;
+const PLANNED_MEALS = ["BREAKFAST", "LUNCH", "DINNER"];
+/** Times a recipe is planned in any meal within `distance` days before or after `day` (the day itself excluded). */
+function usesAnyMeal(history: MealHistory, day: string, recipeId: string, distance: number): number {
+  let count = 0;
+  const start = Date.parse(`${day}T00:00:00Z`);
+  for (let offset = -distance; offset <= distance; offset += 1) {
+    if (offset === 0) continue;
+    const other = new Date(start + offset * 86_400_000).toISOString().slice(0, 10);
+    for (const meal of PLANNED_MEALS) if (history.get(`${other}|${meal}`)?.has(recipeId)) count += 1;
+  }
+  return count;
+}
+
+/** Rough kcal a slot is meant to carry (for the "natural portion" tie-break below). */
+function slotShare(slot: Slot, goal: number): number {
+  const dishes = goal * (slot === "main" || slot === "veg" || slot === "side" ? 1 - RICE_SHARE : 1);
+  if (slot === "main") return dishes * (SLOT_WEIGHTS.main / (SLOT_WEIGHTS.main + SLOT_WEIGHTS.veg));
+  if (slot === "veg") return dishes * (SLOT_WEIGHTS.veg / (SLOT_WEIGHTS.main + SLOT_WEIGHTS.veg));
+  if (slot === "side") return dishes * SLOT_WEIGHTS.side;
+  if (slot === "drink") return dishes * SLOT_WEIGHTS.drink;
+  return dishes;
+}
+
+/**
+ * One dish for a planner slot: recipes of the slot's roles that fit the meal, not already in the day, within the
+ * cuisine caps; variety first, then the Kho score (coverage, expiring items), with a small tie-break for dishes whose
+ * natural portion is about one serving per person. Recently removed dishes are skipped unless nothing else fits; then
+ * dishes unsuitable for a member (they carry warnings); allergens are never in the pools.
+ */
+
+function pickForSlot(input: {
+  meal: string; roles: Array<string | null>; slot: Slot; goal: number; people: number; constraint?: PickConstraint;
+  pool: SuggestRecipe[]; fallbackPool: SuggestRecipe[]; kho: KhoItem[]; today: string; day: string;
+  recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds: ReadonlySet<string>; history: MealHistory; foreign: ForeignCount;
+  /** Breakfast "family" of a recipe id (bánh mì, bún, phở…), for the breakfast rotation. */
+  familyOf?: (recipeId: string) => string;
+  /** Role and cuisine of any recipe id (planned dishes on saved days included), for the weekly caps. */
+  recipeInfo?: RecipeInfo;
+}): DishSuggestion | null {
+  const constraint = input.constraint ?? {};
+  // A side that accompanies a foreign main is part of that one foreign meal: it does not count against the caps.
+  const accompaniesForeign = constraint.cuisine !== undefined && constraint.cuisine !== "vietnam";
+  // Half the old calorie weight: Kho and variety decide, the natural portion only breaks close calls.
+  const penalty = (recipe: SuggestRecipe): number => {
+    const onePlate = input.slot === "main" && recipe.role === "mot_mon";
+    const share = onePlate ? input.goal : slotShare(input.slot, input.goal);
+    if (share <= 0) return 0;
+    // A dish with (almost) no energy cannot carry a slot meant to add kcal (green tea as the breakfast drink).
+    if (!recipe.calories || recipe.calories < 10) return FIT_WEIGHT;
+    return FIT_WEIGHT * Math.min(1, Math.abs(share / recipe.calories / input.people - 1));
+  };
+  const info: RecipeInfo = input.recipeInfo ?? ((id) => undefined);
+  const context = { meal: input.meal, slot: input.slot, day: input.day, history: input.history, familyOf: input.familyOf };
+  const vietnamese = (recipe: SuggestRecipe) => cuisineOf(recipe.cuisine) === "vietnam";
+  /**
+   * The candidates for a meal's main dish, in this order (the first stage with candidates wins; allergens are never
+   * in the pools, so no stage can break an allergy rule):
+   *  lunch / dinner: (1) món mặn, all variety rules, foreign cap kept → (2) một món within the one-plate caps and the
+   *   foreign cap, all variety rules → (3) món mặn, relaxed variety → (4) một món within the caps, relaxed variety →
+   *   (5) món mặn over the weekly foreign cap → (6) một món over the weekly caps (still 1 a day) → (7) một món over
+   *   every cap (only when nothing else exists);
+   *  breakfast: (1) dishes within the weekly foreign cap → (2) any dish.
+   */
+  const mainCandidates = (open: SuggestRecipe[]): SuggestRecipe[] => {
+    const foreignOk = canAddForeignMeal(input.history, input.day, info);
+    const withinForeign = (list: SuggestRecipe[]) => (foreignOk ? list : list.filter(vietnamese));
+    if (input.slot === "breakfast_single" || input.slot === "breakfast") {
+      const capped = variedTier(withinForeign(open), context);
+      return capped.list.length > 0 ? capped.list : variedTier(open, context).list;
+    }
+    const man = open.filter((recipe) => recipe.role === "man");
+    const plate = open.filter((recipe) => recipe.role === "mot_mon" || recipe.role == null);
+    const plateOk = canAddOnePlate(input.history, input.day, info);
+    const plateToday = canAddOnePlate(input.history, input.day, info, false);
+    const rice = variedTier(withinForeign(man), context);
+    if (rice.list.length > 0 && rice.tier === 0) return rice.list;
+    const capped = plateOk ? variedTier(withinForeign(plate), context) : { list: [], tier: 99 };
+    if (capped.list.length > 0 && capped.tier === 0) return capped.list;
+    if (rice.list.length > 0) return rice.list;
+    if (capped.list.length > 0) return capped.list;
+    const anyMan = variedTier(man, context);
+    if (anyMan.list.length > 0) return anyMan.list;
+    if (plateToday) { const overWeek = variedTier(plate, context); if (overWeek.list.length > 0) return overWeek.list; }
+    return variedTier(plate, context).list;
+  };
+  const choose = (source: SuggestRecipe[], exclude: ReadonlySet<string>): DishSuggestion | null => {
+    const open = source.filter((recipe) => fitsMeal(recipe, input.meal) && !input.usedIds.has(recipe.id) && !exclude.has(recipe.id)
+      && (accompaniesForeign || withinForeignCap(recipe, input.foreign, input.meal)) && input.roles.includes(recipe.role ?? null)
+      && (constraint.cuisine === undefined || cuisineOf(recipe.cuisine) === constraint.cuisine)
+      && (constraint.maxKcal === undefined || (recipe.calories ?? 0) <= constraint.maxKcal));
+    const isMain = !accompaniesForeign && (input.slot === "main" || input.slot === "one_dish" || input.slot === "breakfast_single" || input.slot === "breakfast");
+    const varied = isMain ? mainCandidates(open) : variedCandidates(open, context);
+    return best(varied, input.kho, { today: input.today, recentRecipeIds: input.recentRecipeIds },
+      `${input.day}:${input.meal.toLowerCase()}:${input.slot}`, penalty);
+  };
+  const none = new Set<string>();
+  // Optional dishes (a side, a breakfast drink) only come from dishes suitable for everyone.
+  const optional = input.slot === "side" || input.slot === "drink";
+  const pick = choose(input.pool, input.excludeIds) ?? choose(input.pool, none)
+    ?? (optional ? null : choose(input.fallbackPool, input.excludeIds) ?? choose(input.fallbackPool, none));
+  if (!pick) return null;
+  input.usedIds.add(pick.recipe.id);
+  if (isForeign(pick.recipe) && !accompaniesForeign) addForeign(input.foreign, input.meal);
+  return pick;
+}
+
 export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaClient = prisma) {
   const ownerFamily = rawInput.owner?.familyId ?? null;
   // A family menu always uses the family's own Kho.
@@ -569,8 +788,14 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
   const pool = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
   const fallbackPool = split.fallback.map((recipe) => toSuggestRecipe(recipe, people));
   if (pool.length === 0 && fallbackPool.length === 0) throw new MenuServiceError("Không có món nào phù hợp với yêu cầu.", 422);
-  // Calories per meal: the dishes of a meal aim at the family target (sum of members' meal targets) for everyone.
-  const servingsForTarget = input.health && input.health.members.length > 0 ? input.health.members.length : 1;
+  // People eating (portions start from one per person): the family's member count, else the known members, else 1.
+  const eaters = people ?? Math.max(1, input.health?.members.length ?? 1);
+  const candidateById = new Map(constrained.map((recipe) => [recipe.id, recipe]));
+  // Breakfast rotation: the "family" of every known recipe (dishes on saved days included).
+  const families = new Map(recipes.map((recipe) => [recipe.id, dishFamily(recipe.name)]));
+  const familyOf = (recipeId: string) => families.get(recipeId) ?? recipeId;
+  const infoById = new Map(recipes.map((recipe) => [recipe.id, { role: recipe.role, cuisine: cuisineOf(recipe.cuisine) }]));
+  const recipeInfo: RecipeInfo = (recipeId) => infoById.get(recipeId);
 
   const history = await recentDishes(client, { userId: input.userId, familyId: input.familyId }, startDate);
   // Variety: the same meal on the days before and after (saved menus), plus the days generated in this request.
@@ -596,41 +821,32 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
     const chosenToday = new Set<string>();
     const foreignToday = newForeignCount();
     const excludeIds = new Set(input.excludeRecipeIds ?? []);
-    const target = (meal: string) => familyMealTarget(input.health, meal);
-    const plannedKcal = (list: Array<{ suggestion: DishSuggestion }>) => list.reduce((sum, pick) => sum + (pick.suggestion.recipe.calories ?? 0) * servingsForTarget, 0);
-    const picks: Array<{ meal: string; role: string | null; suggestion: DishSuggestion | null }> = input.mealCounts
-      ? mealTypes.flatMap((meal) => {
-        const count = meal in input.mealCounts! ? input.mealCounts![meal as keyof MealCounts] : 1;
-        const options = { today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, history: variety, foreign: foreignToday };
-        const goal = (list: Array<{ suggestion: DishSuggestion }>) => (input.health ? { calories: { target: target(meal), servings: servingsForTarget, planned: plannedKcal(list) } } : {});
-        // Recently removed dishes are skipped, unless that leaves the meal without enough dishes.
-        let mealPicks = pickMealDishes(pool, kho, meal, count, { ...options, excludeIds, ...goal([]) });
-        if (mealPicks.length < count && excludeIds.size > 0) {
-          mealPicks = [...mealPicks, ...pickMealDishes(pool, kho, meal, count - mealPicks.length, { ...options, ...goal(mealPicks) })];
-        }
-        // Still short: the open role slots take dishes unsuitable for some member (with warnings; never allergens).
-        if (mealPicks.length < count && fallbackPool.length > 0) {
-          mealPicks = [...mealPicks, ...pickRoleDishes(fallbackPool, kho, meal, openRoles(roleSlots(meal, count), mealPicks), { ...options, ...goal(mealPicks) })];
-        }
-        return mealPicks.map((pick) => ({ meal, role: pick.role, suggestion: pick.suggestion }));
-      })
-      : pickDishes(pool, kho, mealTypes, { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday }).map((pick) => {
-        const fallback = !pick.suggestion && fallbackPool.length > 0 ? pickDishes(fallbackPool, kho, [pick.meal], { today, day: dayKey(date), recentRecipeIds, foreign: foreignToday })[0] : pick;
-        return { ...fallback, role: fallback.suggestion?.recipe.role ?? null };
-      });
-    for (const { meal, role, suggestion } of picks) {
-      if (!suggestion) continue;
-      chosenToday.add(suggestion.recipe.id);
-      addToHistory(variety, dayKey(date), meal, suggestion.recipe.id);
-      items.push({
-        recipeId: suggestion.recipe.id,
-        dishName: suggestion.recipe.name,
-        mealType: meal as MealType,
-        dayOfWeek,
-        calories: suggestion.recipe.calories,
-        details: itemDetails(suggestion, role ?? suggestion.recipe.role ?? null,
-          healthNote(suggestion, meal, { health: input.health, suitable: pool, kho, today, day: dayKey(date), usedIds: chosenToday })),
-      });
+    // Calorie-based planner (meal-plan.ts): dishes per meal and their portions from the family's kcal target.
+    {
+      for (const meal of mealTypes) {
+        const goal = mealTarget(input.health, meal, eaters);
+        const plan = planMeal(meal, eaters, goal, (roles, slot, constraint) => {
+          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, constraint, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday, familyOf, recipeInfo });
+          return pick ? { value: pick, role: pick.recipe.role ?? null, kcal: pick.recipe.calories, cuisine: pick.recipe.cuisine } : null;
+        });
+        plan.dishes.forEach((dish, index) => {
+          const recipe = candidateById.get(dish.pick.recipe.id);
+          // Stored Kho match and missing list for the planned portions (not the whole family's default amounts).
+          const scaled = recipe ? evaluateRecipe(toSuggestRecipe(recipe, dish.servings), kho, today, recentRecipeIds, `${dayKey(date)}:${meal.toLowerCase()}`) : dish.pick;
+          const suggestion = { ...scaled, reason: scaled.reason };
+          addToHistory(variety, dayKey(date), meal, dish.pick.recipe.id);
+          items.push({
+            recipeId: dish.pick.recipe.id,
+            dishName: dish.pick.recipe.name,
+            mealType: meal as MealType,
+            dayOfWeek,
+            calories: dish.pick.recipe.calories,
+            details: itemDetails(suggestion, dish.pick.recipe.role ?? null,
+              healthNote(dish.pick, meal, { health: input.health, suitable: pool, kho, today, day: dayKey(date), usedIds: chosenToday }),
+              { servings: dish.servings, ...(index === 0 ? { mealTarget: plan.target, riceKcal: plan.riceKcal } : {}) }),
+          });
+        });
+      }
     }
     // Later days of the same request also avoid repeating these.
     history.set(dayKey(date), chosenToday);
@@ -882,12 +1098,22 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
   const split = splitCandidates(recipes, input.health);
   // The menu's people (older menus: the current member count).
   const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
-  const suitable = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
+  // Sensible combinations: the replacement matches the cuisine of the dishes left in the meal (a foreign main keeps
+  // its same-cuisine side; a Vietnamese canh / rau / mặn keeps a Vietnamese partner). Nothing left: any cuisine.
+  const cuisineById = new Map(recipes.map((recipe) => [recipe.id, cuisineOf(recipe.cuisine)]));
+  const mealLeft = others.filter((entry) => entry.mealType === item.mealType && entry.dayOfWeek === item.dayOfWeek);
+  const leftCuisines = mealLeft.map((entry) => (entry.recipeId ? cuisineById.get(entry.recipeId) ?? "vietnam" : "vietnam"));
+  const requiredCuisine = leftCuisines.find((cuisine) => cuisine !== "vietnam") ?? (leftCuisines.length > 0 ? "vietnam" : undefined);
+  const matches = (recipe: RecipeCandidate) => requiredCuisine === undefined || cuisineOf(recipe.cuisine) === requiredCuisine;
+  const suitable = split.suitable.filter(matches).map((recipe) => toSuggestRecipe(recipe, people));
   // Foreign-dish caps: the other dishes of the same day (week menus: same weekday) count, the removed one does not.
-  const foreign = foreignInItems(others.filter((entry) => entry.dayOfWeek === item.dayOfWeek), recipes);
+  // A meal that is already a foreign meal (its other dish is foreign) is not counted again for its partner.
+  const foreign = requiredCuisine !== undefined && requiredCuisine !== "vietnam"
+    ? newForeignCount()
+    : foreignInItems(others.filter((entry) => entry.dayOfWeek === item.dayOfWeek), recipes);
   // Suitable for everyone first; else a dish unsuitable for some member (with warnings); allergens never.
   const pick = pickReplacement(suitable, kho, item.mealType, role, { today, day, excludeIds, history, foreign })
-    ?? pickReplacement(split.fallback.map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history, foreign });
+    ?? pickReplacement(split.fallback.filter(matches).map((recipe) => toSuggestRecipe(recipe, people)), kho, item.mealType, role, { today, day, excludeIds, history, foreign });
 
   let replacement: Prisma.MenuItemUncheckedCreateInput | null = null;
   if (pick) {
@@ -921,9 +1147,35 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
     }
   }
 
+  // Calorie-based menus: the meal's portions are sized again for its dishes now (the same kcal target; an AI dish too).
+  const sameMeal = others.filter((entry) => entry.mealType === item.mealType && entry.dayOfWeek === item.dayOfWeek);
+  const portionUpdates: Array<ReturnType<typeof client.menuItem.update>> = [];
+  if (typeof details.servings === "number" || sameMeal.some((entry) => typeof asRecord(entry.details).servings === "number")) {
+    const eaters = menuPeople(menu.servings, input.owner?.memberCount ?? null);
+    const goal = mealTarget(input.health, item.mealType, eaters);
+    const dishes = [
+      ...sameMeal.map((entry) => ({ role: (asRecord(entry.details).role as string | null | undefined) ?? null, kcal: entry.calories, cuisine: entry.recipeId ? cuisineById.get(entry.recipeId) ?? null : null })),
+      ...(replacement ? [{ role, kcal: replacement.calories ?? null, cuisine: replacement.recipeId ? cuisineById.get(replacement.recipeId) ?? null : null }] : []),
+    ];
+    const { servings, riceKcal } = replanServings(item.mealType, dishes, eaters, goal);
+    // The meal's rice (and target) sits on its first món mặn; any other dish drops those keys.
+    const holder = dishes.findIndex((dish) => dish.role === "man");
+    const withPortion = (details: unknown, index: number): JsonRecord => {
+      const { riceKcal: _rice, riceGrams: _grams, mealTarget: _target, ...rest } = asRecord(details);
+      return { ...rest, servings: servings[index], ...(index === holder && riceKcal > 0 ? { mealTarget: goal, riceKcal, riceGrams: riceGrams(riceKcal) } : {}) };
+    };
+    sameMeal.forEach((entry, index) => {
+      const next = withPortion(entry.details, index);
+      if (JSON.stringify(next) === JSON.stringify(asRecord(entry.details))) return;
+      portionUpdates.push(client.menuItem.update({ where: { id: entry.id }, data: { details: next as Prisma.InputJsonValue } }));
+    });
+    if (replacement) replacement.details = withPortion(replacement.details, servings.length - 1) as Prisma.InputJsonValue;
+  }
+
   await client.$transaction([
     client.menuItem.delete({ where: { id: item.id } }),
     ...(replacement ? [client.menuItem.create({ data: replacement })] : []),
+    ...portionUpdates,
   ]);
   return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
 }
@@ -932,11 +1184,13 @@ export async function removeMenuItem(input: RemoveInput, client: PrismaClient = 
 const DAY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MEALS = [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER] as const;
 
-type DaysInput = Omit<GenerateMenuInput, "periodType" | "startDate" | "endDate" | "preloaded"> & { days: string[]; now?: Date };
+type DaysInput = Omit<GenerateMenuInput, "periodType" | "startDate" | "endDate" | "preloaded"> & { days: string[]; now?: Date; replace?: boolean };
 
 /**
  * Theo tuần: generates a DAY menu for each given day that is today or later and has no menu yet (one request,
  * same rules as a single day; Kho and recipes loaded once). Existing menus and past days are left as they are.
+ * `replace` ("Tạo lại tuần", the family owner): today's and later days are generated again even when they have a
+ * menu (each new day replaces the old one); past days still never change.
  */
 export async function generateDays(input: DaysInput, client: PrismaClient = prisma) {
   const today = vnDay(input.now ?? new Date());
@@ -946,7 +1200,7 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
     where: { ...menuScope(input.owner ?? input.userId), periodType: PeriodType.DAY, startDate: { in: days.map((day) => new Date(`${day}T00:00:00.000Z`)) } },
     select: { startDate: true },
   });
-  const taken = new Set(existing.map((menu) => dayKey(menu.startDate)));
+  const taken = new Set(input.replace ? [] : existing.map((menu) => dayKey(menu.startDate)));
   const missing = days.filter((day) => !taken.has(day));
   if (missing.length === 0) return [];
   const khoFamily = input.owner?.familyId ?? input.familyId;
@@ -964,12 +1218,11 @@ export async function generateDays(input: DaysInput, client: PrismaClient = pris
   return created;
 }
 
-type TopUpInput = { userId: string; owner?: MenuOwner; health?: FamilyHealth; menuId: string; authorization?: string; now?: Date; mealCounts: MealCounts; recipes?: unknown[]; inventoryItems?: unknown[] };
+type TopUpInput = { userId: string; owner?: MenuOwner; menuId: string; now?: Date };
 
 /**
- * Upgrades a day menu made before multi-dish menus (its dishes carry no role): adds only the missing dishes of each
- * meal up to "Số món mỗi bữa", keeping the existing ones. Runs once (the new dishes carry roles); newer menus,
- * full meals and past days are left unchanged.
+ * Kept for older app versions: the fixed-count upgrade of single-dish menus is gone (menus are calorie-based; saved
+ * menus keep working as they are). Returns the menu unchanged; past days are refused (422) as before.
  */
 export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma) {
   const now = input.now ?? new Date();
@@ -977,51 +1230,5 @@ export async function topUpMenu(input: TopUpInput, client: PrismaClient = prisma
   const menu = await client.menu.findFirst({ where: { id: input.menuId, ...menuScope(owner) }, include: { items: true } });
   if (!menu) throw new MenuServiceError("Menu not found", 404);
   if (isPastDay(menu.endDate, now)) throw new MenuServiceError("Không thể sửa thực đơn của ngày đã qua.", 422);
-  const legacy = menu.periodType === PeriodType.DAY && !menu.items.some((item) => typeof asRecord(item.details).role === "string");
-  if (!legacy) return menu;
-  const short = DAY_MEALS.filter((meal) => menu.items.filter((item) => item.mealType === meal).length < input.mealCounts[meal]);
-  if (short.length === 0) return menu;
-
-  const [recipes, khoItems, removed] = await Promise.all([
-    getRecipes(input.recipes).catch(() => [] as RecipeCandidate[]),
-    input.inventoryItems !== undefined ? Promise.resolve(readKhoItems(input.inventoryItems))
-      : menu.familyId ? getKhoItems(menu.familyId, input.authorization).catch(() => [] as KhoItem[]) : Promise.resolve([] as KhoItem[]),
-    recentlyRemoved(owner, client, now),
-  ]);
-  const today = vnDay(now);
-  const kho = usableKho(khoItems, today);
-  const split = splitCandidates(recipes, input.health);
-  const people = input.owner ? menuPeople(menu.servings, input.owner.familyId ? input.owner.memberCount : 1) : undefined;
-  const pool = split.suitable.map((recipe) => toSuggestRecipe(recipe, people));
-  const fallbackPool = split.fallback.map((recipe) => toSuggestRecipe(recipe, people));
-  const usedIds = new Set(menu.items.flatMap((item) => (item.recipeId ? [item.recipeId] : [])));
-  const day = dayKey(normalizeDate(menu.startDate));
-  const history = await mealHistory(client, { userId: input.userId, familyId: menu.familyId }, normalizeDate(menu.startDate), normalizeDate(menu.startDate));
-  const creates: Prisma.MenuItemUncheckedCreateInput[] = [];
-  // Foreign-dish caps across the whole day, counting the dishes the menu already has.
-  const foreign = foreignInItems(menu.items, recipes);
-  for (const meal of short) {
-    const have = menu.items.filter((item) => item.mealType === meal).length;
-    // The existing (older) dishes are taken as the first slots; only the remaining slots are filled.
-    const roles = roleSlots(meal, input.mealCounts[meal]).slice(have);
-    const options = { today, day, recentRecipeIds: new Set<string>(), usedIds, excludeIds: removed.recipeIds, history, foreign };
-    let picks = pickRoleDishes(pool, kho, meal, roles, options);
-    if (picks.length < roles.length && fallbackPool.length > 0) {
-      picks = [...picks, ...pickRoleDishes(fallbackPool, kho, meal, openRoles(roles, picks), options)];
-    }
-    const dayOfWeek = ((normalizeDate(menu.startDate).getUTCDay() + 6) % 7) + 1;
-    for (const { role, suggestion } of picks) {
-      creates.push({
-        menuId: menu.id,
-        recipeId: suggestion.recipe.id,
-        dishName: suggestion.recipe.name,
-        mealType: meal,
-        dayOfWeek,
-        calories: suggestion.recipe.calories,
-        details: itemDetails(suggestion, role, healthNote(suggestion, meal, { health: input.health, suitable: pool, kho, today, day, usedIds })),
-      });
-    }
-  }
-  if (creates.length > 0) await client.$transaction(creates.map((data) => client.menuItem.create({ data })));
-  return client.menu.findFirst({ where: { id: menu.id }, include: { items: true } });
+  return menu;
 }

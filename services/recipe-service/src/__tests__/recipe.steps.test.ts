@@ -119,3 +119,25 @@ test("roles: validated on input; every starter dish has one; enough variety per 
   assert.deepEqual(rows.map((row) => row.role), ["mot_mon", "canh", null]);
   assert.equal(await fillMissingRoles(client), 0);
 });
+
+test("khai vị: appetizers / rolls are a side role (never a rice meal's main) and the API accepts it", () => {
+  const byName = (name: string) => seedRecipes.find((recipe) => recipe.name === name)!;
+  assert.equal(seedRole(byName("Gỏi cuốn tôm thịt")), "khai_vi");
+  assert.equal(seedRole(byName("Trứng cuộn kiểu Hàn")), "khai_vi");
+  assert.equal(createRecipeSchema.safeParse({ name: "Chả giò", ingredients: ["Thịt heo"], role: "khai_vi" }).success, true);
+  assert.equal(createRecipeSchema.safeParse({ name: "Chả giò", ingredients: ["Thịt heo"], role: "appetizer" }).success, false);
+});
+
+test("2026-12 món mặn additions: realistic rice-meal mains (lunch / dinner, 4 servings, 4–7 steps, seasonings flagged)", () => {
+  const names = ["Cá basa kho tiêu", "Gà chiên nước mắm", "Bò xào hành tây", "Mực xào chua ngọt", "Tôm rang thịt", "Thịt rang cháy cạnh", "Cá thu sốt cà chua", "Trứng chiên thịt"];
+  for (const name of names) {
+    const recipe = seedRecipes.find((entry) => entry.name === name);
+    assert.ok(recipe, name);
+    assert.equal(seedRole(recipe), "man", name);
+    assert.equal(recipe.cuisine ?? "vietnam", "vietnam", name);
+    assert.deepEqual([...recipe.mealTypes].sort(), ["dinner", "lunch"], name);
+    assert.equal(recipe.servings, 4, name);
+    const steps = stepsFor(recipe) ?? [];
+    assert.ok(steps.length >= 4 && steps.length <= 7, `${name}: ${steps.length} steps`);
+  }
+});

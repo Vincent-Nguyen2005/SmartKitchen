@@ -151,7 +151,7 @@ export const createApp = (options: AppOptions = {}): express.Express => {
     });
   });
 
-  app.use("/api", createGlobalRateLimiter());
+  app.use("/api", createGlobalRateLimiter(jwtSecret));
   app.use("/api/auth", createAuthRateLimiter());
   // Runs before authentication so anonymous probes are blocked too. Uses the raw URL, not req.path,
   // so encoded / dot-segment / backslash variants are normalized here rather than by Express.

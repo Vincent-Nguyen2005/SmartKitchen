@@ -27,8 +27,11 @@ export const ingredientDetailSchema = z.object({
   perPerson: z.boolean().optional(),
 });
 
-/** Dish roles in a Vietnamese family meal (menu-service composes lunch/dinner from them). */
-export const RECIPE_ROLES = ["man", "xao", "canh", "rau", "trang_mieng", "sang", "mot_mon", "do_uong"] as const;
+/**
+ * Dish roles in a Vietnamese family meal (menu-service composes lunch/dinner from them). khai_vi (khai vị: gỏi cuốn,
+ * appetizers, rolls, small side dishes) is a side, never a rice meal's main.
+ */
+export const RECIPE_ROLES = ["man", "xao", "canh", "rau", "khai_vi", "trang_mieng", "sang", "mot_mon", "do_uong"] as const;
 /** Internal cuisine of a dish (Quản trị "Ẩm thực"); menu-service caps non-Vietnamese dishes per meal and day. */
 export const RECIPE_CUISINES = ["vietnam", "western", "asian"] as const;
 export const MAX_STEPS = 30;

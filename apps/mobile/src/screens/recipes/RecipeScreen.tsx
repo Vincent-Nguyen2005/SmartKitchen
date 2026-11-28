@@ -14,7 +14,8 @@ import {
   type MenuItem, type MenuRecord,
 } from "../menu/menuShared";
 import { AI_DISCLAIMER, AiDishDetail, type AiDish } from "./AiSuggestions";
-import { menuPeople, scaleRecipe } from "./portions";
+import { dishServings, menuPeople, scaleRecipe } from "./portions";
+import { dishRiceGrams, mealHasRice, portionLabel, RICE_NOTE, withRice } from "./mealPortions";
 import CookingMode from "./CookingMode";
 import RecipeDetail from "./RecipeDetail";
 import type { Recipe } from "./recipeTypes";
@@ -117,9 +118,18 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
 
   const recipeById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const items = menu ? sortItems(menu.items) : [];
-  /** People today's dishes are cooked for: the menu's servings, else the family size (detail, cooking, AI cart). */
+  /** People today's dishes are cooked for ("cho N người"): the menu's servings, else the family size. */
   const people = menuPeople(menu?.servings, family?.members.length);
-  const showRecipe = (recipe: Recipe) => setDetail(scaleRecipe(recipe, people));
+  /** Planned portions of a dish ("N phần"): detail, cooking mode, Kho deduction and the AI cart use these amounts. */
+  const portionsOf = (item: MenuItem | null) => dishServings(item?.details, menu?.servings, family?.members.length);
+  /** "Đủ cho N người" when the dish's meal has several dishes, else "N phần". */
+  const labelOf = (item: MenuItem | null) => portionLabel(items.filter((entry) => entry.mealType === item?.mealType).length, portionsOf(item), people);
+  /**
+   * The dish scaled to its portions, with its label; the món mặn of a meal with rice also lists the meal's Gạo, so
+   * "Hoàn thành" on it takes the rice out of Kho (once per meal, with the dish's ingredients).
+   */
+  const showRecipe = (recipe: Recipe, item: MenuItem | null = openedItem) =>
+    setDetail(withRice({ ...scaleRecipe(recipe, portionsOf(item), people), portionLabel: labelOf(item) }, dishRiceGrams(item, item?.recipeId ? recipeById.get(item.recipeId) ?? recipe : recipe)));
   const mealItems = items.filter((item) => item.mealType === meal);
   const anyAiVisible = mealItems.some((item) => item.details?.ai);
 
@@ -166,8 +176,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     setOpenedItem(item);
     if (item.details?.ai && item.details.aiDish) { setAiDetail(item.details.aiDish); return; }
     const recipe = item.recipeId ? recipeById.get(item.recipeId) : undefined;
-    if (recipe) { showRecipe(recipe); return; }
-    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
+    if (recipe) { showRecipe(recipe, item); return; }
+    if (item.recipeId) api.get<Recipe>(`/api/recipes/${encodeURIComponent(item.recipeId)}`).then((loaded) => showRecipe(loaded, item)).catch((requestError) => setError(errorMessage(requestError)));
   };
 
   /**
@@ -209,6 +219,8 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
     content = <EmptyState fill icon={CookingPot} text="Bữa này chưa có món." />;
   } else {
     content = (
+      <>
+      {mealHasRice(mealItems, (entry) => recipeById.get((entry as MenuItem).recipeId ?? "")) && <AppText variant="bodySmall" color={colors.muted}>{RICE_NOTE}</AppText>}
       <View onLayout={cardGrid.onLayout} style={[styles.grid, { gap: cardGrid.gap }]}>
         {mealItems.map((item) => (
           <MenuDishCard
@@ -223,6 +235,7 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
           />
         ))}
       </View>
+      </>
     );
   }
 
@@ -248,13 +261,16 @@ export default function RecipeScreen({ accessToken }: Props): React.JSX.Element 
           // The alternative opens in the same detail and can be cooked (same meal for nutrition logging).
           const known = recipeById.get(id);
           if (known) { showRecipe(known); return; }
-          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then(showRecipe).catch((requestError) => setError(errorMessage(requestError)));
+          api.get<Recipe>(`/api/recipes/${encodeURIComponent(id)}`).then((loaded) => showRecipe(loaded)).catch((requestError) => setError(errorMessage(requestError)));
         })}
       />
       <AiDishDetail
         dish={aiDetail}
         mode="cook"
         people={people}
+        portions={portionsOf(openedItem)}
+        portionLabel={labelOf(openedItem)}
+        riceGrams={dishRiceGrams(openedItem)}
         onClose={closeDetail}
         onStartCooking={startCooking}
       />

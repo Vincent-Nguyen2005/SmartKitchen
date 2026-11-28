@@ -38,7 +38,7 @@ export const errorMessage = (error: unknown): string => {
     if (error.status === 0) return "Không kết nối được máy chủ. Kiểm tra mạng rồi thử lại.";
     if (error.status === 401) return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
     if (error.status === 403) return "Bạn không có quyền thực hiện thao tác này.";
-    if (error.status === 429) return "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
+    if (error.status === 429) return "Máy chủ đang bận, vui lòng thử lại sau giây lát.";
     if (error.status >= 500) return "Máy chủ đang gặp sự cố. Vui lòng thử lại sau.";
     return error.message;
   }

@@ -8,6 +8,7 @@ import { addMissingToCart } from "../shopping-cart/addMissing";
 import { warningText, type HealthWarning } from "../menu/menuShared";
 import RecipeDetail from "./RecipeDetail";
 import { scaleQuantity, scaleRecipe } from "./portions";
+import { withRice } from "./mealPortions";
 import type { Recipe } from "./recipeTypes";
 
 export type AiMealType = "sang" | "trua" | "toi";
@@ -68,12 +69,19 @@ type DetailProps = {
   onStartCooking?: (recipe: Recipe) => void;
   /** "view" (Lịch): read-only detail; "cook" (Nấu ăn): steps, cooking and the AI actions. */
   mode?: "view" | "cook";
-  /** People eating (menu servings / family size): quantities, cooking mode and the cart use their amounts. */
+  /** People eating ("cho N người": menu servings / family size). */
   people?: number;
+  /** Planned portions ("N phần"): quantities, cooking mode and the cart use these amounts (default: people). */
+  portions?: number;
+  /** "Đủ cho N người" / "N phần" for the dish's meal (mealPortions.ts). */
+  portionLabel?: string;
+  /** The meal's rice carried by this dish (raw Gạo grams): listed and taken out of Kho with it. */
+  riceGrams?: number;
 };
 
 /** AI dish detail: the shared recipe detail with the disclaimer, "Nấu món này", "Lưu món" and "Thêm phần thiếu vào giỏ hàng". */
-export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", people }: DetailProps): React.JSX.Element {
+export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", people, portions, portionLabel, riceGrams = 0 }: DetailProps): React.JSX.Element {
+  const amountFor = portions ?? people;
   const { accessToken, family } = useSession();
   const familyId = family?.id ?? null;
   const [message, setMessage] = useState<string | null>(null);
@@ -98,7 +106,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", peo
   const addMissing = async (target: AiDish) => {
     // Amounts for the people eating (same rule as the menu: portions.ts).
     const missing = target.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning)
-      .map((ingredient) => (people ? { ...ingredient, quantity: scaleQuantity(ingredient, target.servings, people) } : ingredient));
+      .map((ingredient) => (amountFor ? { ...ingredient, quantity: scaleQuantity(ingredient, target.servings, amountFor) } : ingredient));
     if (!accessToken || !familyId || busy || missing.length === 0) return;
     setBusy("cart");
     let added = 0;
@@ -117,7 +125,7 @@ export function AiDishDetail({ dish, onClose, onStartCooking, mode = "cook", peo
   const missingCount = dish ? dish.ingredients.filter((ingredient) => !ingredient.fromKho && !ingredient.isSeasoning).length : 0;
   return (
     <RecipeDetail
-      recipe={dish ? (people ? scaleRecipe(aiDishToRecipe(dish), people) : aiDishToRecipe(dish)) : null}
+      recipe={dish ? withRice({ ...(amountFor ? scaleRecipe(aiDishToRecipe(dish), amountFor, people ?? amountFor) : aiDishToRecipe(dish)), ...(portionLabel ? { portionLabel } : {}) }, riceGrams) : null}
       onClose={onClose}
       onStartCooking={onStartCooking}
       startLabel="Nấu món này"

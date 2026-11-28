@@ -56,27 +56,37 @@ const catalog = [
 const kho = [{ name: "Trứng gà", quantity: 30, unit: "PIECE" }];
 const week = ["2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29", "2026-11-30"];
 const now = new Date("2026-11-24T03:00:00Z");
-const counts = { BREAKFAST: 1, LUNCH: 1, DINNER: 1 };
 
+/** The first dish of each meal per day (the main / breakfast dish), in day order. */
 function plannedByMeal(menus: MenuRow[]) {
   const byMeal = new Map<MealType, string[]>();
   for (const row of [...menus].sort((left, right) => left.startDate.getTime() - right.startDate.getTime())) {
-    for (const entry of row.items) byMeal.set(entry.mealType, [...(byMeal.get(entry.mealType) ?? []), entry.recipeId ?? ""]);
+    for (const meal of [MealType.BREAKFAST, MealType.LUNCH, MealType.DINNER]) {
+      const first = row.items.find((entry) => entry.mealType === meal);
+      if (first) byMeal.set(meal, [...(byMeal.get(meal) ?? []), first.recipeId ?? ""]);
+    }
   }
   return byMeal;
 }
 
-test("7-day generation: no dish in the same meal on consecutive days, at most twice per meal per week (even with a strong Kho favourite)", async () => {
+test("7-day generation with a small catalog: rules relax gracefully — no main on consecutive days, repeats spread evenly", async () => {
   const { client, menus } = memoryClient();
-  await generateDays({ userId: "u1", familyId: "f1", days: week, now, recipes: catalog, inventoryItems: kho, mealCounts: counts }, client);
+  await generateDays({ userId: "u1", familyId: "f1", days: week, now, recipes: catalog, inventoryItems: kho }, client);
   assert.equal(menus.length, 7);
+  const sorted = [...menus].sort((left, right) => left.startDate.getTime() - right.startDate.getTime());
+  // Only 6 món mặn and no canh / rau / xào: each day needs 4 of them (2 mains + 2 sides), so the 7-day window and even
+  // "not the next day" cannot hold for every dish. What still holds: no dish twice in a day, and the main of a meal is
+  // not yesterday's main of that meal.
+  for (const row of sorted) assert.equal(new Set(row.items.map((entry) => entry.recipeId)).size, row.items.length);
   for (const [meal, ids] of plannedByMeal(menus)) {
-    assert.equal(ids.length, 7, meal);
     for (let index = 1; index < ids.length; index += 1) assert.notEqual(ids[index], ids[index - 1], `${meal} day ${index}: ${ids.join()}`);
-    const uses = new Map<string, number>();
-    ids.forEach((id) => uses.set(id, (uses.get(id) ?? 0) + 1));
-    assert.ok([...uses.values()].every((count) => count <= 2), `${meal}: ${ids.join()}`);
   }
+  const uses = new Map<string, number>();
+  for (const row of sorted) for (const entry of row.items) uses.set(entry.recipeId ?? "", (uses.get(entry.recipeId ?? "") ?? 0) + 1);
+  const mains = ["thitkho", "cakho", "gakho", "tomrim", "suon", "dauphu"].map((id) => uses.get(id) ?? 0);
+  // Spread: every món mặn is used, none much more than the others.
+  assert.ok(mains.every((count) => count >= 1), mains.join());
+  assert.ok(Math.max(...mains) - Math.min(...mains) <= 2, mains.join());
   // The Kho favourite is still used, just not every day.
   assert.ok(plannedByMeal(menus).get(MealType.BREAKFAST)?.includes("banhmitrung"));
 });
@@ -87,7 +97,7 @@ test("a day generated between saved days avoids the dishes of the day before AND
     items: [{ id: `${id}-b`, recipeId, dishName: recipeId, mealType: MealType.BREAKFAST, dayOfWeek: new Date(`${day}T00:00:00Z`).getUTCDay() || 7, details: { role: "sang" } }],
   });
   const { client, menus } = memoryClient([saved("d1", "2026-11-24", "xoi"), saved("d3", "2026-11-26", "banhmitrung")]);
-  await generateDays({ userId: "u1", familyId: "f1", days: ["2026-11-25"], now, recipes: catalog, inventoryItems: kho, mealCounts: counts }, client);
+  await generateDays({ userId: "u1", familyId: "f1", days: ["2026-11-25"], now, recipes: catalog, inventoryItems: kho }, client);
   const created = menus.find((row) => row.startDate.toISOString().startsWith("2026-11-25"));
   const breakfast = created?.items.find((entry) => entry.mealType === MealType.BREAKFAST)?.recipeId;
   assert.ok(breakfast && !["xoi", "banhmitrung"].includes(breakfast), String(breakfast));

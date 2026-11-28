@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
 import { generateMenu, removeMenuItem } from "../services/menu.service";
-import { caloriePenalty, defaultMealTargets, hasAllergen, type FamilyHealth, type MemberHealth } from "../services/family-health";
+import { defaultMealTargets, hasAllergen, type FamilyHealth, type MemberHealth } from "../services/family-health";
 import { clearFamilyContextCache, loadFamilyContext, type ContextStore } from "../services/family-context";
 
 const DAY = new Date("2026-11-24T00:00:00.000Z");
@@ -37,7 +37,7 @@ test("a dish any member is allergic to is never picked (ingredient or allergen t
   const health: FamilyHealth = { members: [member("a", "An", { allergies: ["Tôm"] }), member("b", "Bình", { allergies: ["đậu phộng"] })] };
   const { client, items } = captureClient();
   await generateMenu({
-    ...dayInput, health, mealCounts: lunchOnly,
+    ...dayInput, health, preferences: { mealTypes: ["LUNCH"] },
     recipes: [
       { id: "shrimp", name: "Tôm rang", role: "man", mealTypes: ["lunch"], ingredientDetails: [{ name: "Tôm sú", quantity: 300, unit: "GRAM" }] },
       { id: "peanut", name: "Gà xào sả", role: "man", mealTypes: ["lunch"], allergens: ["Đậu phộng"], ingredientDetails: [{ name: "Thịt gà", quantity: 300, unit: "GRAM" }] },
@@ -54,7 +54,7 @@ test("conditions: a dish suitable for everyone wins over a better Kho match that
   const health: FamilyHealth = { members: [member("a", "An"), member("b", "Huy", { conditions: ["Tiểu đường"] })] };
   const { client, items } = captureClient();
   await generateMenu({
-    ...dayInput, health, mealCounts: { BREAKFAST: 0, LUNCH: 1, DINNER: 0 },
+    ...dayInput, health, preferences: { mealTypes: ["LUNCH"] },
     recipes: [
       { id: "sweet", name: "Thịt kho tàu", role: "man", mealTypes: ["lunch"], contraindications: ["tiểu đường"], ingredientDetails: [{ name: "Thịt ba chỉ", quantity: 300, unit: "GRAM" }] },
       { id: "plain", name: "Gà luộc", role: "man", mealTypes: ["lunch"], ingredientDetails: [{ name: "Thịt gà", quantity: 300, unit: "GRAM" }] },
@@ -69,7 +69,7 @@ test("unavoidable unsuitable dish: stored with warnings naming the member and on
   const health: FamilyHealth = { members: [member("a", "An"), member("b", "Huy", { conditions: ["Tiểu đường"] })] };
   const { client, items } = captureClient();
   await generateMenu({
-    ...dayInput, health, mealCounts: lunchOnly,
+    ...dayInput, health, preferences: { mealTypes: ["LUNCH"] },
     recipes: [
       { id: "fish", name: "Cá kho", role: "man", mealTypes: ["lunch"], ingredientDetails: [{ name: "Cá basa", quantity: 300, unit: "GRAM" }] },
       { id: "pork", name: "Thịt luộc", role: "man", mealTypes: ["lunch"], ingredientDetails: [{ name: "Thịt heo", quantity: 300, unit: "GRAM" }] },
@@ -87,24 +87,20 @@ test("unavoidable unsuitable dish: stored with warnings naming the member and on
   assert.equal(main.details.warnings, undefined);
 });
 
-test("calories: the meal aims at the family target (sum of members' meal targets x servings)", async () => {
-  const recipes = [
-    { id: "light", name: "Gà luộc", role: "man", mealTypes: ["lunch"], calories: 300, ingredientDetails: [{ name: "Thịt gà", quantity: 300, unit: "GRAM" }] },
-    { id: "heavy", name: "Thịt kho", role: "man", mealTypes: ["lunch"], calories: 900, ingredientDetails: [{ name: "Thịt heo", quantity: 300, unit: "GRAM" }] },
-  ];
-  // Both dishes fully in Kho: equal Kho scores, so the calorie term decides.
-  const kho = [{ name: "Thịt gà", quantity: 1, unit: "KILOGRAM" }, { name: "Thịt heo", quantity: 1, unit: "KILOGRAM" }];
-  const pick = async (lunchTarget: number) => {
+test("calories: portions follow the family target (sum of members' meal targets), rice included", async () => {
+  const recipes = [{ id: "light", name: "Gà luộc", role: "man", mealTypes: ["lunch"], calories: 300, ingredientDetails: [{ name: "Thịt gà", quantity: 300, unit: "GRAM" }] }];
+  const portions = async (lunchTarget: number) => {
     const health: FamilyHealth = { members: [member("a", "An", { mealTargets: { breakfast: 400, lunch: lunchTarget, dinner: 600 } }), member("b", "Bình", { mealTargets: { breakfast: 400, lunch: lunchTarget, dinner: 600 } })] };
     const { client, items } = captureClient();
-    await generateMenu({ ...dayInput, health, mealCounts: { BREAKFAST: 0, LUNCH: 1, DINNER: 0 }, recipes, inventoryItems: kho }, client);
-    return items()[0].recipeId;
+    await generateMenu({ ...dayInput, health, preferences: { mealTypes: ["LUNCH"] }, recipes, inventoryItems: [] }, client);
+    const main = items()[0].details as { servings: number; riceKcal: number; mealTarget: number };
+    return { servings: main.servings, total: main.servings * 300 + main.riceKcal, target: main.mealTarget };
   };
-  assert.equal(await pick(400), "light", "family target 800: 2 x 300 is closer than 2 x 900");
-  assert.equal(await pick(1000), "heavy", "family target 2000: 2 x 900 is closer than 2 x 300");
-  assert.equal(caloriePenalty(300, { target: 600, servings: 2, planned: 0 }, 1), 0);
-  assert.equal(caloriePenalty(null, { target: 600, servings: 2, planned: 0 }, 1), 0);
-  assert.equal(caloriePenalty(900, { target: 600, servings: 2, planned: 0 }, 1), 20);
+  // Family target 800: rice 280, the dish 2 × 300 → 880 (110 %). Target 2000: rice 700, the dish is capped at
+  // 1,5 per person (3 × 300) → 1600 (80 %): no side exists in this catalog, so the meal ends under target instead of
+  // inflating the main.
+  assert.deepEqual(await portions(400), { servings: 2, total: 880, target: 800 });
+  assert.deepEqual(await portions(1000), { servings: 3, total: 1600, target: 2000 });
 });
 
 test("swap: the replacement never contains a member's allergen", async () => {
@@ -195,7 +191,7 @@ test("menu notice flag: set only when no family health data was ever loaded", as
     const created: Array<{ data: { healthUnavailable?: boolean } }> = [];
     const menu = { findMany: async () => [], deleteMany: async () => ({ count: 0 }), create: async (args: (typeof created)[number]) => { created.push(args); return args.data; } };
     const client = { menu, $transaction: async (run: (tx: unknown) => Promise<unknown>) => run({ menu }) } as unknown as PrismaClient;
-    await generateMenu({ ...dayInput, health, mealCounts: { BREAKFAST: 0, LUNCH: 1, DINNER: 0 }, recipes, inventoryItems: [] }, client);
+    await generateMenu({ ...dayInput, health, preferences: { mealTypes: ["LUNCH"] }, recipes, inventoryItems: [] }, client);
     return created[0].data.healthUnavailable;
   };
   assert.equal(await flag({ members: [member("a", "An")], missing: true }), true);

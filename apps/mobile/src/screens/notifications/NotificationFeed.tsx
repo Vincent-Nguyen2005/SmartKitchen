@@ -10,6 +10,7 @@ import { useConfirm } from "../../components/ConfirmDialog";
 import { inventoryApi, type ExpiringInventoryItem } from "../inventory/inventoryApi";
 import { NO_SELECTION, selectionReducer, tapIntent } from "../shopping-cart/selection";
 import { colors, EmptyState, RemoteImage, ScreenState, styles, useLayout } from "./ui";
+import { isRateLimited, RATE_LIMIT_NOTICE, RATE_LIMIT_RELOAD_MS } from "./liveRefresh";
 import { discountLabel, itemName, PromotionDetail, type Promotion } from "./PromotionDetail";
 import {
   deleteConfirmTitle,
@@ -100,6 +101,8 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
   const [selection, dispatchSelection] = useReducer(selectionReducer, NO_SELECTION);
   const { confirm, dialog } = useConfirm();
   const requestId = useRef(0);
+  const [busyNotice, setBusyNotice] = useState(false);
+  const retryScheduled = useRef(false);
   const changed = useRef(onChanged);
   changed.current = onChanged;
 
@@ -127,12 +130,25 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
     // A failed check just hides the item (no error banner for it).
     setWeekMissing(weekResult.status === "fulfilled" ? weekResult.value.count : 0);
     const failure = [notificationResult, promotionResult, expiringResult].find((result) => result.status === "rejected");
-    setError(failure && failure.status === "rejected" ? errorMessage(failure.reason) : null);
+    // Rate limited even after the transport's retry: keep what is shown, a small notice, one more try a bit later.
+    if (failure && failure.status === "rejected" && isRateLimited(failure.reason)) {
+      setError(null);
+      setBusyNotice(true);
+      if (!retryScheduled.current) {
+        retryScheduled.current = true;
+        setTimeout(() => { retryScheduled.current = false; void reload.current(true); }, RATE_LIMIT_RELOAD_MS);
+      }
+    } else {
+      setBusyNotice(false);
+      setError(failure && failure.status === "rejected" ? errorMessage(failure.reason) : null);
+    }
     setLoading(false);
     setRefreshing(false);
     changed.current?.();
   }, [api, userId, accessToken, family?.id]);
 
+  const reload = useRef(load);
+  reload.current = load;
   useEffect(() => { void load(false); }, [load]);
 
   const loadMore = async () => {
@@ -265,6 +281,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
 
   return (
     <View style={[styles.screen, { paddingHorizontal: gutter }]}>
+      {busyNotice ? <Text style={styles.mutedText} accessibilityLiveRegion="polite">{RATE_LIMIT_NOTICE}</Text> : null}
       {loading ? (
         <ScreenState loading />
       ) : error && entries.length === 0 ? (

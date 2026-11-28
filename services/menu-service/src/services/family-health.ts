@@ -11,7 +11,7 @@ import { normalizeName, sameIngredient } from "./kho-suggest";
  *   Menus first use only dishes suitable for everyone; an unsuitable dish is used only when a slot cannot be filled
  *   otherwise, and then carries warnings naming the members and one alternative dish for them.
  * - Calories: the family target of a meal is the sum of the members' meal targets (Bữa sáng 25 %, trưa 40 %,
- *   tối 35 % of each TDEE; 2000 kcal for members without a profile).
+ *   tối 35 % of each TDEE; 2000 kcal for members without a profile); meal-plan.ts sizes dishes and portions from it.
  */
 export type MealKey = "breakfast" | "lunch" | "dinner";
 export type MemberHealth = {
@@ -68,14 +68,3 @@ export function familyMealTarget(health: FamilyHealth | undefined, meal: string)
   if (!health || !key) return 0;
   return health.members.reduce((sum, member) => sum + (member.mealTargets[key] ?? 0), 0);
 }
-
-/**
- * Calorie term of the meal score (subtracted from the Kho score, 0..CALORIE_WEIGHT points).
- * The meal is filled slot by slot; each dish is compared with what is left of the family target per remaining slot:
- *   perSlot = (familyTarget − kcal already planned for the meal) / slots left
- *   penalty = CALORIE_WEIGHT × min(1, |dish kcal per serving × servings − perSlot| / perSlot)
- * so the dishes of a meal add up towards the family target. Weight 20 next to the Kho score (100 × share of
- * ingredients in Kho, +15 per expiring item, −10 repeat): Kho and variety still decide, calories break close calls.
- * Dishes without calories and meals without a target get no penalty.
- */
-export { CALORIE_WEIGHT, mealCaloriePenalty as caloriePenalty, type MealCalorieGoal as CalorieGoal } from "./kho-suggest";

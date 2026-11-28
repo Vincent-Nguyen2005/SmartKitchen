@@ -67,6 +67,9 @@ const BY_NAME: Record<string, SeasoningLine[]> = {
   "Khoai tây nghiền": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn")],
   "Súp nấm kem": [line("Muối", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn")],
   "Bánh cuốn": [line("Nước mắm", "3 muỗng canh"), line("Đường", "2 muỗng canh"), line("Hạt nêm", "1/2 muỗng cà phê"), line("Tiêu", "vừa ăn"), line("Dầu ăn", "1 muỗng canh")],
+  "Mực xào chua ngọt": [line("Nước mắm", "1 muỗng canh"), line("Đường", "2 muỗng canh"), line("Giấm", "1 muỗng canh"), line("Tương cà", "2 muỗng canh"), line("Dầu ăn", "2 muỗng canh"), line("Tỏi", "1 muỗng cà phê")],
+  "Cá thu sốt cà chua": [line("Nước mắm", "2 muỗng canh"), line("Đường", "1 muỗng canh"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "3 muỗng canh")],
+  "Trứng chiên thịt": [line("Nước mắm", "1 muỗng canh"), line("Tiêu", "1/2 muỗng cà phê"), line("Dầu ăn", "2 muỗng canh")],
 };
 
 const key = (name: string) => name.normalize("NFC").trim().toLocaleLowerCase("vi");

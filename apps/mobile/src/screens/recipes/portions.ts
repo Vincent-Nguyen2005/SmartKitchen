@@ -4,8 +4,8 @@ import type { Recipe } from "./recipeTypes";
  * Portions: recipe quantities scaled to the number of people eating. Copy of menu-service
  * src/services/portions.ts (the same rules decide Kho matching and the missing list there); keep both identical.
  *
- * - people: the menu's servings (family member count when generated; personal menus 1); older menus without servings
- *   use the current family member count. Recipe servings null / 0 count as 1.
+ * - people: a dish's planned portions (calorie-based menus: details.servings; older dishes: the menu's servings, i.e.
+ *   the family member count when generated, else the current member count). Recipe servings null / 0 count as 1.
  * - Normal ingredient: quantity × people / recipe servings (unchanged when people = servings).
  * - perPerson ingredient (bánh mì, trứng ốp la, a glass of milk): each person's amount (quantity / servings) is
  *   rounded up first, then × people, so nobody gets half an egg.
@@ -55,17 +55,29 @@ export function scaleIngredients<T extends PortionIngredient>(ingredients: T[], 
 export const menuPeople = (menuServings: number | null | undefined, memberCount?: number | null): number =>
   recipeServings(menuServings ?? memberCount ?? 1);
 
+/**
+ * Planned portions ("phần") of one menu dish: calorie-based menus store them per dish (details.servings); older
+ * dishes are cooked for the menu's people. Quantities scale by these portions (one portion = one person's share).
+ */
+export const dishServings = (details: unknown, menuServings: number | null | undefined, memberCount?: number | null): number => {
+  const planned = typeof details === "object" && details !== null ? (details as { servings?: unknown }).servings : undefined;
+  return typeof planned === "number" && Number.isFinite(planned) && planned > 0 ? planned : menuPeople(menuServings, memberCount);
+};
+
 
 /**
- * The recipe with its ingredients and step ingredients scaled for `people` (dish detail and cooking mode from Lịch /
- * Nấu ăn). Sets `portionPeople` so the screens can say "cho N người". Calories stay per serving (logging = 1 portion).
+ * The recipe with its ingredients and step ingredients scaled to `portions` planned servings (dish detail and cooking
+ * mode from Lịch / Nấu ăn). `servings` becomes the planned portions, so the header ("4 phần"), the cards and cooking
+ * mode always match the scaled amounts; `portionPeople` (the family size, default = portions) keeps "cho N người".
+ * Calories stay per serving (logging = 1 portion).
  */
-export function scaleRecipe(recipe: Recipe, people: number): Recipe {
-  const servings = recipe.servings;
+export function scaleRecipe(recipe: Recipe, portions: number, people: number = portions): Recipe {
+  const base = recipe.servings;
   return {
     ...recipe,
+    servings: recipeServings(portions),
     portionPeople: recipeServings(people),
-    ingredientDetails: recipe.ingredientDetails ? scaleIngredients(recipe.ingredientDetails, servings, people) : recipe.ingredientDetails,
-    steps: recipe.steps ? recipe.steps.map((step) => ({ ...step, ingredients: scaleIngredients(step.ingredients ?? [], servings, people) })) : recipe.steps,
+    ingredientDetails: recipe.ingredientDetails ? scaleIngredients(recipe.ingredientDetails, base, portions) : recipe.ingredientDetails,
+    steps: recipe.steps ? recipe.steps.map((step) => ({ ...step, ingredients: scaleIngredients(step.ingredients ?? [], base, portions) })) : recipe.steps,
   };
 }

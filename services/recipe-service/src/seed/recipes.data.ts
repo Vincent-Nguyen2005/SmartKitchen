@@ -7,7 +7,7 @@
 export type SeedUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type SeedIngredient = { name: string; quantity: number; unit: SeedUnit };
 /** Role in a Vietnamese family meal (see recipe-service README). */
-export type SeedRole = "man" | "xao" | "canh" | "rau" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
+export type SeedRole = "man" | "xao" | "canh" | "rau" | "khai_vi" | "trang_mieng" | "sang" | "mot_mon" | "do_uong";
 /** Internal cuisine; not set = vietnam. */
 export type SeedCuisine = "vietnam" | "western" | "asian";
 export type SeedRecipe = {
@@ -363,9 +363,10 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 45, calories: 710, protein: 38, carbs: 78, fat: 27, allergens: ["gluten", "sữa"], contraindications: [],
   },
   {
-    name: "Cà ri gà kiểu Nhật", description: "Gà hầm khoai tây, cà rốt trong sốt cà ri sánh, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
-    ingredients: [g("Thịt gà", 600), pc("Khoai tây", 2), pc("Cà rốt", 1), pc("Hành tây", 1), g("Bột cà ri", 20), g("Bột mì", 30), g("Bơ lạt", 20)],
-    servings: 4, preparationMinutes: 60, calories: 410, protein: 22, carbs: 28, fat: 23, allergens: ["gluten", "sữa"], contraindications: [],
+    name: "Cà ri gà kiểu Nhật", description: "Gà hầm khoai tây, cà rốt trong sốt cà ri sánh, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "asian",
+    // A one-plate curry rice: its rice is part of the dish (75 g raw per serving, +245 kcal, +58 g carbs).
+    ingredients: [g("Thịt gà", 600), pc("Khoai tây", 2), pc("Cà rốt", 1), pc("Hành tây", 1), g("Bột cà ri", 20), g("Bột mì", 30), g("Bơ lạt", 20), g("Gạo", 300)],
+    servings: 4, preparationMinutes: 60, calories: 655, protein: 22, carbs: 86, fat: 23, allergens: ["gluten", "sữa"], contraindications: [],
   },
   {
     name: "Kimbap", description: "Cơm cuộn rong biển với trứng, cà rốt, dưa leo và xúc xích.", mealTypes: ["breakfast", "lunch"], role: "sang", cuisine: "asian",
@@ -373,7 +374,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 60, calories: 590, protein: 17, carbs: 84, fat: 20, allergens: ["trứng", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
   },
   {
-    name: "Cá hồi áp chảo", description: "Cá hồi áp chảo bơ tỏi, ăn kèm bông cải xanh.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    name: "Cá hồi áp chảo", description: "Cá hồi áp chảo bơ tỏi, ăn kèm bông cải xanh.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "western",
     ingredients: [g("Cá hồi", 300), g("Bơ lạt", 20), g("Tỏi", 10), pc("Chanh", 1), g("Bông cải xanh", 200)],
     servings: 2, preparationMinutes: 25, calories: 480, protein: 33, carbs: 9, fat: 34, allergens: ["cá", "sữa"], contraindications: [],
   },
@@ -388,7 +389,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 4, preparationMinutes: 20, calories: 125, protein: 4, carbs: 6, fat: 9, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
   },
   {
-    name: "Trứng cuộn kiểu Hàn", description: "Trứng cuộn nhiều lớp với cà rốt và hành lá.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "asian",
+    name: "Trứng cuộn kiểu Hàn", description: "Trứng cuộn nhiều lớp với cà rốt và hành lá.", mealTypes: ["lunch", "dinner"], role: "khai_vi", cuisine: "asian",
     ingredients: [pc("Trứng gà", 6), g("Cà rốt", 50), g("Hành lá", 20)],
     servings: 3, preparationMinutes: 15, calories: 190, protein: 13, carbs: 3, fat: 14, dietaryTags: ["vegetarian"], tags: ["nhanh"], allergens: ["trứng"], contraindications: [],
   },
@@ -413,7 +414,7 @@ export const seedRecipes: SeedRecipe[] = [
     servings: 3, preparationMinutes: 25, calories: 670, protein: 18, carbs: 82, fat: 29, allergens: ["trứng", "đậu nành", "gluten", "mè"], contraindications: ["Cao huyết áp", "Mỡ máu cao"],
   },
   {
-    name: "Bò bít tết", description: "Thịt bò áp chảo bơ tỏi, ăn kèm khoai tây và salad.", mealTypes: ["lunch", "dinner"], role: "man", cuisine: "western",
+    name: "Bò bít tết", description: "Thịt bò áp chảo bơ tỏi, ăn kèm khoai tây và salad.", mealTypes: ["lunch", "dinner"], role: "mot_mon", cuisine: "western",
     ingredients: [g("Thịt bò", 400), pc("Khoai tây", 1), g("Bơ lạt", 20), g("Tỏi", 10), g("Xà lách", 50), pc("Cà chua", 1)],
     servings: 2, preparationMinutes: 40, calories: 600, protein: 53, carbs: 18, fat: 35, allergens: ["sữa"], contraindications: [],
   },
@@ -427,6 +428,47 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [g("Nấm mỡ", 300), pc("Hành tây", 1), g("Bơ lạt", 20), g("Bột mì", 20), ml("Sữa tươi", 300), ml("Kem tươi", 100)],
     servings: 4, preparationMinutes: 30, calories: 215, protein: 6, carbs: 13, fat: 15, dietaryTags: ["vegetarian"], allergens: ["sữa", "gluten"], contraindications: [],
   },
+  // 2026-12: 8 common Vietnamese món mặn (data fix 2026-12-more-mon-man.js adds them to existing databases).
+  {
+    name: "Cá basa kho tiêu", description: "Cá basa kho tiêu với hành tím, nước kho sệt, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Cá basa", 600), g("Hành tím", 30), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 40, calories: 220, protein: 22, carbs: 4, fat: 13, allergens: ["cá"], contraindications: ["Cao huyết áp"],
+  },
+  {
+    name: "Gà chiên nước mắm", description: "Đùi gà chiên vàng giòn, áo sốt nước mắm tỏi.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Đùi gà", 800), g("Tỏi", 20)],
+    servings: 4, preparationMinutes: 40, calories: 390, protein: 25, carbs: 5, fat: 30, contraindications: ["Cao huyết áp", "Mỡ máu cao"],
+  },
+  {
+    name: "Bò xào hành tây", description: "Thịt bò mềm xào nhanh với hành tây và tỏi.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Thịt bò", 400), pc("Hành tây", 2), g("Tỏi", 10)],
+    servings: 4, preparationMinutes: 20, calories: 240, protein: 21, carbs: 8, fat: 14,
+  },
+  {
+    name: "Mực xào chua ngọt", description: "Mực xào với dứa, cà chua và hành tây, sốt chua ngọt.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Mực", 500), g("Dứa", 200), pc("Cà chua", 2), pc("Hành tây", 1)],
+    servings: 4, preparationMinutes: 25, calories: 235, protein: 20, carbs: 18, fat: 9, allergens: ["hải sản"], contraindications: ["Tiểu đường", "Gout"],
+  },
+  {
+    name: "Tôm rang thịt", description: "Tôm rang với thịt ba chỉ cháy cạnh, mặn ngọt đậm đà.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Tôm", 300), g("Thịt ba chỉ", 200), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 30, calories: 375, protein: 22, carbs: 4, fat: 30, allergens: ["hải sản"], contraindications: ["Gout", "Mỡ máu cao"],
+  },
+  {
+    name: "Thịt rang cháy cạnh", description: "Thịt ba chỉ rang cháy cạnh với hành tím, thơm và săn.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Thịt ba chỉ", 400), g("Hành tím", 30)],
+    servings: 4, preparationMinutes: 30, calories: 535, protein: 9, carbs: 6, fat: 53, contraindications: ["Mỡ máu cao"],
+  },
+  {
+    name: "Cá thu sốt cà chua", description: "Cá thu chiên sơ rồi om trong sốt cà chua, rắc hành lá.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Cá thu", 500), pc("Cà chua", 3), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 35, calories: 305, protein: 24, carbs: 5, fat: 21, allergens: ["cá"],
+  },
+  {
+    name: "Trứng chiên thịt", description: "Trứng gà đánh với thịt heo xay và hành lá, chiên vàng hai mặt.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [pc("Trứng gà", 6), g("Thịt heo xay", 150), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 20, calories: 240, protein: 16, carbs: 1, fat: 19, allergens: ["trứng"], contraindications: ["Mỡ máu cao"],
+  },
 ];
 
 /** Plain ingredient names (the older `ingredients` column) for a seed recipe. */
@@ -439,7 +481,7 @@ const STARTER_ROLES: Record<string, SeedRole> = {
   "Bò kho": "man", "Thịt kho trứng": "man", "Cá kho tộ": "man", "Canh chua cá": "canh", "Rau muống xào tỏi": "xao",
   "Canh bí đỏ thịt bằm": "canh", "Gà kho gừng": "man", "Đậu phụ sốt cà chua": "man", "Trứng xào cà chua": "man",
   "Bò xào bông cải xanh": "xao", "Canh rau ngót thịt bằm": "canh", "Sườn xào chua ngọt": "man", "Tôm rim": "man",
-  "Cơm chiên dương châu": "mot_mon", "Bún chả": "mot_mon", "Gỏi cuốn tôm thịt": "man", "Mực xào cần tây": "xao",
+  "Cơm chiên dương châu": "mot_mon", "Bún chả": "mot_mon", "Gỏi cuốn tôm thịt": "khai_vi", "Mực xào cần tây": "xao",
   "Canh khổ qua nhồi thịt": "canh",
 };
 

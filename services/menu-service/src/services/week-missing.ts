@@ -1,16 +1,19 @@
 import type { PrismaClient } from "../../node_modules/.prisma/client-menu";
 import type { KhoItem } from "./kho-suggest";
 import { vnDay } from "./kho-suggest";
-import { menuPeople, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
+import { dishServings, roundQuantity, scaleQuantity, type PortionIngredient } from "./portions";
+import { RICE_INGREDIENT, storedRiceGrams } from "./meal-plan";
 import { getKhoItems, getRecipes, itemDate, menuScope, type MenuOwner, type RecipeCandidate } from "./menu.service";
 
 /**
  * "Tuần này còn thiếu": ingredients the family's menus need from today through Sunday (Vietnam days) that usable
  * Kho stock does not cover. Computed on read (no stored notification, so no duplicates and nothing to invalidate).
  *
- * - Amounts are scaled ONCE to each menu's people with portions.ts (quantity × people / recipe servings; perPerson
- *   rules included) and summed per product.
+ * - Amounts are scaled ONCE to each dish's planned portions with portions.ts (calorie-based menus store them per
+ *   dish; older dishes use the menu's people; quantity × portions / recipe servings; perPerson rules included) and
+ *   summed per product.
  * - Seasonings (isSeasoning) and free-text amounts ("vừa ăn") are left out.
+ * - "Kèm cơm trắng": a meal with món mặn carries its rice as raw Gạo grams (details.riceGrams), counted once per meal.
  * - Product key: the admin catalog product (by productId on Kho rows; by exact normalized name, then English alias,
  *   for recipe ingredients), else the normalized name.
  * - Units: every recipe line and Kho row of a sold product is converted to the product's SALE unit measure:
@@ -227,10 +230,14 @@ export function dishesInRange(menus: MenuRow[], recipes: RecipeCandidate[], rang
   const byId = new Map(recipes.map((recipe) => [recipe.id, recipe]));
   const dishes: WeekDish[] = [];
   for (const menu of menus) {
-    const people = menuPeople(menu.servings, memberCount);
     for (const item of menu.items) {
       const day = itemDate(menu.startDate, item.dayOfWeek).toISOString().slice(0, 10);
       if (day < range.from || day > range.to) continue;
+      const people = dishServings(item.details, menu.servings, memberCount);
+      // "Kèm cơm trắng": the meal's rice as raw Gạo (grams, for the whole meal); older menus: from its kcal when the
+      // carrying dish is a Vietnamese món mặn.
+      const rice = storedRiceGrams(item.details, item.recipeId ? byId.get(item.recipeId) : null);
+      if (rice > 0) dishes.push({ ingredients: [{ name: RICE_INGREDIENT, quantity: rice, unit: "GRAM" }], servings: 1, people: 1 });
       const recipe = item.recipeId ? byId.get(item.recipeId) : undefined;
       if (recipe) { dishes.push({ ingredients: recipe.details, servings: recipe.servings, people }); continue; }
       const aiDish = (item.details as { aiDish?: { ingredients?: unknown; servings?: unknown } } | null)?.aiDish;

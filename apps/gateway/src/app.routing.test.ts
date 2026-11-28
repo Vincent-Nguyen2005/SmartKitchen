@@ -171,10 +171,49 @@ describe("rate limiting", () => {
     for (let index = 0; index < 3; index++) expect((await request(app).get("/api/menus/x")).status).toBe(200);
     const limited = await request(app).get("/api/menus/x");
     expect(limited.status).toBe(429);
-    expect(limited.body).toMatchObject({ error: "RATE_LIMITED", retryAfterSeconds: 60 });
+    expect(limited.body.error).toBe("RATE_LIMITED");
+    // The seconds left in the window, also as Retry-After.
+    expect(limited.body.retryAfterSeconds).toBeGreaterThan(0);
+    expect(limited.body.retryAfterSeconds).toBeLessThanOrEqual(60);
+    expect(limited.headers["retry-after"]).toBe(String(limited.body.retryAfterSeconds));
     expect(limited.headers["ratelimit-policy"] ?? limited.headers.ratelimit).toBeDefined();
     expect((await request(app).get("/api/health")).status).toBe(200);
     expect((await request(app).get("/health")).status).toBe(200);
     delete process.env.RATE_LIMIT_MAX;
+  });
+});
+
+describe("rate limiting per user", () => {
+  it("counts signed-in requests per user (not per shared IP) and anonymous ones per IP", async () => {
+    vi.resetModules();
+    process.env.RATE_LIMIT_MAX = "2";
+    process.env.USER_RATE_LIMIT_MAX = "3";
+    const jwt = (await import("jsonwebtoken")).default;
+    const secret = "rate-limit-test-secret-with-enough-length";
+    const token = (sub: string) => `Bearer ${jwt.sign({ sub, role: "USER" }, secret, { algorithm: "HS256", expiresIn: 60 })}`;
+    const { createApp: createLimitedApp } = await import("./app");
+    const app = createLimitedApp({ jwtSecret: secret });
+    // Same IP, two users: each has its own bucket of 3.
+    for (let index = 0; index < 3; index++) expect((await request(app).get("/api/menus/x").set("Authorization", token("user-a"))).status).not.toBe(429);
+    expect((await request(app).get("/api/menus/x").set("Authorization", token("user-a"))).status).toBe(429);
+    expect((await request(app).get("/api/menus/x").set("Authorization", token("user-b"))).status).not.toBe(429);
+    // Anonymous: 2 per IP.
+    expect((await request(app).get("/api/menus/x")).status).not.toBe(429);
+    expect((await request(app).get("/api/menus/x")).status).not.toBe(429);
+    expect((await request(app).get("/api/menus/x")).status).toBe(429);
+    delete process.env.RATE_LIMIT_MAX;
+    delete process.env.USER_RATE_LIMIT_MAX;
+  });
+
+  it("the auth limiter counts credential calls only (GET /api/auth/me is not limited by it)", async () => {
+    vi.resetModules();
+    process.env.AUTH_RATE_LIMIT_MAX = "2";
+    const { createApp: createLimitedApp } = await import("./app");
+    const app = createLimitedApp({ jwtSecret: null });
+    for (let index = 0; index < 4; index++) expect((await request(app).get("/api/auth/me")).status).not.toBe(429);
+    expect((await request(app).post("/api/auth/login").send({})).status).not.toBe(429);
+    expect((await request(app).post("/api/auth/login").send({})).status).not.toBe(429);
+    expect((await request(app).post("/api/auth/login").send({})).status).toBe(429);
+    delete process.env.AUTH_RATE_LIMIT_MAX;
   });
 });

@@ -67,7 +67,7 @@ export type MenuRecord = {
 export const mealLabels: Record<MealType, string> = { BREAKFAST: "Bữa sáng", LUNCH: "Bữa trưa", DINNER: "Bữa tối", SNACK: "Ăn nhẹ" };
 const mealOrder: MealType[] = ["BREAKFAST", "LUNCH", "DINNER", "SNACK"];
 /** Same order as the server's slots: breakfast dishes then the drink; mặn, canh, rau, xào, tráng miệng. */
-const ROLE_ORDER = ["sang", "mot_mon", "man", "canh", "rau", "xao", "trang_mieng", "do_uong"];
+const ROLE_ORDER = ["sang", "mot_mon", "man", "canh", "rau", "xao", "khai_vi", "trang_mieng", "do_uong"];
 const roleRank = (item: MenuItem) => {
   const index = ROLE_ORDER.indexOf(item.details?.role ?? "");
   return index < 0 ? ROLE_ORDER.indexOf("trang_mieng") - 0.5 : index;

@@ -174,7 +174,7 @@ export default function CookingMode({ recipe, onClose, onComplete }: Props): Rea
           <View style={local.headerText}>
             <Text style={local.recipeName} numberOfLines={1}>{recipe?.name ?? ""}</Text>
             <Text style={local.progressText}>
-              {steps.length > 0 ? `Bước ${index + 1}/${steps.length}` : "Chưa có các bước"}{recipe?.portionPeople ? ` · Cho ${recipe.portionPeople} người` : ""}
+              {steps.length > 0 ? `Bước ${index + 1}/${steps.length}` : "Chưa có các bước"}{recipe?.portionLabel ? ` · ${recipe.portionLabel}` : recipe?.portionPeople ? ` · Cho ${recipe.portionPeople} người` : ""}
             </Text>
           </View>
         </View>

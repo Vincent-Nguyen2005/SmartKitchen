@@ -397,12 +397,12 @@ const STEPS: Record<string, StepRow[]> = {
     ["Trộn mì với sốt, rắc phô mai bào lên trên", null, ["Phô mai"]],
   ],
   "Cà ri gà kiểu Nhật": [
-    ["Chặt gà miếng vừa ăn, ướp muối và tiêu", 900, ["Thịt gà"]],
+    ["Vo gạo nấu cơm; trong lúc chờ, chặt gà miếng vừa ăn, ướp muối và tiêu", 1800, ["Gạo", "Thịt gà"]],
     ["Gọt, cắt khoai tây, cà rốt và hành tây miếng vừa", null, ["Khoai tây", "Cà rốt", "Hành tây"]],
     ["Phi hành tây với dầu, cho gà vào xào săn", 300, []],
     ["Đổ nước ngập, cho khoai tây và cà rốt vào, hầm lửa nhỏ đến khi gà chín mềm", 1500, []],
     ["Đun chảy bơ, xào bột mì với bột cà ri cho thơm, hòa với nước hầm rồi đổ vào nồi, nêm vừa ăn", 180, ["Bơ lạt", "Bột mì", "Bột cà ri"]],
-    ["Nấu thêm đến khi sốt sánh, ăn với cơm", 300, []],
+    ["Nấu thêm đến khi sốt sánh, chan cà ri lên cơm", 300, []],
   ],
   "Kimbap": [
     ["Nấu cơm, trộn với dầu mè, chút muối và mè, để nguội bớt", 1800, ["Gạo", "Mè"]],
@@ -483,6 +483,56 @@ const STEPS: Record<string, StepRow[]> = {
     ["Rắc bột mì vào, đảo đều", 60, ["Bột mì"]],
     ["Đổ sữa tươi và nước từ từ, khuấy đều, nấu lửa nhỏ đến khi súp sánh", 600, ["Sữa tươi"]],
     ["Cho kem tươi vào, đun sôi lại, nêm vừa ăn", 120, ["Kem tươi"]],
+  ],
+  "Cá basa kho tiêu": [
+    ["Cắt cá basa khúc vừa ăn, ướp với hành tím băm, nêm nước mắm, đường, tiêu", 900, ["Cá basa", "Hành tím"]],
+    ["Thắng chút đường cho có màu cánh gián", 120, []],
+    ["Xếp cá vào nồi, thêm ít nước, kho lửa nhỏ đến khi nước sệt", 1500, []],
+    ["Rắc thêm tiêu và hành lá cắt khúc rồi tắt bếp", null, ["Hành lá"]],
+  ],
+  "Gà chiên nước mắm": [
+    ["Rửa sạch đùi gà, để ráo, khứa vài đường cho thấm", null, ["Đùi gà"]],
+    ["Chiên đùi gà lửa vừa đến khi chín và vàng giòn", 1200, []],
+    ["Phi thơm tỏi băm, nêm nước mắm và đường, khuấy đến khi sốt hơi sệt", 120, ["Tỏi"]],
+    ["Cho gà vào đảo đều đến khi sốt bám quanh miếng gà", 180, []],
+  ],
+  "Bò xào hành tây": [
+    ["Thái thịt bò mỏng ngang thớ, ướp với tỏi băm, nêm nước mắm, tiêu và chút dầu ăn", 600, ["Thịt bò", "Tỏi"]],
+    ["Cắt hành tây múi cau", null, ["Hành tây"]],
+    ["Xào bò lửa lớn đến khi vừa tái thì trút ra", 90, []],
+    ["Xào hành tây vừa chín tới, cho bò vào đảo nhanh rồi tắt bếp", 120, []],
+  ],
+  "Mực xào chua ngọt": [
+    ["Làm sạch mực, khứa vảy rồng, cắt miếng vừa ăn", null, ["Mực"]],
+    ["Cắt dứa, cà chua và hành tây miếng vừa", null, ["Dứa", "Cà chua", "Hành tây"]],
+    ["Chần mực qua nước sôi rồi vớt ra để ráo", 30, []],
+    ["Xào cà chua cho mềm, cho dứa và hành tây vào, nêm đường, giấm, nước mắm, tương cà", 180, []],
+    ["Cho mực vào đảo nhanh lửa lớn đến khi vừa chín", 120, []],
+  ],
+  "Tôm rang thịt": [
+    ["Thái thịt ba chỉ miếng mỏng, cắt râu tôm, rửa sạch", null, ["Thịt ba chỉ", "Tôm"]],
+    ["Rang thịt đến khi ra mỡ và cháy cạnh", 480, []],
+    ["Cho tôm vào rang cùng, nêm nước mắm, đường, tiêu", 300, []],
+    ["Đảo đến khi tôm đỏ và săn, rắc hành lá rồi tắt bếp", 120, ["Hành lá"]],
+  ],
+  "Thịt rang cháy cạnh": [
+    ["Thái thịt ba chỉ miếng mỏng vừa ăn", null, ["Thịt ba chỉ"]],
+    ["Rang thịt lửa vừa đến khi ra mỡ và cháy cạnh, chắt bớt mỡ", 600, []],
+    ["Cho hành tím băm vào phi thơm cùng thịt", 60, ["Hành tím"]],
+    ["Nêm nước mắm, đường, tiêu, đảo đến khi thịt săn và thấm", 300, []],
+  ],
+  "Cá thu sốt cà chua": [
+    ["Cắt cá thu khúc, rửa sạch, thấm khô", null, ["Cá thu"]],
+    ["Chiên cá vàng sơ hai mặt rồi vớt ra", 480, []],
+    ["Xào cà chua băm đến khi nhuyễn, nêm nước mắm, đường, tiêu", 300, ["Cà chua"]],
+    ["Cho cá vào om lửa nhỏ cho thấm sốt", 600, []],
+    ["Rắc hành lá cắt khúc rồi tắt bếp", null, ["Hành lá"]],
+  ],
+  "Trứng chiên thịt": [
+    ["Đập trứng vào tô, cho thịt heo xay và hành lá thái nhỏ vào", null, ["Trứng gà", "Thịt heo xay", "Hành lá"]],
+    ["Nêm nước mắm và tiêu, đánh đều", null, []],
+    ["Đổ hỗn hợp vào chảo dầu nóng, chiên lửa nhỏ đến khi mặt dưới vàng", 300, []],
+    ["Lật mặt, chiên tiếp đến khi thịt chín, cắt miếng vừa ăn", 240, []],
   ],
 };
 

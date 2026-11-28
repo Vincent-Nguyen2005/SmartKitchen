@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { createAuthCoordinator, sendWithRefresh } from "./authSession";
+import { createRequestCache, retryDelayMs } from "./requestCache";
 
 // Expo web on port 8081 and the gateway run on the same host during local development.
 const webDevGateway = Platform.OS === "web" && typeof window !== "undefined" && window.location.port === "8081"
@@ -49,7 +50,28 @@ export const NETWORK_ERROR_MESSAGE = "Không kết nối được máy chủ. Ki
  * for string bodies (FormData sets its own), a timeout, and one Vietnamese message when the network fails.
  * Callers keep their own response parsing, because each service shapes its JSON differently.
  */
+/** Identical GETs in flight / answered in the last 2 s share one response (requestCache.ts); writes clear it. */
+const getCache = createRequestCache<Response>({ ttlMs: 2000, copy: (response) => response.clone(), keep: (response) => response.ok });
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * The one transport every screen API client uses: identical GETs de-duplicated (in flight and for 2 s; not for
+ * abortable requests), one automatic retry after a 429 (waits Retry-After, at most 5 s), then sendRequest below.
+ */
 export const gatewayFetch = async (path: string, init: GatewayFetchInit = {}): Promise<Response> => {
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET") getCache.clear();
+  const once = async (): Promise<Response> => {
+    const response = await sendRequest(path, init);
+    if (response.status !== 429) return response;
+    await wait(retryDelayMs(response.headers.get("Retry-After")));
+    return sendRequest(path, init);
+  };
+  if (method !== "GET" || init.signal) return once();
+  return getCache.get(`${init.accessToken ?? ""}|${path}`, once);
+};
+
+const sendRequest = async (path: string, init: GatewayFetchInit = {}): Promise<Response> => {
   const { accessToken, timeoutMs = 15_000, headers: extra, signal, ...rest } = init;
   const send = async (token: string | undefined): Promise<Response> => {
     const headers: Record<string, string> = { Accept: "application/json", ...gatewayHeaders(), ...extra };
