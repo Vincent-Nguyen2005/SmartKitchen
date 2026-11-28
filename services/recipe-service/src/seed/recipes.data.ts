@@ -428,6 +428,47 @@ export const seedRecipes: SeedRecipe[] = [
     ingredients: [g("Nấm mỡ", 300), pc("Hành tây", 1), g("Bơ lạt", 20), g("Bột mì", 20), ml("Sữa tươi", 300), ml("Kem tươi", 100)],
     servings: 4, preparationMinutes: 30, calories: 215, protein: 6, carbs: 13, fat: 15, dietaryTags: ["vegetarian"], allergens: ["sữa", "gluten"], contraindications: [],
   },
+  // 2026-12: 8 common Vietnamese món mặn (data fix 2026-12-more-mon-man.js adds them to existing databases).
+  {
+    name: "Cá basa kho tiêu", description: "Cá basa kho tiêu với hành tím, nước kho sệt, ăn với cơm.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Cá basa", 600), g("Hành tím", 30), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 40, calories: 220, protein: 22, carbs: 4, fat: 13, allergens: ["cá"], contraindications: ["Cao huyết áp"],
+  },
+  {
+    name: "Gà chiên nước mắm", description: "Đùi gà chiên vàng giòn, áo sốt nước mắm tỏi.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Đùi gà", 800), g("Tỏi", 20)],
+    servings: 4, preparationMinutes: 40, calories: 390, protein: 25, carbs: 5, fat: 30, contraindications: ["Cao huyết áp", "Mỡ máu cao"],
+  },
+  {
+    name: "Bò xào hành tây", description: "Thịt bò mềm xào nhanh với hành tây và tỏi.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Thịt bò", 400), pc("Hành tây", 2), g("Tỏi", 10)],
+    servings: 4, preparationMinutes: 20, calories: 240, protein: 21, carbs: 8, fat: 14,
+  },
+  {
+    name: "Mực xào chua ngọt", description: "Mực xào với dứa, cà chua và hành tây, sốt chua ngọt.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Mực", 500), g("Dứa", 200), pc("Cà chua", 2), pc("Hành tây", 1)],
+    servings: 4, preparationMinutes: 25, calories: 235, protein: 20, carbs: 18, fat: 9, allergens: ["hải sản"], contraindications: ["Tiểu đường", "Gout"],
+  },
+  {
+    name: "Tôm rang thịt", description: "Tôm rang với thịt ba chỉ cháy cạnh, mặn ngọt đậm đà.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Tôm", 300), g("Thịt ba chỉ", 200), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 30, calories: 375, protein: 22, carbs: 4, fat: 30, allergens: ["hải sản"], contraindications: ["Gout", "Mỡ máu cao"],
+  },
+  {
+    name: "Thịt rang cháy cạnh", description: "Thịt ba chỉ rang cháy cạnh với hành tím, thơm và săn.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Thịt ba chỉ", 400), g("Hành tím", 30)],
+    servings: 4, preparationMinutes: 30, calories: 535, protein: 9, carbs: 6, fat: 53, contraindications: ["Mỡ máu cao"],
+  },
+  {
+    name: "Cá thu sốt cà chua", description: "Cá thu chiên sơ rồi om trong sốt cà chua, rắc hành lá.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [g("Cá thu", 500), pc("Cà chua", 3), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 35, calories: 305, protein: 24, carbs: 5, fat: 21, allergens: ["cá"],
+  },
+  {
+    name: "Trứng chiên thịt", description: "Trứng gà đánh với thịt heo xay và hành lá, chiên vàng hai mặt.", mealTypes: ["lunch", "dinner"], role: "man",
+    ingredients: [pc("Trứng gà", 6), g("Thịt heo xay", 150), g("Hành lá", 20)],
+    servings: 4, preparationMinutes: 20, calories: 240, protein: 16, carbs: 1, fat: 19, allergens: ["trứng"], contraindications: ["Mỡ máu cao"],
+  },
 ];
 
 /** Plain ingredient names (the older `ingredients` column) for a seed recipe. */

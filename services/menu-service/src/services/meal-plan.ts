@@ -63,7 +63,8 @@ export const SLOT_ROLES: Record<"main" | "one_dish" | "veg" | "side" | "breakfas
   main: ["man"],
   one_dish: ["mot_mon", null],
   veg: ["canh", "rau"],
-  side: ["xao", "khai_vi", "man"],
+  // Extra dishes are never a món mặn: only xào, khai vị, canh or rau (same pairing rules).
+  side: ["xao", "khai_vi", "canh", "rau"],
   breakfast: ["sang", "mot_mon", null],
   drink: ["do_uong"],
 };
@@ -226,7 +227,7 @@ export function planMeal<T>(
     if (target > 0 && !unknownKcal && sized.kcal < FLOOR_SHARE * target && take(roles, "side", constraint)) sized = size(rice);
     return sized;
   };
-  if (main.cuisine !== "vietnam") return finish(0, addSides(["canh", "rau", "xao", "khai_vi", "man"], { cuisine: main.cuisine }, 0));
+  if (main.cuisine !== "vietnam") return finish(0, addSides(["canh", "rau", "xao", "khai_vi"], { cuisine: main.cuisine }, 0));
   const rice = Math.round(RICE_SHARE * target);
   take(SLOT_ROLES.veg, "veg", { cuisine: "vietnam" });
   return finish(rice, addSides(SLOT_ROLES.side, { cuisine: "vietnam" }, rice));

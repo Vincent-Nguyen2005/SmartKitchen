@@ -508,3 +508,28 @@ test("caps relax only when the catalog can't satisfy them: only một món dishe
   assert.equal(mains.length >= 2, true, mains.join());
   assert.equal(mains.includes("bun-tom"), false);
 });
+
+test("a món mặn is never a meal's extra dish: sides come only from xào, khai vị, canh or rau", async () => {
+  // Light dishes everywhere so every meal needs extras; the only heavy option left is another món mặn.
+  const recipes = [
+    recipe("ca-kho", "man", 200, ["lunch", "dinner"]), recipe("thit-kho", "man", 650, ["lunch", "dinner"]), recipe("bo-kho", "man", 690, ["lunch", "dinner"]),
+    recipe("rau-luoc", "rau", 25, ["lunch", "dinner"]), recipe("canh-rau", "canh", 60, ["lunch", "dinner"]),
+    recipe("cai-xao", "xao", 120, ["lunch", "dinner"]), recipe("goi-cuon", "khai_vi", 200, ["lunch", "dinner"]),
+  ];
+  const { client, items } = captureClient();
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes, inventoryItems: [], preferences: { mealTypes: ["LUNCH", "DINNER"] } }, client);
+  for (const meal of ["LUNCH", "DINNER"]) {
+    const dishes = items().filter((item) => item.mealType === meal);
+    assert.equal(dishes.filter((item) => item.details.role === "man").length, 1, `${meal}: ${dishes.map((item) => item.recipeId).join()}`);
+    for (const extra of dishes.slice(1)) assert.ok(["xao", "khai_vi", "canh", "rau"].includes(extra.details.role as string), `${meal}: ${extra.recipeId}`);
+  }
+  // planMeal: with only món mặn left as "extras", no side is added at all.
+  const used = new Set<string>();
+  const onlyMains = planMeal("DINNER", 4, 3200, (roles) => {
+    const found = [{ id: "a", role: "man", kcal: 150 }, { id: "b", role: "man", kcal: 600 }].find((dish) => !used.has(dish.id) && roles.includes(dish.role));
+    if (!found) return null;
+    used.add(found.id);
+    return { value: found.id, role: found.role, kcal: found.kcal, cuisine: "vietnam" };
+  });
+  assert.deepEqual(onlyMains.dishes.map((dish) => dish.pick), ["a"]);
+});

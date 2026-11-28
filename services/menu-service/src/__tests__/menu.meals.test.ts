@@ -47,7 +47,8 @@ test("day menu: calorie-based dish counts (breakfast 1–2, lunch / dinner a mai
     assert.ok(roles.length >= 2 && roles.length <= 3, roles.join());
     assert.equal(roles[0], "man");
     assert.ok(["canh", "rau"].includes(roles[1]), roles.join());
-    if (roles.length === 3) assert.ok(["xao", "man"].includes(roles[2]), roles.join());
+    // Extra dishes are never a món mặn.
+    for (const extra of roles.slice(2)) assert.ok(["xao", "khai_vi", "canh", "rau"].includes(extra), roles.join());
   }
   assert.equal(new Set(items.map((item) => item.recipeId)).size, items.length);
   // The dish whose ingredients are in Kho wins the first món mặn slot.

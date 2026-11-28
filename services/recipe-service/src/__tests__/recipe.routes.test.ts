@@ -47,8 +47,9 @@ test("structured ingredients fill the plain names when they are not sent", () =>
   assert.equal(createRecipeSchema.safeParse({ name: "Sai đơn vị", ingredientDetails: [{ name: "Gạo", quantity: 1, unit: "cup" }] }).success, false);
 });
 
-test("starter catalog: 40-80 unique Vietnamese dishes with valid ingredients, meals and nutrition", () => {
-  assert.ok(seedRecipes.length >= 40 && seedRecipes.length <= 80, String(seedRecipes.length));
+test("starter catalog: 40-100 unique dishes with valid ingredients, meals and nutrition", () => {
+  // 85 since the 2026-12 món mặn additions (calorie-based menus need enough mains for a varied week).
+  assert.ok(seedRecipes.length >= 40 && seedRecipes.length <= 100, String(seedRecipes.length));
   assert.equal(new Set(seedRecipes.map((recipe) => recipe.name)).size, seedRecipes.length);
   for (const meal of ["breakfast", "lunch", "dinner"] as const) {
     assert.ok(seedRecipes.filter((recipe) => recipe.mealTypes.includes(meal)).length >= 5, meal);
