@@ -541,6 +541,59 @@ function selectedMealTypes(preferences: JsonRecord): MealType[] {
 }
 
 const FIT_WEIGHT = CALORIE_WEIGHT / 2;
+
+/**
+ * Variety windows (days before AND after `day`, any meal; the saved days around and the days generated earlier in
+ * the same request are in `history`):
+ * - a main (món mặn / một món, lunch or dinner): not planned within ±6 days (no repeat in 7 days),
+ * - a canh / rau / side: not within ±2 days (no repeat in 3 days),
+ * - a breakfast dish: not within ±3 days (4 days), and not the same family (bánh mì, bún, phở, xôi, cháo, mì…) on
+ *   the day before or after.
+ * Relaxed only when the catalog cannot satisfy them, in this order: (1) all rules, (2) without the breakfast family
+ * rule, (3) half the window, (4) only not on the day before / after, (5) anything not already in the day.
+ */
+export const VARIETY_WINDOWS = { main: 6, side: 2, breakfast: 3 } as const;
+const FAMILY_PREFIXES = ["banh mi", "banh cuon", "banh canh", "hu tieu", "bun", "pho", "xoi", "chao", "mi", "com"];
+/** "Bánh mì chảo" / "Bánh mì trứng ốp la" → "banh mi"; dishes outside the known families are their own family. */
+export function dishFamily(name: string): string {
+  const key = name.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase().trim();
+  return FAMILY_PREFIXES.find((prefix) => key === prefix || key.startsWith(`${prefix} `)) ?? key;
+}
+
+export function variedCandidates(
+  open: SuggestRecipe[],
+  context: { meal: string; slot: Slot; day: string; history: MealHistory; familyOf?: (recipeId: string) => string },
+): SuggestRecipe[] {
+  const breakfast = context.meal.toUpperCase() === "BREAKFAST";
+  const window = breakfast ? VARIETY_WINDOWS.breakfast : context.slot === "main" || context.slot === "one_dish" ? VARIETY_WINDOWS.main : VARIETY_WINDOWS.side;
+  const familyOf = context.familyOf ?? ((id: string) => id);
+  const nearFamilies = new Set<string>();
+  if (breakfast) {
+    const start = Date.parse(`${context.day}T00:00:00Z`);
+    for (const offset of [-1, 1]) {
+      const other = new Date(start + offset * 86_400_000).toISOString().slice(0, 10);
+      context.history.get(`${other}|BREAKFAST`)?.forEach((id) => nearFamilies.add(familyOf(id)));
+    }
+  }
+  const tiers: Array<{ window: number; family: boolean }> = [
+    { window, family: breakfast },
+    { window, family: false },
+    { window: Math.ceil(window / 2), family: false },
+    { window: 1, family: false },
+  ];
+  // Relaxed tiers spread the unavoidable repeats: only the dishes used least often in the surrounding week stay.
+  const leastUsed = (list: SuggestRecipe[]) => {
+    const uses = list.map((recipe) => usesAnyMeal(context.history, context.day, recipe.id, VARIETY_WINDOWS.main));
+    const fewest = Math.min(...uses);
+    return list.filter((_, index) => uses[index] === fewest);
+  };
+  for (const [index, tier] of tiers.entries()) {
+    const fits = open.filter((recipe) => usesAnyMeal(context.history, context.day, recipe.id, tier.window) === 0
+      && (!tier.family || !nearFamilies.has(familyOf(recipe.id))));
+    if (fits.length > 0) return index === 0 ? fits : leastUsed(fits);
+  }
+  return open.length > 0 ? leastUsed(open) : open;
+}
 const PLANNED_MEALS = ["BREAKFAST", "LUNCH", "DINNER"];
 /** Times a recipe is planned in any meal within `distance` days before or after `day` (the day itself excluded). */
 function usesAnyMeal(history: MealHistory, day: string, recipeId: string, distance: number): number {
@@ -577,6 +630,8 @@ function pickForSlot(input: {
   meal: string; roles: Array<string | null>; slot: Slot; goal: number; people: number; constraint?: PickConstraint;
   pool: SuggestRecipe[]; fallbackPool: SuggestRecipe[]; kho: KhoItem[]; today: string; day: string;
   recentRecipeIds: ReadonlySet<string>; usedIds: Set<string>; excludeIds: ReadonlySet<string>; history: MealHistory; foreign: ForeignCount;
+  /** Breakfast "family" of a recipe id (bánh mì, bún, phở…), for the breakfast rotation. */
+  familyOf?: (recipeId: string) => string;
 }): DishSuggestion | null {
   const constraint = input.constraint ?? {};
   // A side that accompanies a foreign main is part of that one foreign meal: it does not count against the caps.
@@ -595,11 +650,8 @@ function pickForSlot(input: {
       && (accompaniesForeign || withinForeignCap(recipe, input.foreign, input.meal)) && input.roles.includes(recipe.role ?? null)
       && (constraint.cuisine === undefined || cuisineOf(recipe.cuisine) === constraint.cuisine)
       && (constraint.maxKcal === undefined || (recipe.calories ?? 0) <= constraint.maxKcal));
-    const varied = varietyPool(open, input.meal, input.day, input.history);
-    // Fewer dishes per meal → variety across the whole week too: prefer dishes not planned in ANY meal within 2 days
-    // and planned at most once more in the week (falls back to the per-meal rule when nothing else fits).
-    const weekVaried = varied.filter((recipe) => usesAnyMeal(input.history, input.day, recipe.id, 2) === 0 && usesAnyMeal(input.history, input.day, recipe.id, 6) < 2);
-    return best(weekVaried.length > 0 ? weekVaried : varied, input.kho, { today: input.today, recentRecipeIds: input.recentRecipeIds },
+    const varied = variedCandidates(open, { meal: input.meal, slot: input.slot, day: input.day, history: input.history, familyOf: input.familyOf });
+    return best(varied, input.kho, { today: input.today, recentRecipeIds: input.recentRecipeIds },
       `${input.day}:${input.meal.toLowerCase()}:${input.slot}`, penalty);
   };
   const none = new Set<string>();
@@ -657,6 +709,9 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
   // People eating (portions start from one per person): the family's member count, else the known members, else 1.
   const eaters = people ?? Math.max(1, input.health?.members.length ?? 1);
   const candidateById = new Map(constrained.map((recipe) => [recipe.id, recipe]));
+  // Breakfast rotation: the "family" of every known recipe (dishes on saved days included).
+  const families = new Map(recipes.map((recipe) => [recipe.id, dishFamily(recipe.name)]));
+  const familyOf = (recipeId: string) => families.get(recipeId) ?? recipeId;
 
   const history = await recentDishes(client, { userId: input.userId, familyId: input.familyId }, startDate);
   // Variety: the same meal on the days before and after (saved menus), plus the days generated in this request.
@@ -687,7 +742,7 @@ export async function generateMenu(rawInput: GenerateMenuInput, client: PrismaCl
       for (const meal of mealTypes) {
         const goal = mealTarget(input.health, meal, eaters);
         const plan = planMeal(meal, eaters, goal, (roles, slot, constraint) => {
-          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, constraint, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday });
+          const pick = pickForSlot({ meal, roles, slot, goal, people: eaters, constraint, pool, fallbackPool, kho, today, day: dayKey(date), recentRecipeIds, usedIds: chosenToday, excludeIds, history: variety, foreign: foreignToday, familyOf });
           return pick ? { value: pick, role: pick.recipe.role ?? null, kcal: pick.recipe.calories, cuisine: pick.recipe.cuisine } : null;
         });
         plan.dishes.forEach((dish, index) => {

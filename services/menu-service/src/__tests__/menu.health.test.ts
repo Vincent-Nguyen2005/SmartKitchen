@@ -96,9 +96,11 @@ test("calories: portions follow the family target (sum of members' meal targets)
     const main = items()[0].details as { servings: number; riceKcal: number; mealTarget: number };
     return { servings: main.servings, total: main.servings * 300 + main.riceKcal, target: main.mealTarget };
   };
-  // Family target 800: rice 280, the dish 2 × 300 → 880 (110 %); 2000: rice 700, 4 × 300 → 1900 (95 %).
+  // Family target 800: rice 280, the dish 2 × 300 → 880 (110 %). Target 2000: rice 700, the dish is capped at
+  // 1,5 per person (3 × 300) → 1600 (80 %): no side exists in this catalog, so the meal ends under target instead of
+  // inflating the main.
   assert.deepEqual(await portions(400), { servings: 2, total: 880, target: 800 });
-  assert.deepEqual(await portions(1000), { servings: 4, total: 1900, target: 2000 });
+  assert.deepEqual(await portions(1000), { servings: 3, total: 1600, target: 2000 });
 });
 
 test("swap: the replacement never contains a member's allergen", async () => {

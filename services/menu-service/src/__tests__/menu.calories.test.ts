@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PeriodType, PrismaClient } from "../../node_modules/.prisma/client-menu";
-import { generateDays, generateMenu, removeMenuItem } from "../services/menu.service";
+import { dishFamily, generateDays, generateMenu, removeMenuItem, variedCandidates } from "../services/menu.service";
 import { defaultMealTargets, type FamilyHealth, type MemberHealth } from "../services/family-health";
 import { allocatePortions, MAX_SHARE, mealTarget, MIN_SHARE, planMeal, replanServings, RICE_SHARE, riceGrams, servingBounds } from "../services/meal-plan";
 import { dishServings } from "../services/portions";
@@ -328,8 +328,9 @@ test("sensible combinations: foreign main without Vietnamese canh / rau or rice;
   const korean = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "ga-han", role: "man", kcal: 400, cuisine: "asian" }, ...vnSides, { id: "canh-kimchi", role: "canh", kcal: 190, cuisine: "asian" }]));
   assert.equal(korean.riceKcal, 0);
   assert.ok(korean.dishes.every((dish) => !["canh-chua", "rau-muong", "dau-xao"].includes(dish.pick)), korean.dishes.map((dish) => dish.pick).join());
-  // 400 × 8 (2 per person) = 3200: enough, so no side.
-  assert.deepEqual(korean.dishes.map((dish) => dish.pick), ["ga-han"]);
+  // Capped at 1,5 per person: 400 × 6 = 2400 (75 %) → one Korean side, never a Vietnamese one, still no rice.
+  assert.deepEqual(korean.dishes.map((dish) => dish.pick), ["ga-han", "canh-kimchi"]);
+  assert.ok(korean.dishes[0].servings <= 6);
   const lightKorean = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "trung-cuon", role: "man", kcal: 190, cuisine: "asian" }, ...vnSides, { id: "canh-kimchi", role: "canh", kcal: 190, cuisine: "asian" }]));
   assert.deepEqual(lightKorean.dishes.map((dish) => dish.pick), ["trung-cuon", "canh-kimchi"]);
   // One-plate (Bò bít tết with fries): alone, no rice; a light western side only when short, never a Vietnamese one.
@@ -361,4 +362,69 @@ test("older saved menus (rice kcal only): Gạo counts only when the meal's món
   const rice = dishesInRange(menus, recipes, { from: "2026-11-24", to: "2026-11-30" }).filter((dish) => dish.ingredients[0].name === "Gạo");
   // Only Bò kho's meal: 1054 ÷ 3,25 → 330 g.
   assert.deepEqual(rice.map((dish) => dish.ingredients[0].quantity), [330]);
+});
+
+test("variety windows consider saved days before AND after: main 7 days, canh / rau 3 days, breakfast 4 days + family", async () => {
+  const day = (offset: number) => new Date(DAY.getTime() + offset * 86_400_000);
+  const weekday = (date: Date) => ((date.getUTCDay() + 6) % 7) + 1;
+  const saved = (offset: number, items: Array<[string, string]>) => ({ startDate: day(offset), endDate: day(offset), items: items.map(([mealType, recipeId]) => ({ recipeId, mealType, dayOfWeek: weekday(day(offset)), details: {} })) });
+  const history = [
+    saved(-5, [["DINNER", "man-a"]]), saved(3, [["LUNCH", "man-b"]]),            // mains within ±6 days
+    saved(-2, [["LUNCH", "canh-c"]]), saved(-3, [["DINNER", "canh-e"]]),          // canh 2 days before (blocked), 3 days before (allowed)
+    saved(-1, [["BREAKFAST", "banh-mi-trung"]]), saved(-4, [["BREAKFAST", "pho"]]), // breakfast family and 4-day window
+  ];
+  const recipes = [
+    recipe("man-a", "man", 400, ["lunch", "dinner"]), recipe("man-b", "man", 400, ["lunch", "dinner"]), recipe("man-f", "man", 400, ["lunch", "dinner"]),
+    recipe("canh-c", "canh", 180, ["lunch", "dinner"]), recipe("canh-e", "canh", 180, ["lunch", "dinner"]),
+    { ...recipe("banh-mi-cha", "sang", 500, ["breakfast"]), name: "Bánh mì chả" }, { ...recipe("banh-mi-trung", "sang", 500, ["breakfast"]), name: "Bánh mì trứng" },
+    { ...recipe("pho", "mot_mon", 500, ["breakfast"]), name: "Phở bò" }, { ...recipe("xoi", "sang", 500, ["breakfast"]), name: "Xôi gà" },
+  ];
+  const { client, items } = captureClient();
+  const withSaved = { ...(client as unknown as Record<string, unknown>), menu: { ...(client as unknown as { menu: Record<string, unknown> }).menu, findMany: async () => history } } as unknown as PrismaClient;
+  await generateMenu({ ...dayInput, owner: owner4, health: family4, recipes, inventoryItems: [], preferences: { mealTypes: ["BREAKFAST", "LUNCH"] } }, withSaved);
+  const lunch = items().filter((item) => item.mealType === "LUNCH").map((item) => item.recipeId);
+  const breakfast = items().filter((item) => item.mealType === "BREAKFAST").map((item) => item.recipeId);
+  assert.equal(lunch[0], "man-f", "man-a (5 days before) and man-b (3 days after) are within 7 days");
+  assert.equal(lunch[1], "canh-e", "canh-c was 2 days before; canh-e 3 days before is allowed");
+  // Bánh mì yesterday → no bánh mì today; phở was 4 days ago (outside ±3) but xôi is just as free: never a bánh mì.
+  assert.ok(!["banh-mi-cha", "banh-mi-trung"].includes(breakfast[0] ?? ""), breakfast.join());
+});
+
+test("small catalog: the windows relax step by step instead of leaving a meal empty", () => {
+  const history = new Map<string, Set<string>>([["2026-11-23|LUNCH", new Set(["only-main"])], ["2026-11-25|DINNER", new Set(["only-main"])]]);
+  const open = [{ id: "only-main", name: "Thịt kho", imageUrl: null, calories: 400, mealTypes: [], tags: [], ingredients: [], role: "man" }];
+  // Used the day before and after: every tier fails, the dish is still offered (the meal is never left empty).
+  assert.deepEqual(variedCandidates(open, { meal: "LUNCH", slot: "main", day: "2026-11-24", history }).map((recipe) => recipe.id), ["only-main"]);
+  // Two candidates: the one outside the window wins at the strictest tier.
+  const two = [...open, { ...open[0], id: "other-main" }];
+  assert.deepEqual(variedCandidates(two, { meal: "LUNCH", slot: "main", day: "2026-11-24", history }).map((recipe) => recipe.id), ["other-main"]);
+  assert.equal(dishFamily("Bánh mì trứng ốp la"), "banh mi");
+  assert.equal(dishFamily("Bún bò Huế"), "bun");
+  assert.equal(dishFamily("Bánh cuốn"), "banh cuon");
+});
+
+test("portion caps: main ≤ 1,5 / person, canh / rau ≤ 1,5, side ≤ 1, one-dish breakfast ±25 %; a second side only below the 85 % floor", () => {
+  assert.deepEqual(servingBounds("main", 4), [2, 6]);
+  assert.deepEqual(servingBounds("one_dish", 4), [3, 6]);
+  assert.deepEqual(servingBounds("veg", 4), [2, 6]);
+  assert.deepEqual(servingBounds("side", 4), [2, 4]);
+  assert.deepEqual(servingBounds("breakfast_single", 4), [3, 5]);
+  // A very light main never inflates beyond its cap.
+  assert.ok(allocatePortions([{ kcal: 100, slot: "main" }, { kcal: 30, slot: "veg" }], 2000, 4).every((servings, index) => servings <= [6, 6][index]));
+  const pickFrom = (dishes: Array<{ id: string; role: string; kcal: number }>) => {
+    const used = new Set<string>();
+    return (roles: Array<string | null>) => {
+      const found = dishes.find((dish) => !used.has(dish.id) && roles.includes(dish.role));
+      if (!found) return null;
+      used.add(found.id);
+      return { value: found.id, role: found.role, kcal: found.kcal, cuisine: "vietnam" };
+    };
+  };
+  // Light dishes: main 6 × 200 + rau 6 × 40 + rice 1120 = 2560 (80 %) → side 4 × 150 → 3160 (99 %): one side is enough.
+  const one = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "man", role: "man", kcal: 200 }, { id: "rau", role: "rau", kcal: 40 }, { id: "xao1", role: "xao", kcal: 150 }, { id: "xao2", role: "xao", kcal: 150 }]));
+  assert.deepEqual(one.dishes.map((dish) => dish.pick), ["man", "rau", "xao1"]);
+  // Even lighter: after one side still under 85 % → a second side; never more, and no dish above its cap.
+  const two = planMeal("LUNCH", 4, 3200, pickFrom([{ id: "man", role: "man", kcal: 120 }, { id: "rau", role: "rau", kcal: 30 }, { id: "xao1", role: "xao", kcal: 60 }, { id: "xao2", role: "xao", kcal: 120 }, { id: "xao3", role: "xao", kcal: 200 }]));
+  assert.deepEqual(two.dishes.map((dish) => dish.pick), ["man", "rau", "xao1", "xao2"]);
+  for (const dish of two.dishes) assert.ok(dish.servings <= servingBounds(dish.slot, 4)[1], `${dish.pick} ${dish.servings}`);
 });

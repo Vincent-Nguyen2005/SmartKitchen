@@ -45,13 +45,18 @@ export function storedRiceGrams(details: unknown, carrier?: { role?: string | nu
   return kcal > 0 && carrier?.role === "man" && (carrier.cuisine ?? "vietnam") === "vietnam" ? riceGrams(kcal) : 0;
 }
 export const MIN_SHARE = 0.9;
+/**
+ * After the caps, a meal may end slightly under target: below MIN_SHARE (90 %) one allowed side is added; if it is
+ * still below FLOOR_SHARE (85 %), one more (lunch / dinner with a món mặn). No dish is ever sized above its cap.
+ */
+export const FLOOR_SHARE = 0.85;
 export const MAX_SHARE = 1.15;
 
 export type Slot = "main" | "one_dish" | "veg" | "side" | "breakfast" | "breakfast_single" | "drink";
 export const SLOT_WEIGHTS: Record<Slot, number> = { main: 0.5, one_dish: 0.5, veg: 0.3, side: 0.2, breakfast: 0.75, breakfast_single: 1, drink: 0.25 };
 /** Servings per person [min, max] for each slot. */
 export const SERVING_BOUNDS: Record<Slot, [number, number]> = {
-  main: [0.5, 2], one_dish: [0.75, 2], veg: [0.5, 1.5], side: [0.5, 1.5], breakfast: [0.5, 1.5], breakfast_single: [0.75, 1.25], drink: [0.5, 1.25],
+  main: [0.5, 1.5], one_dish: [0.75, 1.5], veg: [0.5, 1.5], side: [0.5, 1], breakfast: [0.5, 1.5], breakfast_single: [0.75, 1.25], drink: [0.5, 1.25],
 };
 /** Recipe roles each slot takes, in order of preference (null = an unclassified recipe). */
 export const SLOT_ROLES: Record<"main" | "one_dish" | "veg" | "side" | "breakfast" | "drink", Array<string | null>> = {
@@ -214,16 +219,17 @@ export function planMeal<T>(
     if (!reached(sized.kcal) && take(["rau", "canh"], "side", { cuisine: main.cuisine, maxKcal: LIGHT_SIDE_KCAL })) sized = size(0);
     return finish(0, sized);
   }
-  if (main.cuisine !== "vietnam") {
-    let sized = size(0);
-    if (!reached(sized.kcal) && take(["canh", "rau", "xao", "man"], "side", { cuisine: main.cuisine })) sized = size(0);
-    return finish(0, sized);
-  }
+  // Sides (same pairing rules): one below 90 %, a second one only below the 85 % floor.
+  const addSides = (roles: Array<string | null>, constraint: PickConstraint, rice: number) => {
+    let sized = size(rice);
+    if (!reached(sized.kcal) && take(roles, "side", constraint)) sized = size(rice);
+    if (target > 0 && !unknownKcal && sized.kcal < FLOOR_SHARE * target && take(roles, "side", constraint)) sized = size(rice);
+    return sized;
+  };
+  if (main.cuisine !== "vietnam") return finish(0, addSides(["canh", "rau", "xao", "man"], { cuisine: main.cuisine }, 0));
   const rice = Math.round(RICE_SHARE * target);
   take(SLOT_ROLES.veg, "veg", { cuisine: "vietnam" });
-  let sized = size(rice);
-  if (!reached(sized.kcal) && take(SLOT_ROLES.side, "side", { cuisine: "vietnam" })) sized = size(rice);
-  return finish(rice, sized);
+  return finish(rice, addSides(SLOT_ROLES.side, { cuisine: "vietnam" }, rice));
 }
 
 /**
