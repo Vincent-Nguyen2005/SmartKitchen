@@ -23,12 +23,14 @@ describe("AlertsService", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-06T12:30:00.000Z"));
     vi.resetAllMocks();
+    // These cases list items up to 3 days after expiry (grace 3); the default-0 cases are in kho-expiry.test.ts.
+    process.env.KHO_EXPIRED_GRACE_DAYS = "3";
     prismaMock.$transaction.mockImplementation((callback: (tx: typeof transaction) => Promise<unknown>) => callback(transaction));
     transaction.foodItem.updateMany.mockResolvedValue({ count: 1 });
     transaction.inventoryLog.create.mockResolvedValue({ id: "log-1" });
   });
 
-  afterEach(() => vi.useRealTimers());
+  afterEach(() => { vi.useRealTimers(); delete process.env.KHO_EXPIRED_GRACE_DAYS; });
 
   it("refreshes expired, near-expiry and restored-fresh statuses within the requested family", async () => {
     transaction.foodItem.findMany.mockResolvedValue([
@@ -81,7 +83,7 @@ describe("AlertsService", () => {
     }));
   });
 
-  it("leaves out consumed, discarded, deleted, Đang giao and auto-hidden bought rows (in the query)", async () => {
+  it("leaves out consumed, discarded, deleted, Đang giao and rows past the grace days, every origin (in the query)", async () => {
     prismaMock.foodItem.findMany.mockResolvedValue([]);
     await AlertsService.getExpiringItems({ familyId, days: 3 });
     const where = prismaMock.foodItem.findMany.mock.calls[0][0].where;
@@ -90,7 +92,7 @@ describe("AlertsService", () => {
       quantity: { gt: 0 },
       status: { notIn: ["CONSUMED", "DISCARDED"] },
       deliveryOrderId: null,
-      NOT: { origin: "PURCHASE", expiryDate: { not: null, lt: new Date("2026-11-03T00:00:00.000Z") } },
+      NOT: { expiryDate: { not: null, lt: new Date("2026-11-03T00:00:00.000Z") } },
     });
   });
 

@@ -18,7 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Archive, Camera, ImageMinus, Search, Trash2, Truck, X } from "lucide-react-native";
 import { AppIcon, colors, fontFamily, IconButton, spacing, textStyles, touchTarget, typography } from "../../theme";
 import { createAutoSaver, type AutoSaveState } from "../../services/autoSave";
-import { lockedPatch, manualPatch, type ItemField, type ItemFields } from "./itemForm";
+import { manualPatch, type ItemField, type ItemFields } from "./itemForm";
 import { RadioDropdown } from "../../components/RadioDropdown";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { EmptyState } from "../notifications/ui";
@@ -26,18 +26,13 @@ import { CardCaption, cardImageStyle, ImagePlaceholder, ProductCard, useCardGrid
 import { SEARCH_CONTENT_GAP, SEARCH_MAX_WIDTH, SearchHeader } from "../../components/SearchBar";
 import { FoodItem } from "./types";
 import { useSession } from "../../services/session";
-import { InventoryLocation, inventoryApi } from "./inventoryApi";
+import { inventoryApi } from "./inventoryApi";
 import { CAMERA_PERMISSION_TEXT, InventoryPhoto, takeItemPhoto, type PhotoPickResult } from "./inventoryPhoto";
 import { photoUploadErrorMessage } from "./photoUpload";
 import { filterByName } from "../../services/localSearch";
 import { catalogImageFor, catalogUnitLabelFor, useCatalogImages } from "./catalogImages";
 import { choiceFor, choiceLabel, kitchenAmount, UNIT_CHOICES } from "./unitChoices";
-import { expiryInfo } from "./expiry";
-
-const inventoryLocations: InventoryLocation[] = ["FRIDGE", "FREEZER", "PANTRY", "COUNTER"];
-const inventoryLocationLabels: Record<InventoryLocation, string> = {
-  FRIDGE: "Tủ lạnh", FREEZER: "Ngăn đông", PANTRY: "Tủ đựng thực phẩm", COUNTER: "Kệ bếp",
-};
+import { expiryInfo, listedInKho } from "./expiry";
 
 function formatDateDdMmYyyy(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -46,7 +41,7 @@ function formatDateDdMmYyyy(value: string): string {
 
 /** Đi chợ order not delivered yet: dimmed, "Đang giao", nothing can be changed until it arrives. */
 export const isPendingDelivery = (item: FoodItem): boolean => Boolean(item.deliveryOrderId);
-/** Bought in Đi chợ: only the storage place can change (no photo, no delete); cooking lowers the quantity. */
+/** Bought in Đi chợ: read-only (info + ✕; no edit, photo or delete); cooking lowers the quantity. */
 const isLocked = (item: FoodItem): boolean => item.origin === "PURCHASE";
 /** One line for a bought item: "Mua ở Đi chợ ngày 28/11/2026 · Tự trừ khi nấu". */
 const lockedNote = (item: FoodItem): string =>
@@ -79,12 +74,14 @@ export default function InventoryListScreen({
   const horizontalPadding = isCompact ? spacing.lg : isWide ? spacing.xl : spacing.xl;
   const cardGrid = useCardGrid();
   const [items, setItems] = useState<FoodItem[]>([]);
+  // Days an expired item stays listed (dimmed); the server's KHO_EXPIRED_GRACE_DAYS, sent with the list.
+  const [graceDays, setGraceDays] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [activeItem, setActiveItem] = useState<FoodItem | null>(null);
   // The sheet auto-saves (services/autoSave.ts): text after 600 ms or on blur, dropdowns at once, pending on close.
-  const [fields, setFields] = useState<ItemFields>({ name: "", quantity: "", unit: "cái", location: "FRIDGE", expiry: "" });
+  const [fields, setFields] = useState<ItemFields>({ name: "", quantity: "", unit: "cái", expiry: "" });
   const [saveState, setSaveState] = useState<AutoSaveState>({ status: "idle", error: null, field: null });
   const saver = useRef<ReturnType<typeof createAutoSaver<ItemFields>> | null>(null);
   // Picker value: a specific word (gói, quả, kg...) mapped to the stored unit + piece word on save (unitChoices.ts).
@@ -117,6 +114,7 @@ export default function InventoryListScreen({
       // Expiry alerts are shown in Thông báo now (same inventory alerts API), not on this screen.
       const data = await inventoryApi.list(accessToken, family.id);
       setItems(data.items);
+      setGraceDays(data.expiredGraceDays);
     } catch (err: any) {
       setError(err.message || "Không kết nối được API");
     } finally {
@@ -140,8 +138,9 @@ export default function InventoryListScreen({
 
   const filteredItems = useMemo(() => {
     // Case- and accent-insensitive on the loaded items ("ca rot" finds "Cà rốt"); typing sends no request.
-    return filterByName(items, search);
-  }, [items, search]);
+    // An item that passed its grace days while the list was open leaves it too (same rule as the server).
+    return filterByName(listedInKho(items, graceDays), search);
+  }, [items, search, graceDays]);
 
   // A new search shows its results from the top.
   const listRef = useRef<FlatList<FoodItem>>(null);
@@ -153,21 +152,22 @@ export default function InventoryListScreen({
       name: item.name,
       quantity: String(item.quantity),
       unit: choiceLabel(item.unit, catalogUnitLabelFor(item, catalogImages) ?? item.unitLabel),
-      location: item.storageLocation as InventoryLocation,
       expiry: item.expiryDate ? formatDateDdMmYyyy(item.expiryDate) : "",
     };
     setActiveItem(item);
     setPhotoError(null);
     setFields(initial);
     setSaveState({ status: "idle", error: null, field: null });
+    // Bought items are read-only: nothing to save.
+    if (isLocked(item)) { saver.current = null; return; }
     saver.current = createAutoSaver<ItemFields>({
       initial,
       delayMs: 600,
       onState: setSaveState,
       save: async (value) => {
         if (!family?.id || !accessToken) throw new Error("Đăng nhập lại để lưu.");
-        // Bought items: only the storage place; manual items: every field (FieldError → shown at that field).
-        const patch = isLocked(item) ? lockedPatch(value) : manualPatch(value, item.unit);
+        // Manual items: every field (FieldError → shown at that field).
+        const patch = manualPatch(value, item.unit);
         const updated = await inventoryApi.update(accessToken, family.id, item.id, patch);
         // The Kho list shows the change at once.
         setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, ...updated, category: updated.category ?? entry.category } : entry)));
@@ -284,7 +284,9 @@ export default function InventoryListScreen({
     return (
       <ProductCard
         width={cardGrid.cardWidth}
-        accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. Mở để sửa, ghi đã dùng hoặc xóa`}
+        // Expired, in its grace days: dimmed, only kept so it can be thrown away (never used for cooking).
+        dimmed={expiry.dimmed}
+        accessibilityLabel={`${item.name}, ${quantityText}, ${expiry.text}${expiry.pill ? `, ${expiry.pill.label}` : ""}. ${isLocked(item) ? "Mở để xem" : "Mở để sửa hoặc xóa"}`}
         onPress={() => (onItemPress ? onItemPress(item) : openEdit(item))}
         image={<InventoryPhoto imageUrl={item.imageUrl} fallbackUrl={catalogImageFor(item, catalogImages)} accessToken={accessToken} accessibilityLabel={`Ảnh ${item.name}`} style={cardImageStyle} placeholder={<ImagePlaceholder />} />}
         pill={expiry.pill}
@@ -403,7 +405,6 @@ export default function InventoryListScreen({
                     <RadioDropdown<string> label="Đơn vị" value={fields.unit} options={UNIT_CHOICES.map((choice) => ({ value: choice.label, label: choice.label }))} onChange={(value) => editField("unit", value, true)} searchable searchPlaceholder="Tìm đơn vị (kg, hộp...)" />
                   </>
                 )}
-                <RadioDropdown<InventoryLocation> label="Vị trí bảo quản" value={fields.location} options={inventoryLocations.map((choice) => ({ value: choice, label: inventoryLocationLabels[choice] }))} onChange={(value) => editField("location", value, true)} />
                 {activeItem && !isLocked(activeItem) && (
                   <>
                     <Text style={styles.fieldLabel}>Hạn dùng · DD/MM/YYYY</Text>

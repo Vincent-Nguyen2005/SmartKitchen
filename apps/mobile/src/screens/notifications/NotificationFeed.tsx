@@ -36,7 +36,7 @@ export type AppNotification = {
   data?: { promotionId?: string; type?: string; orderId?: string } | null;
 };
 
-/** Same rule as the old Kho card: expired, or expiring within the next 3 days (inventory alerts API). */
+/** Expiring within the next 3 days, today, or expired and still in the grace days (inventory alerts API). */
 export const EXPIRY_ALERT_DAYS = 3;
 const PAGE_SIZE = 20;
 const PROMOTION_LIMIT = 50;
@@ -88,6 +88,8 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
   const [page, setPage] = useState(1);
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [expiring, setExpiring] = useState<ExpiringInventoryItem[]>([]);
+  // The server's grace days for expired items (KHO_EXPIRED_GRACE_DAYS), sent with the alerts.
+  const [graceDays, setGraceDays] = useState(0);
   // Missing ingredients for this week's menus (computed on read by menu-service; nothing is stored or pushed).
   const [weekMissing, setWeekMissing] = useState(0);
   // Dismissed computed items (week / expiry / promotion keys, see feedSelection.ts).
@@ -125,7 +127,10 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
       setPage(1);
     }
     if (promotionResult.status === "fulfilled") setPromotions(promotionResult.value.items);
-    if (expiringResult.status === "fulfilled") setExpiring(expiringResult.value?.items ?? []);
+    if (expiringResult.status === "fulfilled") {
+      setExpiring(expiringResult.value?.items ?? []);
+      setGraceDays(expiringResult.value?.expiredGraceDays ?? 0);
+    }
     if (dismissedResult.status === "fulfilled") setDismissed(new Set(dismissedResult.value.keys));
     // A failed check just hides the item (no error banner for it).
     setWeekMissing(weekResult.status === "fulfilled" ? weekResult.value.count : 0);
@@ -180,7 +185,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
 
   const entries = useMemo<FeedEntry[]>(() => {
     const notifiedPromotions = new Set(notifications.map((item) => item.data?.promotionId).filter((value): value is string => Boolean(value)));
-    const alerts: FeedEntry[] = visibleExpiryAlerts(expiring)
+    const alerts: FeedEntry[] = visibleExpiryAlerts(expiring, graceDays)
       .sort((first, second) => first.daysLeft - second.daysLeft)
       .map((item) => ({ kind: "expiry", key: `expiry-${item.id}`, item }));
     const unread = notifications.filter((item) => item.status !== "READ").map<FeedEntry>((item) => ({ kind: "notification", key: item.id, item }));
@@ -191,7 +196,7 @@ export default function NotificationFeed({ onOpenInventoryItem, onChanged, onOpe
     // One "Tuần này còn thiếu" item at the top when something is missing; none when N = 0.
     const week: FeedEntry[] = weekMissing > 0 ? [{ kind: "week", key: "week-missing", count: weekMissing, weekStart: vietnamWeekStart() }] : [];
     return withoutDismissed([...week, ...alerts, ...unread, ...rest], dismissed);
-  }, [notifications, promotions, expiring, weekMissing, dismissed]);
+  }, [notifications, promotions, expiring, graceDays, weekMissing, dismissed]);
 
   // ---- Selection mode ----
   const exitSelection = useCallback(() => dispatchSelection({ type: "exit" }), []);

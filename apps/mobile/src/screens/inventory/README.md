@@ -31,8 +31,17 @@ Run the app's static typecheck with `pnpm --filter mobile typecheck`.
 ## Item sheet (auto-save)
 
 Tapping a Kho item opens its sheet. There are no "Hủy" / "Lưu thay đổi" buttons; it closes with ✕, a tap outside, or Android back.
-- **Bought items:** changing "Vị trí bảo quản" saves at once.
+- **Bought items:** read-only: photo, amount, expiry and the purchase note, closed with ✕.
+- **No storage place:** the sheet and the add forms no longer ask for "Vị trí bảo quản"; the server keeps its stored column and default.
 - **Manual items:** text fields save 600 ms after you stop typing and when a field loses focus; dropdowns save at once. Closing saves anything pending first.
 - **Feedback:** "Đang lưu…" / "Đã lưu" under the title. A validation or server error shows at its field (or under the title), keeps the input, and keeps the sheet open, including on close.
 - **No wasted requests:** an unchanged value is never sent, and only one save runs at a time. The Kho list updates after each save.
 - Helpers: `services/autoSave.ts` (debounce / flush / errors) and `itemForm.ts` (validation), both tested.
+
+## Expired items (`expiry.ts`)
+
+Vietnam calendar days, same rule as inventory-service (`KHO_EXPIRED_GRACE_DAYS`, 0–7, default 0):
+- **Within 3 days:** amber "Còn N ngày". **Expiry day:** amber "Hết hạn hôm nay" (still used for cooking).
+- **Grace days after expiry:** red "Đã hết hạn N ngày", dimmed card; never used for cooking, "Cộng thêm" or the weekly list. Manual items can still be deleted.
+- **After the grace days** (with 0: from the day after expiry) the server no longer lists the item.
+- The grace value comes from the server with the Kho list and the alerts (`expiredGraceDays`); the app has no number of its own.

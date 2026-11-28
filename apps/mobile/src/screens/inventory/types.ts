@@ -5,7 +5,6 @@ export interface FoodItem {
   unit: string;
   /** PIECE rows: the specific word ("quả", "trái", "bìa", "nải"); null = "cái". */
   unitLabel?: string | null;
-  storageLocation: string;
   expiryDate: string | null;
   status: string;
   barcode?: string | null;

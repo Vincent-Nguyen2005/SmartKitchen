@@ -61,6 +61,8 @@ services:
       TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
       TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
       INVENTORY_UPLOAD_DIR: /data/uploads/inventory
+      # Days an expired Kho item stays listed (dimmed, never used) after its expiry day; 0–7, default 0 (hidden the next day).
+      KHO_EXPIRED_GRACE_DAYS: ${KHO_EXPIRED_GRACE_DAYS:-0}
       # Kho photo recognition: catalog labels from admin-service; Gemini only as fallback when CLIP is unsure (empty = off).
       ADMIN_SERVICE_URL: http://admin-service:4011
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

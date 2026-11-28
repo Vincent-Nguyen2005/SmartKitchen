@@ -5,7 +5,6 @@ import { appendPhoto } from "./photoUpload";
 
 export type InventoryUnit = "GRAM" | "KILOGRAM" | "MILLILITER" | "LITER" | "PIECE" | "PACK" | "BOTTLE" | "CAN" | "BOX";
 export type ReceiptMimeType = "image/jpeg" | "image/png" | "image/webp";
-export type InventoryLocation = "FRIDGE" | "FREEZER" | "PANTRY" | "COUNTER";
 export type NewFoodItem = {
   familyId: string;
   name: string;
@@ -13,7 +12,7 @@ export type NewFoodItem = {
   unit: InventoryUnit;
   /** PIECE only: "quả", "trái", "bìa", "nải"; null / omitted = "cái" (or the catalog product's word on create). */
   unitLabel?: string | null;
-  storageLocation: InventoryLocation;
+  // No storage place: the app does not ask for it; the server keeps its default for new items.
   barcode?: string;
   /** ISO date-time, e.g. 2026-12-31T00:00:00.000Z. */
   expiryDate?: string;
@@ -22,6 +21,8 @@ export type NewFoodItem = {
 };
 export type UpdateFoodItem = Partial<Omit<NewFoodItem, "familyId" | "expiryDate">> & { expiryDate?: string | null; status?: string };
 export type ExpiringInventoryItem = import("./types").FoodItem & { daysLeft: number };
+/** Days an expired item stays listed (dimmed) after its expiry day; from the server (KHO_EXPIRED_GRACE_DAYS), 0 when absent. */
+const graceDaysFrom = (value: unknown): number => (typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 7 ? value : 0);
 export type ProductCatalogResult = {
   barcode: string;
   name: string;
@@ -94,7 +95,7 @@ export type CatalogQuery = { search?: string; group?: string; onSale?: boolean; 
 
 export const inventoryApi = {
   list: async (accessToken: string, familyId: string) => {
-    const first = await request<{ items: import("./types").FoodItem[]; pagination: { totalPages: number } }>(
+    const first = await request<{ items: import("./types").FoodItem[]; pagination: { totalPages: number }; expiredGraceDays?: number }>(
       accessToken,
       `/api/inventory/items${query({ familyId, page: 1, limit: 100 })}`,
     );
@@ -114,7 +115,7 @@ export const inventoryApi = {
       if (!Array.isArray(next.items)) throw new Error(`Trang ${page} của kho trả về dữ liệu không hợp lệ.`);
       items.push(...next.items);
     }
-    return { items };
+    return { items, expiredGraceDays: graceDaysFrom(first.expiredGraceDays) };
   },
   create: (accessToken: string, input: NewFoodItem) =>
     request<import("./types").FoodItem>(accessToken, "/api/inventory/items", { method: "POST", body: JSON.stringify(input) }),
@@ -130,8 +131,10 @@ export const inventoryApi = {
     request<{ message: string }>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}${query({ familyId })}`, { method: "DELETE" }),
   consume: (accessToken: string, familyId: string, id: string, quantity: number) =>
     request<import("./types").FoodItem>(accessToken, `/api/inventory/items/${encodeURIComponent(id)}/consume${query({ familyId })}`, { method: "POST", body: JSON.stringify({ quantity }) }),
-  expiring: (accessToken: string, familyId: string, days = 3) =>
-    request<{ items: ExpiringInventoryItem[]; count: number; thresholdDays: number }>(accessToken, `/api/inventory/alerts/expiring${query({ familyId, days })}`),
+  expiring: async (accessToken: string, familyId: string, days = 3) => {
+    const result = await request<{ items: ExpiringInventoryItem[]; count: number; thresholdDays: number; expiredGraceDays?: number }>(accessToken, `/api/inventory/alerts/expiring${query({ familyId, days })}`);
+    return { ...result, expiredGraceDays: graceDaysFrom(result.expiredGraceDays) };
+  },
   refreshAlerts: (accessToken: string, familyId: string, days = 3) =>
     request<{ updatedCount: number }>(accessToken, `/api/inventory/alerts/refresh${query({ familyId, days })}`, { method: "POST" }),
   lookupBarcode: (accessToken: string, barcode: string) =>

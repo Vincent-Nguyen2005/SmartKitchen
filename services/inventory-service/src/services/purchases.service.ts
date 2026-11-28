@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { Prisma, type Unit } from "../../node_modules/.prisma/client-inventory";
 import { ApplyPurchaseInput } from "../validators/purchase.validator";
 import { MERGEABLE_STATUSES, statusForExpiry } from "./items.service";
+import { mergeableInKhoFilter } from "../lib/kho-expiry";
 
 /** Units of the same kind and their size in the smaller one: a purchase in kg joins a Kho row in g (and l / ml). */
 const SAME_KIND: Record<string, Record<string, number>> = {
@@ -60,6 +61,8 @@ export class PurchasesService {
             deletedAt: null,
             // Never into a "Đang giao" row of another order.
             deliveryOrderId: null,
+            // Never into a row past its expiry day (grace days included); a used-up row may restart.
+            ...mergeableInKhoFilter(),
           },
           orderBy: { createdAt: "asc" },
         });

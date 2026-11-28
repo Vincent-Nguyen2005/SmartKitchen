@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma";
 import { normalizeName } from "../lib/names";
 import type { CatalogLabel } from "./photo-recognition/catalog-labels";
 import { matchCatalogProduct } from "./catalog-match.service";
-import { hiddenPurchaseFilter } from "./items.service";
+import { isExpiredForUse, usableInKhoFilter } from "../lib/kho-expiry";
 
 /**
  * "Đã ăn" in Nấu ăn: the dish's ingredients (already scaled to the family by the app) are taken out of Kho.
@@ -95,12 +95,14 @@ export class CookService {
     return prisma.$transaction(async (transaction) => {
       // Created first: a second request with the same cookId fails here (P2002) before touching Kho.
       await transaction.cookApplication.create({ data: { cookId: input.cookId, familyId: input.familyId } });
-      const rows: KhoRow[] = await transaction.foodItem.findMany({
-        // Never rows that left Kho: expired bought rows past the hide window (hiddenPurchaseFilter) included.
+      const loaded: KhoRow[] = await transaction.foodItem.findMany({
+        // Never expired rows (past their expiry day, whatever their stored status or origin; lib/kho-expiry.ts).
         // Nor "Đang giao" rows (not delivered yet).
-        where: { familyId: input.familyId, deletedAt: null, deliveryOrderId: null, status: { in: USABLE as never }, quantity: { gt: 0 }, ...hiddenPurchaseFilter() },
+        where: { familyId: input.familyId, deletedAt: null, deliveryOrderId: null, status: { in: USABLE as never }, quantity: { gt: 0 }, ...usableInKhoFilter() },
         select: { id: true, name: true, productId: true, quantity: true, unit: true, status: true, expiryDate: true, createdAt: true },
       });
+      // Same rule on the loaded rows (the query already leaves them out; Vietnam midnight may pass in between).
+      const rows = loaded.filter((row) => !isExpiredForUse(row));
       const lines: CookLineResult[] = [];
       for (const line of input.lines) {
         const product = matchCatalogProduct(line.name, catalog);

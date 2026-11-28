@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const tx = vi.hoisted(() => ({
   foodItem: { findFirst: vi.fn(), findMany: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
@@ -10,7 +10,7 @@ const prismaMock = vi.hoisted(() => ({ $transaction: vi.fn(), foodItem: { findFi
 vi.mock("../lib/prisma", () => ({ prisma: prismaMock }));
 vi.mock("./photo-storage.service", () => ({ PhotoStorage: { removeByUrl: vi.fn() }, managedPhotoFileName: () => null }));
 
-import { ItemsService, hiddenPurchaseFilter, lockedChanges } from "./items.service";
+import { ItemsService, lockedChanges } from "./items.service";
 import { CookService, fefo, measureFor, planDeduction, type KhoRow } from "./cook.service";
 
 const familyId = "11111111-1111-4111-8111-111111111111";
@@ -19,12 +19,16 @@ const cookId = "44444444-4444-4444-8444-444444444444";
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
 beforeEach(() => {
+  // The fixtures use fixed days: a fixed "today" (27/11/2026, Vietnam) keeps them before their expiry.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-11-27T03:00:00.000Z"));
   vi.resetAllMocks();
   prismaMock.$transaction.mockImplementation((callback: (client: typeof tx) => unknown) => callback(tx));
   tx.inventoryLog.create.mockResolvedValue({});
   tx.cookApplication.create.mockResolvedValue({});
   tx.foodItem.updateMany.mockResolvedValue({ count: 1 });
 });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("Kho rows bought in Đi chợ are read-only", () => {
   const bought = { id: "i1", familyId, origin: "PURCHASE", name: "Thịt ba chỉ", unit: "KILOGRAM", quantity: 1.5, expiryDate: day("2026-12-01"), status: "FRESH", imageUrl: null };
@@ -60,17 +64,6 @@ describe("Kho rows bought in Đi chợ are read-only", () => {
     prismaMock.foodItem.update.mockResolvedValue({ ...bought, deletedAt: new Date() });
     await ItemsService.softDelete("i1", familyId);
     expect(prismaMock.foodItem.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ deletedAt: expect.any(Date) }) }));
-  });
-
-  it("expired bought rows stay listed up to 3 days after the expiry day (Vietnam), then leave Kho, alerts and cooking", () => {
-    // 2026-12-04 08:00 in Vietnam: expiry 01/12 still shown (cutoff 01/12), expiry 30/11 hidden.
-    const filter = hiddenPurchaseFilter(new Date("2026-12-04T01:00:00Z"));
-    // IS NOT NULL inside the NOT: rows without an expiry ("Đang giao", no shelf life) are never hidden (SQL NULL logic).
-    expect(filter).toEqual({ NOT: { origin: "PURCHASE", expiryDate: { not: null, lt: day("2026-12-01") } } });
-    const hidden = (expiry: string) => day(expiry) < filter.NOT.expiryDate.lt;
-    expect([hidden("2026-12-01"), hidden("2026-11-30")]).toEqual([false, true]);
-    // 23:30 UTC on 04/12 is already 05/12 in Vietnam: 01/12 is now hidden.
-    expect(hiddenPurchaseFilter(new Date("2026-12-04T23:30:00Z")).NOT.expiryDate.lt).toEqual(day("2026-12-02"));
   });
 
   it("'Cộng thêm' on a bought row adds the quantity; the row stays PURCHASE-locked and keeps the merge expiry rule", async () => {
@@ -157,34 +150,5 @@ describe("cooking deducts from Kho", () => {
     tx.foodItem.updateMany.mockClear();
     expect(await CookService.cook({ familyId, cookId, lines: [{ name: "Thịt heo", quantity: 300, unit: "GRAM" }] }, [], userId)).toEqual({ alreadyApplied: true, lines: [] });
     expect(tx.foodItem.updateMany).not.toHaveBeenCalled();
-  });
-});
-
-describe("hiddenPurchaseFilter under SQL NULL logic (Kho must list rows without an expiry)", () => {
-  // SQL three-valued logic: a comparison with NULL is unknown (null); AND / NOT propagate unknown; only TRUE rows return.
-  const and = (...values: Array<boolean | null>): boolean | null => (values.includes(false) ? false : values.includes(null) ? null : true);
-  const expiryMatches = (value: Date | null, condition: { not?: null; lt: Date }): boolean | null => {
-    const parts: Array<boolean | null> = [];
-    if ("not" in condition) parts.push(value !== null); // IS NOT NULL is never unknown
-    parts.push(value === null ? null : value < condition.lt);
-    return and(...parts);
-  };
-  const keeps = (row: { origin: string; expiryDate: Date | null }, filter: ReturnType<typeof hiddenPurchaseFilter>): boolean => {
-    const inner = and(row.origin === filter.NOT.origin, expiryMatches(row.expiryDate, filter.NOT.expiryDate));
-    return inner === false; // NOT inner is TRUE only when inner is FALSE
-  };
-  const filter = hiddenPurchaseFilter(new Date("2026-12-04T01:00:00Z"));
-
-  it("keeps 'Đang giao' rows and bought rows without an expiry; hides bought rows expired past the window", () => {
-    expect(keeps({ origin: "PURCHASE", expiryDate: null }, filter)).toBe(true);
-    expect(keeps({ origin: "MANUAL", expiryDate: null }, filter)).toBe(true);
-    expect(keeps({ origin: "PURCHASE", expiryDate: new Date("2026-12-03T00:00:00Z") }, filter)).toBe(true);
-    expect(keeps({ origin: "PURCHASE", expiryDate: new Date("2026-11-20T00:00:00Z") }, filter)).toBe(false);
-    expect(keeps({ origin: "MANUAL", expiryDate: new Date("2026-11-20T00:00:00Z") }, filter)).toBe(true);
-  });
-
-  it("the old filter (without IS NOT NULL) dropped rows without an expiry: the bug", () => {
-    const old = { NOT: { origin: "PURCHASE", expiryDate: { lt: filter.NOT.expiryDate.lt } } } as unknown as ReturnType<typeof hiddenPurchaseFilter>;
-    expect(keeps({ origin: "PURCHASE", expiryDate: null }, old)).toBe(false);
   });
 });

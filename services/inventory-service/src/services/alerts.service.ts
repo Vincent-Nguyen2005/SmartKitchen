@@ -1,21 +1,19 @@
 import { prisma } from "../lib/prisma";
 import { ExpiringQuery } from "../validators/alerts.validator";
 import type { Prisma } from "../../node_modules/.prisma/client-inventory";
-import { hiddenPurchaseFilter } from "./items.service";
-
-const VN_OFFSET_MS = 7 * 3_600_000;
-/** Today's Vietnam calendar day as UTC midnight (expiry dates are stored as YYYY-MM-DDT00:00:00Z). */
-export const vietnamToday = (now: Date = new Date()): Date => new Date(`${new Date(now.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10)}T00:00:00.000Z`);
+import { expiryStage, khoExpiredGraceDays, listedInKhoFilter, vietnamToday } from "../lib/kho-expiry";
 
 export class AlertsService {
   /**
-   * Thông báo expiry alerts: items with an expiry within `days` (or already expired) that are still in Kho. Never
-   * listed: consumed (quantity 0 / CONSUMED), discarded, deleted, "Đang giao" rows, and bought rows auto-hidden 3 days
-   * after expiry. daysLeft counts Vietnam calendar days (00:00-07:00 VN is still the previous UTC day).
+   * Thông báo expiry alerts: items with an expiry within `days`, expiring today, or expired and still in their grace
+   * days (KHO_EXPIRED_GRACE_DAYS; "đã hết hạn N ngày"). Never listed: consumed (quantity 0 / CONSUMED), discarded,
+   * deleted, "Đang giao" rows, and rows hidden after the grace days (every origin). daysLeft counts Vietnam calendar
+   * days (00:00-07:00 VN is still the previous UTC day); `stage` is lib/kho-expiry's stage.
    */
-  static async getExpiringItems(query: ExpiringQuery) {
+  static async getExpiringItems(query: ExpiringQuery, now: Date = new Date()) {
     const { days, familyId } = query;
-    const today = vietnamToday();
+    const graceDays = khoExpiredGraceDays();
+    const today = vietnamToday(now);
     const threshold = new Date(today);
     threshold.setUTCDate(threshold.getUTCDate() + days);
     threshold.setUTCHours(23, 59, 59, 999);
@@ -30,8 +28,8 @@ export class AlertsService {
       status: { notIn: ["CONSUMED", "DISCARDED"] },
       // "Đang giao" rows have no expiry yet and never alert.
       deliveryOrderId: null,
-      // Bought rows expired more than 3 days ago have left Kho, so they leave the alerts too.
-      ...hiddenPurchaseFilter(),
+      // Rows past the grace days have left Kho, so they leave the alerts too.
+      ...listedInKhoFilter(graceDays, now),
     };
 
     if (familyId) where.familyId = familyId;
@@ -46,8 +44,8 @@ export class AlertsService {
       const expiryDay = new Date(item.expiryDate!);
       expiryDay.setUTCHours(0, 0, 0, 0);
       const daysLeft = Math.round((expiryDay.getTime() - today.getTime()) / 86_400_000);
-      return { ...item, daysLeft };
-    });
+      return { ...item, daysLeft, stage: expiryStage(item.expiryDate, graceDays, now) };
+    }).filter((item) => item.stage !== "hidden");
   }
 
   static async updateExpiringStatus(query: ExpiringQuery, userId?: string) {
