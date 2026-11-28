@@ -2,6 +2,7 @@ import { prisma } from "../lib/prisma";
 import { normalizeName } from "../lib/names";
 import { PhotoStorage, managedPhotoFileName } from "./photo-storage.service";
 import { normalizeUnitLabel } from "../lib/unit-label";
+import { isExpiredForUse, khoExpiredGraceDays, listedInKhoFilter, mergeableInKhoFilter } from "../lib/kho-expiry";
 import {
   CreateItemInput,
   UpdateItemInput,
@@ -39,8 +40,7 @@ export function statusForExpiry(expiryDate: Date | null | undefined, now: Date =
 /**
  * Kho rows bought in Đi chợ (origin PURCHASE) are read-only except their storage place: name, unit, quantity, expiry,
  * status, photo and the other fields cannot be changed by hand, and the row cannot be deleted. The quantity changes
- * only through cooking and Cộng thêm / purchase merges; an expired bought row leaves the list by itself
- * (hiddenPurchaseFilter).
+ * only through cooking and Cộng thêm / purchase merges; an expired row leaves the list by itself (lib/kho-expiry.ts).
  */
 const sameValue = (left: unknown, right: unknown): boolean => {
   if (left instanceof Date || right instanceof Date || (typeof left === "string" && typeof right !== "string")) {
@@ -61,24 +61,6 @@ export function lockedChanges(previous: Record<string, unknown> & { origin?: str
 /** "Đang giao" rows (Đi chợ order not delivered yet) cannot be edited, used, merged into or deleted by the user. */
 export const pendingDeliveryError = () => httpError(409, "DELIVERY_PENDING", "This item is still being delivered; it can be used once it arrives.");
 export const lockedError = (fields: string[]) => httpError(409, "PURCHASED_ITEM_LOCKED", `Items bought in Đi chợ cannot change ${fields.join(", ")}; only the storage place can be changed.`);
-
-/** A bought row expired more than this many days ago (Vietnam calendar) is hidden from Kho, alerts and the weekly list. */
-export const PURCHASE_HIDE_AFTER_EXPIRY_DAYS = 3;
-const VN_OFFSET_MS = 7 * 3_600_000;
-/**
- * Prisma condition that leaves out expired bought rows whose expiry day is more than
- * PURCHASE_HIDE_AFTER_EXPIRY_DAYS days before today (Asia/Ho_Chi_Minh): expiry 01/12 is still listed on 04/12 (the
- * Thông báo alert keeps showing it) and gone on 05/12. The rows stay in the database; manual rows are never hidden.
- */
-export function hiddenPurchaseFilter(now: Date = new Date()) {
-  const vnToday = new Date(now.getTime() + VN_OFFSET_MS).toISOString().slice(0, 10);
-  const cutoff = new Date(`${vnToday}T00:00:00.000Z`);
-  cutoff.setUTCDate(cutoff.getUTCDate() - PURCHASE_HIDE_AFTER_EXPIRY_DAYS);
-  // `not: null` matters: in SQL, NOT (origin = 'PURCHASE' AND "expiryDate" < cutoff) is NULL for a row without an
-  // expiry, and NULL rows are dropped, so every bought row without an expiry (all "Đang giao" rows, products without
-  // shelf-life days) would disappear from Kho and cooking. With IS NOT NULL the inner condition is FALSE for them.
-  return { NOT: { origin: "PURCHASE" as const, expiryDate: { not: null, lt: cutoff } } };
-}
 
 export type DuplicateMatch = {
   /** Oldest live row of the same product (same productId, or same normalized name) with the same unit. */
@@ -121,7 +103,9 @@ export class ItemsService {
 
     // Used-up rows (CONSUMED, quantity 0) are hidden unless asked for by status; they stay in the database so
     // "Cộng thêm" can restart them as a fresh batch (findDuplicate) and consumption history keeps their logs.
-    const where: any = { deletedAt: null, ...filters, status: filters.status ?? { not: "CONSUMED" }, ...hiddenPurchaseFilter() };
+    // Expired rows past the grace days (KHO_EXPIRED_GRACE_DAYS, lib/kho-expiry.ts) are hidden too, for every origin.
+    const expiredGraceDays = khoExpiredGraceDays();
+    const where: any = { deletedAt: null, ...filters, status: filters.status ?? { not: "CONSUMED" }, ...listedInKhoFilter(expiredGraceDays) };
     if (search) {
       where.name = { contains: search, mode: "insensitive" };
     }
@@ -140,6 +124,8 @@ export class ItemsService {
     return {
       items,
       pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+      // The app dims and labels expired rows with the same number ("Đã hết hạn N ngày"), never a hard-coded one.
+      expiredGraceDays,
     };
   }
 
@@ -157,13 +143,14 @@ export class ItemsService {
 
   /**
    * Existing Kho rows of the same product in this family: same productId, or the same normalized name (older rows
-   * have no productId). Only live rows that new stock may join (not expired, discarded or deleted).
+   * have no productId). Only live rows that new stock may join (not expired, discarded or deleted): a row past its
+   * expiry day (in its grace days or hidden) is never offered, a used-up row is (it restarts as a fresh batch).
    */
   static async findDuplicate(familyId: string, match: { name: string; productId: string | null; unit: string }): Promise<DuplicateMatch> {
     const key = normalizeName(match.name);
     const rows = await prisma.foodItem.findMany({
       // "Đang giao" rows are never offered for "Cộng thêm".
-      where: { familyId, deletedAt: null, deliveryOrderId: null, status: { in: [...MERGEABLE_STATUSES] } },
+      where: { familyId, deletedAt: null, deliveryOrderId: null, status: { in: [...MERGEABLE_STATUSES] }, ...mergeableInKhoFilter() },
       orderBy: { createdAt: "asc" },
       include: { category: true },
     });
@@ -185,7 +172,7 @@ export class ItemsService {
       const previous = await transaction.foodItem.findFirst({ where: { id, familyId, deletedAt: null } });
       if (!previous) throw new Error("Item not found");
       if (previous.deliveryOrderId) throw pendingDeliveryError();
-      if (!(MERGEABLE_STATUSES as readonly string[]).includes(previous.status)) {
+      if (!(MERGEABLE_STATUSES as readonly string[]).includes(previous.status) || isExpiredForUse(previous)) {
         throw httpError(409, "ITEM_NOT_MERGEABLE", "This item is expired or discarded; add a new row instead.");
       }
       if (previous.unit !== input.unit) throw httpError(409, "UNIT_MISMATCH", "Units differ; add a new row instead.");
@@ -195,7 +182,7 @@ export class ItemsService {
       const keepEarlier = input.expiryDate && (!previous.expiryDate || input.expiryDate < previous.expiryDate);
       const changed = await transaction.foodItem.updateMany({
         // The status is part of the condition, so a row that changed meanwhile is not merged with the wrong rule.
-        where: { id, familyId, deletedAt: null, unit: input.unit, status: previous.status },
+        where: { id, familyId, deletedAt: null, unit: input.unit, status: previous.status, ...mergeableInKhoFilter() },
         data: consumed
           ? { quantity: input.quantity, expiryDate: input.expiryDate ?? null, status: statusForExpiry(input.expiryDate), ...(becomesManual ? { origin: "MANUAL" as const, purchasedAt: null } : {}) }
           : { quantity: { increment: input.quantity }, ...(keepEarlier ? { expiryDate: input.expiryDate } : {}) },

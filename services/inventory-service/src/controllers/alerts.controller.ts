@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import { AlertsService } from "../services/alerts.service";
 import { expiringQuerySchema } from "../validators/alerts.validator";
+import { khoExpiredGraceDays } from "../lib/kho-expiry";
 import { InventoryAuthRequest } from "../middleware/auth.middleware";
 import { requireFamilyMembership } from "../middleware/family-scope";
 
@@ -14,6 +15,8 @@ export class AlertsController {
         success: true,
         count: items.length,
         thresholdDays: query.days,
+        // Same grace days as the Kho list: the app filters stale rows with it.
+        expiredGraceDays: khoExpiredGraceDays(),
         items,
       });
     } catch (err) {

@@ -10,7 +10,9 @@
  *   the item's state, so the item comes back by itself when that state changes:
  *     "Tuần này còn thiếu"   week:<Monday of this Vietnam week>            → back next week
  *     expiry alert           expiry:<itemId>:<expiry day>:<stage>          → back at the next stage or a new date
- *                            (stage: "3-ngay" / "2-ngay" / "1-ngay" / "hom-nay" / "het-han")
+ *                            (stage: "3-ngay" / "2-ngay" / "1-ngay" / "hom-nay" / "het-han"; "het-han" is the
+ *                            whole grace period after expiry: dismissed once, it stays dismissed until the item
+ *                            leaves Kho, it does not come back every day)
  *     active promotion       promotion:<promotionId>                       → gone for good
  */
 
@@ -43,7 +45,7 @@ export function vietnamWeekStart(now: Date = new Date()): string {
   return vn.toISOString().slice(0, 10);
 }
 
-/** The alert's stage: the wording changes with it ("sau 2 ngày", "hôm nay", "đã hết hạn"). */
+/** The alert's stage: the wording changes with it ("sau 2 ngày", "hôm nay", "đã hết hạn N ngày" during the grace days). */
 export function expiryStage(daysLeft: number): string {
   if (daysLeft < 0) return "het-han";
   if (daysLeft === 0) return "hom-nay";
@@ -92,11 +94,12 @@ export const deleteConfirmTitle = (count: number): string => `Xóa ${count} thô
 
 /**
  * Expiry alerts the feed shows: still in Kho with something left. The inventory alerts API already leaves out
- * consumed (quantity 0 / CONSUMED), discarded, deleted, "Đang giao" and auto-hidden bought rows; this repeats the
- * per-row part so an item that changed in Kho meanwhile never shows.
+ * consumed (quantity 0 / CONSUMED), discarded, deleted, "Đang giao" rows and rows past the grace days (every origin);
+ * this repeats the per-row part so an item that changed in Kho meanwhile never shows. `graceDays`: the server's
+ * KHO_EXPIRED_GRACE_DAYS (sent with the alerts): "đã hết hạn N ngày" only while N ≤ graceDays, nothing after.
  */
-export function visibleExpiryAlerts<T extends ExpiryAlertLike>(items: readonly T[]): T[] {
-  return items.filter((item) => item.quantity > 0 && !item.deliveryOrderId && item.expiryDate !== null && item.status !== "CONSUMED" && item.status !== "DISCARDED");
+export function visibleExpiryAlerts<T extends ExpiryAlertLike>(items: readonly T[], graceDays = 0): T[] {
+  return items.filter((item) => item.quantity > 0 && !item.deliveryOrderId && item.expiryDate !== null && item.status !== "CONSUMED" && item.status !== "DISCARDED" && item.daysLeft >= -graceDays);
 }
 
 /** dd/MM of a stored expiry day (the API returns YYYY-MM-DDT00:00:00.000Z). */

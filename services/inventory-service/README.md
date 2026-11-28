@@ -50,9 +50,19 @@ shopping-list-service calls these internal endpoints (header `x-internal-api-key
 - `POST /api/inventory/internal/deliveries/:orderId/deliver` `{ familyId, createdByUserId, lines (with expiryDate) }`: each line goes through the normal purchase path (merge rules, expiry from the delivery day), then the pending rows are removed.
 - `POST /api/inventory/internal/deliveries/:orderId/cancel` `{ familyId }`: the pending rows are removed (cancelled or failed order).
 
-Rows without an expiry (every "Đang giao" row, bought products without shelf-life days) are never hidden by the "expired bought rows leave Kho after 3 days" rule (`hiddenPurchaseFilter` checks `expiryDate IS NOT NULL`; without it SQL NULL logic dropped them).
+Rows without an expiry (every "Đang giao" row, bought products without shelf-life days) are never hidden by the expired-items rule below (the filters check `expiryDate IS NOT NULL`; without it SQL NULL logic dropped them).
 
 While a row has `deliveryOrderId` it is listed (the app shows it dimmed with "Đang giao") but it can't be edited, used, merged into ("Cộng thêm") or deleted (409 `DELIVERY_PENDING`), has no photo, and is left out of cooking, the duplicate prompt, purchase merges and expiry alerts. menu-service leaves it out of cooking suggestions but counts it as covered in "Cần mua tuần này".
+
+## Expired items leave Kho (`KHO_EXPIRED_GRACE_DAYS`)
+
+One rule for bought (PURCHASE) and manual (MANUAL) rows, in Asia/Ho_Chi_Minh calendar days (`src/lib/kho-expiry.ts`):
+- **Expiry day:** listed and usable; the app shows "Hết hạn hôm nay", the alert says "hết hạn hôm nay".
+- **Grace days** (`KHO_EXPIRED_GRACE_DAYS`, whole number 0–7, default 0): for that many days after the expiry day the row is still listed (the app dims it with "Đã hết hạn N ngày"; alert "đã hết hạn N ngày") so it can be thrown away, but it is never used: not for cooking, the duplicate prompt, "Cộng thêm" or purchase merges. menu-service already leaves rows whose expiry day is before today out of "Cần mua tuần này" and suggestions.
+- **After the grace days** (with 0: from the day after expiry): hidden from the list and the alerts, ignored everywhere. Rows stay in the database.
+- Rows without an expiry date are always listed and usable.
+- `GET /items` and `GET /alerts/expiring` return `expiredGraceDays`, so the app's badges use the server's value. Invalid values fall back to 0 with one log line.
+- To change it: set `KHO_EXPIRED_GRACE_DAYS` in the root `.env` and recreate inventory-service (`docker compose -p smartkitchen up -d inventory-service`).
 
 ## One product, no accidental duplicates
 

@@ -81,6 +81,8 @@ services:
       TESSERACT_LANGUAGES: ${TESSERACT_LANGUAGES:-vie+eng}
       TESSERACT_LANG_PATH: ${TESSERACT_LANG_PATH:-}
       INVENTORY_UPLOAD_DIR: /data/uploads/inventory
+      # Days an expired Kho item stays listed (dimmed, never used) after its expiry day; 0–7, default 0 (hidden the next day).
+      KHO_EXPIRED_GRACE_DAYS: ${KHO_EXPIRED_GRACE_DAYS:-0}
     # Item photos; the image creates /data/uploads owned by USER node, which a new named volume inherits.
     volumes: [inventory-uploads:/data/uploads]
     depends_on:

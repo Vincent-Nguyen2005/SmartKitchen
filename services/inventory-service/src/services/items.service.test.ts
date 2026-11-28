@@ -77,7 +77,7 @@ describe("ItemsService", () => {
 
     expect(result).toMatchObject({ pagination: { page: 1, limit: 10, total: 1, totalPages: 1 } });
     expect(prismaMock.foodItem.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({ deletedAt: null, familyId, status: { not: "CONSUMED" }, name: { contains: "sữa", mode: "insensitive" }, NOT: { origin: "PURCHASE", expiryDate: { not: null, lt: expect.any(Date) } } }),
+      where: expect.objectContaining({ deletedAt: null, familyId, status: { not: "CONSUMED" }, name: { contains: "sữa", mode: "insensitive" }, NOT: { expiryDate: { not: null, lt: expect.any(Date) } } }),
       skip: 0,
       take: 10,
     }));

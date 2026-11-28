@@ -3,16 +3,13 @@
  * FieldError naming the field, so the sheet shows the message at that field and keeps the input.
  */
 import { FieldError } from "../../services/autoSave";
-import type { InventoryLocation, InventoryUnit, UpdateFoodItem } from "./inventoryApi";
+import type { InventoryUnit, UpdateFoodItem } from "./inventoryApi";
 import { choiceFor } from "./unitChoices";
 
-export type ItemFields = { name: string; quantity: string; unit: string; location: InventoryLocation; expiry: string };
+export type ItemFields = { name: string; quantity: string; unit: string; expiry: string };
 export type ItemField = "name" | "quantity" | "expiry";
 
-/** Bought (locked) items: only the storage place changes. */
-export const lockedPatch = (fields: ItemFields): UpdateFoodItem => ({ storageLocation: fields.location });
-
-/** Manual items: every field, validated like before (DD/MM/YYYY expiry, empty = none). */
+/** Manual items: every field, validated like before (DD/MM/YYYY expiry, empty = none). Bought items are read-only. */
 export function manualPatch(fields: ItemFields, currentUnit: string): UpdateFoodItem {
   if (!fields.name.trim()) throw new FieldError("Tên nguyên liệu không được để trống.", "name");
   const quantity = Number(fields.quantity.replace(",", "."));
@@ -33,7 +30,6 @@ export function manualPatch(fields: ItemFields, currentUnit: string): UpdateFood
     quantity,
     unit: (choice?.unit ?? currentUnit) as InventoryUnit,
     unitLabel: choice?.unitLabel ?? null,
-    storageLocation: fields.location,
     expiryDate,
   };
 }

@@ -6,10 +6,19 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 // In-memory FoodItem table: enough of Prisma's API for create / match / add-quantity / update.
 type Row = { id: string; familyId: string; name: string; quantity: number; unit: string; status: string; productId: string | null; imageUrl: string | null; expiryDate: Date | null; deletedAt: Date | null; createdAt: Date; categoryId?: string | null };
 const db = vi.hoisted(() => ({ rows: [] as Row[], logs: [] as Array<{ action: string }>, seq: 0 }));
-const matches = (row: Row, where: Record<string, any>) => Object.entries(where).every(([key, value]) => {
-  if (value && typeof value === "object" && "in" in value) return value.in.includes((row as any)[key]);
+const matches = (row: Row, where: Record<string, any>): boolean => Object.entries(where).every(([key, value]) => {
+  // NOT { ... }: the conditions used here always carry IS NOT NULL, so two-valued logic is enough.
+  if (value === undefined) return true; // Prisma ignores undefined filters
+  if (key === "NOT") return !matches(row, value);
   // A field the row never had counts as null (like a NULL column).
-  return ((row as any)[key] ?? null) === value;
+  const cell = (row as any)[key] ?? null;
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    if ("in" in value && !value.in.includes(cell)) return false;
+    if ("not" in value && cell === value.not) return false;
+    if ("lt" in value && !(cell !== null && cell < value.lt)) return false;
+    return true;
+  }
+  return cell === value;
 });
 const prismaMock = vi.hoisted(() => {
   const foodItem = {
@@ -20,6 +29,7 @@ const prismaMock = vi.hoisted(() => {
       return { ...row, category: null };
     }),
     findMany: vi.fn(async ({ where }: { where: Record<string, any> }) => db.rows.filter((row) => matches(row, where)).sort((a, b) => +a.createdAt - +b.createdAt).map((row) => ({ ...row, category: null }))),
+    count: vi.fn(async ({ where }: { where: Record<string, any> }) => db.rows.filter((row) => matches(row, where)).length),
     findFirst: vi.fn(async ({ where }: { where: Record<string, any> }) => { const row = db.rows.find((entry) => matches(entry, where)); return row ? { ...row, category: null } : null; }),
     updateMany: vi.fn(async ({ where, data }: { where: Record<string, any>; data: Record<string, any> }) => {
       const hit = db.rows.filter((row) => matches(row, where));
@@ -184,6 +194,27 @@ describe("duplicates in the family's Kho", () => {
     await add("Cà rốt");
     expect(db.rows).toHaveLength(2);
     expect(db.rows.every((row) => row.quantity === 1)).toBe(true);
+  });
+
+  it("a row past its expiry day (stored status still FRESH, any grace days) is never offered or merged into; expiry today still is", async () => {
+    const vnToday = new Date(`${new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const yesterday = new Date(vnToday.getTime() - 86_400_000);
+    process.env.KHO_EXPIRED_GRACE_DAYS = "3";
+    try {
+      const stale = (await add("Cà rốt", "KILOGRAM", 2)).body.data;
+      db.rows[0].expiryDate = yesterday;
+      expect((await match("Cà rốt")).body.data.existing).toBeNull();
+      const refused = await api("POST", `/api/inventory/items/${stale.id}/add?familyId=${familyId}`, { quantity: 1, unit: "KILOGRAM" });
+      expect(refused.status).toBe(409);
+      expect(db.rows[0].quantity).toBe(2);
+      // Still listed during the grace days (to be thrown away), with the grace value for the app.
+      const listed = await api("GET", `/api/inventory/items?familyId=${familyId}`);
+      expect(listed.body.expiredGraceDays).toBe(3);
+      db.rows[0].expiryDate = vnToday;
+      expect((await match("Cà rốt")).body.data.existing.id).toBe(stale.id);
+    } finally {
+      delete process.env.KHO_EXPIRED_GRACE_DAYS;
+    }
   });
 
   it("older rows without productId match by normalized name; expired or other families' rows never match", async () => {

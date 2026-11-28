@@ -63,9 +63,12 @@ test("dismissal keys carry the state: a dismissed item comes back when the state
   assert.deepEqual(withoutDismissed(feed(1, "2026-11-29T00:00:00.000Z", "2026-11-23"), dismissed).map((entry) => entry.kind), ["expiry"]);
   assert.deepEqual(withoutDismissed(feed(2, "2026-12-01T00:00:00.000Z", "2026-11-23"), dismissed).map((entry) => entry.kind), ["expiry"]);
   assert.deepEqual(withoutDismissed(feed(2, "2026-11-29T00:00:00.000Z", "2026-11-30"), dismissed).map((entry) => entry.kind), ["week"]);
-  // Stages: hôm nay and hết hạn are their own; every expired day is the same stage (no daily comeback).
+  // Stages: "sau N ngày", hôm nay and the grace period are each their own; every grace day is the same stage (no
+  // daily comeback while "đã hết hạn N ngày" counts up).
+  assert.equal(expiryDismissKey(alert({ daysLeft: 2 })), "expiry:item-1:2026-11-29:2-ngay");
   assert.equal(expiryDismissKey(alert({ daysLeft: 0 })), "expiry:item-1:2026-11-29:hom-nay");
-  assert.equal(expiryDismissKey(alert({ daysLeft: -1 })), expiryDismissKey(alert({ daysLeft: -4 })));
+  assert.equal(expiryDismissKey(alert({ daysLeft: -1 })), "expiry:item-1:2026-11-29:het-han");
+  assert.equal(expiryDismissKey(alert({ daysLeft: -1 })), expiryDismissKey(alert({ daysLeft: -3 })));
   // Stored rows never have a dismissal key.
   assert.equal(dismissKey({ kind: "notification", key: "n1", item: { id: "n1" } }), null);
 });
@@ -93,7 +96,23 @@ test("expiry visibility: consumed (0 left), consumed / discarded status, Đang g
     alert({ id: "undated", expiryDate: null }),
     alert({ id: "expired", status: "EXPIRED", daysLeft: -2 }),
   ];
-  assert.deepEqual(visibleExpiryAlerts(items).map((item) => item.id), ["ok", "expired"]);
+  // Grace 3 (the server's value): an item expired 2 days ago still alerts.
+  assert.deepEqual(visibleExpiryAlerts(items, 3).map((item) => item.id), ["ok", "expired"]);
+});
+
+test("expiry alerts per stage follow the server's grace days: 'sau N ngày', 'hôm nay', 'đã hết hạn N ngày' only in the grace days", () => {
+  const items = [
+    alert({ id: "soon", daysLeft: 2 }),
+    alert({ id: "today", daysLeft: 0 }),
+    alert({ id: "1-day", daysLeft: -1, status: "EXPIRED" }),
+    alert({ id: "3-days", daysLeft: -3, status: "EXPIRED" }),
+    alert({ id: "4-days", daysLeft: -4, status: "EXPIRED" }),
+  ];
+  // Default 0: nothing once expired.
+  assert.deepEqual(visibleExpiryAlerts(items).map((item) => item.id), ["soon", "today"]);
+  assert.deepEqual(visibleExpiryAlerts(items, 0).map((item) => item.id), ["soon", "today"]);
+  assert.deepEqual(visibleExpiryAlerts(items, 3).map((item) => item.id), ["soon", "today", "1-day", "3-days"]);
+  assert.equal(expiryText(items[2]), "Sữa tươi đã hết hạn 1 ngày");
 });
 
 test("navigation target: order notices open Đi chợ › Đơn hàng on that order; anything else does not", () => {
